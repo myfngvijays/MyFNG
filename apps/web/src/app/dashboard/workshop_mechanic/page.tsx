@@ -1,0 +1,500 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import DashboardLayout from '@/components/DashboardLayout';
+import { 
+  Wrench, Clock, CheckCircle, Camera, AlertCircle, 
+  TrendingUp, Package, AlertTriangle, Calendar, 
+  PlayCircle, PauseCircle, ImagePlus
+} from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+
+type FilterType = 'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'HOLD' | 'COMPLETED' | 'NEED_APPROVAL';
+
+interface JobCardData {
+  id: string;
+  lead_id: string;
+  lead_number: string;
+  customer_name: string;
+  vehicle_number: string;
+  vehicle_make: string;
+  vehicle_model: string;
+  service_types: string[];
+  mechanic_status: string;
+  job_priority: string;
+  sla_remaining_minutes: number;
+  pickup_status: string;
+  before_images_count: number;
+  progress_images_count: number;
+  after_images_count: number;
+  has_pending_extra_work: boolean;
+  has_parts_assigned: boolean;
+  checklist_completed: boolean;
+  assigned_at: string;
+}
+
+export default function WorkshopMechanicDashboard() {
+  const router = useRouter();
+  const [jobs, setJobs] = useState<JobCardData[]>([]);
+  const [filteredJobs, setFilteredJobs] = useState<JobCardData[]>([]);
+  const [activeFilter, setActiveFilter] = useState<FilterType>('ALL');
+  const [stats, setStats] = useState({
+    assigned_today: 0,
+    in_progress: 0,
+    pending_pickups: 0,
+    completed_today: 0,
+    need_approval: 0
+  });
+  const [performanceStats, setPerformanceStats] = useState({
+    total_completed: 0,
+    avg_duration: 0,
+    sla_success_rate: 0,
+    performance_score: 0
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchMechanicData();
+  }, []);
+
+  useEffect(() => {
+    filterJobs(activeFilter);
+  }, [activeFilter, jobs]);
+
+  async function fetchMechanicData() {
+    const supabase = createClient();
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: userProfile } = await supabase
+        .from('users_login')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+
+      if (!userProfile) return;
+
+      // Fetch jobs from mechanic_dashboard view
+      const { data: dashboardData } = await supabase
+        .from('mechanic_dashboard')
+        .select('*')
+        .eq('mechanic_id', userProfile.id)
+        .order('assigned_at', { ascending: false });
+
+      // Get today's stats
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const { count: assignedToday } = await supabase
+        .from('mechanic_jobs')
+        .select('*', { count: 'exact', head: true })
+        .eq('mechanic_id', userProfile.id)
+        .gte('assigned_at', today.toISOString());
+
+      const { count: inProgress } = await supabase
+        .from('mechanic_jobs')
+        .select('*', { count: 'exact', head: true })
+        .eq('mechanic_id', userProfile.id)
+        .eq('mechanic_status', 'IN_PROGRESS');
+
+      const { count: completedToday } = await supabase
+        .from('mechanic_jobs')
+        .select('*', { count: 'exact', head: true })
+        .eq('mechanic_id', userProfile.id)
+        .eq('mechanic_status', 'COMPLETED')
+        .gte('completed_at', today.toISOString());
+
+      const { count: needApproval } = await supabase
+        .from('mechanic_extra_work_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('mechanic_id', userProfile.id)
+        .eq('status', 'PENDING');
+
+      // Get performance metrics
+      const { data: performanceData } = await supabase
+        .from('mechanic_performance_metrics')
+        .select('*')
+        .eq('mechanic_id', userProfile.id)
+        .eq('date', today.toISOString().split('T')[0])
+        .single();
+
+      setJobs(dashboardData || []);
+      setFilteredJobs(dashboardData || []);
+      setStats({
+        assigned_today: assignedToday || 0,
+        in_progress: inProgress || 0,
+        pending_pickups: 0, // Will be calculated from pickup_status
+        completed_today: completedToday || 0,
+        need_approval: needApproval || 0
+      });
+      
+      if (performanceData) {
+        setPerformanceStats({
+          total_completed: performanceData.total_jobs_completed || 0,
+          avg_duration: performanceData.avg_repair_duration || 0,
+          sla_success_rate: performanceData.sla_success_rate || 0,
+          performance_score: performanceData.performance_score || 0
+        });
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching mechanic data:', error);
+      setLoading(false);
+    }
+  }
+
+  function filterJobs(filter: FilterType) {
+    let filtered = [...jobs];
+    
+    switch (filter) {
+      case 'ASSIGNED':
+        filtered = jobs.filter(j => j.mechanic_status === 'ASSIGNED');
+        break;
+      case 'IN_PROGRESS':
+        filtered = jobs.filter(j => j.mechanic_status === 'IN_PROGRESS');
+        break;
+      case 'HOLD':
+        filtered = jobs.filter(j => j.mechanic_status === 'HOLD' || j.mechanic_status === 'WAITING_APPROVAL');
+        break;
+      case 'COMPLETED':
+        filtered = jobs.filter(j => j.mechanic_status === 'COMPLETED');
+        break;
+      case 'NEED_APPROVAL':
+        filtered = jobs.filter(j => j.has_pending_extra_work);
+        break;
+      case 'ALL':
+      default:
+        filtered = jobs;
+    }
+    
+    setFilteredJobs(filtered);
+  }
+
+  function getPriorityColor(priority: string) {
+    switch (priority) {
+      case 'URGENT':
+      case 'CRITICAL':
+        return 'bg-red-100 text-red-800 border-red-300';
+      case 'HIGH':
+        return 'bg-orange-100 text-orange-800 border-orange-300';
+      default:
+        return 'bg-blue-100 text-blue-800 border-blue-300';
+    }
+  }
+
+  function getStatusColor(status: string) {
+    switch (status) {
+      case 'ASSIGNED':
+        return 'bg-green-100 text-green-800';
+      case 'IN_PROGRESS':
+        return 'bg-blue-100 text-blue-800';
+      case 'HOLD':
+      case 'WAITING_APPROVAL':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'COMPLETED':
+        return 'bg-purple-100 text-purple-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  }
+
+  function formatSLA(minutes: number) {
+    if (minutes < 0) return <span className="text-red-600 font-semibold">Overdue</span>;
+    if (minutes < 60) return <span className="text-orange-600">{minutes}m remaining</span>;
+    const hours = Math.floor(minutes / 60);
+    return <span className="text-green-600">{hours}h {minutes % 60}m</span>;
+  }
+
+  if (loading) {
+    return (
+      <DashboardLayout role="workshop_mechanic">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading dashboard...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout role="workshop_mechanic">
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold text-text-heading">Mechanic Dashboard</h1>
+          <p className="text-text-body mt-2">Your assigned jobs and tasks</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-sm text-gray-600">Performance Score</p>
+              <p className="text-2xl font-bold text-brand-primary">{performanceStats.performance_score.toFixed(0)}%</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
+            <div className="flex items-center gap-3">
+              <Calendar className="w-8 h-8 text-blue-600" />
+              <div>
+                <p className="text-sm text-gray-600">Assigned Today</p>
+                <p className="text-2xl font-bold">{stats.assigned_today}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100">
+            <div className="flex items-center gap-3">
+              <Clock className="w-8 h-8 text-yellow-600" />
+              <div>
+                <p className="text-sm text-gray-600">In Progress</p>
+                <p className="text-2xl font-bold">{stats.in_progress}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="card bg-gradient-to-br from-green-50 to-green-100">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="w-8 h-8 text-green-600" />
+              <div>
+                <p className="text-sm text-gray-600">Completed Today</p>
+                <p className="text-2xl font-bold">{stats.completed_today}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="card bg-gradient-to-br from-orange-50 to-orange-100">
+              <div className="flex items-center gap-3">
+              <AlertTriangle className="w-8 h-8 text-orange-600" />
+                <div>
+                <p className="text-sm text-gray-600">Need Approval</p>
+                <p className="text-2xl font-bold">{stats.need_approval}</p>
+              </div>
+            </div>
+                </div>
+
+          <div className="card bg-gradient-to-br from-purple-50 to-purple-100">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="w-8 h-8 text-purple-600" />
+              <div>
+                <p className="text-sm text-gray-600">SLA Success</p>
+                <p className="text-2xl font-bold">{performanceStats.sla_success_rate.toFixed(0)}%</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2">
+          {(['ALL', 'ASSIGNED', 'IN_PROGRESS', 'HOLD', 'COMPLETED', 'NEED_APPROVAL'] as FilterType[]).map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setActiveFilter(filter)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                activeFilter === filter
+                  ? 'bg-brand-primary text-white shadow-md'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {filter.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
+
+        {/* Jobs List */}
+        <div className="space-y-4">
+          {filteredJobs.length > 0 ? (
+            filteredJobs.map((job) => (
+              <div 
+                key={job.id} 
+                className="card hover:shadow-lg transition-shadow cursor-pointer border-l-4"
+                style={{
+                  borderLeftColor: job.job_priority === 'URGENT' || job.job_priority === 'CRITICAL' ? '#ef4444' : 
+                                  job.job_priority === 'HIGH' ? '#f97316' : '#3b82f6'
+                }}
+                onClick={() => router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`)}
+              >
+                <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-xl font-bold">{job.lead_number}</h3>
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(job.mechanic_status)}`}>
+                        {job.mechanic_status.replace('_', ' ')}
+                      </span>
+                      {job.job_priority !== 'NORMAL' && (
+                        <span className={`px-2 py-1 rounded text-xs font-semibold border ${getPriorityColor(job.job_priority)}`}>
+                          {job.job_priority}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+                      <div>
+                        <p className="text-sm text-gray-600">Vehicle</p>
+                        <p className="font-semibold">{job.vehicle_number}</p>
+                        <p className="text-sm text-gray-600">{job.vehicle_make} {job.vehicle_model}</p>
+                      </div>
+                      
+                      <div>
+                        <p className="text-sm text-gray-600">Service Type</p>
+                        <p className="font-semibold">{job.service_types?.join(', ') || 'N/A'}</p>
+                      </div>
+                      
+                      <div>
+                        <p className="text-sm text-gray-600">SLA Remaining</p>
+                        <p className="font-semibold">{formatSLA(job.sla_remaining_minutes)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress Indicators */}
+                <div className="flex flex-wrap gap-3 pt-3 border-t">
+                  {/* Media upload status */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <Camera className="w-4 h-4 text-gray-500" />
+                    <span className={job.before_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
+                      📷 Before: {job.before_images_count}
+                    </span>
+                    <span className={job.progress_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
+                      Progress: {job.progress_images_count}
+                    </span>
+                    <span className={job.after_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
+                      After: {job.after_images_count}
+                    </span>
+                  </div>
+
+                  {/* Checklist status */}
+                  {job.checklist_completed && (
+                    <div className="flex items-center gap-1 text-sm text-green-600">
+                      <CheckCircle className="w-4 h-4" />
+                      Checklist Complete
+                    </div>
+                  )}
+
+                  {/* Parts assigned */}
+                  {job.has_parts_assigned && (
+                    <div className="flex items-center gap-1 text-sm text-blue-600">
+                      <Package className="w-4 h-4" />
+                      Parts Assigned
+                    </div>
+                  )}
+
+                  {/* Extra work pending */}
+                  {job.has_pending_extra_work && (
+                    <div className="flex items-center gap-1 text-sm text-orange-600">
+                      <AlertTriangle className="w-4 h-4" />
+                      Extra Work Pending
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 mt-4 pt-4 border-t">
+                  {job.mechanic_status === 'ASSIGNED' && (
+                    <button 
+                      className="btn bg-blue-500 hover:bg-blue-600 text-white text-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`);
+                      }}
+                    >
+                      <PlayCircle className="w-4 h-4" />
+                        Start Job
+                      </button>
+                    )}
+                  {job.mechanic_status === 'IN_PROGRESS' && (
+                    <button 
+                      className="btn btn-outline text-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}?action=upload`);
+                      }}
+                    >
+                      <ImagePlus className="w-4 h-4" />
+                    Upload Photos
+                  </button>
+                  )}
+                  <button 
+                    className="btn btn-primary text-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`);
+                    }}
+                  >
+                    View Details
+                  </button>
+                  </div>
+
+                <div className="mt-3 pt-3 border-t text-xs text-gray-500">
+                  Assigned: {new Date(job.assigned_at).toLocaleString()}
+                </div>
+            </div>
+            ))
+          ) : (
+            <div className="card text-center py-12">
+              <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500 text-lg">No jobs found for this filter</p>
+            </div>
+          )}
+          </div>
+
+        {/* Quick Actions Guide */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card bg-blue-50 border-l-4 border-blue-500">
+          <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <Camera className="w-5 h-5 text-blue-600" />
+              Photo Upload Requirements
+          </h3>
+          <ul className="text-sm text-gray-700 space-y-2">
+            <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
+                <span>Take BEFORE photos when starting work (minimum 3)</span>
+            </li>
+            <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
+                <span>Document PROGRESS during repair (minimum 2)</span>
+            </li>
+            <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
+                <span>Take AFTER photos upon completion (minimum 3)</span>
+            </li>
+          </ul>
+          </div>
+
+          <div className="card bg-green-50 border-l-4 border-green-500">
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-green-600" />
+              Today's Performance
+            </h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Avg Repair Time:</span>
+                <span className="font-semibold">{performanceStats.avg_duration} min</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Jobs Completed:</span>
+                <span className="font-semibold">{performanceStats.total_completed}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">SLA Success Rate:</span>
+                <span className="font-semibold text-green-600">{performanceStats.sla_success_rate.toFixed(0)}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Performance Score:</span>
+                <span className="font-semibold text-brand-primary">{performanceStats.performance_score.toFixed(0)}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}

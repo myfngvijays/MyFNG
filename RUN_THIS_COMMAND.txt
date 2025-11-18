@@ -1,0 +1,39 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀 EXPO START KARNE KA COMMAND
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+APNE MAC KA TERMINAL KHOLO AUR YE COMMAND RUN KARO:
+
+cd /Users/roadserve/Downloads/MyFNG/apps/mobile && npx expo start --tunnel
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+YA YE SIMPLE COMMAND:
+
+./apps/mobile/start-expo.sh
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHIR KYA HOGA:
+
+1. Terminal me "Starting Metro Bundler" dikhega
+2. QR code dikhega (big black and white square)
+3. URL dikhega: exp://... ya exp://u.expo.dev/...
+4. "Press a to open Android" dikhega
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+THEN:
+
+Pixel 7 me Expo Go kholo aur:
+- QR code scan karo
+- YA URL manually enter karo
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+YE COMMAND ABHI COPY KARO AUR TERMINAL ME PASTE KARO:
+
+cd /Users/roadserve/Downloads/MyFNG/apps/mobile && npx expo start --tunnel
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

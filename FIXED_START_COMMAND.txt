@@ -1,0 +1,46 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 FIXED COMMAND - Network Error Ka Solution
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Problem: Tunnel URL not working
+Solution: Use LAN mode instead!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+APNE MAC TERMINAL ME YE COMMAND RUN KARO:
+
+cd /Users/roadserve/Downloads/MyFNG/apps/mobile && npx expo start --lan
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IMPORTANT:
+- Tunnel mode (--tunnel) NOT working ❌
+- LAN mode (--lan) WILL work ✅
+- Mac aur Pixel 7 same WiFi pe hone chahiye
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ALTERNATIVE (If LAN also not working):
+
+cd /Users/roadserve/Downloads/MyFNG/apps/mobile && npx expo start --localhost
+
+Then manually enter URL in Expo Go:
+exp://10.0.2.2:8081
+
+(10.0.2.2 is special IP for Android emulator to reach Mac)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COPY THIS COMMAND NOW:
+
+cd /Users/roadserve/Downloads/MyFNG/apps/mobile && npx expo start --lan
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHIR:
+1. Terminal me QR code dikhega
+2. Expo Go me scan karo
+3. YA URL manually enter karo (exp://192.168.x.x:8081)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

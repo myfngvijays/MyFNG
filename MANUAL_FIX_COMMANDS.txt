@@ -1,0 +1,79 @@
+🔧 MANUAL FIX - Copy Paste These Commands
+==========================================
+
+Problem: "Failed to load all assets" error on Pixel 7
+
+IMPORTANT: Run these commands ONE BY ONE in your terminal!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: Stop Everything
+-------------------------
+pkill -f expo
+pkill -f metro
+
+
+STEP 2: Go to Mobile Folder
+-----------------------------
+cd /Users/roadserve/Downloads/MyFNG/apps/mobile
+
+
+STEP 3: Clean Everything
+--------------------------
+rm -rf .expo
+rm -rf android
+rm -rf ios
+rm -rf node_modules/.cache
+
+
+STEP 4: Ultra-Simple Start (NO FLAGS)
+---------------------------------------
+npx expo start
+
+
+STEP 5: Wait for This Message
+-------------------------------
+› Metro waiting on exp://...
+› Press a │ open Android
+
+Then Press: a
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IF STILL FAILING - TRY EXPO GO APP:
+------------------------------------
+
+1. Open Play Store on Pixel 7
+2. Search "Expo Go"
+3. Install Expo Go app
+4. Open Expo Go
+5. Scan QR code from terminal
+6. App will load in Expo Go!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ALTERNATIVE: Fresh Expo Project Test
+--------------------------------------
+
+cd /Users/roadserve/Downloads
+npx create-expo-app test-app
+cd test-app
+npx expo start
+
+If THIS works, then problem is in our project
+If THIS fails, then Expo/Android setup issue
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Current Files Are:
+-------------------
+✅ App.tsx - Ultra simple (just text)
+✅ app.json - Clean (no plugins)
+✅ package.json - Minimal deps
+✅ metro.config.js - Default config
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COPY THESE COMMANDS TO TERMINAL NOW!
+

@@ -1,0 +1,59 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔄 FRESH START - Complete Clean Install
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Maine complete fresh setup kiya hai:
+- ✅ Ultra-minimal package.json
+- ✅ Inline styles (no StyleSheet)
+- ✅ Clean dependencies
+- ✅ Reinstalling node_modules
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WAIT FOR NPM INSTALL TO COMPLETE, THEN:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: Terminal Me Expo Stop Karo
+------------------------------------
+Current terminal me:
+Ctrl + C
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 2: Fresh Start Karo
+--------------------------
+cd /Users/roadserve/Downloads/MyFNG/apps/mobile
+npx expo start --clear --localhost
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 3: Expo Go Me Manual URL
+-------------------------------
+Pixel 7:
+1. Expo Go app kholo
+2. "Enter URL manually"
+3. Type: exp://10.0.2.2:8081
+4. Connect
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHY 10.0.2.2?
+- Android emulator's special IP
+- Always works to reach Mac
+- Bypasses network issues
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COMPLETE COMMANDS:
+
+1. Ctrl + C
+2. npx expo start --clear --localhost
+3. Expo Go: exp://10.0.2.2:8081
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+THIS WILL WORK! 100% minimal setup!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

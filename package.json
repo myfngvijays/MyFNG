@@ -1,22 +1,18 @@
 {
-  "name": "myfngmobile",
+  "name": "myfng-workspace",
   "version": "1.0.0",
-  "main": "index.ts",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/mobile"
+  ],
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "cd apps/web && npm run dev",
+    "mobile": "cd apps/mobile && npm start",
+    "build:web": "cd apps/web && npm run build",
+    "build:mobile": "cd apps/mobile && npm run build"
   },
-  "dependencies": {
-    "expo": "~54.0.23",
-    "expo-status-bar": "~3.0.8",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
-  },
-  "devDependencies": {
-    "@types/react": "~19.1.0",
-    "typescript": "~5.9.2"
-  },
-  "private": true
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

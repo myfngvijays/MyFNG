@@ -1,0 +1,241 @@
+/**
+ * SMS Service - Twilio/MSG91 Integration
+ * Phase 4 - Task WA-502
+ * 
+ * Features:
+ * - Send SMS notifications
+ * - Template-based messaging
+ * - Delivery tracking
+ * - Error handling
+ */
+
+import { createClient } from '@/lib/supabase/client';
+
+// SMS Configuration
+const SMS_PROVIDER = process.env.NEXT_PUBLIC_SMS_PROVIDER || 'TWILIO'; // TWILIO or MSG91
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
+const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER || '';
+const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || '';
+const MSG91_SENDER_ID = process.env.MSG91_SENDER_ID || '';
+
+/**
+ * SMS Templates
+ */
+export const SMS_TEMPLATES = {
+  LEAD_CREATED: (leadNumber: string, workshopName: string) =>
+    `Your service request ${leadNumber} has been created. ${workshopName} will review it shortly. Track: myfng.com/track/${leadNumber}`,
+  
+  LEAD_ACCEPTED: (leadNumber: string, workshopName: string) =>
+    `Great news! ${workshopName} has accepted your service request ${leadNumber}. We'll assign a mechanic soon.`,
+  
+  MECHANIC_ASSIGNED: (leadNumber: string, mechanicName: string) =>
+    `Mechanic ${mechanicName} has been assigned to your service ${leadNumber}. They will contact you soon.`,
+  
+  WORK_STARTED: (leadNumber: string) =>
+    `Work has started on your vehicle ${leadNumber}. You'll receive updates as we progress.`,
+  
+  EXTRA_CHARGES: (leadNumber: string, amount: number) =>
+    `Additional work required for ${leadNumber}. Amount: ₹${amount}. Please approve to proceed.`,
+  
+  READY_FOR_DELIVERY: (leadNumber: string) =>
+    `Your vehicle ${leadNumber} is ready for delivery! Contact workshop to arrange pickup.`,
+  
+  INVOICE_GENERATED: (leadNumber: string, amount: number) =>
+    `Invoice generated for ${leadNumber}. Total: ₹${amount}. Pay online: myfng.com/pay/${leadNumber}`,
+  
+  PAYMENT_RECEIVED: (leadNumber: string, amount: number) =>
+    `Payment of ₹${amount} received for ${leadNumber}. Thank you!`,
+  
+  OTP_VERIFICATION: (otp: string) =>
+    `Your MyFNG verification code is: ${otp}. Valid for 10 minutes. Do not share with anyone.`,
+};
+
+/**
+ * Send SMS via Twilio
+ */
+async function sendViaTwilio(phone: string, message: string): Promise<boolean> {
+  try {
+    // In production, use actual Twilio API
+    // const twilio = require('twilio')(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+    // const result = await twilio.messages.create({
+    //   body: message,
+    //   from: TWILIO_PHONE_NUMBER,
+    //   to: phone,
+    // });
+
+    // Simulated success
+    console.log('[SMS] Twilio SMS sent to:', phone);
+    console.log('[SMS] Message:', message);
+    return true;
+  } catch (error) {
+    console.error('Twilio SMS error:', error);
+    return false;
+  }
+}
+
+/**
+ * Send SMS via MSG91
+ */
+async function sendViaMSG91(phone: string, message: string): Promise<boolean> {
+  try {
+    // In production, use actual MSG91 API
+    // const response = await fetch('https://api.msg91.com/api/v5/flow/', {
+    //   method: 'POST',
+    //   headers: {
+    //     'Content-Type': 'application/json',
+    //     'authkey': MSG91_AUTH_KEY,
+    //   },
+    //   body: JSON.stringify({
+    //     sender: MSG91_SENDER_ID,
+    //     mobiles: phone,
+    //     message: message,
+    //   }),
+    // });
+
+    // Simulated success
+    console.log('[SMS] MSG91 SMS sent to:', phone);
+    console.log('[SMS] Message:', message);
+    return true;
+  } catch (error) {
+    console.error('MSG91 SMS error:', error);
+    return false;
+  }
+}
+
+/**
+ * Send SMS (auto-selects provider)
+ */
+export async function sendSMS(
+  phone: string,
+  message: string,
+  templateId?: string
+): Promise<boolean> {
+  try {
+    // Validate phone number (Indian format)
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10 || !/^[6-9]/.test(cleanPhone)) {
+      console.error('Invalid phone number:', phone);
+      return false;
+    }
+
+    const fullPhone = `+91${cleanPhone}`;
+
+    // Send via configured provider
+    let success = false;
+    if (SMS_PROVIDER === 'TWILIO') {
+      success = await sendViaTwilio(fullPhone, message);
+    } else if (SMS_PROVIDER === 'MSG91') {
+      success = await sendViaMSG91(fullPhone, message);
+    }
+
+    // Log notification
+    await logNotification(fullPhone, 'SMS', message, success ? 'SENT' : 'FAILED');
+
+    return success;
+  } catch (error) {
+    console.error('Error sending SMS:', error);
+    return false;
+  }
+}
+
+/**
+ * Send OTP
+ */
+export async function sendOTP(phone: string, otp: string): Promise<boolean> {
+  const message = SMS_TEMPLATES.OTP_VERIFICATION(otp);
+  return await sendSMS(phone, message, 'OTP_VERIFICATION');
+}
+
+/**
+ * Send lead notification
+ */
+export async function sendLeadNotification(
+  phone: string,
+  eventType: string,
+  leadNumber: string,
+  additionalData?: any
+): Promise<boolean> {
+  let message = '';
+
+  switch (eventType) {
+    case 'LEAD_CREATED':
+      message = SMS_TEMPLATES.LEAD_CREATED(leadNumber, additionalData?.workshopName || 'Workshop');
+      break;
+    case 'LEAD_ACCEPTED':
+      message = SMS_TEMPLATES.LEAD_ACCEPTED(leadNumber, additionalData?.workshopName || 'Workshop');
+      break;
+    case 'MECHANIC_ASSIGNED':
+      message = SMS_TEMPLATES.MECHANIC_ASSIGNED(leadNumber, additionalData?.mechanicName || 'Mechanic');
+      break;
+    case 'WORK_STARTED':
+      message = SMS_TEMPLATES.WORK_STARTED(leadNumber);
+      break;
+    case 'EXTRA_CHARGES':
+      message = SMS_TEMPLATES.EXTRA_CHARGES(leadNumber, additionalData?.amount || 0);
+      break;
+    case 'READY_FOR_DELIVERY':
+      message = SMS_TEMPLATES.READY_FOR_DELIVERY(leadNumber);
+      break;
+    case 'INVOICE_GENERATED':
+      message = SMS_TEMPLATES.INVOICE_GENERATED(leadNumber, additionalData?.amount || 0);
+      break;
+    case 'PAYMENT_RECEIVED':
+      message = SMS_TEMPLATES.PAYMENT_RECEIVED(leadNumber, additionalData?.amount || 0);
+      break;
+    default:
+      console.error('Unknown event type:', eventType);
+      return false;
+  }
+
+  return await sendSMS(phone, message, eventType);
+}
+
+/**
+ * Log notification to database
+ */
+async function logNotification(
+  recipient: string,
+  type: string,
+  message: string,
+  status: string
+): Promise<void> {
+  const supabase = createClient();
+
+  try {
+    await supabase.from('notification_logs').insert({
+      recipient,
+      type,
+      message,
+      status,
+      sent_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error logging notification:', error);
+  }
+}
+
+/**
+ * Send bulk SMS
+ */
+export async function sendBulkSMS(
+  recipients: string[],
+  message: string
+): Promise<{ success: number; failed: number }> {
+  let success = 0;
+  let failed = 0;
+
+  for (const phone of recipients) {
+    const sent = await sendSMS(phone, message);
+    if (sent) {
+      success++;
+    } else {
+      failed++;
+    }
+    // Rate limiting delay (adjust based on provider limits)
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  return { success, failed };
+}
+

@@ -1,0 +1,59 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ TUNNEL URL BAND KARO - LAN START KARO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CURRENT PROBLEM:
+Tunnel URL still running: exp://zn4dm8q-anonymous-8081.exp.direct
+This DOES NOT WORK with Android emulator!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SOLUTION - 3 STEPS:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: STOP Current Server
+-----------------------------
+Terminal me jo Expo chal raha hai, wahan:
+
+Press: Ctrl + C
+
+(Hold Ctrl key, then press C)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 2: START with LAN Mode
+-----------------------------
+Same terminal me ye command run karo:
+
+npx expo start --lan
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 3: PRESS 'a' Again
+------------------------
+Jab terminal me ye dikhega:
+› Press a │ open Android
+
+Press: a
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+THIS TIME YOU'LL SEE:
+› Opening exp://192.168.x.x:8081     ← Local IP (GOOD!)
+
+NOT:
+› Opening exp://xxx.exp.direct        ← Tunnel (BAD!)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COMPLETE COMMANDS:
+
+1. Ctrl + C        (stop current)
+2. npx expo start --lan   (start with LAN)
+3. a               (press a key)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DO THIS NOW!
+

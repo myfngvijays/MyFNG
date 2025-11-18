@@ -1,0 +1,68 @@
+🚀 MyFNG Android APK - ONE COMMAND BUILD!
+==========================================
+
+📱 FASTEST WAY TO BUILD APK:
+-----------------------------
+
+1. Open Terminal
+
+2. Copy-paste this SINGLE command:
+
+cd /Users/roadserve/Downloads/MyFNG/apps/mobile && npm install -g eas-cli && npm install && eas login && eas build --platform android --profile preview
+
+
+3. Wait 15-20 minutes
+
+4. Download APK link milega!
+
+5. Install on Android phone!
+
+DONE! 🎉
+
+-----------------------------
+ALTERNATIVE: Test on Phone First
+-----------------------------
+
+cd /Users/roadserve/Downloads/MyFNG/apps/mobile
+npm install
+npm start
+
+Then:
+- Install "Expo Go" app from Play Store
+- Scan QR code
+- Test app
+- If working, build APK!
+
+-----------------------------
+NEED HELP?
+-----------------------------
+
+Read: /Users/roadserve/Downloads/MyFNG/BUILD_ANDROID_APK.md
+Read: /Users/roadserve/Downloads/MyFNG/MOBILE_APP_GUIDE.md
+
+-----------------------------
+APP FEATURES:
+-----------------------------
+
+✅ Login with Supabase
+✅ 7 Role-based Dashboards
+✅ User Management (Super Admin)
+✅ Staff Management (Workshop Admin)
+✅ Lead Management
+✅ Job Tracking
+✅ Real-time Database
+✅ Camera & Photo Upload
+✅ Offline Storage
+
+-----------------------------
+BUILD INFO:
+-----------------------------
+
+Platform: Android
+Size: ~20-30 MB
+Min Android: 6.0
+Build Time: 15-20 minutes
+Cost: FREE!
+
+Bas terminal me command paste karo! 🚀
+

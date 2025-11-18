@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-gray-200;
+  }
+  body {
+    @apply bg-[#F5F7FA] text-[#3A3F45] font-['Poppins',sans-serif];
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-[#023D95] font-semibold;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-6 py-3 rounded-lg font-medium transition-all duration-200 inline-flex items-center justify-center gap-2;
+  }
+  
+  .btn-primary {
+    @apply bg-brand-primary text-white hover:bg-brand-primary-hover shadow-lg hover:shadow-xl;
+  }
+  
+  .btn-secondary {
+    @apply bg-brand-secondary text-white hover:bg-opacity-90 shadow-lg hover:shadow-xl;
+  }
+  
+  .btn-outline {
+    @apply border-2 border-brand-primary text-brand-primary hover:bg-brand-primary hover:text-white;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-md p-6;
+  }
+  
+  .input {
+    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent;
+  }
+  
+  .label {
+    @apply block text-sm font-medium text-text-heading mb-2;
+  }
+}

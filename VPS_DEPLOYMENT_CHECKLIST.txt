@@ -1,0 +1,139 @@
+═══════════════════════════════════════════════════════════════
+🚀 MyFNG VPS DEPLOYMENT - STEP BY STEP CHECKLIST
+═══════════════════════════════════════════════════════════════
+
+📋 REQUIRED INFORMATION:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VPS IP Address: _________________________________
+Domain: myfng.cloud
+Supabase URL: https://cffommijlvicfjhbqyzk.supabase.co
+Supabase Anon Key: _____________________________ (get from Supabase)
+
+
+PHASE 1: VPS INITIAL SETUP (10 minutes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ ] 1. SSH into VPS: ssh root@YOUR_VPS_IP
+[ ] 2. Run: sudo apt update && sudo apt upgrade -y
+[ ] 3. Install Node.js:
+        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+        sudo apt install -y nodejs git
+[ ] 4. Verify: node -v (should show v18.x.x)
+[ ] 5. Install PM2: sudo npm install -g pm2
+[ ] 6. Install Nginx: sudo apt install -y nginx
+[ ] 7. Start Nginx: sudo systemctl start nginx && sudo systemctl enable nginx
+
+
+PHASE 2: BUILD & UPLOAD (15 minutes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ ] 8. On Mac Terminal (NEW WINDOW):
+        cd /Users/roadserve/Downloads/MyFNG/apps/web
+        npm install
+        npm run build
+[ ] 9. Create VPS directory (in SSH):
+        mkdir -p /var/www/myfng
+[ ] 10. Upload files (from Mac Terminal):
+         scp -r .next public package*.json next.config.js root@YOUR_VPS_IP:/var/www/myfng/
+
+
+PHASE 3: CONFIGURE ON VPS (10 minutes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ ] 11. SSH back: ssh root@YOUR_VPS_IP
+[ ] 12. Go to app: cd /var/www/myfng
+[ ] 13. Install deps: npm install --production
+[ ] 14. Create env file: nano .env.local
+         Paste:
+         NEXT_PUBLIC_SUPABASE_URL=https://cffommijlvicfjhbqyzk.supabase.co
+         NEXT_PUBLIC_SUPABASE_ANON_KEY=your_actual_key_here
+         Save: Ctrl+X → Y → Enter
+[ ] 15. Start app: pm2 start npm --name "myfng-web" -- start
+[ ] 16. Save PM2: pm2 save && pm2 startup (run the command it shows)
+[ ] 17. Check status: pm2 list (should show "online")
+
+
+PHASE 4: NGINX CONFIGURATION (10 minutes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ ] 18. Create Nginx config: sudo nano /etc/nginx/sites-available/myfng
+         Copy from QUICK_VPS_DEPLOY_COMMANDS.md (Step 5)
+         Save: Ctrl+X → Y → Enter
+[ ] 19. Enable site:
+         sudo ln -s /etc/nginx/sites-available/myfng /etc/nginx/sites-enabled/
+[ ] 20. Test config: sudo nginx -t
+[ ] 21. Reload Nginx: sudo systemctl reload nginx
+
+
+PHASE 5: DNS CONFIGURATION (Hostinger Dashboard)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ ] 22. Login to Hostinger Dashboard
+[ ] 23. Go to: Domains → myfng.cloud → DNS
+[ ] 24. Add A Record:
+         Type: A
+         Name: @
+         Value: YOUR_VPS_IP
+         TTL: 3600
+[ ] 25. Add A Record for www:
+         Type: A
+         Name: www
+         Value: YOUR_VPS_IP
+         TTL: 3600
+[ ] 26. Save changes
+[ ] 27. Wait 10-30 minutes for DNS propagation
+
+
+PHASE 6: SSL CERTIFICATE (10 minutes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ ] 28. Install Certbot: sudo apt install -y certbot python3-certbot-nginx
+[ ] 29. Get certificate: sudo certbot --nginx -d myfng.cloud -d www.myfng.cloud
+[ ] 30. Enter email address
+[ ] 31. Agree to terms: Y
+[ ] 32. Select option 2: Redirect HTTP to HTTPS
+[ ] 33. Wait for completion
+
+
+PHASE 7: TESTING & VERIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ ] 34. Open browser: https://myfng.cloud
+[ ] 35. Check if site loads ✓
+[ ] 36. Test login page: https://myfng.cloud/login
+[ ] 37. Login as Super Admin
+[ ] 38. Login as Lead Manager
+[ ] 39. Open DevTools (F12) → Network tab
+[ ] 40. Check for 400 errors → Should be GONE! ✓
+
+
+═══════════════════════════════════════════════════════════════
+✅ DEPLOYMENT COMPLETE!
+═══════════════════════════════════════════════════════════════
+
+Access your application at:
+🌐 https://myfng.cloud
+
+Useful Commands:
+─────────────────────────────────────────────────────────────
+View logs:        pm2 logs myfng-web
+Restart app:      pm2 restart myfng-web
+Check status:     pm2 list
+Monitor:          pm2 monit
+Nginx logs:       sudo tail -f /var/log/nginx/error.log
+
+
+═══════════════════════════════════════════════════════════════
+📞 TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════
+
+Problem: App not starting
+Solution: pm2 logs myfng-web
+
+Problem: Domain not working
+Solution: ping myfng.cloud (wait 30 mins if no response)
+
+Problem: SSL error
+Solution: sudo certbot renew
+
+Problem: 500 error
+Solution: Check .env.local file has correct Supabase keys
+
+
+═══════════════════════════════════════════════════════════════
+🎉 Happy Deploying!
+═══════════════════════════════════════════════════════════════
+

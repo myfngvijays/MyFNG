@@ -1,0 +1,13 @@
+# MyFNG Web App - Production Environment Variables
+# For deployment to myfng.astric.ai
+# 
+# INSTRUCTIONS: 
+# 1. Copy this content
+# 2. Create a file named .env.production in apps/web/ folder
+# 3. Paste this content into that file
+
+NEXT_PUBLIC_SUPABASE_URL=https://cffommijlvicfjhbqyzk.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmZm9tbWlqbHZpY2ZqaGJxeXprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyMDkxNjYsImV4cCI6MjA3ODc4NTE2Nn0.2RqHX4BynIrH_R3HVZ9JYph03sdzkL6bYN644Yl4l1U
+NEXT_PUBLIC_APP_URL=https://myfng.astric.ai
+NEXT_PUBLIC_API_URL=https://myfng.astric.ai
+
