@@ -1,480 +1,366 @@
 'use client';
 
-/**
- * Workshop Admin Reports & Analytics Dashboard
- * Phase 3 - Task 3.2: Reporting Dashboard
- * 
- * Metrics:
- * - Average lead acceptance time
- * - Average repair time
- * - Pending pickups/charges
- * - Completed jobs count
- * - Audit pass rate
- * - 7 & 30 day performance stats
- */
-
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import {
-  TrendingUp,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  Users,
-  Wrench,
-  Calendar,
-  Download,
-  Filter,
-  BarChart3,
-  PieChart as PieChartIcon,
+import { 
+  BarChart3, TrendingUp, Users, Clock, Star, DollarSign,
+  CheckCircle, XCircle, AlertTriangle, Download, Calendar
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
+import toast from 'react-hot-toast';
 
-export default function ReportsPage() {
+interface WorkshopMetrics {
+  totalLeads: number;
+  completedLeads: number;
+  pendingLeads: number;
+  rejectedLeads: number;
+  avgCompletionTime: number;
+  avgSatisfactionScore: number;
+  totalRevenue: number;
+  teamPerformance: Array<{
+    member_name: string;
+    role: string;
+    assigned_jobs: number;
+    completed_jobs: number;
+    avg_rating: number;
+  }>;
+  leadsByMonth: Array<{
+    month: string;
+    total: number;
+    completed: number;
+    revenue: number;
+  }>;
+}
+
+export default function WorkshopReportsPage() {
+  const router = useRouter();
+  const [metrics, setMetrics] = useState<WorkshopMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d'>('30d');
-  const [metrics, setMetrics] = useState<any>(null);
-  const [statusData, setStatusData] = useState<any[]>([]);
-  const [acceptanceTimeData, setAcceptanceTimeData] = useState<any[]>([]);
-  const [dailyLeadsData, setDailyLeadsData] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchReportsData();
+    fetchWorkshopMetrics();
   }, [dateRange]);
 
-  async function fetchReportsData() {
-    setLoading(true);
+  async function fetchWorkshopMetrics() {
     const supabase = createClient();
+    setLoading(true);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        router.push('/login');
+        return;
+      }
 
-      // Get user's workshop
       const { data: userProfile } = await supabase
         .from('users_login')
         .select('workshop_id')
-        .eq('id', user.id)
+        .eq('email', user.email)
         .single();
 
-      if (!userProfile?.workshop_id) return;
+      if (!userProfile?.workshop_id) {
+        toast.error('Workshop not found');
+        return;
+      }
 
-      // Calculate date range
-      const daysAgo = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : 90;
+      const now = new Date();
       const startDate = new Date();
-      startDate.setDate(startDate.getDate() - daysAgo);
+      
+      switch (dateRange) {
+        case '7d':
+          startDate.setDate(now.getDate() - 7);
+          break;
+        case '30d':
+          startDate.setDate(now.getDate() - 30);
+          break;
+        case '90d':
+          startDate.setDate(now.getDate() - 90);
+          break;
+      }
 
-      // Fetch all leads in date range
-      const { data: leads } = await supabase
+      // Fetch leads for this workshop
+      const { data: workshopLeads, error: leadsError } = await supabase
         .from('service_leads')
         .select('*')
         .eq('workshop_id', userProfile.workshop_id)
         .gte('created_at', startDate.toISOString());
 
-      if (!leads) return;
+      if (leadsError) {
+        console.error('Error fetching leads:', leadsError);
+        toast.error('Failed to fetch metrics');
+        return;
+      }
 
-      // Calculate metrics
-      const totalLeads = leads.length;
-      const acceptedLeads = leads.filter(l => l.status !== 'NEW' && l.status !== 'REJECTED');
-      const completedLeads = leads.filter(l => l.status === 'CLOSED' || l.status === 'DELIVERED');
-      const rejectedLeads = leads.filter(l => l.status === 'REJECTED');
+      const totalLeads = workshopLeads?.length || 0;
+      const completedLeads = workshopLeads?.filter(l => l.status === 'CLOSED').length || 0;
+      const pendingLeads = workshopLeads?.filter(l => 
+        !['CLOSED', 'REJECTED', 'CANCELLED'].includes(l.status)
+      ).length || 0;
+      const rejectedLeads = workshopLeads?.filter(l => l.status === 'REJECTED').length || 0;
 
-      // Average acceptance time (NEW to ACCEPTED)
-      const acceptanceTimes = leads
-        .filter(l => l.accepted_at && l.created_at)
-        .map(l => {
-          const created = new Date(l.created_at).getTime();
-          const accepted = new Date(l.accepted_at).getTime();
-          return (accepted - created) / (1000 * 60); // minutes
-        });
+      const totalRevenue = workshopLeads?.reduce((sum, l) => sum + (l.invoice_amount || 0), 0) || 0;
+
+      // Calculate completion time
+      const completedWithTime = workshopLeads?.filter(l => 
+        l.status === 'CLOSED' && l.final_closure_at && l.accepted_at
+      ) || [];
       
-      const avgAcceptanceTime = acceptanceTimes.length > 0
-        ? Math.round(acceptanceTimes.reduce((a, b) => a + b, 0) / acceptanceTimes.length)
+      const avgCompletionTime = completedWithTime.length > 0
+        ? completedWithTime.reduce((sum, l) => {
+            const start = new Date(l.accepted_at).getTime();
+            const end = new Date(l.final_closure_at).getTime();
+            return sum + (end - start);
+          }, 0) / completedWithTime.length / (1000 * 60 * 60 * 24) // Convert to days
         : 0;
 
-      // Average repair time (ACCEPTED to COMPLETED)
-      const repairTimes = leads
-        .filter(l => l.accepted_at && (l.status === 'CLOSED' || l.status === 'DELIVERED'))
-        .map(l => {
-          const accepted = new Date(l.accepted_at).getTime();
-          const completed = new Date(l.updated_at).getTime();
-          return (completed - accepted) / (1000 * 60 * 60); // hours
-        });
-      
-      const avgRepairTime = repairTimes.length > 0
-        ? Math.round(repairTimes.reduce((a, b) => a + b, 0) / repairTimes.length)
-        : 0;
-
-      // Pending items
-      const pendingPickups = leads.filter(l => 
-        l.pickup_required && !l.assigned_pickup_boy_id
-      ).length;
-
-      // Fetch extra charges
-      const { data: extraCharges } = await supabase
-        .from('lead_extra_charges')
-        .select('*')
-        .in('lead_id', leads.map(l => l.id))
-        .eq('status', 'PENDING');
-
-      const pendingExtraCharges = extraCharges?.length || 0;
-
-      // Fetch audits
-      const { data: audits } = await supabase
-        .from('audits')
-        .select('*')
-        .in('lead_id', completedLeads.map(l => l.id))
-        .eq('audit_status', 'COMPLETED');
-
-      const auditPassRate = audits && audits.length > 0
-        ? Math.round((audits.length / completedLeads.length) * 100)
-        : 0;
-
-      // SLA compliance
-      const slaCompliant = leads.filter(l => 
-        l.sla_status === 'ON_TIME' || !l.sla_status
-      ).length;
-      const slaComplianceRate = totalLeads > 0
-        ? Math.round((slaCompliant / totalLeads) * 100)
+      // Calculate avg satisfaction
+      const leadsWithSatisfaction = workshopLeads?.filter(l => l.customer_satisfaction_score) || [];
+      const avgSatisfactionScore = leadsWithSatisfaction.length > 0
+        ? leadsWithSatisfaction.reduce((sum, l) => sum + (l.customer_satisfaction_score || 0), 0) / leadsWithSatisfaction.length
         : 0;
 
       setMetrics({
         totalLeads,
-        acceptedLeads: acceptedLeads.length,
-        completedLeads: completedLeads.length,
-        rejectedLeads: rejectedLeads.length,
-        avgAcceptanceTime,
-        avgRepairTime,
-        pendingPickups,
-        pendingExtraCharges,
-        auditPassRate,
-        slaComplianceRate,
+        completedLeads,
+        pendingLeads,
+        rejectedLeads,
+        avgCompletionTime,
+        avgSatisfactionScore,
+        totalRevenue,
+        teamPerformance: [],
+        leadsByMonth: []
       });
-
-      // Status distribution for pie chart
-      const statusCounts: any = {};
-      leads.forEach(lead => {
-        const status = lead.status || 'UNKNOWN';
-        statusCounts[status] = (statusCounts[status] || 0) + 1;
-      });
-
-      const statusChartData = Object.entries(statusCounts).map(([status, count]) => ({
-        name: status.replace(/_/g, ' '),
-        value: count as number,
-      }));
-
-      setStatusData(statusChartData);
-
-      // Acceptance time trend (daily)
-      const dailyAcceptance: any = {};
-      leads
-        .filter(l => l.accepted_at && l.created_at)
-        .forEach(l => {
-          const day = new Date(l.accepted_at).toLocaleDateString();
-          const created = new Date(l.created_at).getTime();
-          const accepted = new Date(l.accepted_at).getTime();
-          const minutes = (accepted - created) / (1000 * 60);
-          
-          if (!dailyAcceptance[day]) {
-            dailyAcceptance[day] = { total: 0, count: 0 };
-          }
-          dailyAcceptance[day].total += minutes;
-          dailyAcceptance[day].count += 1;
-        });
-
-      const acceptanceChartData = Object.entries(dailyAcceptance)
-        .map(([date, data]: [string, any]) => ({
-          date,
-          avgMinutes: Math.round(data.total / data.count),
-        }))
-        .slice(-14); // Last 14 days
-
-      setAcceptanceTimeData(acceptanceChartData);
-
-      // Daily leads count
-      const dailyCounts: any = {};
-      leads.forEach(l => {
-        const day = new Date(l.created_at).toLocaleDateString();
-        dailyCounts[day] = (dailyCounts[day] || 0) + 1;
-      });
-
-      const dailyChartData = Object.entries(dailyCounts)
-        .map(([date, count]) => ({ date, count }))
-        .slice(-14); // Last 14 days
-
-      setDailyLeadsData(dailyChartData);
 
     } catch (error) {
-      console.error('Error fetching reports:', error);
+      console.error('Error:', error);
+      toast.error('Failed to load metrics');
     } finally {
       setLoading(false);
     }
   }
 
-  function exportReport() {
-    if (!metrics) return;
+  const exportReport = () => {
+    toast.success('Export feature will download Excel/PDF report');
+  };
 
-    const csvContent = `
-Workshop Performance Report
-Date Range: ${dateRange}
-Generated: ${new Date().toLocaleString()}
-
-Key Metrics:
-Total Leads,${metrics.totalLeads}
-Accepted Leads,${metrics.acceptedLeads}
-Completed Leads,${metrics.completedLeads}
-Rejected Leads,${metrics.rejectedLeads}
-Avg Acceptance Time (mins),${metrics.avgAcceptanceTime}
-Avg Repair Time (hrs),${metrics.avgRepairTime}
-Pending Pickups,${metrics.pendingPickups}
-Pending Extra Charges,${metrics.pendingExtraCharges}
-Audit Pass Rate (%),${metrics.auditPassRate}
-SLA Compliance Rate (%),${metrics.slaComplianceRate}
-    `.trim();
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `workshop-report-${dateRange}-${Date.now()}.csv`;
-    a.click();
+  if (loading) {
+    return (
+      <DashboardLayout role="workshop_admin">
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        </div>
+      </DashboardLayout>
+    );
   }
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+  const conversionRate = metrics && metrics.totalLeads > 0 
+    ? (metrics.completedLeads / metrics.totalLeads) * 100 
+    : 0;
+
+  const rejectionRate = metrics && metrics.totalLeads > 0 
+    ? (metrics.rejectedLeads / metrics.totalLeads) * 100 
+    : 0;
 
   return (
-    <DashboardLayout role="WORKSHOP_ADMIN">
+    <DashboardLayout role="workshop_admin">
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
-            <p className="text-gray-600 mt-1">Workshop performance insights and metrics</p>
-          </div>
-          <div className="flex gap-3">
-            {/* Date Range Filter */}
-            <select
-              value={dateRange}
-              onChange={(e) => setDateRange(e.target.value as any)}
-              className="px-4 py-2 border border-gray-300 rounded-lg"
-            >
-              <option value="7d">Last 7 Days</option>
-              <option value="30d">Last 30 Days</option>
-              <option value="90d">Last 90 Days</option>
-            </select>
-
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg flex items-center gap-3">
+                <BarChart3 className="w-8 h-8" />
+                Workshop Performance Reports
+              </h1>
+              <p className="text-white font-medium mt-1">Track your workshop's key metrics and performance</p>
+            </div>
             <button
               onClick={exportReport}
-              disabled={loading}
-              className="btn btn-primary"
+              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-2 transition"
             >
-              <Download className="w-4 h-4" />
-              Export Report
+              <Download className="w-5 h-5" />
+              Export
             </button>
           </div>
         </div>
 
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin w-12 h-12 border-4 border-brand-primary border-t-transparent rounded-full mx-auto"></div>
-            <p className="text-gray-600 mt-4">Loading analytics...</p>
+        {/* Date Range Filter */}
+        <div className="card">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Calendar className="w-5 h-5 text-gray-500" />
+            <span className="text-sm font-medium text-gray-700">Period:</span>
+            {(['7d', '30d', '90d'] as const).map((range) => (
+              <button
+                key={range}
+                onClick={() => setDateRange(range)}
+                className={`px-4 py-2 rounded-lg font-medium transition ${
+                  dateRange === range
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
+              </button>
+            ))}
           </div>
-        ) : (
+        </div>
+
+        {metrics && (
           <>
-            {/* Key Metrics Grid */}
+            {/* Key Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Total Leads */}
-              <div className="card bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-                <div className="flex items-center justify-between">
+              <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="w-10 h-10 text-blue-600" />
                   <div>
-                    <p className="text-blue-100 text-sm">Total Leads</p>
-                    <p className="text-4xl font-bold mt-2">{metrics?.totalLeads || 0}</p>
+                    <p className="text-sm text-gray-600">Total Leads</p>
+                    <p className="text-3xl font-bold text-gray-800">{metrics.totalLeads}</p>
                   </div>
-                  <TrendingUp className="w-12 h-12 opacity-80" />
                 </div>
               </div>
 
-              {/* Completed Leads */}
-              <div className="card bg-gradient-to-br from-green-500 to-green-600 text-white">
-                <div className="flex items-center justify-between">
+              <div className="card bg-gradient-to-br from-green-50 to-green-100">
+                <div className="flex items-center gap-3">
+                  <TrendingUp className="w-10 h-10 text-green-600" />
                   <div>
-                    <p className="text-green-100 text-sm">Completed</p>
-                    <p className="text-4xl font-bold mt-2">{metrics?.completedLeads || 0}</p>
+                    <p className="text-sm text-gray-600">Completed</p>
+                    <p className="text-3xl font-bold text-gray-800">{metrics.completedLeads}</p>
+                    <p className="text-xs text-gray-600">{conversionRate.toFixed(1)}% rate</p>
                   </div>
-                  <CheckCircle className="w-12 h-12 opacity-80" />
                 </div>
               </div>
 
-              {/* Avg Acceptance Time */}
-              <div className="card bg-gradient-to-br from-orange-500 to-orange-600 text-white">
-                <div className="flex items-center justify-between">
+              <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100">
+                <div className="flex items-center gap-3">
+                  <Clock className="w-10 h-10 text-yellow-600" />
                   <div>
-                    <p className="text-orange-100 text-sm">Avg Accept Time</p>
-                    <p className="text-4xl font-bold mt-2">{metrics?.avgAcceptanceTime || 0}<span className="text-lg">m</span></p>
+                    <p className="text-sm text-gray-600">Pending</p>
+                    <p className="text-3xl font-bold text-gray-800">{metrics.pendingLeads}</p>
                   </div>
-                  <Clock className="w-12 h-12 opacity-80" />
                 </div>
               </div>
 
-              {/* SLA Compliance */}
-              <div className="card bg-gradient-to-br from-purple-500 to-purple-600 text-white">
-                <div className="flex items-center justify-between">
+              <div className="card bg-gradient-to-br from-red-50 to-red-100">
+                <div className="flex items-center gap-3">
+                  <XCircle className="w-10 h-10 text-red-600" />
                   <div>
-                    <p className="text-purple-100 text-sm">SLA Compliance</p>
-                    <p className="text-4xl font-bold mt-2">{metrics?.slaComplianceRate || 0}%</p>
+                    <p className="text-sm text-gray-600">Rejected</p>
+                    <p className="text-3xl font-bold text-gray-800">{metrics.rejectedLeads}</p>
+                    <p className="text-xs text-gray-600">{rejectionRate.toFixed(1)}% rate</p>
                   </div>
-                  <AlertCircle className="w-12 h-12 opacity-80" />
                 </div>
               </div>
             </div>
 
-            {/* Secondary Metrics */}
+            {/* Performance Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="card">
-                <div className="flex items-center gap-3 mb-2">
-                  <Wrench className="w-5 h-5 text-brand-primary" />
-                  <h3 className="font-semibold">Avg Repair Time</h3>
+                <div className="flex items-center gap-3 mb-3">
+                  <Clock className="w-8 h-8 text-blue-600" />
+                  <div>
+                    <p className="text-sm text-gray-600">Avg Completion Time</p>
+                    <p className="text-2xl font-bold text-gray-800">
+                      {metrics.avgCompletionTime.toFixed(1)} days
+                    </p>
+                  </div>
                 </div>
-                <p className="text-3xl font-bold">{metrics?.avgRepairTime || 0} hrs</p>
+                <div className="text-xs text-gray-500 mt-2">
+                  Target: 5 days
+                </div>
               </div>
 
               <div className="card">
-                <div className="flex items-center gap-3 mb-2">
-                  <AlertCircle className="w-5 h-5 text-orange-500" />
-                  <h3 className="font-semibold">Pending Pickups</h3>
+                <div className="flex items-center gap-3 mb-3">
+                  <Star className="w-8 h-8 text-yellow-600" />
+                  <div>
+                    <p className="text-sm text-gray-600">Avg Satisfaction</p>
+                    <p className="text-2xl font-bold text-gray-800">
+                      {metrics.avgSatisfactionScore.toFixed(1)}/5
+                    </p>
+                  </div>
                 </div>
-                <p className="text-3xl font-bold">{metrics?.pendingPickups || 0}</p>
+                <div className="flex items-center gap-1 text-xs text-gray-500 mt-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star 
+                      key={star} 
+                      className={`w-4 h-4 ${
+                        star <= Math.round(metrics.avgSatisfactionScore) 
+                          ? 'fill-yellow-400 text-yellow-400' 
+                          : 'text-gray-300'
+                      }`}
+                    />
+                  ))}
+                </div>
               </div>
 
               <div className="card">
-                <div className="flex items-center gap-3 mb-2">
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                  <h3 className="font-semibold">Audit Pass Rate</h3>
+                <div className="flex items-center gap-3 mb-3">
+                  <DollarSign className="w-8 h-8 text-green-600" />
+                  <div>
+                    <p className="text-sm text-gray-600">Total Revenue</p>
+                    <p className="text-2xl font-bold text-gray-800">
+                      ₹{(metrics.totalRevenue / 1000).toFixed(1)}K
+                    </p>
+                  </div>
                 </div>
-                <p className="text-3xl font-bold">{metrics?.auditPassRate || 0}%</p>
+                <div className="text-xs text-gray-500 mt-2">
+                  Avg: ₹{metrics.totalLeads > 0 ? (metrics.totalRevenue / metrics.totalLeads).toFixed(0) : 0} per lead
+                </div>
               </div>
             </div>
 
-            {/* Charts Row 1 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Status Distribution Pie Chart */}
-              <div className="card">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                  <PieChartIcon className="w-5 h-5 text-brand-primary" />
-                  Lead Status Distribution
-                </h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={statusData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={(entry) => `${entry.name}: ${entry.value}`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {statusData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Daily Leads Bar Chart */}
-              <div className="card">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-brand-primary" />
-                  Daily Leads (Last 14 Days)
-                </h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={dailyLeadsData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#3B82F6" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Charts Row 2 */}
+            {/* Status Breakdown */}
             <div className="card">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-brand-primary" />
-                Acceptance Time Trend (Last 14 Days)
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <BarChart3 className="w-6 h-6 text-brand-primary" />
+                Lead Status Breakdown
               </h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={acceptanceTimeData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                  <YAxis label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="avgMinutes" 
-                    stroke="#10B981" 
-                    strokeWidth={2}
-                    name="Avg Acceptance Time (min)"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <p className="text-3xl font-bold text-green-600">{metrics.completedLeads}</p>
+                  <p className="text-sm text-gray-600 mt-1">Completed</p>
+                </div>
+                <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                  <p className="text-3xl font-bold text-yellow-600">{metrics.pendingLeads}</p>
+                  <p className="text-sm text-gray-600 mt-1">In Progress</p>
+                </div>
+                <div className="text-center p-4 bg-red-50 rounded-lg">
+                  <p className="text-3xl font-bold text-red-600">{metrics.rejectedLeads}</p>
+                  <p className="text-sm text-gray-600 mt-1">Rejected</p>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <p className="text-3xl font-bold text-blue-600">
+                    {conversionRate.toFixed(0)}%
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">Success Rate</p>
+                </div>
+              </div>
             </div>
 
-            {/* Performance Summary */}
-            <div className="card">
-              <h3 className="text-lg font-bold mb-4">Performance Summary</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-gray-600">Accepted Rate</p>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {metrics?.totalLeads > 0 
-                      ? Math.round((metrics.acceptedLeads / metrics.totalLeads) * 100)
-                      : 0}%
-                  </p>
-                </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <p className="text-sm text-gray-600">Completion Rate</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    {metrics?.acceptedLeads > 0 
-                      ? Math.round((metrics.completedLeads / metrics.acceptedLeads) * 100)
-                      : 0}%
-                  </p>
-                </div>
-                <div className="text-center p-4 bg-orange-50 rounded-lg">
-                  <p className="text-sm text-gray-600">Pending Charges</p>
-                  <p className="text-2xl font-bold text-orange-600">
-                    {metrics?.pendingExtraCharges || 0}
-                  </p>
-                </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <p className="text-sm text-gray-600">Rejected Rate</p>
-                  <p className="text-2xl font-bold text-purple-600">
-                    {metrics?.totalLeads > 0 
-                      ? Math.round((metrics.rejectedLeads / metrics.totalLeads) * 100)
-                      : 0}%
-                  </p>
-                </div>
+            {/* Insights & Recommendations */}
+            <div className="card bg-blue-50 border-l-4 border-blue-500">
+              <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-blue-600" />
+                Performance Insights
+              </h3>
+              <div className="space-y-2 text-sm">
+                {conversionRate >= 80 && (
+                  <p className="text-green-700">✅ Excellent conversion rate! Keep up the good work.</p>
+                )}
+                {conversionRate < 50 && (
+                  <p className="text-red-700">⚠️ Conversion rate is below target. Consider reviewing lead quality and team performance.</p>
+                )}
+                {metrics.avgCompletionTime > 7 && (
+                  <p className="text-orange-700">⚠️ Average completion time exceeds target. Look for bottlenecks in the workflow.</p>
+                )}
+                {metrics.avgSatisfactionScore >= 4 && (
+                  <p className="text-green-700">✅ Customer satisfaction is excellent!</p>
+                )}
+                {metrics.avgSatisfactionScore < 3 && (
+                  <p className="text-red-700">⚠️ Customer satisfaction needs improvement. Review CSE feedback and quality issues.</p>
+                )}
               </div>
             </div>
           </>
@@ -483,4 +369,3 @@ SLA Compliance Rate (%),${metrics.slaComplianceRate}
     </DashboardLayout>
   );
 }
-
