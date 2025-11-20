@@ -55,7 +55,7 @@ export default function CSEDashboard() {
         .from('service_leads')
         .select('*')
         .in('status', ['INVOICE_SENT', 'PAYMENT_RECEIVED', 'CLOSED'])
-        .order('next_follow_up_at', { ascending: true, nullsLast: true });
+        .order('next_follow_up_at', { ascending: true, nullsFirst: false });
 
       if (filter === 'follow_up') {
         query = query.eq('follow_up_required', true).neq('status', 'CLOSED');

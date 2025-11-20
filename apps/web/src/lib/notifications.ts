@@ -1,6 +1,5 @@
 // Notification utility functions
 import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
 import { NotificationType, NotificationPriority } from '@/shared/types/notifications';
 
 interface CreateNotificationParams {
@@ -18,8 +17,7 @@ interface CreateNotificationParams {
 }
 
 export async function createNotification(params: CreateNotificationParams) {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const supabase = createClient();
 
   try {
     const { data, error } = await supabase
@@ -55,8 +53,7 @@ export async function createNotification(params: CreateNotificationParams) {
 }
 
 export async function createBulkNotifications(notifications: CreateNotificationParams[]) {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const supabase = createClient();
 
   try {
     const notificationsData = notifications.map(params => ({
@@ -207,8 +204,7 @@ export async function notifyWorkshopAdmin(
   leadNumber: string,
   leadManagerName?: string
 ) {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const supabase = createClient();
 
   // Get all workshop admins for this workshop
   const { data: admins } = await supabase

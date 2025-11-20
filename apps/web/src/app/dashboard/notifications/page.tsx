@@ -1,11 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Bell, Check, CheckCheck, Trash2, Clock, Filter, ArrowLeft } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 export default function NotificationsPage() {
+  const [mounted, setMounted] = useState(false);
+  const router = useRouter();
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  if (!mounted) {
+    return <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
+        <p>Loading notifications...</p>
+      </div>
+    </div>;
+  }
+  
+  return <NotificationsContent />;
+}
+
+function NotificationsContent() {
   const router = useRouter();
   const { notifications, unreadCount, loading, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
   

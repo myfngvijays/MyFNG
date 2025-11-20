@@ -4,7 +4,6 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
 import {
   CreateAuditLogInput,
   CreateLeadActivityInput,
@@ -17,8 +16,7 @@ import {
  */
 export async function logAudit(input: CreateAuditLogInput) {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = createClient();
 
     const { error } = await supabase.from('audit_logs').insert({
       user_id: input.user_id || null,
@@ -44,8 +42,7 @@ export async function logAudit(input: CreateAuditLogInput) {
  */
 export async function logLeadActivity(input: CreateLeadActivityInput) {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = createClient();
 
     const { error } = await supabase.from('lead_activities').insert({
       lead_id: input.lead_id || null,
@@ -70,8 +67,7 @@ export async function logLeadActivity(input: CreateLeadActivityInput) {
  */
 export async function logLeadEvent(input: CreateLeadEventInput) {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = createClient();
 
     const { error } = await supabase.from('lead_events').insert({
       lead_id: input.lead_id,
@@ -96,8 +92,7 @@ export async function logLeadEvent(input: CreateLeadEventInput) {
  */
 export async function logLeadStatusChange(input: CreateLeadStatusHistoryInput) {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = createClient();
 
     const { error } = await supabase.from('lead_status_history').insert({
       lead_id: input.lead_id,

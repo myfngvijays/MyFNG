@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { Bell, Check, CheckCheck, Archive, Trash2, X, ExternalLink } from 'lucide-react';
+import { Bell, Check, CheckCheck, Trash2, X, ExternalLink } from 'lucide-react';
 import { Notification } from '@/shared/types/notifications';
 
 export default function NotificationCenter() {
@@ -18,7 +18,6 @@ export default function NotificationCenter() {
     loading,
     markAsRead,
     markAllAsRead,
-    archiveNotification,
     deleteNotification
   } = useNotifications();
 
@@ -248,13 +247,6 @@ export default function NotificationCenter() {
                               Mark read
                             </button>
                           )}
-                          <button
-                            onClick={() => archiveNotification(notification.id)}
-                            className="text-xs text-gray-600 hover:text-gray-800 flex items-center gap-1"
-                          >
-                            <Archive className="w-3 h-3" />
-                            Archive
-                          </button>
                           <button
                             onClick={() => deleteNotification(notification.id)}
                             className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1"

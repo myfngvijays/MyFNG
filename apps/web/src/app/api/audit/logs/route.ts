@@ -5,7 +5,6 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { CreateAuditLogInput } from '@/shared/types/audit';
 
@@ -15,8 +14,7 @@ import { CreateAuditLogInput } from '@/shared/types/audit';
  */
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = createClient();
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -102,8 +100,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = createClient();
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();

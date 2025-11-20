@@ -4,7 +4,6 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
@@ -12,8 +11,7 @@ export async function GET(
   { params }: { params: { leadId: string } }
 ) {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = createClient();
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
