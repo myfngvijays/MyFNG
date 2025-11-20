@@ -56,7 +56,10 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const updateField = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    // Auto-uppercase vehicle number
+    const finalValue = field === 'vehicle_number' ? value.toUpperCase() : value;
+    
+    setFormData(prev => ({ ...prev, [field]: finalValue }));
     if (errors[field]) {
       setErrors(prev => {
         const newErrors = { ...prev };
@@ -64,6 +67,13 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
         return newErrors;
       });
     }
+  };
+  
+  const validateVehicleNumber = (vehicleNumber: string): boolean => {
+    // Indian vehicle number format: AB12CD1234
+    const regex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
+    const cleanNumber = vehicleNumber.replace(/[-\s]/g, '').toUpperCase();
+    return regex.test(cleanNumber);
   };
 
   const validateStep = (step: number): boolean => {
@@ -79,8 +89,14 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
     }
 
     if (step === 2) {
+      if (!formData.vehicle_number.trim()) newErrors.vehicle_number = 'Vehicle number required';
       if (!formData.vehicle_make.trim()) newErrors.vehicle_make = 'Vehicle make required';
       if (!formData.vehicle_model.trim()) newErrors.vehicle_model = 'Vehicle model required';
+      
+      // Vehicle number validation
+      if (formData.vehicle_number && !validateVehicleNumber(formData.vehicle_number)) {
+        newErrors.vehicle_number = 'Invalid format (e.g., MH12AB1234)';
+      }
     }
 
     if (step === 3) {
@@ -138,7 +154,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           pincode: formData.pincode || null,
           contact_method: formData.contact_method,
           
-          vehicle_number: formData.vehicle_number || null,
+          vehicle_number: formData.vehicle_number, // Required field
           vehicle_make: formData.vehicle_make,
           vehicle_model: formData.vehicle_model,
           vehicle_variant: formData.vehicle_variant || null,
@@ -146,7 +162,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           vehicle_fuel_type: formData.vehicle_fuel_type,
           odometer_km: formData.odometer_km ? parseInt(formData.odometer_km) : null,
           
-          service_type: formData.service_type,
+          service_type: formData.service_type, // Service type UUID
           description: formData.description || null,
           problem_description: formData.problem_description || null,
           
@@ -303,15 +319,19 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       <Text style={styles.stepTitle}>Vehicle Details</Text>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Vehicle Registration Number</Text>
+        <Text style={styles.label}>Vehicle Registration Number *</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, errors.vehicle_number && styles.inputError]}
           value={formData.vehicle_number}
           onChangeText={(value) => updateField('vehicle_number', value.toUpperCase())}
-          placeholder="MH01AB1234"
+          placeholder="MH12AB1234"
           autoCapitalize="characters"
           placeholderTextColor={COLORS.textSecondary}
         />
+        {errors.vehicle_number && (
+          <Text style={styles.errorText}>{errors.vehicle_number}</Text>
+        )}
+        <Text style={styles.helperText}>Format: AA00BB0000 (e.g., MH12AB1234)</Text>
       </View>
 
       <View style={styles.inputGroup}>

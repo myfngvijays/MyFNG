@@ -27,6 +27,8 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [showCallLogForm, setShowCallLogForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
+  const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
+  const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
 
   const [callLogData, setCallLogData] = useState({
     call_status: 'ANSWERED',
@@ -62,6 +64,44 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
 
       if (leadError) throw leadError;
       setLead(leadData);
+
+      // Fetch service type names if service_type_ids exists
+      if (leadData.service_type_ids) {
+        try {
+          const serviceIds = JSON.parse(leadData.service_type_ids);
+          if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+            const { data: serviceTypesData } = await supabase
+              .from('service_types')
+              .select('id, name')
+              .in('id', serviceIds);
+            
+            if (serviceTypesData) {
+              setServiceTypeNames(serviceTypesData.map(st => st.name));
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing service_type_ids:', e);
+        }
+      }
+
+      // Fetch subservice names if subservice_ids exists
+      if (leadData.subservice_ids) {
+        try {
+          const subserviceIds = JSON.parse(leadData.subservice_ids);
+          if (Array.isArray(subserviceIds) && subserviceIds.length > 0) {
+            const { data: subservicesData } = await supabase
+              .from('service_addons')
+              .select('id, name')
+              .in('id', subserviceIds);
+            
+            if (subservicesData) {
+              setSubserviceNames(subservicesData.map(sa => sa.name));
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing subservice_ids:', e);
+        }
+      }
 
       // Fetch call logs
       const { data: callsData } = await supabase
@@ -306,7 +346,36 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Service Details</Text>
         <View style={styles.sectionContent}>
-          <InfoRow icon="wrench" label="Service Type" value={lead.service_type || 'Not specified'} />
+          {/* Service Types - Show names instead of UUIDs */}
+          <View style={styles.infoItem}>
+            <Text style={styles.infoLabel}>Service Types:</Text>
+            {serviceTypeNames.length > 0 ? (
+              <View style={styles.tagsContainer}>
+                {serviceTypeNames.map((name, idx) => (
+                  <View key={idx} style={[styles.tag, styles.tagBlue]}>
+                    <Text style={styles.tagText}>{name}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.infoValue}>Not specified</Text>
+            )}
+          </View>
+
+          {/* Subservices / Add-ons */}
+          {subserviceNames.length > 0 && (
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Add-ons / Sub-services:</Text>
+              <View style={styles.tagsContainer}>
+                {subserviceNames.map((name, idx) => (
+                  <View key={idx} style={[styles.tag, styles.tagGreen]}>
+                    <Text style={styles.tagText}>{name}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
           {lead.description && (
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Description:</Text>
@@ -317,6 +386,12 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Problem:</Text>
               <Text style={[styles.infoValue, styles.italic]}>"{lead.problem_description}"</Text>
+            </View>
+          )}
+          {lead.payment_mode && (
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Payment Mode:</Text>
+              <Text style={[styles.infoValue, { fontWeight: '600' }]}>{lead.payment_mode}</Text>
             </View>
           )}
           {lead.pickup_required && (
@@ -796,6 +871,30 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: COLORS.textSecondary,
     padding: SPACING.lg,
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+  },
+  tag: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  tagBlue: {
+    backgroundColor: '#DBEAFE',
+  },
+  tagGreen: {
+    backgroundColor: '#D1FAE5',
+  },
+  tagText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
   },
 });
 

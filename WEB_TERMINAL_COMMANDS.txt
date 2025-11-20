@@ -1,0 +1,146 @@
+════════════════════════════════════════════════════════════
+   🚀 HOSTINGER WEB TERMINAL - EXACT COMMANDS
+════════════════════════════════════════════════════════════
+
+एक-एक command copy करके paste करो और Enter दबाओ:
+
+════════════════════════════════════════════════════════════
+STEP 1: Check where you are
+════════════════════════════════════════════════════════════
+
+pwd
+
+════════════════════════════════════════════════════════════
+STEP 2: Find your project (try these one by one)
+════════════════════════════════════════════════════════════
+
+# Try option 1:
+cd /var/www/MyFNG && pwd
+
+# अगर ऊपर काम नहीं किया तो try option 2:
+cd /home/MyFNG && pwd
+
+# अगर ऊपर भी नहीं तो try option 3:
+cd /root/MyFNG && pwd
+
+# अगर कोई भी नहीं मिला तो list करो:
+ls -la /var/www/
+ls -la /home/
+ls -la /root/
+
+════════════════════════════════════════════════════════════
+STEP 3: Pull latest code (जब project मिल जाए)
+════════════════════════════════════════════════════════════
+
+git pull origin main
+
+# ✅ ये दिखना चाहिए:
+# Updating d2686ee..50a3d21
+# Fast-forward
+# 28 files changed, 6339 insertions(+)
+
+════════════════════════════════════════════════════════════
+STEP 4: Install dependencies
+════════════════════════════════════════════════════════════
+
+npm install
+
+# ⏳ Wait 2-3 minutes...
+
+════════════════════════════════════════════════════════════
+STEP 5: Build web app
+════════════════════════════════════════════════════════════
+
+cd apps/web
+
+npm run build
+
+# ⏳ Wait 3-5 minutes...
+
+════════════════════════════════════════════════════════════
+STEP 6: Go back to root
+════════════════════════════════════════════════════════════
+
+cd ../..
+
+pwd
+
+════════════════════════════════════════════════════════════
+STEP 7: Check what process manager is running
+════════════════════════════════════════════════════════════
+
+# Check PM2:
+pm2 list
+
+# या check systemd:
+systemctl list-units | grep myfng
+
+# या check Docker:
+docker ps
+
+════════════════════════════════════════════════════════════
+STEP 8: Restart app (जो process manager मिले उसके हिसाब से)
+════════════════════════════════════════════════════════════
+
+# अगर PM2 है:
+pm2 restart all
+pm2 save
+pm2 status
+
+# या अगर systemd है:
+sudo systemctl restart myfng
+sudo systemctl status myfng
+
+# या अगर Docker है:
+docker-compose restart
+
+════════════════════════════════════════════════════════════
+STEP 9: Check logs
+════════════════════════════════════════════════════════════
+
+# PM2 logs:
+pm2 logs --lines 50
+
+# या systemd logs:
+journalctl -u myfng -n 50
+
+════════════════════════════════════════════════════════════
+STEP 10: Test if app is running
+════════════════════════════════════════════════════════════
+
+curl http://localhost:3000
+
+# या
+curl http://localhost:3001
+
+════════════════════════════════════════════════════════════
+   ✅ SERVER DEPLOYMENT DONE!
+════════════════════════════════════════════════════════════
+
+अब MOST IMPORTANT STEP:
+
+🔥 DATABASE MIGRATION (बिना इसके कुछ नहीं चलेगा!)
+
+1. Browser में नया tab खोलो
+2. जाओ: https://supabase.com/dashboard
+3. Login करो
+4. अपना project select करो
+5. Left sidebar में "SQL Editor" click करो
+6. नया tab खोलो और जाओ:
+   https://github.com/myfngvijays/MyFNG/blob/main/database/FINAL_COMPLETE_MIGRATION.sql
+7. "Raw" button click करो
+8. सब कुछ copy करो (Ctrl+A, Ctrl+C)
+9. Supabase SQL Editor में paste करो
+10. "Run" button click करो (या Ctrl+Enter)
+11. Wait करो 10-15 seconds
+12. Green checkmarks ✅ देखो
+
+════════════════════════════════════════════════════════════
+   🎉 ALL DONE!
+════════════════════════════════════════════════════════════
+
+अब test करो:
+https://your-domain.com/dashboard/lead_manager
+
+════════════════════════════════════════════════════════════
+
