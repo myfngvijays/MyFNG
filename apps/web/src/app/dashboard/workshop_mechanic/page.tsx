@@ -215,7 +215,7 @@ export default function WorkshopMechanicDashboard() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading dashboard...</p>
+            <p className="mt-4 text-text-body">Loading dashboard...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -243,10 +243,10 @@ export default function WorkshopMechanicDashboard() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
             <div className="flex items-center gap-3">
-              <Calendar className="w-8 h-8 text-blue-600" />
+              <Calendar className="w-8 h-8 text-brand-primary" />
               <div>
-                <p className="text-sm text-gray-600">Assigned Today</p>
-                <p className="text-2xl font-bold">{stats.assigned_today}</p>
+                <p className="text-sm text-text-body">Assigned Today</p>
+                <p className="text-2xl font-bold text-text-heading">{stats.assigned_today}</p>
               </div>
             </div>
           </div>
@@ -255,8 +255,8 @@ export default function WorkshopMechanicDashboard() {
             <div className="flex items-center gap-3">
               <Clock className="w-8 h-8 text-yellow-600" />
               <div>
-                <p className="text-sm text-gray-600">In Progress</p>
-                <p className="text-2xl font-bold">{stats.in_progress}</p>
+                <p className="text-sm text-text-body">In Progress</p>
+                <p className="text-2xl font-bold text-text-heading">{stats.in_progress}</p>
               </div>
             </div>
           </div>
@@ -265,8 +265,8 @@ export default function WorkshopMechanicDashboard() {
             <div className="flex items-center gap-3">
               <CheckCircle className="w-8 h-8 text-green-600" />
               <div>
-                <p className="text-sm text-gray-600">Completed Today</p>
-                <p className="text-2xl font-bold">{stats.completed_today}</p>
+                <p className="text-sm text-text-body">Completed Today</p>
+                <p className="text-2xl font-bold text-text-heading">{stats.completed_today}</p>
               </div>
             </div>
           </div>
@@ -275,18 +275,18 @@ export default function WorkshopMechanicDashboard() {
               <div className="flex items-center gap-3">
               <AlertTriangle className="w-8 h-8 text-orange-600" />
                 <div>
-                <p className="text-sm text-gray-600">Need Approval</p>
-                <p className="text-2xl font-bold">{stats.need_approval}</p>
+                <p className="text-sm text-text-body">Need Approval</p>
+                <p className="text-2xl font-bold text-text-heading">{stats.need_approval}</p>
               </div>
             </div>
                 </div>
 
-          <div className="card bg-gradient-to-br from-purple-50 to-purple-100">
+          <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
             <div className="flex items-center gap-3">
-              <TrendingUp className="w-8 h-8 text-purple-600" />
+              <TrendingUp className="w-8 h-8 text-brand-secondary" />
               <div>
-                <p className="text-sm text-gray-600">SLA Success</p>
-                <p className="text-2xl font-bold">{performanceStats.sla_success_rate.toFixed(0)}%</p>
+                <p className="text-sm text-text-body">SLA Success</p>
+                <p className="text-2xl font-bold text-text-heading">{performanceStats.sla_success_rate.toFixed(0)}%</p>
               </div>
             </div>
           </div>
@@ -300,8 +300,8 @@ export default function WorkshopMechanicDashboard() {
               onClick={() => setActiveFilter(filter)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
                 activeFilter === filter
-                  ? 'bg-brand-primary text-white shadow-md'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  ? 'bg-brand-primary text-white shadow-md hover:bg-brand-primary-hover'
+                  : 'bg-white text-text-body border border-gray-300 hover:bg-gray-50'
               }`}
             >
               {filter.replace('_', ' ')}
@@ -400,7 +400,7 @@ export default function WorkshopMechanicDashboard() {
                 <div className="flex gap-2 mt-4 pt-4 border-t">
                   {job.mechanic_status === 'ASSIGNED' && (
                     <button 
-                      className="btn bg-blue-500 hover:bg-blue-600 text-white text-sm"
+                      className="btn bg-brand-primary hover:bg-brand-primary-hover text-white text-sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`);
@@ -448,9 +448,9 @@ export default function WorkshopMechanicDashboard() {
 
         {/* Quick Actions Guide */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card bg-blue-50 border-l-4 border-blue-500">
-          <h3 className="font-semibold mb-3 flex items-center gap-2">
-            <Camera className="w-5 h-5 text-blue-600" />
+        <div className="card bg-blue-50 border-l-4 border-brand-primary">
+          <h3 className="font-semibold text-text-heading mb-3 flex items-center gap-2">
+            <Camera className="w-5 h-5 text-brand-primary" />
               Photo Upload Requirements
           </h3>
           <ul className="text-sm text-gray-700 space-y-2">
@@ -470,25 +470,25 @@ export default function WorkshopMechanicDashboard() {
           </div>
 
           <div className="card bg-green-50 border-l-4 border-green-500">
-            <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <h3 className="font-semibold text-text-heading mb-3 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-green-600" />
               Today's Performance
             </h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Avg Repair Time:</span>
-                <span className="font-semibold">{performanceStats.avg_duration} min</span>
+                <span className="text-text-body">Avg Repair Time:</span>
+                <span className="font-semibold text-text-heading">{performanceStats.avg_duration} min</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Jobs Completed:</span>
-                <span className="font-semibold">{performanceStats.total_completed}</span>
+                <span className="text-text-body">Jobs Completed:</span>
+                <span className="font-semibold text-text-heading">{performanceStats.total_completed}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">SLA Success Rate:</span>
+                <span className="text-text-body">SLA Success Rate:</span>
                 <span className="font-semibold text-green-600">{performanceStats.sla_success_rate.toFixed(0)}%</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Performance Score:</span>
+                <span className="text-text-body">Performance Score:</span>
                 <span className="font-semibold text-brand-primary">{performanceStats.performance_score.toFixed(0)}%</span>
               </div>
             </div>

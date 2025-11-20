@@ -81,8 +81,8 @@ export default function LeadManagerDashboard() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-brand-primary mx-auto"></div>
+          <p className="mt-4 text-text-body">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -91,13 +91,13 @@ export default function LeadManagerDashboard() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Lead Manager Control Panel</h1>
-        <p className="text-gray-600 mt-2">Traffic Controller • Quality Gatekeeper • Assignment Brain</p>
+        <h1 className="text-3xl font-bold text-text-heading">Lead Manager Control Panel</h1>
+        <p className="text-text-body mt-2">Traffic Controller • Quality Gatekeeper • Assignment Brain</p>
       </div>
 
       {/* Critical Alerts */}
       {(stats.slaBreached > 0 || stats.workshopRejected > 0 || stats.slaAtRisk > 0) && (
-        <div className="mb-8 bg-white rounded-lg shadow-md p-6">
+          <div className="mb-8 card">
           <h2 className="text-xl font-bold text-red-600 mb-4">🚨 Critical Alerts</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {stats.slaBreached > 0 && (
@@ -147,69 +147,69 @@ export default function LeadManagerDashboard() {
 
       {/* Main KPI Grid */}
       <div className="mb-8">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">📊 Operational Overview</h2>
+        <h2 className="text-xl font-bold text-text-heading mb-4">📊 Operational Overview</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4">
           <Link href="/dashboard/lead_manager/leads?filter=NEW">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-blue-500">
-              <div className="text-blue-500 text-3xl mb-2">📋</div>
-              <p className="text-3xl font-bold text-gray-900">{stats.newLeads}</p>
-              <p className="text-sm text-gray-600">New Leads</p>
+            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-brand-primary">
+              <div className="text-brand-primary text-3xl mb-2">📋</div>
+              <p className="text-3xl font-bold text-text-heading">{stats.newLeads}</p>
+              <p className="text-sm text-text-body">New Leads</p>
             </div>
           </Link>
 
           <Link href="/dashboard/lead_manager/leads?filter=INCOMPLETE">
             <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-orange-500">
               <div className="text-orange-500 text-3xl mb-2">⚠️</div>
-              <p className="text-3xl font-bold text-gray-900">{stats.incompleteLeads}</p>
-              <p className="text-sm text-gray-600">Incomplete</p>
+              <p className="text-3xl font-bold text-text-heading">{stats.incompleteLeads}</p>
+              <p className="text-sm text-text-body">Incomplete</p>
             </div>
           </Link>
 
           <Link href="/dashboard/lead_manager/leads?filter=NEED_ASSIGNMENT">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-purple-500">
-              <div className="text-purple-500 text-3xl mb-2">👉</div>
-              <p className="text-3xl font-bold text-gray-900">{stats.pendingAssignment}</p>
-              <p className="text-sm text-gray-600">Need Assignment</p>
+            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-brand-secondary">
+              <div className="text-brand-secondary text-3xl mb-2">👉</div>
+              <p className="text-3xl font-bold text-text-heading">{stats.pendingAssignment}</p>
+              <p className="text-sm text-text-body">Need Assignment</p>
             </div>
           </Link>
 
           <Link href="/dashboard/lead_manager/leads?filter=AWAITING_ACCEPTANCE">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-indigo-500">
-              <div className="text-indigo-500 text-3xl mb-2">⏳</div>
-              <p className="text-3xl font-bold text-gray-900">{stats.awaitingAcceptance}</p>
-              <p className="text-sm text-gray-600">Awaiting Accept</p>
+            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-brand-primary">
+              <div className="text-brand-primary text-3xl mb-2">⏳</div>
+              <p className="text-3xl font-bold text-text-heading">{stats.awaitingAcceptance}</p>
+              <p className="text-sm text-text-body">Awaiting Accept</p>
             </div>
           </Link>
 
           <Link href="/dashboard/lead_manager/leads?filter=REOPENED">
             <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-red-500">
               <div className="text-red-500 text-3xl mb-2">🔄</div>
-              <p className="text-3xl font-bold text-gray-900">{stats.reopenedLeads}</p>
-              <p className="text-sm text-gray-600">Reopened</p>
+              <p className="text-3xl font-bold text-text-heading">{stats.reopenedLeads}</p>
+              <p className="text-sm text-text-body">Reopened</p>
             </div>
           </Link>
 
           <Link href="/dashboard/lead_manager/leads?filter=TELECALLER_PENDING">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-teal-500">
-              <div className="text-teal-500 text-3xl mb-2">📞</div>
-              <p className="text-3xl font-bold text-gray-900">{stats.telecallerPending}</p>
-              <p className="text-sm text-gray-600">Tel. Pending</p>
+            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-brand-primary">
+              <div className="text-brand-primary text-3xl mb-2">📞</div>
+              <p className="text-3xl font-bold text-text-heading">{stats.telecallerPending}</p>
+              <p className="text-sm text-text-body">Tel. Pending</p>
             </div>
           </Link>
 
           <Link href="/dashboard/lead_manager/leads?filter=PICKUP_PENDING">
             <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-green-500">
               <div className="text-green-500 text-3xl mb-2">🚗</div>
-              <p className="text-3xl font-bold text-gray-900">{stats.pickupPending}</p>
-              <p className="text-sm text-gray-600">Pickup Pending</p>
+              <p className="text-3xl font-bold text-text-heading">{stats.pickupPending}</p>
+              <p className="text-sm text-text-body">Pickup Pending</p>
             </div>
           </Link>
 
           <Link href="/dashboard/lead_manager/leads">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-gray-500">
-              <div className="text-gray-500 text-3xl mb-2">📊</div>
-              <p className="text-3xl font-bold text-gray-900">{stats.totalLeads}</p>
-              <p className="text-sm text-gray-600">Total Active</p>
+            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-brand-secondary">
+              <div className="text-brand-secondary text-3xl mb-2">📊</div>
+              <p className="text-3xl font-bold text-text-heading">{stats.totalLeads}</p>
+              <p className="text-sm text-text-body">Total Active</p>
             </div>
           </Link>
         </div>
@@ -217,19 +217,19 @@ export default function LeadManagerDashboard() {
 
       {/* Performance Metrics */}
       <div className="mb-8">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">📈 Performance Metrics</h2>
-        <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-xl font-bold text-text-heading mb-4">📈 Performance Metrics</h2>
+        <div className="card">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="text-center">
               <p className="text-5xl font-bold text-green-600">{stats.assignmentAccuracy}%</p>
-              <p className="text-gray-600 mt-2">Assignment Accuracy</p>
+              <p className="text-text-body mt-2">Assignment Accuracy</p>
               <div className="mt-4 bg-gray-200 rounded-full h-2">
                 <div className="bg-green-600 h-2 rounded-full" style={{ width: `${stats.assignmentAccuracy}%` }}></div>
               </div>
             </div>
             <div className="text-center">
-              <p className="text-5xl font-bold text-blue-600">{stats.avgAssignmentTime}m</p>
-              <p className="text-gray-600 mt-2">Avg Assignment Time</p>
+              <p className="text-5xl font-bold text-brand-primary">{stats.avgAssignmentTime}m</p>
+              <p className="text-text-body mt-2">Avg Assignment Time</p>
               <p className="text-sm text-gray-500 mt-2">Industry Target: 15 minutes</p>
             </div>
           </div>
@@ -238,10 +238,10 @@ export default function LeadManagerDashboard() {
 
       {/* Quick Actions */}
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-4">⚡ Quick Actions</h2>
+        <h2 className="text-xl font-bold text-text-heading mb-4">⚡ Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Link href="/dashboard/lead_manager/leads">
-            <div className="bg-blue-600 text-white rounded-lg p-6 hover:bg-blue-700 transition cursor-pointer text-center">
+            <div className="bg-brand-primary text-white rounded-lg p-6 hover:bg-brand-primary-hover transition cursor-pointer text-center">
               <div className="text-4xl mb-2">📋</div>
               <p className="font-bold">All Leads</p>
             </div>
@@ -255,7 +255,7 @@ export default function LeadManagerDashboard() {
           </Link>
 
           <Link href="/dashboard/lead_manager/leads?filter=NEED_ASSIGNMENT">
-            <div className="bg-purple-600 text-white rounded-lg p-6 hover:bg-purple-700 transition cursor-pointer text-center">
+            <div className="bg-brand-secondary text-white rounded-lg p-6 hover:bg-opacity-90 transition cursor-pointer text-center">
               <div className="text-4xl mb-2">➡️</div>
               <p className="font-bold">Assign Leads</p>
             </div>

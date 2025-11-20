@@ -1,11 +1,12 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
-export default function LeadManagerLeadsPage() {
+function LeadManagerLeadsContent() {
   const supabase = createClientComponentClient();
   const searchParams = useSearchParams();
   const filterParam = searchParams.get('filter') || 'all';
@@ -335,6 +336,21 @@ export default function LeadManagerLeadsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function LeadManagerLeadsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading leads...</p>
+        </div>
+      </div>
+    }>
+      <LeadManagerLeadsContent />
+    </Suspense>
   );
 }
 

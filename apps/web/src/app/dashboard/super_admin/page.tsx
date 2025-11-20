@@ -154,19 +154,19 @@ export default function SuperAdminDashboard() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading Super Admin Dashboard...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
+          <p className="text-text-body">Loading Super Admin Dashboard...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background-grey">
       {/* Header */}
-      <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-6">
+      <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6">
         <h1 className="text-3xl font-bold">🏆 Super Admin Control Panel</h1>
-        <p className="text-purple-100 mt-1">Ultimate System Control & Governance</p>
+        <p className="text-white/90 mt-1">Ultimate System Control & Governance</p>
       </div>
 
       <div className="max-w-7xl mx-auto p-6 space-y-6">
@@ -199,13 +199,13 @@ export default function SuperAdminDashboard() {
 
         {/* Global Metrics */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">🌍 Global Metrics</h2>
+          <h2 className="text-xl font-bold text-text-heading mb-4">🌍 Global Metrics</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard
-              icon={<Phone className="w-6 h-6 text-blue-600" />}
+              icon={<Phone className="w-6 h-6 text-brand-primary" />}
               label="Leads Today"
               value={globalMetrics.totalLeadsToday}
-              color="bg-blue-50 border-blue-200"
+              color="bg-blue-50 border-brand-primary/30"
             />
             <MetricCard
               icon={<CheckCircle className="w-6 h-6 text-green-600" />}
@@ -226,22 +226,22 @@ export default function SuperAdminDashboard() {
               color="bg-orange-50 border-orange-200"
             />
             <MetricCard
-              icon={<Store className="w-6 h-6 text-purple-600" />}
+              icon={<Store className="w-6 h-6 text-brand-secondary" />}
               label="Workshops"
               value={globalMetrics.activeWorkshops}
-              color="bg-purple-50 border-purple-200"
+              color="bg-blue-50 border-brand-secondary/30"
             />
             <MetricCard
-              icon={<Users className="w-6 h-6 text-teal-600" />}
+              icon={<Users className="w-6 h-6 text-brand-primary" />}
               label="Customers"
               value={globalMetrics.totalCustomers}
-              color="bg-teal-50 border-teal-200"
+              color="bg-blue-50 border-brand-primary/30"
             />
             <MetricCard
-              icon={<AlertCircle className="w-6 h-6 text-indigo-600" />}
+              icon={<AlertCircle className="w-6 h-6 text-brand-secondary" />}
               label="Complaints"
               value={globalMetrics.complaintVolume}
-              color="bg-indigo-50 border-indigo-200"
+              color="bg-blue-50 border-brand-secondary/30"
             />
             <MetricCard
               icon={<CarFront className="w-6 h-6 text-red-600" />}
@@ -254,22 +254,22 @@ export default function SuperAdminDashboard() {
 
         {/* Revenue */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">💰 Revenue Overview</h2>
+          <h2 className="text-xl font-bold text-text-heading mb-4">💰 Revenue Overview</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center">
-              <p className="text-sm text-gray-600 mb-1">Daily Revenue</p>
+              <p className="text-sm text-text-body mb-1">Daily Revenue</p>
               <p className="text-3xl font-bold text-green-600">
                 ₹{(globalMetrics.dailyRevenue / 1000).toFixed(1)}K
               </p>
             </div>
             <div className="text-center border-x">
-              <p className="text-sm text-gray-600 mb-1">Total Revenue</p>
-              <p className="text-3xl font-bold text-blue-600">
+              <p className="text-sm text-text-body mb-1">Total Revenue</p>
+              <p className="text-3xl font-bold text-brand-primary">
                 ₹{(globalMetrics.totalRevenue / 100000).toFixed(1)}L
               </p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-gray-600 mb-1">Avg Rating</p>
+              <p className="text-sm text-text-body mb-1">Avg Rating</p>
               <p className="text-3xl font-bold text-orange-600">
                 {globalMetrics.avgWorkshopRating}⭐
               </p>
@@ -279,10 +279,10 @@ export default function SuperAdminDashboard() {
 
         {/* Department Performance */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">📊 Department Performance</h2>
+          <h2 className="text-xl font-bold text-text-heading mb-4">📊 Department Performance</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <DepartmentCard
-              icon={<Phone className="w-6 h-6 text-blue-600" />}
+              icon={<Phone className="w-6 h-6 text-brand-primary" />}
               title="Telecaller"
               metrics={[
                 { label: 'Leads', value: departmentMetrics.telecaller.leads },
@@ -291,7 +291,7 @@ export default function SuperAdminDashboard() {
               ]}
             />
             <DepartmentCard
-              icon={<UserCheck className="w-6 h-6 text-purple-600" />}
+              icon={<UserCheck className="w-6 h-6 text-brand-secondary" />}
               title="Lead Manager"
               metrics={[
                 { label: 'Assigned', value: departmentMetrics.leadManager.assigned },
@@ -300,7 +300,7 @@ export default function SuperAdminDashboard() {
               ]}
             />
             <DepartmentCard
-              icon={<Store className="w-6 h-6 text-orange-600" />}
+              icon={<Store className="w-6 h-6 text-brand-primary" />}
               title="Workshops"
               metrics={[
                 { label: 'Active', value: departmentMetrics.workshops.active },
@@ -318,7 +318,7 @@ export default function SuperAdminDashboard() {
               ]}
             />
             <DepartmentCard
-              icon={<Shield className="w-6 h-6 text-indigo-600" />}
+              icon={<Shield className="w-6 h-6 text-brand-secondary" />}
               title="Quality Auditors"
               metrics={[
                 { label: 'Audits', value: departmentMetrics.auditors.auditsToday },
@@ -331,14 +331,14 @@ export default function SuperAdminDashboard() {
 
         {/* Quick Admin Actions */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">⚡ Super Admin Actions</h2>
+          <h2 className="text-xl font-bold text-text-heading mb-4">⚡ Super Admin Actions</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <ActionButton href="/dashboard/super_admin/workshops" icon="🏪" label="Workshops" color="bg-blue-500" />
-            <ActionButton href="/dashboard/super_admin/users" icon="👥" label="Users" color="bg-purple-500" />
+            <ActionButton href="/dashboard/super_admin/workshops" icon="🏪" label="Workshops" color="bg-brand-primary" />
+            <ActionButton href="/dashboard/super_admin/users" icon="👥" label="Users" color="bg-brand-secondary" />
             <ActionButton href="/dashboard/super_admin/finance" icon="💰" label="Finance" color="bg-green-500" />
-            <ActionButton href="/dashboard/super_admin/settings" icon="⚙️" label="Settings" color="bg-orange-500" />
+            <ActionButton href="/dashboard/super_admin/settings" icon="⚙️" label="Settings" color="bg-brand-primary" />
             <ActionButton href="/dashboard/super_admin/fraud" icon="🚨" label="Fraud" color="bg-red-500" />
-            <ActionButton href="/dashboard/super_admin/reports" icon="📊" label="Reports" color="bg-indigo-500" />
+            <ActionButton href="/dashboard/super_admin/reports" icon="📊" label="Reports" color="bg-brand-secondary" />
           </div>
         </div>
       </div>
@@ -352,8 +352,8 @@ function MetricCard({ icon, label, value, color }: any) {
       <div className="flex items-center gap-3">
         {icon}
         <div>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-          <p className="text-sm text-gray-600">{label}</p>
+          <p className="text-2xl font-bold text-text-heading">{value}</p>
+          <p className="text-sm text-text-body">{label}</p>
         </div>
       </div>
     </div>
@@ -365,15 +365,15 @@ function DepartmentCard({ icon, title, metrics }: any) {
     <div className="bg-white rounded-lg shadow p-5">
       <div className="flex items-center gap-3 mb-4 pb-3 border-b">
         {icon}
-        <h3 className="font-bold text-gray-900">{title}</h3>
+        <h3 className="font-bold text-text-heading">{title}</h3>
       </div>
       <div className="grid grid-cols-3 gap-4">
         {metrics.map((metric: any, index: number) => (
           <div key={index} className="text-center">
-            <p className={`text-lg font-bold ${metric.highlight ? 'text-green-600' : 'text-gray-900'}`}>
+            <p className={`text-lg font-bold ${metric.highlight ? 'text-green-600' : 'text-text-heading'}`}>
               {metric.value}
             </p>
-            <p className="text-xs text-gray-600 mt-1">{metric.label}</p>
+            <p className="text-xs text-text-body mt-1">{metric.label}</p>
           </div>
         ))}
       </div>
@@ -385,7 +385,7 @@ function ActionButton({ href, icon, label, color }: any) {
   return (
     <a
       href={href}
-      className={`${color} hover:opacity-90 text-white rounded-lg p-4 flex flex-col items-center justify-center gap-2 transition-all hover:scale-105 shadow-lg`}
+      className={`${color} hover:bg-brand-primary-hover text-white rounded-lg p-4 flex flex-col items-center justify-center gap-2 transition-all hover:scale-105 shadow-lg`}
     >
       <span className="text-3xl">{icon}</span>
       <span className="font-semibold text-sm">{label}</span>

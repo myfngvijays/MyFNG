@@ -91,9 +91,9 @@ export default function CustomerDashboard() {
       setServiceHistory(history || []);
       setStats([
         { label: 'Active Bookings', value: (activeCount || 0).toString(), icon: <Car className="w-8 h-8" />, color: 'text-brand-primary' },
-        { label: 'In Service', value: (inServiceCount || 0).toString(), icon: <Clock className="w-8 h-8" />, color: 'text-blue-500' },
+        { label: 'In Service', value: (inServiceCount || 0).toString(), icon: <Clock className="w-8 h-8" />, color: 'text-brand-primary' },
         { label: 'Completed', value: (completedCount || 0).toString(), icon: <CheckCircle className="w-8 h-8" />, color: 'text-green-500' },
-        { label: 'This Month', value: `₹${(monthTotal / 1000).toFixed(1)}K`, icon: <Car className="w-8 h-8" />, color: 'text-purple-500' },
+        { label: 'This Month', value: `₹${(monthTotal / 1000).toFixed(1)}K`, icon: <Car className="w-8 h-8" />, color: 'text-brand-secondary' },
       ]);
       setLoading(false);
     } catch (error) {
@@ -108,7 +108,7 @@ export default function CustomerDashboard() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading dashboard...</p>
+            <p className="mt-4 text-text-body">Loading dashboard...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -124,7 +124,7 @@ export default function CustomerDashboard() {
         </div>
 
         {/* Quick Action - Book New Service */}
-        <div className="card bg-gradient-to-r from-brand-my to-brand-fng text-white">
+        <div className="card bg-gradient-to-r from-brand-secondary to-brand-primary text-white">
           <h2 className="text-2xl font-bold mb-2">Need Service?</h2>
           <p className="mb-4">Book a service for your vehicle in just a few clicks</p>
           <button className="btn bg-white text-brand-primary hover:bg-gray-100">
@@ -182,7 +182,7 @@ export default function CustomerDashboard() {
                 );
               })
             ) : (
-              <p className="text-gray-500 text-center py-4">No active services</p>
+              <p className="text-text-body text-center py-4">No active services</p>
             )}
           </div>
         </DashboardCard>
@@ -204,7 +204,7 @@ export default function CustomerDashboard() {
                 />
               ))
             ) : (
-              <p className="text-gray-500 text-center py-4">No service history</p>
+              <p className="text-text-body text-center py-4">No service history</p>
             )}
           </div>
         </DashboardCard>
@@ -226,7 +226,7 @@ function QuickLink({ title, icon }: { title: string; icon: React.ReactNode }) {
     <button className="card hover:shadow-lg transition text-center">
       <div className="flex flex-col items-center gap-2">
         <div className="text-brand-primary">{icon}</div>
-        <span className="text-sm font-medium">{title}</span>
+        <span className="text-sm font-medium text-text-heading">{title}</span>
       </div>
     </button>
   );

@@ -173,9 +173,9 @@ export default function TelecallerDashboard() {
             <StatCard
               title="New Leads"
               value={stats.newLeads.toString()}
-              icon={<Phone className="w-8 h-8 text-blue-600" />}
+              icon={<Phone className="w-8 h-8 text-brand-primary" />}
               bgColor="bg-blue-50"
-              textColor="text-blue-600"
+              textColor="text-brand-primary"
             />
           </Link>
           
@@ -194,9 +194,9 @@ export default function TelecallerDashboard() {
             <StatCard
               title="Follow-ups Today"
               value={stats.followUpToday.toString()}
-              icon={<Calendar className="w-8 h-8 text-purple-600" />}
-              bgColor="bg-purple-50"
-              textColor="text-purple-600"
+              icon={<Calendar className="w-8 h-8 text-brand-secondary" />}
+              bgColor="bg-blue-50"
+              textColor="text-brand-secondary"
             />
           </Link>
 
@@ -229,24 +229,24 @@ export default function TelecallerDashboard() {
           <StatCard
             title="Today's Calls"
             value={stats.todayCalls.toString()}
-            icon={<PhoneCall className="w-8 h-8 text-indigo-600" />}
-            bgColor="bg-indigo-50"
-            textColor="text-indigo-600"
+            icon={<PhoneCall className="w-8 h-8 text-brand-primary" />}
+            bgColor="bg-blue-50"
+            textColor="text-brand-primary"
             subtitle={`${stats.answeredCalls} answered`}
           />
 
           <StatCard
             title="Call Answer Rate"
             value={stats.todayCalls > 0 ? `${Math.round((stats.answeredCalls / stats.todayCalls) * 100)}%` : '0%'}
-            icon={<TrendingUp className="w-8 h-8 text-teal-600" />}
-            bgColor="bg-teal-50"
-            textColor="text-teal-600"
+            icon={<TrendingUp className="w-8 h-8 text-brand-secondary" />}
+            bgColor="bg-blue-50"
+            textColor="text-brand-secondary"
           />
         </div>
 
         {/* Quick Actions */}
         <div className="card">
-          <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
+          <h2 className="text-xl font-bold text-text-heading mb-4">Quick Actions</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Link href="/dashboard/telecaller/leads/create">
               <button className="btn btn-primary w-full">
@@ -280,7 +280,7 @@ export default function TelecallerDashboard() {
           {/* Recent Leads */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">Recent Leads</h2>
+              <h2 className="text-xl font-bold text-text-heading">Recent Leads</h2>
               <Link href="/dashboard/telecaller/leads" className="text-brand-primary hover:underline text-sm">
                 View All →
               </Link>
@@ -328,7 +328,7 @@ export default function TelecallerDashboard() {
           {/* Upcoming Follow-ups */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">Upcoming Follow-ups</h2>
+              <h2 className="text-xl font-bold text-text-heading">Upcoming Follow-ups</h2>
               <Link href="/dashboard/telecaller/followups" className="text-brand-primary hover:underline text-sm">
                 View All →
               </Link>
@@ -395,12 +395,12 @@ interface StatCardProps {
   urgent?: boolean;
 }
 
-function StatCard({ title, value, icon, bgColor = 'bg-gray-50', textColor = 'text-gray-600', subtitle, urgent }: StatCardProps) {
+function StatCard({ title, value, icon, bgColor = 'bg-gray-50', textColor = 'text-text-body', subtitle, urgent }: StatCardProps) {
   return (
     <div className={`card hover:shadow-lg transition ${urgent ? 'ring-2 ring-orange-500 animate-pulse' : ''}`}>
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <p className="text-sm text-gray-600 mb-1">{title}</p>
+          <p className="text-sm text-text-body mb-1">{title}</p>
           <p className={`text-3xl font-bold ${textColor}`}>{value}</p>
           {subtitle && (
             <p className="text-xs text-gray-500 mt-1">{subtitle}</p>

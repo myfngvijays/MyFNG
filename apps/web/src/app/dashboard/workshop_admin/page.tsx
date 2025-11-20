@@ -105,7 +105,7 @@ export default function WorkshopAdminDashboard() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading dashboard...</p>
+            <p className="mt-4 text-text-body">Loading dashboard...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -123,7 +123,7 @@ export default function WorkshopAdminDashboard() {
         {/* Pending Leads - Most Important */}
         <div className="card bg-yellow-50 border-l-4 border-yellow-500">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-text-heading flex items-center gap-2">
               <Clock className="w-6 h-6 text-yellow-600" />
               Pending Lead Approvals
             </h2>
@@ -160,13 +160,13 @@ export default function WorkshopAdminDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <StatCard title="Pending" value={stats.pending.toString()} icon={<Clock className="w-6 h-6 text-yellow-500" />} color="yellow" />
           <StatCard title="Accepted" value={stats.accepted.toString()} icon={<CheckCircle className="w-6 h-6 text-green-500" />} color="green" />
-          <StatCard title="In Progress" value={stats.inProgress.toString()} icon={<Wrench className="w-6 h-6 text-blue-500" />} color="blue" />
-          <StatCard title="Staff" value={stats.staff.toString()} icon={<Users className="w-6 h-6 text-purple-500" />} color="purple" />
+          <StatCard title="In Progress" value={stats.inProgress.toString()} icon={<Wrench className="w-6 h-6 text-brand-primary" />} color="blue" />
+          <StatCard title="Staff" value={stats.staff.toString()} icon={<Users className="w-6 h-6 text-brand-secondary" />} color="purple" />
         </div>
 
         {/* Active Jobs */}
         <div className="card">
-          <h2 className="text-xl font-semibold mb-4">Active Jobs</h2>
+          <h2 className="text-xl font-semibold text-text-heading mb-4">Active Jobs</h2>
           <div className="space-y-3">
             {activeJobs.length > 0 ? (
               activeJobs.map((job) => (
@@ -224,8 +224,8 @@ function StatCard({ title, value, icon, color }: any) {
       <div className="flex items-center gap-3">
         {icon}
         <div>
-          <p className="text-sm text-gray-600">{title}</p>
-          <p className="text-2xl font-bold">{value}</p>
+          <p className="text-sm text-text-body">{title}</p>
+          <p className="text-2xl font-bold text-text-heading">{value}</p>
         </div>
       </div>
     </div>
@@ -237,11 +237,11 @@ function JobCard({ jobNumber, customer, vehicle, mechanic, status }: any) {
     <div className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition">
       <div className="flex justify-between items-start">
         <div>
-          <p className="font-semibold">{jobNumber}</p>
-          <p className="text-sm text-gray-600">{customer} - {vehicle}</p>
+          <p className="font-semibold text-text-heading">{jobNumber}</p>
+          <p className="text-sm text-text-body">{customer} - {vehicle}</p>
           <p className="text-sm text-gray-500">Assigned to: {mechanic}</p>
         </div>
-        <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold">
+        <span className="bg-blue-100 text-brand-primary px-3 py-1 rounded-full text-xs font-semibold">
           {status}
         </span>
       </div>

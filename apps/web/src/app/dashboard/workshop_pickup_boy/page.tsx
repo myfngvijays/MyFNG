@@ -93,7 +93,7 @@ export default function WorkshopPickupBoyDashboard() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading dashboard...</p>
+            <p className="mt-4 text-text-body">Loading dashboard...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -115,8 +115,8 @@ export default function WorkshopPickupBoyDashboard() {
               <div className="flex items-center gap-3">
                 <div className={stat.color}>{stat.icon}</div>
                 <div>
-                  <p className="text-sm text-gray-600">{stat.label}</p>
-                  <p className="text-2xl font-bold">{stat.value}</p>
+                  <p className="text-sm text-text-body">{stat.label}</p>
+                  <p className="text-2xl font-bold text-text-heading">{stat.value}</p>
                 </div>
               </div>
             </div>
@@ -125,15 +125,15 @@ export default function WorkshopPickupBoyDashboard() {
 
         {/* Recent Tasks */}
         <div className="card">
-          <h2 className="text-xl font-semibold mb-4">Active Tasks</h2>
+          <h2 className="text-xl font-semibold text-text-heading mb-4">Active Tasks</h2>
           {tasks.length > 0 ? (
             <div className="space-y-3">
               {tasks.map((task) => (
                 <div key={task.id} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition">
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1">
-                      <p className="font-semibold text-lg">{task.task_number}</p>
-                      <p className="text-sm text-gray-600">{task.customer_name} - {task.vehicle_number}</p>
+                      <p className="font-semibold text-text-heading text-lg">{task.task_number}</p>
+                      <p className="text-sm text-text-body">{task.customer_name} - {task.vehicle_number}</p>
                       <div className="mt-2 space-y-1">
                         <p className="text-xs text-gray-500 flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
@@ -171,9 +171,9 @@ export default function WorkshopPickupBoyDashboard() {
         </div>
 
         {/* Photo Upload Guide */}
-        <div className="card bg-blue-50 border-l-4 border-blue-500">
-          <h3 className="font-semibold mb-3 flex items-center gap-2">
-            <Camera className="w-5 h-5 text-blue-600" />
+        <div className="card bg-blue-50 border-l-4 border-brand-primary">
+          <h3 className="font-semibold text-text-heading mb-3 flex items-center gap-2">
+            <Camera className="w-5 h-5 text-brand-primary" />
             Photo Guidelines
           </h3>
           <ul className="text-sm text-gray-700 space-y-2">

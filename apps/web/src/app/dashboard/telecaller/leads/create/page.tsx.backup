@@ -1,0 +1,1082 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import DashboardLayout from '@/components/DashboardLayout';
+import { createClient } from '@/lib/supabase/client';
+import { 
+  User, Phone, Mail, MapPin, Car, Wrench, Calendar,
+  Clock, DollarSign, AlertCircle, CheckCircle, ArrowRight, Navigation
+} from 'lucide-react';
+
+export default function CreateLeadPage() {
+  const router = useRouter();
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+
+  const [formData, setFormData] = useState({
+    // Customer Details
+    customer_name: '',
+    customer_phone: '',
+    customer_alternate_phone: '',
+    customer_email: '',
+    customer_address: '',
+    city_id: '',
+    pincode: '',
+    contact_method: 'CALL',
+    customer_lat: '',
+    customer_lng: '',
+    
+    // Vehicle Details
+    vehicle_number: '',
+    vehicle_make: '',
+    model_id: '',
+    vehicle_variant: '',
+    vehicle_year: '',
+    vehicle_fuel_type: 'PETROL',
+    odometer_km: '',
+    
+    // Service Details
+    service_types: [] as number[],
+    service_addons: [] as number[],
+    description: '',
+    problem_description: '',
+    payment_mode: '',
+    coupon_code: '',
+    
+    // Pickup Details
+    pickup_required: false,
+    pickup_address: '',
+    preferred_slot_start: '',
+    preferred_slot_end: '',
+    
+    // Additional
+    notes: '',
+    lead_priority: 'NORMAL'
+  });
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  // Options data
+  const [cities, setCities] = useState<any[]>([]);
+  const [makes, setMakes] = useState<string[]>([]);
+  const [models, setModels] = useState<any[]>([]);
+  const [serviceTypes, setServiceTypes] = useState<any[]>([]);
+  const [serviceAddons, setServiceAddons] = useState<any[]>([]);
+  const [loadingLocation, setLoadingLocation] = useState(false);
+  
+  // Fetch options on component mount
+  useEffect(() => {
+    fetchOptionsData();
+  }, []);
+  
+  // Fetch models when make changes
+  useEffect(() => {
+    if (formData.vehicle_make) {
+      fetchModels(formData.vehicle_make);
+    } else {
+      setModels([]);
+    }
+  }, [formData.vehicle_make]);
+  
+  async function fetchOptionsData() {
+    const supabase = createClient();
+    
+    try {
+      // Fetch cities - using existing cities or create simple list
+      // For now using common cities, you can replace with actual table
+      setCities([
+        { id: 1, name: 'Mumbai' },
+        { id: 2, name: 'Navi Mumbai' },
+        { id: 3, name: 'Thane' },
+        { id: 4, name: 'Pune' },
+        { id: 5, name: 'Delhi' },
+        { id: 6, name: 'Bangalore' },
+        { id: 7, name: 'Hyderabad' },
+        { id: 8, name: 'Chennai' },
+      ]);
+      
+      // Fetch vehicle makes - distinct from models or use predefined list
+      setMakes([
+        'Maruti Suzuki', 'Hyundai', 'Tata', 'Mahindra', 'Honda',
+        'Toyota', 'Ford', 'Volkswagen', 'Renault', 'Nissan',
+        'Kia', 'MG', 'Skoda', 'Jeep', 'BMW', 'Mercedes-Benz', 'Audi'
+      ]);
+      
+      // Service types - using common services
+      setServiceTypes([
+        { id: 3, name: 'General Service', description: 'Regular maintenance' },
+        { id: 12, name: 'AC Service', description: 'AC repair & gas filling' },
+        { id: 15, name: 'Oil Change', description: 'Engine oil replacement' },
+        { id: 20, name: 'Brake Service', description: 'Brake pad & disk service' },
+        { id: 25, name: 'Battery Replacement', description: 'New battery installation' },
+        { id: 30, name: 'Tire Service', description: 'Tire rotation & alignment' },
+        { id: 35, name: 'Denting & Painting', description: 'Body work' },
+        { id: 40, name: 'Car Wash & Detailing', description: 'Exterior & interior cleaning' },
+      ]);
+      
+      // Service addons
+      setServiceAddons([
+        { id: 108, name: 'Semi Synthetic Oil', price: 500 },
+        { id: 109, name: 'Fully Synthetic Oil', price: 1200 },
+        { id: 202, name: 'Air Filter', price: 300 },
+        { id: 203, name: 'Cabin Filter', price: 400 },
+        { id: 204, name: 'Fuel Filter', price: 350 },
+        { id: 301, name: 'Engine Oil Flush', price: 250 },
+        { id: 302, name: 'AC Gas Top-up', price: 600 },
+        { id: 401, name: 'Underbody Coating', price: 2500 },
+      ]);
+      
+    } catch (error) {
+      console.error('Error fetching options:', error);
+    }
+  }
+  
+  async function fetchModels(make: string) {
+    // Mock data - replace with actual DB query
+    const modelsByMake: Record<string, any[]> = {
+      'Maruti Suzuki': [
+        { id: 204, name: 'Swift', variants: ['VXI', 'ZXI', 'ZXI+'] },
+        { id: 205, name: 'Baleno', variants: ['Sigma', 'Delta', 'Zeta', 'Alpha'] },
+        { id: 206, name: 'WagonR', variants: ['LXI', 'VXI'] },
+        { id: 207, name: 'Dzire', variants: ['VXI', 'ZXI', 'ZXI+'] },
+        { id: 208, name: 'Ertiga', variants: ['VXI', 'ZXI', 'ZXI+'] },
+      ],
+      'Hyundai': [
+        { id: 301, name: 'i20', variants: ['Magna', 'Sportz', 'Asta'] },
+        { id: 302, name: 'Creta', variants: ['E', 'EX', 'S', 'SX'] },
+        { id: 303, name: 'Venue', variants: ['E', 'S', 'SX'] },
+        { id: 304, name: 'Verna', variants: ['E', 'S', 'SX'] },
+      ],
+      'Tata': [
+        { id: 401, name: 'Nexon', variants: ['XE', 'XM', 'XZ', 'XZ+'] },
+        { id: 402, name: 'Harrier', variants: ['XE', 'XM', 'XZ', 'XZ+'] },
+        { id: 403, name: 'Altroz', variants: ['XE', 'XM', 'XT', 'XZ'] },
+      ],
+    };
+    
+    setModels(modelsByMake[make] || []);
+  }
+  
+  function getCurrentLocation() {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+    
+    setLoadingLocation(true);
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setFormData(prev => ({
+          ...prev,
+          customer_lat: position.coords.latitude.toString(),
+          customer_lng: position.coords.longitude.toString()
+        }));
+        setLoadingLocation(false);
+      },
+      (error) => {
+        alert('Unable to retrieve your location');
+        setLoadingLocation(false);
+      }
+    );
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    const checked = (e.target as HTMLInputElement).checked;
+    
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+    
+    // Clear error for this field
+    if (errors[name]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
+  };
+  
+  const handleMultiSelect = (name: string, value: number, checked: boolean) => {
+    setFormData(prev => {
+      const currentArray = prev[name as keyof typeof prev] as number[];
+      const newArray = checked
+        ? [...currentArray, value]
+        : currentArray.filter(item => item !== value);
+      
+      return {
+        ...prev,
+        [name]: newArray
+      };
+    });
+    
+    // Clear error
+    if (errors[name]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
+  };
+
+  const validateStep = (currentStep: number): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (currentStep === 1) {
+      if (!formData.customer_name.trim()) newErrors.customer_name = 'Customer name is required';
+      if (!formData.customer_phone.trim()) newErrors.customer_phone = 'Phone number is required';
+      if (formData.customer_phone && formData.customer_phone.length < 10) {
+        newErrors.customer_phone = 'Please enter valid 10-digit phone number';
+      }
+      if (!formData.customer_address.trim()) newErrors.customer_address = 'Address is required';
+      if (!formData.city_id) newErrors.city_id = 'City is required';
+    }
+
+    if (currentStep === 2) {
+      if (!formData.vehicle_make.trim()) newErrors.vehicle_make = 'Vehicle make is required';
+      if (!formData.model_id) newErrors.model_id = 'Vehicle model is required';
+      if (!formData.vehicle_fuel_type) newErrors.vehicle_fuel_type = 'Fuel type is required';
+    }
+
+    if (currentStep === 3) {
+      if (formData.service_types.length === 0) newErrors.service_types = 'Please select at least one service type';
+      if (!formData.payment_mode) newErrors.payment_mode = 'Payment mode is required';
+    }
+    
+    if (currentStep === 4) {
+      if (formData.pickup_required) {
+        if (!formData.pickup_address && !formData.customer_address) {
+          newErrors.pickup_address = 'Pickup address is required';
+        }
+        if (!formData.customer_lat || !formData.customer_lng) {
+          newErrors.customer_lat = 'Location is required for pickup. Click "Get Location" button';
+        }
+        if (!formData.preferred_slot_start) {
+          newErrors.preferred_slot_start = 'Preferred pickup start time is required';
+        }
+        if (!formData.preferred_slot_end) {
+          newErrors.preferred_slot_end = 'Preferred pickup end time is required';
+        }
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const nextStep = () => {
+    if (validateStep(step)) {
+      setStep(prev => Math.min(prev + 1, 4));
+    }
+  };
+
+  const prevStep = () => {
+    setStep(prev => Math.max(prev - 1, 1));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateStep(step)) return;
+
+    setLoading(true);
+
+    try {
+      const supabase = createClient();
+      
+      // Get current telecaller
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const { data: userProfile } = await supabase
+        .from('users_login')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+
+      // Generate lead number
+      const leadNumber = `L-${Date.now().toString().slice(-8)}`;
+
+      // Create lead with all required fields
+      const { data: lead, error: leadError } = await supabase
+        .from('service_leads')
+        .insert([{
+          lead_number: leadNumber,
+          created_by_id: userProfile?.id,
+          created_from: 'TELECALLER',
+          assigned_telecaller_id: userProfile?.id,
+          telecaller_assigned_at: new Date().toISOString(),
+          
+          // Customer details (UPDATED)
+          customer_name: formData.customer_name,
+          customer_phone: formData.customer_phone,
+          customer_alternate_phone: formData.customer_alternate_phone || null,
+          customer_email: formData.customer_email || null,
+          customer_address: formData.customer_address,
+          // Temporarily skip city_id if causing foreign key issues
+          // city_id: formData.city_id ? parseInt(formData.city_id) : null,
+          pincode: formData.pincode || null,
+          contact_method: formData.contact_method,
+          customer_lat: formData.customer_lat ? parseFloat(formData.customer_lat) : null,
+          customer_lng: formData.customer_lng ? parseFloat(formData.customer_lng) : null,
+          
+          // Vehicle details (UPDATED)
+          vehicle_reg: formData.vehicle_number || null,
+          vehicle_make: formData.vehicle_make,
+          // Temporarily skip model_id if causing foreign key issues
+          // model_id: formData.model_id ? parseInt(formData.model_id) : null,
+          vehicle_variant: formData.vehicle_variant || null,
+          vehicle_year: formData.vehicle_year ? parseInt(formData.vehicle_year) : null,
+          fuel_type: formData.vehicle_fuel_type,
+          odometer_km: formData.odometer_km ? parseInt(formData.odometer_km) : null,
+          
+          // Service details (UPDATED - Arrays)
+          service_type_ids: formData.service_types,
+          subservice_ids: formData.service_addons,
+          description: formData.description || null,
+          problem_description: formData.problem_description || null,
+          payment_mode: formData.payment_mode,
+          coupon_code: formData.coupon_code || null,
+          
+          // Pickup (UPDATED)
+          pickup_required: formData.pickup_required,
+          pickup_address: formData.pickup_required ? (formData.pickup_address || formData.customer_address) : null,
+          preferred_slot_start: formData.preferred_slot_start || null,
+          preferred_slot_end: formData.preferred_slot_end || null,
+          
+          // Additional
+          notes: formData.notes || null,
+          lead_priority: formData.lead_priority,
+          status: 'NEW',
+          lead_type: 'NORMAL',
+          
+          is_incomplete: false
+        }])
+        .select()
+        .single();
+
+      if (leadError) throw leadError;
+
+      // Create event log (temporarily disabled for testing)
+      // await supabase
+      //   .from('lead_events')
+      //   .insert([{
+      //     lead_id: lead.id,
+      //     event_type: 'lead_created',
+      //     event_category: 'LEAD',
+      //     actor: `user:${userProfile?.id}`,
+      //     actor_name: user.email,
+      //     actor_role: 'TELECALLER',
+      //     event_description: `Lead created by telecaller: ${leadNumber}`,
+      //     metadata: {
+      //       source: 'TELECALLER',
+      //       created_from: 'manual_form'
+      //     }
+      //   }]);
+
+      // Create initial call log (temporarily disabled for testing)
+      // await supabase
+      //   .from('telecaller_call_logs')
+      //   .insert([{
+      //     lead_id: lead.id,
+      //     telecaller_id: userProfile?.id,
+      //     call_type: 'OUTBOUND',
+      //     call_status: 'COMPLETED',
+      //     outcome: 'LEAD_CREATED',
+      //     notes: 'Lead created via manual form',
+      //     phone_number: formData.customer_phone
+      //   }]);
+
+      alert(`Lead created successfully! Lead Number: ${leadNumber}`);
+      router.push(`/dashboard/telecaller/leads/${lead.id}`);
+
+    } catch (error: any) {
+      console.error('Error creating lead:', error);
+      
+      // Show detailed error message
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      alert('Failed to create lead.\n\nError: ' + errorMessage + '\n\nCheck browser console (F12) for more details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <DashboardLayout role="telecaller">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-3xl font-bold text-text-heading">Create New Lead</h1>
+          <p className="text-text-body mt-2">Fill in customer and vehicle details to create a lead</p>
+        </div>
+
+        {/* Progress Steps */}
+        <div className="card">
+          <div className="flex items-center justify-between">
+            {[
+              { num: 1, label: 'Customer Info', icon: User },
+              { num: 2, label: 'Vehicle Details', icon: Car },
+              { num: 3, label: 'Service Type', icon: Wrench },
+              { num: 4, label: 'Additional Info', icon: Calendar }
+            ].map((s, idx) => (
+              <div key={s.num} className="flex items-center flex-1">
+                <div className="flex flex-col items-center flex-1">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                    step >= s.num ? 'bg-brand-primary text-white' : 'bg-gray-200 text-gray-500'
+                  }`}>
+                    {step > s.num ? (
+                      <CheckCircle className="w-6 h-6" />
+                    ) : (
+                      <s.icon className="w-6 h-6" />
+                    )}
+                  </div>
+                  <span className={`text-sm mt-2 font-semibold ${
+                    step >= s.num ? 'text-brand-primary' : 'text-gray-500'
+                  }`}>
+                    {s.label}
+                  </span>
+                </div>
+                {idx < 3 && (
+                  <div className={`h-1 flex-1 ${step > s.num ? 'bg-brand-primary' : 'bg-gray-200'}`} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="card">
+          {/* Step 1: Customer Information */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <User className="w-6 h-6" />
+                Customer Information
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Customer Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="customer_name"
+                    value={formData.customer_name}
+                    onChange={handleChange}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary ${
+                      errors.customer_name ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="Enter customer name"
+                  />
+                  {errors.customer_name && (
+                    <p className="text-red-500 text-xs mt-1">{errors.customer_name}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    name="customer_phone"
+                    value={formData.customer_phone}
+                    onChange={handleChange}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary ${
+                      errors.customer_phone ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="10-digit phone number"
+                    maxLength={10}
+                  />
+                  {errors.customer_phone && (
+                    <p className="text-red-500 text-xs mt-1">{errors.customer_phone}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Alternate Phone
+                  </label>
+                  <input
+                    type="tel"
+                    name="customer_alternate_phone"
+                    value={formData.customer_alternate_phone}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                    placeholder="Optional"
+                    maxLength={10}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    name="customer_email"
+                    value={formData.customer_email}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                    placeholder="customer@example.com"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Address *
+                  </label>
+                  <input
+                    type="text"
+                    name="customer_address"
+                    value={formData.customer_address}
+                    onChange={handleChange}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary ${
+                      errors.customer_address ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="Complete address"
+                  />
+                  {errors.customer_address && (
+                    <p className="text-red-500 text-xs mt-1">{errors.customer_address}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    City *
+                  </label>
+                  <select
+                    name="city_id"
+                    value={formData.city_id}
+                    onChange={handleChange}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary ${
+                      errors.city_id ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                  >
+                    <option value="">Select City</option>
+                    {cities.map((city) => (
+                      <option key={city.id} value={city.id}>
+                        {city.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.city_id && (
+                    <p className="text-red-500 text-xs mt-1">{errors.city_id}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Pincode
+                  </label>
+                  <input
+                    type="text"
+                    name="pincode"
+                    value={formData.pincode}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                    placeholder="6-digit pincode"
+                    maxLength={6}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Preferred Contact Method
+                  </label>
+                  <select
+                    name="contact_method"
+                    value={formData.contact_method}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                  >
+                    <option value="CALL">Phone Call</option>
+                    <option value="WHATSAPP">WhatsApp</option>
+                    <option value="SMS">SMS</option>
+                    <option value="EMAIL">Email</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Vehicle Details */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Car className="w-6 h-6" />
+                Vehicle Details
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Vehicle Registration Number
+                  </label>
+                  <input
+                    type="text"
+                    name="vehicle_number"
+                    value={formData.vehicle_number}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary uppercase"
+                    placeholder="MH01AB1234"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Vehicle Make / Brand *
+                  </label>
+                  <select
+                    name="vehicle_make"
+                    value={formData.vehicle_make}
+                    onChange={handleChange}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary ${
+                      errors.vehicle_make ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                  >
+                    <option value="">Select Make</option>
+                    {makes.map((make) => (
+                      <option key={make} value={make}>{make}</option>
+                    ))}
+                  </select>
+                  {errors.vehicle_make && (
+                    <p className="text-red-500 text-xs mt-1">{errors.vehicle_make}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Vehicle Model *
+                  </label>
+                  <select
+                    name="model_id"
+                    value={formData.model_id}
+                    onChange={handleChange}
+                    disabled={!formData.vehicle_make}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary ${
+                      errors.model_id ? 'border-red-500' : 'border-gray-300'
+                    } ${!formData.vehicle_make ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  >
+                    <option value="">
+                      {formData.vehicle_make ? 'Select Model' : 'Select Make First'}
+                    </option>
+                    {models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.model_id && (
+                    <p className="text-red-500 text-xs mt-1">{errors.model_id}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Variant
+                  </label>
+                  <input
+                    type="text"
+                    name="vehicle_variant"
+                    value={formData.vehicle_variant}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                    placeholder="e.g., VXI, SX"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Manufacturing Year
+                  </label>
+                  <input
+                    type="number"
+                    name="vehicle_year"
+                    value={formData.vehicle_year}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                    placeholder="2020"
+                    min="1990"
+                    max={new Date().getFullYear() + 1}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Fuel Type
+                  </label>
+                  <select
+                    name="vehicle_fuel_type"
+                    value={formData.vehicle_fuel_type}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                  >
+                    <option value="PETROL">Petrol</option>
+                    <option value="DIESEL">Diesel</option>
+                    <option value="CNG">CNG</option>
+                    <option value="EV">Electric</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Odometer Reading (km)
+                  </label>
+                  <input
+                    type="number"
+                    name="odometer_km"
+                    value={formData.odometer_km}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                    placeholder="50000"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Service Type */}
+          {step === 3 && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Wrench className="w-6 h-6" />
+                Service Requirements
+              </h2>
+
+              {/* Service Types - Multi-select */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Select Service Types * (Choose at least one)
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {serviceTypes.map((service) => (
+                    <label
+                      key={service.id}
+                      className={`card p-4 cursor-pointer transition hover:shadow-lg border-2 ${
+                        formData.service_types.includes(service.id)
+                          ? 'border-brand-primary bg-blue-50'
+                          : 'border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={formData.service_types.includes(service.id)}
+                          onChange={(e) => handleMultiSelect('service_types', service.id, e.target.checked)}
+                          className="w-5 h-5 text-brand-primary mt-1"
+                        />
+                        <div className="flex-1">
+                          <p className="font-semibold text-text-heading">{service.name}</p>
+                          <p className="text-xs text-text-body mt-1">{service.description}</p>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {errors.service_types && (
+                  <p className="text-red-500 text-xs mt-2">{errors.service_types}</p>
+                )}
+              </div>
+
+              {/* Service Add-ons - Multi-select */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Service Add-ons (Optional but Recommended)
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {serviceAddons.map((addon) => (
+                    <label
+                      key={addon.id}
+                      className={`card p-3 cursor-pointer transition hover:shadow-lg border-2 ${
+                        formData.service_addons.includes(addon.id)
+                          ? 'border-green-500 bg-green-50'
+                          : 'border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.service_addons.includes(addon.id)}
+                          onChange={(e) => handleMultiSelect('service_addons', addon.id, e.target.checked)}
+                          className="w-4 h-4 text-green-600 mt-1"
+                        />
+                        <div className="flex-1">
+                          <p className="font-medium text-sm text-text-heading">{addon.name}</p>
+                          <p className="text-xs text-green-600 font-semibold mt-1">₹{addon.price}</p>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Payment Mode - MANDATORY */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Mode *
+                </label>
+                <select
+                  name="payment_mode"
+                  value={formData.payment_mode}
+                  onChange={handleChange}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary ${
+                    errors.payment_mode ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                >
+                  <option value="">Select Payment Mode</option>
+                  <option value="PREPAID">Prepaid (Pay Online)</option>
+                  <option value="COD">Cash on Delivery</option>
+                  <option value="WALLET">Wallet</option>
+                  <option value="UPI">UPI at Workshop</option>
+                  <option value="CARD">Card at Workshop</option>
+                </select>
+                {errors.payment_mode && (
+                  <p className="text-red-500 text-xs mt-1">{errors.payment_mode}</p>
+                )}
+              </div>
+
+              {/* Coupon Code */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Coupon Code (Optional)
+                </label>
+                <input
+                  type="text"
+                  name="coupon_code"
+                  value={formData.coupon_code}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary uppercase"
+                  placeholder="Enter coupon code"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter coupon code if customer has any discount offer
+                </p>
+              </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Service Description
+                  </label>
+                  <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                    rows={3}
+                    placeholder="Brief service description..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Problem Description (Customer's words)
+                  </label>
+                  <textarea
+                    name="problem_description"
+                    value={formData.problem_description}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                    rows={4}
+                    placeholder="What problem is the customer facing?..."
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Additional Info */}
+          {step === 4 && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Calendar className="w-6 h-6" />
+                Additional Information
+              </h2>
+
+              <div className="grid grid-cols-1 gap-4">
+                {/* Pickup Required */}
+                <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
+                  <input
+                    type="checkbox"
+                    name="pickup_required"
+                    checked={formData.pickup_required}
+                    onChange={handleChange}
+                    className="w-5 h-5 text-brand-primary rounded"
+                    id="pickup_required"
+                  />
+                  <label htmlFor="pickup_required" className="text-sm font-medium cursor-pointer">
+                    Customer requires vehicle pickup
+                  </label>
+                </div>
+
+                {formData.pickup_required && (
+                  <>
+                    {/* GPS Location */}
+                    <div className="bg-blue-50 border-2 border-brand-primary rounded-lg p-4">
+                      <p className="text-sm font-medium text-text-heading mb-3">
+                        📍 Location Required for Pickup
+                      </p>
+                      <button
+                        type="button"
+                        onClick={getCurrentLocation}
+                        disabled={loadingLocation}
+                        className="btn btn-primary w-full"
+                      >
+                        <Navigation className="w-4 h-4" />
+                        {loadingLocation ? 'Getting Location...' : 'Get Current Location'}
+                      </button>
+                      {formData.customer_lat && formData.customer_lng && (
+                        <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded">
+                          <p className="text-xs text-green-700 font-medium">
+                            ✓ Location Captured Successfully
+                          </p>
+                          <p className="text-xs text-gray-600 mt-1">
+                            Lat: {Number(formData.customer_lat).toFixed(6)}, 
+                            Lng: {Number(formData.customer_lng).toFixed(6)}
+                          </p>
+                        </div>
+                      )}
+                      {errors.customer_lat && (
+                        <p className="text-red-500 text-xs mt-2">{errors.customer_lat}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Pickup Address
+                      </label>
+                      <input
+                        type="text"
+                        name="pickup_address"
+                        value={formData.pickup_address}
+                        onChange={handleChange}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary ${
+                          errors.pickup_address ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        placeholder="Pickup address (leave empty to use customer address)"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        If different from customer address
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Preferred Slot Start *
+                        </label>
+                        <input
+                          type="datetime-local"
+                          name="preferred_slot_start"
+                          value={formData.preferred_slot_start}
+                          onChange={handleChange}
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary ${
+                            errors.preferred_slot_start ? 'border-red-500' : 'border-gray-300'
+                          }`}
+                        />
+                        {errors.preferred_slot_start && (
+                          <p className="text-red-500 text-xs mt-1">{errors.preferred_slot_start}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Preferred Slot End *
+                        </label>
+                        <input
+                          type="datetime-local"
+                          name="preferred_slot_end"
+                          value={formData.preferred_slot_end}
+                          onChange={handleChange}
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary ${
+                            errors.preferred_slot_end ? 'border-red-500' : 'border-gray-300'
+                          }`}
+                        />
+                        {errors.preferred_slot_end && (
+                          <p className="text-red-500 text-xs mt-1">{errors.preferred_slot_end}</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Lead Priority
+                  </label>
+                  <select
+                    name="lead_priority"
+                    value={formData.lead_priority}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                  >
+                    <option value="LOW">Low Priority</option>
+                    <option value="NORMAL">Normal Priority</option>
+                    <option value="HIGH">High Priority</option>
+                    <option value="URGENT">Urgent</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Internal Notes
+                  </label>
+                  <textarea
+                    name="notes"
+                    value={formData.notes}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                    rows={3}
+                    placeholder="Any additional notes or observations..."
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Navigation Buttons */}
+          <div className="flex items-center justify-between mt-6 pt-6 border-t">
+            <button
+              type="button"
+              onClick={prevStep}
+              disabled={step === 1}
+              className="btn btn-outline"
+            >
+              Previous
+            </button>
+
+            <div className="text-sm text-gray-500">
+              Step {step} of 4
+            </div>
+
+            {step < 4 ? (
+              <button
+                type="button"
+                onClick={nextStep}
+                className="btn btn-primary"
+              >
+                Next <ArrowRight className="w-4 h-4 ml-2" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn btn-primary"
+              >
+                {loading ? 'Creating Lead...' : 'Create Lead'}
+                {!loading && <CheckCircle className="w-4 h-4 ml-2" />}
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+    </DashboardLayout>
+  );
+}
+

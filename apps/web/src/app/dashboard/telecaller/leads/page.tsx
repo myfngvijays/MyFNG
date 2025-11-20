@@ -1,6 +1,7 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { 
@@ -10,7 +11,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 
-export default function TelecallerLeadsPage() {
+function TelecallerLeadsContent() {
   const searchParams = useSearchParams();
   const filterParam = searchParams?.get('filter') || 'all';
 
@@ -388,6 +389,21 @@ export default function TelecallerLeadsPage() {
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function TelecallerLeadsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading leads...</p>
+        </div>
+      </div>
+    }>
+      <TelecallerLeadsContent />
+    </Suspense>
   );
 }
 

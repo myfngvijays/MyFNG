@@ -44,3 +44,7 @@ web-build/
 # Misc
 *.log
 .cache/
+# Large files - excluded from git
+*.tar.gz
+myfng-deployment.zip
+myfng-full.tar.gz

@@ -1,6 +1,7 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import JobCard from '@/components/supervisor/JobCard';
@@ -39,7 +40,7 @@ interface Job {
   updated_at: string;
 }
 
-export default function SupervisorJobsPage() {
+function SupervisorJobsContent() {
   const searchParams = useSearchParams();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -326,6 +327,21 @@ export default function SupervisorJobsPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function SupervisorJobsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading jobs...</p>
+        </div>
+      </div>
+    }>
+      <SupervisorJobsContent />
+    </Suspense>
   );
 }
 
