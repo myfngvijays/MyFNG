@@ -165,8 +165,8 @@ export default function SuperAdminDashboard() {
     <div className="min-h-screen bg-background-grey">
       {/* Header */}
       <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6">
-        <h1 className="text-3xl font-bold">🏆 Super Admin Control Panel</h1>
-        <p className="text-white/90 mt-1">Ultimate System Control & Governance</p>
+        <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🏆 Super Admin Control Panel</h1>
+        <p className="text-white font-medium mt-1">Ultimate System Control & Governance</p>
       </div>
 
       <div className="max-w-7xl mx-auto p-6 space-y-6">

@@ -1,0 +1,42 @@
+════════════════════════════════════════════════════════════
+   🚀 GITHUB पर PUSH करने के लिए - बस ये 2 COMMANDS
+════════════════════════════════════════════════════════════
+
+Terminal खोलो और ये copy-paste करो:
+
+cd /Users/roadserve/Downloads/MyFNG
+./PUSH_TO_GITHUB.sh
+
+════════════════════════════════════════════════════════════
+
+बस! इतना ही! 🎉
+
+Script automatically सब कुछ करेगी:
+✅ सभी files add करेगी
+✅ Proper commit message के साथ commit करेगी  
+✅ GitHub पर push करेगी
+✅ Success message दिखाएगी
+
+════════════════════════════════════════════════════════════
+
+अगर script नहीं चलनी चाहिए, तो manually ये करो:
+
+cd /Users/roadserve/Downloads/MyFNG
+
+git add database/FINAL_COMPLETE_MIGRATION.sql
+git add shared/types/lead-flow.ts
+git add apps/web/src/app/api/lead-manager/
+git add apps/web/src/app/dashboard/lead_manager/
+git add *.md
+
+git commit -m "✨ Lead Manager Complete - 12 Step Flow"
+
+git push origin main
+
+════════════════════════════════════════════════════════════
+
+✅ Done होने के बाद:
+https://github.com/myfngvijays/MyFNG पर जाकर verify करो!
+
+════════════════════════════════════════════════════════════
+

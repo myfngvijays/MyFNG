@@ -35,7 +35,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   const router = useRouter();
   const pathname = usePathname();
   const { user, userProfile, setUser, setUserProfile, setRole, logout } = useAuthStore();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true); // Start visible by default
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -204,11 +204,11 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white shadow-lg transition-transform lg:translate-x-0 w-64 z-30 overflow-y-auto ${
+        className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-transform lg:translate-x-0 w-64 z-30 overflow-y-auto ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <nav className="p-4 space-y-1">
+        <nav className="p-4 space-y-2">
           {getMenuItems().map((item) => (
             <NavLink 
               key={item.href} 
@@ -244,14 +244,14 @@ function NavLink({ href, icon, children, active }: { href: string; icon: React.R
   return (
     <Link
       href={href}
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition ${
+      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
         active 
-          ? 'bg-brand-primary text-white' 
-          : 'text-text-body hover:bg-brand-primary/10 hover:text-brand-primary'
+          ? 'bg-white text-blue-700 shadow-lg font-semibold' 
+          : 'text-white hover:bg-blue-500/30 font-medium'
       }`}
     >
       {icon}
-      <span className="font-medium">{children}</span>
+      <span>{children}</span>
     </Link>
   );
 }

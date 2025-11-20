@@ -226,11 +226,17 @@ export default function WorkshopMechanicDashboard() {
     <DashboardLayout role="workshop_mechanic">
       <div className="space-y-6">
         {/* Header */}
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg -mx-6 -mt-6 mb-6">
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🔧 Mechanic Dashboard</h1>
+              <p className="text-white font-medium mt-1">Your assigned jobs and tasks</p>
+            </div>
+          </div>
+        </div>
+        
         <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-text-heading">Mechanic Dashboard</h1>
-          <p className="text-text-body mt-2">Your assigned jobs and tasks</p>
-          </div>
           <div className="flex items-center gap-3">
             <div className="text-right">
               <p className="text-sm text-gray-600">Performance Score</p>

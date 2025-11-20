@@ -151,19 +151,21 @@ export default function WorkshopSupervisorDashboard() {
     <DashboardLayout role="workshop_supervisor">
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-text-heading">Supervisor Dashboard</h1>
-            <p className="text-text-body mt-2">Monitor operations, manage mechanics, and oversee quality control</p>
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg -mx-6 -mt-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🔍 Supervisor Dashboard</h1>
+              <p className="text-white font-medium mt-1">Monitor operations, manage mechanics, and oversee quality control</p>
+            </div>
+            <button
+              onClick={() => fetchDashboardData(true)}
+              disabled={refreshing}
+              className="btn bg-white text-blue-700 hover:bg-blue-50 flex items-center gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
           </div>
-          <button
-            onClick={() => fetchDashboardData(true)}
-            disabled={refreshing}
-            className="btn btn-outline flex items-center gap-2"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
         </div>
 
         {/* Metrics Cards */}

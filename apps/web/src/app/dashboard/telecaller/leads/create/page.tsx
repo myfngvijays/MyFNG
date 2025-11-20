@@ -13,6 +13,7 @@ export default function CreateLeadPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const [formData, setFormData] = useState({
     // Customer Details
@@ -247,14 +248,25 @@ export default function CreateLeadPage() {
       }
     );
   }
+  
+  function validateVehicleNumber(vehicleNumber: string): boolean {
+    // Indian vehicle number format: AB12CD1234 or AB-12-CD-1234 or AB 12 CD 1234
+    // State Code (2-3 letters) + District Code (2 digits) + Series (1-2 letters) + Number (4 digits)
+    const regex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
+    const cleanNumber = vehicleNumber.replace(/[-\s]/g, '').toUpperCase();
+    return regex.test(cleanNumber);
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
     
+    // Auto-uppercase vehicle number
+    const finalValue = name === 'vehicle_number' ? value.toUpperCase() : value;
+    
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : finalValue
     }));
     
     // Clear error for this field
@@ -304,9 +316,15 @@ export default function CreateLeadPage() {
     }
 
     if (currentStep === 2) {
+      if (!formData.vehicle_number.trim()) newErrors.vehicle_number = 'Vehicle number is required';
       if (!formData.vehicle_make.trim()) newErrors.vehicle_make = 'Vehicle make is required';
       if (!formData.model_id) newErrors.model_id = 'Vehicle model is required';
       if (!formData.vehicle_fuel_type) newErrors.vehicle_fuel_type = 'Fuel type is required';
+      
+      // Vehicle number validation (Indian format)
+      if (formData.vehicle_number && !validateVehicleNumber(formData.vehicle_number)) {
+        newErrors.vehicle_number = 'Please enter valid vehicle number (e.g., MH12AB1234)';
+      }
     }
 
     if (currentStep === 3) {
@@ -345,10 +363,29 @@ export default function CreateLeadPage() {
     setStep(prev => Math.max(prev - 1, 1));
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    // Prevent Enter key from submitting form on steps 1-3
+    if (e.key === 'Enter' && step !== 4) {
+      e.preventDefault();
+      console.log('Enter key prevented on step:', step);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateStep(step)) return;
+    // CRITICAL: Only allow submission on step 4
+    if (step !== 4) {
+      // Don't proceed - this shouldn't happen as buttons are type="button"
+      console.log('Form submit prevented on step:', step);
+      return;
+    }
+    
+    // Final validation before submission
+    if (!validateStep(4)) {
+      console.log('Step 4 validation failed');
+      return;
+    }
 
     setLoading(true);
 
@@ -400,7 +437,7 @@ export default function CreateLeadPage() {
         customer_lng: formData.customer_lng ? parseFloat(formData.customer_lng) : null, // Duplicate for backward compatibility
           
       // Vehicle details
-      vehicle_number: formData.vehicle_number || null,
+      vehicle_number: formData.vehicle_number, // Required field
       vehicle_make: formData.vehicle_make,
       vehicle_model: models.find(m => m.id === formData.model_id)?.model_name || null, // Model name
       model_id: formData.model_id || null, // Model UUID
@@ -410,9 +447,9 @@ export default function CreateLeadPage() {
       odometer_km: formData.odometer_km ? parseInt(formData.odometer_km) : null,
           
       // Service details
-      service_type: 'GENERAL', // Required NOT NULL field
-      service_type_ids: formData.service_types,
-      subservice_ids: formData.service_addons,
+      service_type: formData.service_types.length > 0 ? formData.service_types[0] : 'GENERAL', // Use first selected service type UUID, fallback to GENERAL
+      service_type_ids: JSON.stringify(formData.service_types), // Store as JSON string
+      subservice_ids: JSON.stringify(formData.service_addons), // Store as JSON string
       description: formData.description || null,
       problem_description: formData.problem_description || null,
       payment_mode: formData.payment_mode || null,
@@ -441,8 +478,13 @@ export default function CreateLeadPage() {
 
       if (leadError) throw leadError;
 
-      alert(`Lead created successfully! Lead Number: ${leadNumber}`);
+      // Show success message
+      setSuccessMessage(`Lead created successfully! Lead Number: ${leadNumber}`);
+      
+      // Redirect after 1.5 seconds
+      setTimeout(() => {
       router.push(`/dashboard/telecaller/leads/${lead.id}`);
+      }, 1500);
 
     } catch (error: any) {
       console.error('Error creating lead:', error);
@@ -456,6 +498,14 @@ export default function CreateLeadPage() {
   return (
     <DashboardLayout role="telecaller">
       <div className="max-w-4xl mx-auto space-y-6">
+        {/* Success Message */}
+        {successMessage && (
+          <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2">
+            <CheckCircle className="w-5 h-5" />
+            <span className="font-medium">{successMessage}</span>
+          </div>
+        )}
+
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-text-heading">Create New Lead</h1>
@@ -485,7 +535,7 @@ export default function CreateLeadPage() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="card">
+        <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="card">
           {/* Step 1: Customer Details */}
           {step === 1 && (
             <div className="space-y-6">
@@ -661,16 +711,23 @@ export default function CreateLeadPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-text-body mb-2">
-                    Vehicle Number
+                    Vehicle Number <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     name="vehicle_number"
                     value={formData.vehicle_number}
                     onChange={handleChange}
-                    className="input uppercase"
-                    placeholder="MH01AB1234"
+                    className={`input uppercase ${errors.vehicle_number ? 'border-red-500' : ''}`}
+                    placeholder="MH12AB1234"
+                    required
                   />
+                  {errors.vehicle_number && (
+                    <p className="mt-1 text-sm text-red-500">{errors.vehicle_number}</p>
+                  )}
+                  <p className="mt-1 text-xs text-gray-500">
+                    Format: AA00BB0000 (e.g., MH12AB1234)
+                  </p>
                 </div>
 
                 <div>

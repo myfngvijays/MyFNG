@@ -1,274 +1,275 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import DashboardLayout from '@/components/DashboardLayout';
+import { 
+  CheckCircle, XCircle, Clock, AlertTriangle, TrendingUp, 
+  Users, Building, Search, Filter, Eye, ChevronRight 
+} from 'lucide-react';
 import Link from 'next/link';
 
 export default function LeadManagerDashboard() {
   const supabase = createClientComponentClient();
+  
+  const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    newLeads: 0,
-    incompleteLeads: 0,
-    pendingAssignment: 0,
-    awaitingAcceptance: 0,
-    slaAtRisk: 0,
-    slaBreached: 0,
-    workshopRejected: 0,
-    reopenedLeads: 0,
-    telecallerPending: 0,
-    pickupPending: 0,
-    totalLeads: 0,
-    assignmentAccuracy: 94,
-    avgAssignmentTime: 12
+  const [summary, setSummary] = useState({
+    total_pending: 0,
+    new_leads: 0,
+    incomplete_leads: 0,
+    validated_leads: 0
   });
+  
+  const [filter, setFilter] = useState<'all' | 'new' | 'validated'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    fetchLeads();
+  }, [filter]);
 
-  const fetchDashboardData = async () => {
+  const fetchLeads = async () => {
+    setLoading(true);
     try {
-      const [
-        newLeadsResult,
-        incompleteResult,
-        pendingAssignmentResult,
-        awaitingAcceptanceResult,
-        slaAtRiskResult,
-        slaBreachedResult,
-        rejectedResult,
-        reopenedResult,
-        telecallerPendingResult,
-        pickupPendingResult,
-        totalLeadsResult
-      ] = await Promise.all([
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).eq('status', 'NEW').is('workshop_id', null),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).eq('is_incomplete', true),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).in('status', ['NEW', 'VALIDATED']).is('workshop_id', null).eq('is_incomplete', false),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).eq('status', 'ASSIGNED').not('workshop_id', 'is', null),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).eq('sla_state', 'AT_RISK').not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)'),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).eq('sla_state', 'BREACHED').not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)'),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).eq('status', 'REJECTED'),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).gt('reopen_count', 0).not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)'),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).eq('follow_up_required', true).not('assigned_telecaller_id', 'is', null),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).eq('pickup_required', true).eq('pickup_status', 'PENDING'),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true }).not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)')
-      ]);
-
-      setStats({
-        newLeads: newLeadsResult.count || 0,
-        incompleteLeads: incompleteResult.count || 0,
-        pendingAssignment: pendingAssignmentResult.count || 0,
-        awaitingAcceptance: awaitingAcceptanceResult.count || 0,
-        slaAtRisk: slaAtRiskResult.count || 0,
-        slaBreached: slaBreachedResult.count || 0,
-        workshopRejected: rejectedResult.count || 0,
-        reopenedLeads: reopenedResult.count || 0,
-        telecallerPending: telecallerPendingResult.count || 0,
-        pickupPending: pickupPendingResult.count || 0,
-        totalLeads: totalLeadsResult.count || 0,
-        assignmentAccuracy: 94,
-        avgAssignmentTime: 12
-      });
+      const response = await fetch(`/api/lead-manager/pending-leads?status=${filter}&limit=50`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setLeads(data.leads);
+        setSummary(data.summary);
+      }
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      console.error('Error fetching leads:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
+  const getStatusBadge = (status: string) => {
+    const badges: Record<string, { bg: string; text: string; label: string }> = {
+      'NEW': { bg: 'bg-blue-100', text: 'text-blue-800', label: 'New' },
+      'INCOMPLETE': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Incomplete' },
+      'VALIDATED': { bg: 'bg-green-100', text: 'text-green-800', label: 'Validated' },
+    };
+    
+    const badge = badges[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status };
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-brand-primary mx-auto"></div>
-          <p className="mt-4 text-text-body">Loading dashboard...</p>
-        </div>
-      </div>
+      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badge.bg} ${badge.text}`}>
+        {badge.label}
+      </span>
     );
-  }
+  };
+
+  const getPriorityBadge = (priority: string) => {
+    const badges: Record<string, { bg: string; text: string }> = {
+      'LOW': { bg: 'bg-gray-100', text: 'text-gray-600' },
+      'MEDIUM': { bg: 'bg-blue-100', text: 'text-blue-600' },
+      'HIGH': { bg: 'bg-orange-100', text: 'text-orange-600' },
+      'URGENT': { bg: 'bg-red-100', text: 'text-red-600' },
+      'CRITICAL': { bg: 'bg-red-600', text: 'text-white' },
+    };
+    
+    const badge = badges[priority] || badges['MEDIUM'];
+    return (
+      <span className={`px-2 py-1 text-xs font-semibold rounded ${badge.bg} ${badge.text}`}>
+        {priority}
+      </span>
+    );
+  };
+
+  const filteredLeads = leads.filter(lead =>
+    lead.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    lead.customer_phone?.includes(searchTerm) ||
+    lead.vehicle_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    lead.lead_number?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-text-heading">Lead Manager Control Panel</h1>
-        <p className="text-text-body mt-2">Traffic Controller • Quality Gatekeeper • Assignment Brain</p>
-      </div>
-
-      {/* Critical Alerts */}
-      {(stats.slaBreached > 0 || stats.workshopRejected > 0 || stats.slaAtRisk > 0) && (
-          <div className="mb-8 card">
-          <h2 className="text-xl font-bold text-red-600 mb-4">🚨 Critical Alerts</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {stats.slaBreached > 0 && (
-              <Link href="/dashboard/lead_manager/leads?filter=SLA_BREACHED">
-                <div className="bg-red-50 border-2 border-red-500 rounded-lg p-4 hover:shadow-lg transition cursor-pointer">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-3xl font-bold text-red-600">{stats.slaBreached}</p>
-                      <p className="text-sm font-medium text-red-700">SLA BREACHED</p>
-                    </div>
-                    <div className="text-red-500 text-4xl">⚠️</div>
-                  </div>
-                </div>
-              </Link>
-            )}
-            
-            {stats.slaAtRisk > 0 && (
-              <Link href="/dashboard/lead_manager/leads?filter=SLA_AT_RISK">
-                <div className="bg-orange-50 border-2 border-orange-500 rounded-lg p-4 hover:shadow-lg transition cursor-pointer">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-3xl font-bold text-orange-600">{stats.slaAtRisk}</p>
-                      <p className="text-sm font-medium text-orange-700">SLA AT RISK</p>
-                    </div>
-                    <div className="text-orange-500 text-4xl">⏰</div>
-                  </div>
-                </div>
-              </Link>
-            )}
-
-            {stats.workshopRejected > 0 && (
-              <Link href="/dashboard/lead_manager/leads?filter=WORKSHOP_REJECTED">
-                <div className="bg-red-50 border-2 border-red-400 rounded-lg p-4 hover:shadow-lg transition cursor-pointer">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-3xl font-bold text-red-600">{stats.workshopRejected}</p>
-                      <p className="text-sm font-medium text-red-700">WORKSHOP REJECTED</p>
-                    </div>
-                    <div className="text-red-500 text-4xl">❌</div>
-                  </div>
-                </div>
-              </Link>
-            )}
-          </div>
+    <DashboardLayout role="lead_manager">
+      <div className="p-6 max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg -mx-6 -mt-6 mb-8">
+          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🎯 Lead Manager Control Panel</h1>
+          <p className="text-white font-medium mt-1">Traffic Controller • Quality Gatekeeper • Assignment Brain</p>
         </div>
-      )}
 
-      {/* Main KPI Grid */}
-      <div className="mb-8">
-        <h2 className="text-xl font-bold text-text-heading mb-4">📊 Operational Overview</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4">
-          <Link href="/dashboard/lead_manager/leads?filter=NEW">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-brand-primary">
-              <div className="text-brand-primary text-3xl mb-2">📋</div>
-              <p className="text-3xl font-bold text-text-heading">{stats.newLeads}</p>
-              <p className="text-sm text-text-body">New Leads</p>
-            </div>
-          </Link>
-
-          <Link href="/dashboard/lead_manager/leads?filter=INCOMPLETE">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-orange-500">
-              <div className="text-orange-500 text-3xl mb-2">⚠️</div>
-              <p className="text-3xl font-bold text-text-heading">{stats.incompleteLeads}</p>
-              <p className="text-sm text-text-body">Incomplete</p>
-            </div>
-          </Link>
-
-          <Link href="/dashboard/lead_manager/leads?filter=NEED_ASSIGNMENT">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-brand-secondary">
-              <div className="text-brand-secondary text-3xl mb-2">👉</div>
-              <p className="text-3xl font-bold text-text-heading">{stats.pendingAssignment}</p>
-              <p className="text-sm text-text-body">Need Assignment</p>
-            </div>
-          </Link>
-
-          <Link href="/dashboard/lead_manager/leads?filter=AWAITING_ACCEPTANCE">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-brand-primary">
-              <div className="text-brand-primary text-3xl mb-2">⏳</div>
-              <p className="text-3xl font-bold text-text-heading">{stats.awaitingAcceptance}</p>
-              <p className="text-sm text-text-body">Awaiting Accept</p>
-            </div>
-          </Link>
-
-          <Link href="/dashboard/lead_manager/leads?filter=REOPENED">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-red-500">
-              <div className="text-red-500 text-3xl mb-2">🔄</div>
-              <p className="text-3xl font-bold text-text-heading">{stats.reopenedLeads}</p>
-              <p className="text-sm text-text-body">Reopened</p>
-            </div>
-          </Link>
-
-          <Link href="/dashboard/lead_manager/leads?filter=TELECALLER_PENDING">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-brand-primary">
-              <div className="text-brand-primary text-3xl mb-2">📞</div>
-              <p className="text-3xl font-bold text-text-heading">{stats.telecallerPending}</p>
-              <p className="text-sm text-text-body">Tel. Pending</p>
-            </div>
-          </Link>
-
-          <Link href="/dashboard/lead_manager/leads?filter=PICKUP_PENDING">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-green-500">
-              <div className="text-green-500 text-3xl mb-2">🚗</div>
-              <p className="text-3xl font-bold text-text-heading">{stats.pickupPending}</p>
-              <p className="text-sm text-text-body">Pickup Pending</p>
-            </div>
-          </Link>
-
-          <Link href="/dashboard/lead_manager/leads">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer border-l-4 border-brand-secondary">
-              <div className="text-brand-secondary text-3xl mb-2">📊</div>
-              <p className="text-3xl font-bold text-text-heading">{stats.totalLeads}</p>
-              <p className="text-sm text-text-body">Total Active</p>
-            </div>
-          </Link>
-        </div>
-      </div>
-
-      {/* Performance Metrics */}
-      <div className="mb-8">
-        <h2 className="text-xl font-bold text-text-heading mb-4">📈 Performance Metrics</h2>
-        <div className="card">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="text-center">
-              <p className="text-5xl font-bold text-green-600">{stats.assignmentAccuracy}%</p>
-              <p className="text-text-body mt-2">Assignment Accuracy</p>
-              <div className="mt-4 bg-gray-200 rounded-full h-2">
-                <div className="bg-green-600 h-2 rounded-full" style={{ width: `${stats.assignmentAccuracy}%` }}></div>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total Pending</p>
+                <p className="text-3xl font-bold text-gray-900">{summary.total_pending}</p>
+              </div>
+              <div className="bg-blue-100 p-3 rounded-full">
+                <Clock className="w-6 h-6 text-blue-600" />
               </div>
             </div>
-            <div className="text-center">
-              <p className="text-5xl font-bold text-brand-primary">{stats.avgAssignmentTime}m</p>
-              <p className="text-text-body mt-2">Avg Assignment Time</p>
-              <p className="text-sm text-gray-500 mt-2">Industry Target: 15 minutes</p>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">New Leads</p>
+                <p className="text-3xl font-bold text-blue-600">{summary.new_leads}</p>
+              </div>
+              <div className="bg-blue-100 p-3 rounded-full">
+                <TrendingUp className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Incomplete</p>
+                <p className="text-3xl font-bold text-yellow-600">{summary.incomplete_leads}</p>
+              </div>
+              <div className="bg-yellow-100 p-3 rounded-full">
+                <AlertTriangle className="w-6 h-6 text-yellow-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Validated</p>
+                <p className="text-3xl font-bold text-green-600">{summary.validated_leads}</p>
+              </div>
+              <div className="bg-green-100 p-3 rounded-full">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Quick Actions */}
-      <div>
-        <h2 className="text-xl font-bold text-text-heading mb-4">⚡ Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Link href="/dashboard/lead_manager/leads">
-            <div className="bg-brand-primary text-white rounded-lg p-6 hover:bg-brand-primary-hover transition cursor-pointer text-center">
-              <div className="text-4xl mb-2">📋</div>
-              <p className="font-bold">All Leads</p>
+        {/* Filters and Search */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+            {/* Search */}
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search by name, phone, vehicle number, lead number..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+              />
             </div>
-          </Link>
 
-          <Link href="/dashboard/lead_manager/escalations">
-            <div className="bg-orange-600 text-white rounded-lg p-6 hover:bg-orange-700 transition cursor-pointer text-center">
-              <div className="text-4xl mb-2">🚨</div>
-              <p className="font-bold">Escalations</p>
+            {/* Filter Buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setFilter('all')}
+                className={`px-4 py-2 rounded-lg font-medium transition ${
+                  filter === 'all'
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                All ({summary.total_pending})
+              </button>
+              <button
+                onClick={() => setFilter('new')}
+                className={`px-4 py-2 rounded-lg font-medium transition ${
+                  filter === 'new'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                New ({summary.new_leads})
+              </button>
+              <button
+                onClick={() => setFilter('validated')}
+                className={`px-4 py-2 rounded-lg font-medium transition ${
+                  filter === 'validated'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Validated ({summary.validated_leads})
+              </button>
             </div>
-          </Link>
+          </div>
+        </div>
 
-          <Link href="/dashboard/lead_manager/leads?filter=NEED_ASSIGNMENT">
-            <div className="bg-brand-secondary text-white rounded-lg p-6 hover:bg-opacity-90 transition cursor-pointer text-center">
-              <div className="text-4xl mb-2">➡️</div>
-              <p className="font-bold">Assign Leads</p>
+        {/* Leads Table */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          {loading ? (
+            <div className="p-12 text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading leads...</p>
             </div>
-          </Link>
-
-          <Link href="/dashboard/lead_manager/leads?filter=INCOMPLETE">
-            <div className="bg-green-600 text-white rounded-lg p-6 hover:bg-green-700 transition cursor-pointer text-center">
-              <div className="text-4xl mb-2">✅</div>
-              <p className="font-bold">Fix Incomplete</p>
+          ) : filteredLeads.length === 0 ? (
+            <div className="p-12 text-center">
+              <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-xl text-gray-600">No leads found</p>
+              <p className="text-gray-500 mt-2">
+                {searchTerm ? 'Try adjusting your search' : 'All leads are processed!'}
+              </p>
             </div>
-          </Link>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead #</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vehicle</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">City</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Priority</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredLeads.map((lead) => (
+                    <tr key={lead.id} className="hover:bg-gray-50 transition">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-brand-primary">{lead.lead_number}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900">{lead.customer_name}</div>
+                        <div className="text-sm text-gray-500">{lead.customer_phone}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{lead.vehicle_number}</div>
+                        <div className="text-sm text-gray-500">
+                          {lead.model?.make || lead.vehicle_make} {lead.model?.model_name || lead.vehicle_model}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{lead.city?.name || lead.city}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(lead.status)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getPriorityBadge(lead.priority)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(lead.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                        <Link
+                          href={`/dashboard/lead_manager/leads/${lead.id}`}
+                          className="inline-flex items-center gap-1 text-brand-primary hover:text-brand-secondary font-medium"
+                        >
+                          Review
+                          <ChevronRight className="w-4 h-4" />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

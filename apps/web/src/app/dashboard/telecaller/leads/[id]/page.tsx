@@ -22,6 +22,8 @@ export default function LeadDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showCallLogForm, setShowCallLogForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
+  const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
+  const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
 
   const [callLogData, setCallLogData] = useState({
     call_status: 'ANSWERED',
@@ -62,6 +64,44 @@ export default function LeadDetailPage() {
 
       if (leadError) throw leadError;
       setLead(leadData);
+
+      // Fetch service type names if service_type_ids exists
+      if (leadData.service_type_ids) {
+        try {
+          const serviceIds = JSON.parse(leadData.service_type_ids);
+          if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+            const { data: serviceTypesData } = await supabase
+              .from('service_types')
+              .select('id, name')
+              .in('id', serviceIds);
+            
+            if (serviceTypesData) {
+              setServiceTypeNames(serviceTypesData.map(st => st.name));
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing service_type_ids:', e);
+        }
+      }
+
+      // Fetch subservice names if subservice_ids exists
+      if (leadData.subservice_ids) {
+        try {
+          const subserviceIds = JSON.parse(leadData.subservice_ids);
+          if (Array.isArray(subserviceIds) && subserviceIds.length > 0) {
+            const { data: subservicesData } = await supabase
+              .from('service_addons')
+              .select('id, name')
+              .in('id', subserviceIds);
+            
+            if (subservicesData) {
+              setSubserviceNames(subservicesData.map(sa => sa.name));
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing subservice_ids:', e);
+        }
+      }
 
       // Fetch call logs
       const { data: callsData } = await supabase
@@ -325,7 +365,52 @@ export default function LeadDetailPage() {
                 Service Details
               </h2>
               <div className="space-y-3">
-                <InfoItem icon={<FileText />} label="Service Type" value={lead.service_type || 'Not specified'} />
+                {/* Service Types - Show names instead of UUIDs */}
+                <div>
+                  <div className="flex items-start gap-2">
+                    <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Service Types:</p>
+                      {serviceTypeNames.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {serviceTypeNames.map((name, idx) => (
+                            <span 
+                              key={idx}
+                              className="inline-block px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
+                            >
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-700">Not specified</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Subservices / Add-ons */}
+                {subserviceNames.length > 0 && (
+                  <div>
+                    <div className="flex items-start gap-2">
+                      <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-500 mb-1">Add-ons / Sub-services:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {subserviceNames.map((name, idx) => (
+                            <span 
+                              key={idx}
+                              className="inline-block px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium"
+                            >
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {lead.description && (
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Description:</p>
@@ -336,6 +421,12 @@ export default function LeadDetailPage() {
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Problem Description:</p>
                     <p className="text-gray-700 italic">"{lead.problem_description}"</p>
+                  </div>
+                )}
+                {lead.payment_mode && (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Payment Mode:</p>
+                    <p className="text-gray-700 font-semibold">{lead.payment_mode}</p>
                   </div>
                 )}
                 {lead.pickup_required && (

@@ -64,7 +64,7 @@ export default function SuperAdminLayout({
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClientComponentClient();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true); // Start expanded by default
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -96,28 +96,28 @@ export default function SuperAdminLayout({
         className={`
           hidden lg:flex flex-col
           ${sidebarOpen ? 'w-72' : 'w-20'}
-          bg-gradient-to-b from-red-600 to-red-800 text-white
+          bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 text-white
           transition-all duration-300 ease-in-out
           shadow-2xl
         `}
       >
         {/* Header */}
-        <div className="p-6 border-b border-red-500/30">
+        <div className="p-6 border-b border-blue-400/30">
           <div className="flex items-center justify-between">
             {sidebarOpen ? (
               <div>
                 <div className="flex items-center gap-2">
-                  <Shield className="w-8 h-8" />
-                  <h1 className="text-xl font-bold">MyFNG</h1>
+                  <Shield className="w-8 h-8 text-yellow-300" />
+                  <h1 className="text-xl font-bold text-white">MyFNG</h1>
                 </div>
-                <p className="text-red-200 text-xs mt-1">Super Admin Panel</p>
+                <p className="text-yellow-200 text-sm mt-1 font-semibold">Super Admin Control Panel</p>
               </div>
             ) : (
-              <Shield className="w-8 h-8 mx-auto" />
+              <Shield className="w-8 h-8 mx-auto text-yellow-300" />
             )}
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-1.5 hover:bg-red-700 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-blue-500/50 rounded-lg transition-colors"
             >
               <ChevronRight
                 className={`w-5 h-5 transition-transform ${
@@ -144,20 +144,20 @@ export default function SuperAdminLayout({
                     transition-all duration-200
                     ${
                       active
-                        ? 'bg-white text-red-600 shadow-lg'
-                        : 'text-white hover:bg-red-700/50'
+                        ? 'bg-white text-blue-700 shadow-lg font-semibold'
+                        : 'text-white hover:bg-blue-500/30'
                     }
                   `}
                 >
-                  <Icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-red-600' : ''}`} />
+                  <Icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
                   {sidebarOpen && (
                     <div className="flex-1 text-left">
-                      <div className={`font-medium ${active ? 'text-red-600' : ''}`}>
+                      <div className={`font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>
                         {item.name}
                       </div>
                       <div
-                        className={`text-xs ${
-                          active ? 'text-red-500' : 'text-red-200'
+                        className={`text-xs mt-0.5 ${
+                          active ? 'text-blue-600' : 'text-blue-100'
                         }`}
                       >
                         {item.description}
@@ -171,13 +171,13 @@ export default function SuperAdminLayout({
         </nav>
 
         {/* Logout Button */}
-        <div className="p-4 border-t border-red-500/30">
+        <div className="p-4 border-t border-blue-400/30">
           <button
             onClick={handleLogout}
             className={`
               w-full flex items-center gap-3 px-4 py-3 rounded-lg
-              bg-red-900/50 hover:bg-red-900 transition-colors
-              text-white font-medium
+              bg-red-600 hover:bg-red-700 transition-colors
+              text-white font-semibold shadow-lg
             `}
           >
             <LogOut className="w-5 h-5 flex-shrink-0" />
@@ -196,14 +196,14 @@ export default function SuperAdminLayout({
           />
 
           {/* Mobile Menu */}
-          <aside className="lg:hidden fixed inset-y-0 left-0 w-72 bg-gradient-to-b from-red-600 to-red-800 text-white z-40 shadow-2xl">
+          <aside className="lg:hidden fixed inset-y-0 left-0 w-72 bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 text-white z-40 shadow-2xl">
             {/* Header */}
-            <div className="p-6 border-b border-red-500/30">
+            <div className="p-6 border-b border-blue-400/30">
               <div className="flex items-center gap-2">
-                <Shield className="w-8 h-8" />
+                <Shield className="w-8 h-8 text-yellow-300" />
                 <div>
-                  <h1 className="text-xl font-bold">MyFNG</h1>
-                  <p className="text-red-200 text-xs">Super Admin Panel</p>
+                  <h1 className="text-xl font-bold text-white">MyFNG</h1>
+                  <p className="text-yellow-200 text-sm font-semibold">Super Admin Control Panel</p>
                 </div>
               </div>
             </div>
@@ -227,19 +227,19 @@ export default function SuperAdminLayout({
                         transition-all duration-200
                         ${
                           active
-                            ? 'bg-white text-red-600 shadow-lg'
-                            : 'text-white hover:bg-red-700/50'
+                            ? 'bg-white text-blue-700 shadow-lg font-semibold'
+                            : 'text-white hover:bg-blue-500/30'
                         }
                       `}
                     >
-                      <Icon className={`w-5 h-5 ${active ? 'text-red-600' : ''}`} />
+                      <Icon className={`w-5 h-5 ${active ? 'text-blue-700' : 'text-white'}`} />
                       <div className="flex-1 text-left">
-                        <div className={`font-medium ${active ? 'text-red-600' : ''}`}>
+                        <div className={`font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>
                           {item.name}
                         </div>
                         <div
-                          className={`text-xs ${
-                            active ? 'text-red-500' : 'text-red-200'
+                          className={`text-xs mt-0.5 ${
+                            active ? 'text-blue-600' : 'text-blue-100'
                           }`}
                         >
                           {item.description}
@@ -252,10 +252,10 @@ export default function SuperAdminLayout({
             </nav>
 
             {/* Logout Button */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-red-500/30">
+            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-blue-400/30">
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-red-900/50 hover:bg-red-900 transition-colors text-white font-medium"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-red-600 hover:bg-red-700 transition-colors text-white font-semibold shadow-lg"
               >
                 <LogOut className="w-5 h-5" />
                 <span>Logout</span>
