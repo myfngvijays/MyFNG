@@ -6,7 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import DashboardMetrics from '@/components/supervisor/DashboardMetrics';
 import MechanicPerformancePanel from '@/components/supervisor/MechanicPerformancePanel';
 import QuickFilters from '@/components/supervisor/QuickFilters';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, CheckCircle, DollarSign, ArrowRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 interface DashboardData {
@@ -175,6 +175,49 @@ export default function WorkshopSupervisorDashboard() {
             loading={loading}
           />
         )}
+
+        {/* Quick Action Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div 
+            onClick={() => router.push('/dashboard/workshop_supervisor/qc-queue')}
+            className="card bg-gradient-to-br from-green-50 to-green-100 hover:shadow-xl transition-all cursor-pointer border-2 border-green-200 hover:border-green-400"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-green-500 text-white rounded-full">
+                  <CheckCircle className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">QC Queue</h3>
+                  <p className="text-sm text-gray-600">
+                    {dashboardData?.metrics.jobsAwaitingQC || 0} jobs waiting for quality check
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+
+          <div 
+            onClick={() => router.push('/dashboard/workshop_supervisor/extra-work')}
+            className="card bg-gradient-to-br from-orange-50 to-orange-100 hover:shadow-xl transition-all cursor-pointer border-2 border-orange-200 hover:border-orange-400"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-orange-500 text-white rounded-full">
+                  <DollarSign className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">Extra Work Approvals</h3>
+                  <p className="text-sm text-gray-600">
+                    {dashboardData?.metrics.pendingExtraWorkApprovals || 0} requests pending
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="w-6 h-6 text-orange-600" />
+            </div>
+          </div>
+        </div>
 
         {/* Quick Filters */}
         <QuickFilters
