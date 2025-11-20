@@ -1,24 +1,50 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Truck, MapPin, Camera, CheckCircle, Navigation, AlertCircle } from 'lucide-react';
+import { MapPin, Clock, User, Car, Phone, Navigation, CheckCircle, PlayCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import toast from 'react-hot-toast';
+
+interface PickupTask {
+  id: string;
+  lead_number: string;
+  customer_name: string;
+  customer_phone: string;
+  vehicle_number: string;
+  vehicle_make: string;
+  vehicle_model: string;
+  pickup_address: string;
+  pickup_city: string;
+  pickup_pincode: string;
+  pickup_status: string;
+  preferred_date: string;
+  preferred_time_slot: string;
+  status: string;
+  pickup_otp: string;
+}
 
 export default function PickupTasksPage() {
-  const [tasks, setTasks] = useState<any[]>([]);
+  const router = useRouter();
+  const [tasks, setTasks] = useState<PickupTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'scheduled' | 'in_transit' | 'completed'>('all');
 
   useEffect(() => {
     fetchTasks();
-  }, []);
+  }, [filter]);
 
   async function fetchTasks() {
     const supabase = createClient();
+    setLoading(true);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        router.push('/login');
+        return;
+      }
 
       const { data: userProfile } = await supabase
         .from('users_login')
@@ -26,54 +52,60 @@ export default function PickupTasksPage() {
         .eq('email', user.email)
         .single();
 
-      if (!userProfile) return;
+      if (!userProfile) {
+        toast.error('User profile not found');
+        return;
+      }
 
-      const { data: tasksData } = await supabase
-        .from('pickup_delivery_tasks')
+      // Build query based on filter
+      let query = supabase
+        .from('service_leads')
         .select('*')
-        .eq('assigned_to_id', userProfile.id)
-        .in('status', ['ASSIGNED', 'IN_TRANSIT'])
-        .order('scheduled_time', { ascending: true });
+        .eq('assigned_pickup_boy_id', userProfile.id)
+        .order('preferred_date', { ascending: true });
 
-      setTasks(tasksData || []);
-      setLoading(false);
+      if (filter === 'scheduled') {
+        query = query.eq('pickup_status', 'PICKUP_SCHEDULED');
+      } else if (filter === 'in_transit') {
+        query = query.eq('pickup_status', 'IN_TRANSIT');
+      } else if (filter === 'completed') {
+        query = query.in('pickup_status', ['DELIVERED', 'VERIFIED']);
+      } else {
+        // All active tasks (not completed or cancelled)
+        query = query.in('pickup_status', ['PICKUP_SCHEDULED', 'IN_TRANSIT']);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error fetching tasks:', error);
+        toast.error('Failed to fetch tasks');
+        return;
+      }
+
+      setTasks(data || []);
     } catch (error) {
-      console.error('Error fetching tasks:', error);
+      console.error('Error:', error);
+      toast.error('Failed to load tasks');
+    } finally {
       setLoading(false);
     }
   }
 
-  async function updateTaskStatus(taskId: string, newStatus: string) {
-    const supabase = createClient();
-    
-    const updates: any = {
-      status: newStatus,
-      updated_at: new Date().toISOString()
+  const getStatusBadge = (status: string) => {
+    const badges: Record<string, { class: string; text: string }> = {
+      'PICKUP_SCHEDULED': { class: 'badge-yellow', text: 'Scheduled' },
+      'IN_TRANSIT': { class: 'badge-blue', text: 'In Transit' },
+      'DELIVERED': { class: 'badge-green', text: 'Delivered' },
+      'VERIFIED': { class: 'badge-green', text: 'Verified' }
     };
+    return badges[status] || { class: 'badge-gray', text: status };
+  };
 
-    if (newStatus === 'IN_TRANSIT') {
-      updates.started_at = new Date().toISOString();
-    } else if (newStatus === 'COMPLETED') {
-      updates.completed_at = new Date().toISOString();
-    }
-
-    const { error } = await supabase
-      .from('pickup_delivery_tasks')
-      .update(updates)
-      .eq('id', taskId);
-
-    if (!error) {
-      fetchTasks();
-    }
-  }
-
-  const getTaskTypeColor = (type: string) => {
-    const colors: Record<string, string> = {
-      'PICKUP': 'bg-blue-100 text-blue-700',
-      'DELIVERY': 'bg-green-100 text-green-700',
-      'BOTH': 'bg-purple-100 text-purple-700',
-    };
-    return colors[type] || 'bg-gray-100 text-gray-700';
+  const openGoogleMaps = (address: string, city: string, pincode: string) => {
+    const fullAddress = `${address}, ${city}, ${pincode}`;
+    const encodedAddress = encodeURIComponent(fullAddress);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
   };
 
   if (loading) {
@@ -89,145 +121,167 @@ export default function PickupTasksPage() {
   return (
     <DashboardLayout role="workshop_pickup_boy">
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-text-heading">My Tasks</h1>
-          <p className="text-text-body mt-2">Manage your pickup and delivery tasks</p>
+        {/* Header */}
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
+          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🚚 My Pickup Tasks</h1>
+          <p className="text-white font-medium mt-1">Vehicle pickup and delivery assignments</p>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="card">
-            <p className="text-sm text-gray-600">Total Tasks</p>
-            <p className="text-2xl font-bold">{tasks.length}</p>
-          </div>
-          <div className="card">
-            <p className="text-sm text-gray-600">Assigned</p>
-            <p className="text-2xl font-bold text-blue-600">
-              {tasks.filter(t => t.status === 'ASSIGNED').length}
-            </p>
-          </div>
-          <div className="card">
-            <p className="text-sm text-gray-600">In Transit</p>
-            <p className="text-2xl font-bold text-green-600">
-              {tasks.filter(t => t.status === 'IN_TRANSIT').length}
-            </p>
+        {/* Filter Tabs */}
+        <div className="card">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setFilter('all')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                filter === 'all'
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              All Active ({tasks.length})
+            </button>
+            <button
+              onClick={() => setFilter('scheduled')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                filter === 'scheduled'
+                  ? 'bg-yellow-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Scheduled
+            </button>
+            <button
+              onClick={() => setFilter('in_transit')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                filter === 'in_transit'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              In Transit
+            </button>
+            <button
+              onClick={() => setFilter('completed')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                filter === 'completed'
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Completed
+            </button>
           </div>
         </div>
 
         {/* Tasks List */}
-        <div className="space-y-4">
-          {tasks.map((task) => (
-            <div key={task.id} className="card hover:shadow-lg transition">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-xl font-bold">{task.task_number}</h3>
-                  <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold mt-2 ${getTaskTypeColor(task.task_type)}`}>
-                    {task.task_type.replace('_', ' ')}
-                  </span>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                  task.status === 'IN_TRANSIT' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                }`}>
-                  {task.status === 'IN_TRANSIT' ? 'In Transit' : 'Assigned'}
-                </span>
-              </div>
+        {tasks.length === 0 ? (
+          <div className="card text-center py-12">
+            <CheckCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">No Tasks</h3>
+            <p className="text-gray-500">
+              {filter === 'all' 
+                ? 'You have no active pickup tasks.' 
+                : `No tasks with status: ${filter}`}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {tasks.map((task) => {
+              const statusBadge = getStatusBadge(task.pickup_status);
+              return (
+                <div 
+                  key={task.id} 
+                  className="card hover:shadow-xl transition-all border-l-4 border-blue-500"
+                >
+                  <div className="space-y-4">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="badge-blue text-lg">{task.lead_number}</span>
+                        <span className={statusBadge.class}>{statusBadge.text}</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-gray-600">Preferred Date</p>
+                        <p className="font-semibold">
+                          {new Date(task.preferred_date).toLocaleDateString()}
+                        </p>
+                        {task.preferred_time_slot && (
+                          <p className="text-sm text-gray-600">{task.preferred_time_slot}</p>
+                        )}
+                      </div>
+                    </div>
 
-              <div className="space-y-4 mb-4">
-                {/* Customer Info */}
-                <div>
-                  <p className="text-sm text-gray-600">Customer</p>
-                  <p className="font-semibold">{task.customer_name}</p>
-                  <p className="text-sm text-gray-600">{task.customer_phone}</p>
-                </div>
+                    {/* Customer & Vehicle Info */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-gray-500" />
+                          <span className="font-semibold">{task.customer_name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-4 h-4 text-gray-500" />
+                          <a href={`tel:${task.customer_phone}`} className="text-brand-primary hover:underline">
+                            {task.customer_phone}
+                          </a>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Car className="w-4 h-4 text-gray-500" />
+                          <span>{task.vehicle_make} {task.vehicle_model} - {task.vehicle_number}</span>
+                        </div>
+                      </div>
 
-                {/* Vehicle */}
-                <div>
-                  <p className="text-sm text-gray-600">Vehicle</p>
-                  <p className="font-semibold">{task.vehicle_number}</p>
-                  {(task.vehicle_make || task.vehicle_model) && (
-                    <p className="text-sm text-gray-600">{task.vehicle_make} {task.vehicle_model}</p>
-                  )}
-                </div>
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <MapPin className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{task.pickup_address}</p>
+                            <p className="text-sm text-gray-600">{task.pickup_city}, {task.pickup_pincode}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => openGoogleMaps(task.pickup_address, task.pickup_city, task.pickup_pincode)}
+                          className="btn-secondary bg-green-600 hover:bg-green-700 text-white text-sm flex items-center gap-2"
+                        >
+                          <Navigation className="w-4 h-4" />
+                          Open in Maps
+                        </button>
+                      </div>
+                    </div>
 
-                {/* Pickup Address */}
-                <div className="p-3 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-blue-600 font-semibold mb-1 flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    Pickup Address
-                  </p>
-                  <p className="text-sm">{task.pickup_address}</p>
-                </div>
-
-                {/* Delivery Address */}
-                {task.delivery_address && (
-                  <div className="p-3 bg-green-50 rounded-lg">
-                    <p className="text-sm text-green-600 font-semibold mb-1 flex items-center gap-2">
-                      <MapPin className="w-4 h-4" />
-                      Delivery Address
-                    </p>
-                    <p className="text-sm">{task.delivery_address}</p>
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 pt-2 border-t">
+                      {task.pickup_status === 'PICKUP_SCHEDULED' && (
+                        <button
+                          onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
+                          className="btn-primary flex-1 flex items-center justify-center gap-2"
+                        >
+                          <PlayCircle className="w-4 h-4" />
+                          Start Pickup
+                        </button>
+                      )}
+                      {task.pickup_status === 'IN_TRANSIT' && (
+                        <button
+                          onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
+                          className="btn-primary bg-blue-600 hover:bg-blue-700 flex-1 flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Complete Delivery
+                        </button>
+                      )}
+                      <button
+                        onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
+                        className="btn-secondary flex-1"
+                      >
+                        View Details
+                      </button>
+                    </div>
                   </div>
-                )}
-
-                {/* Customer Instructions */}
-                {task.customer_instructions && (
-                  <div className="p-3 bg-yellow-50 rounded-lg">
-                    <p className="text-sm text-yellow-700 font-semibold mb-1">Instructions</p>
-                    <p className="text-sm">{task.customer_instructions}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {task.status === 'ASSIGNED' && (
-                  <>
-                    <button
-                      onClick={() => updateTaskStatus(task.id, 'IN_TRANSIT')}
-                      className="btn bg-green-500 hover:bg-green-600 text-white"
-                    >
-                      <Navigation className="w-5 h-5" />
-                      Start Task
-                    </button>
-                    <button className="btn btn-outline">
-                      <MapPin className="w-5 h-5" />
-                      Get Directions
-                    </button>
-                  </>
-                )}
-                {task.status === 'IN_TRANSIT' && (
-                  <>
-                    <button className="btn btn-outline">
-                      <Camera className="w-5 h-5" />
-                      Upload Photos
-                    </button>
-                    <button
-                      onClick={() => updateTaskStatus(task.id, 'COMPLETED')}
-                      className="btn bg-green-500 hover:bg-green-600 text-white"
-                    >
-                      <CheckCircle className="w-5 h-5" />
-                      Complete Task
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {task.scheduled_time && (
-                <div className="mt-4 pt-4 border-t text-xs text-gray-500">
-                  Scheduled: {new Date(task.scheduled_time).toLocaleString()}
                 </div>
-              )}
-            </div>
-          ))}
-
-          {tasks.length === 0 && (
-            <div className="card text-center py-12">
-              <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No tasks assigned to you</p>
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );
 }
-
