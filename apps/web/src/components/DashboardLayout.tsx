@@ -140,6 +140,12 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/customer/support', icon: <Phone className="w-5 h-5" />, label: 'Support' },
         { href: '/dashboard/customer/profile', icon: <Users className="w-5 h-5" />, label: 'Profile' },
       ],
+      'TELECALLER': [
+        { href: '/dashboard/telecaller', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/telecaller/leads', icon: <FileText className="w-5 h-5" />, label: 'My Leads' },
+        { href: '/dashboard/telecaller/leads/create', icon: <ClipboardList className="w-5 h-5" />, label: 'Create Lead' },
+        { href: '/dashboard/telecaller/profile', icon: <Users className="w-5 h-5" />, label: 'My Profile' },
+      ],
     };
 
     return menus[roleCode] || [

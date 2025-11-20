@@ -14,7 +14,8 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from 'lucide-react';
 
 const navigationItems = [
@@ -35,6 +36,12 @@ const navigationItems = [
     href: '/dashboard/super_admin/users',
     icon: Users,
     description: 'User & Role Management'
+  },
+  {
+    name: 'Audit Logs',
+    href: '/dashboard/super_admin/audit-logs',
+    icon: FileText,
+    description: 'System Activity Tracking'
   },
   {
     name: 'Finance',

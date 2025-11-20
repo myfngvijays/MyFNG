@@ -1,265 +1,404 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import DashboardLayout from '@/components/DashboardLayout';
-import { Shield, Search, Calendar, User, Database, Filter } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { AuditLog, AuditLogsResponse } from '@/shared/types/audit';
+import { Loader2, Shield, Search, Filter, ChevronLeft, ChevronRight, Eye, Download } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import { formatDistanceToNow } from 'date-fns';
 
 export default function AuditLogsPage() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterAction, setFilterAction] = useState('all');
-  const [filterTable, setFilterTable] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const logsPerPage = 50;
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit] = useState(50);
+  const [totalPages, setTotalPages] = useState(0);
+
+  // Filters
+  const [filters, setFilters] = useState({
+    action: '',
+    table_name: '',
+    user_id: '',
+    start_date: '',
+    end_date: '',
+  });
+
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
   useEffect(() => {
     fetchAuditLogs();
-  }, [currentPage]);
+  }, [page, filters]);
 
-  async function fetchAuditLogs() {
-    const supabase = createClient();
-
+  const fetchAuditLogs = async () => {
+    setLoading(true);
     try {
-      const from = (currentPage - 1) * logsPerPage;
-      const to = from + logsPerPage - 1;
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+      });
 
-      const { data: logsData, count } = await supabase
-        .from('audit_logs')
-        .select(`
-          *,
-          user_id(full_name, email)
-        `, { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(from, to);
+      if (filters.action) params.append('action', filters.action);
+      if (filters.table_name) params.append('table_name', filters.table_name);
+      if (filters.user_id) params.append('user_id', filters.user_id);
+      if (filters.start_date) params.append('start_date', filters.start_date);
+      if (filters.end_date) params.append('end_date', filters.end_date);
 
-      setLogs(logsData || []);
-      setLoading(false);
+      const response = await fetch(`/api/audit/logs?${params.toString()}`);
+      const data: AuditLogsResponse = await response.json();
+
+      if (response.ok) {
+        setLogs(data.logs);
+        setTotal(data.total);
+        setTotalPages(data.totalPages);
+      } else {
+        toast.error('Failed to fetch audit logs');
+      }
     } catch (error) {
       console.error('Error fetching audit logs:', error);
+      toast.error('An error occurred');
+    } finally {
       setLoading(false);
     }
-  }
-
-  const filteredLogs = logs.filter(log => {
-    const matchesSearch = 
-      log.action?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.table_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.user_id?.email?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesAction = filterAction === 'all' || log.action === filterAction;
-    const matchesTable = filterTable === 'all' || log.table_name === filterTable;
-    
-    return matchesSearch && matchesAction && matchesTable;
-  });
-
-  const uniqueActions = [...new Set(logs.map(l => l.action))].filter(Boolean);
-  const uniqueTables = [...new Set(logs.map(l => l.table_name))].filter(Boolean);
-
-  const getActionColor = (action: string) => {
-    const colors: Record<string, string> = {
-      'CREATE': 'text-green-600 bg-green-50',
-      'UPDATE': 'text-blue-600 bg-blue-50',
-      'DELETE': 'text-red-600 bg-red-50',
-      'READ': 'text-gray-600 bg-gray-50',
-      'LOGIN': 'text-purple-600 bg-purple-50',
-      'LOGOUT': 'text-orange-600 bg-orange-50'
-    };
-    return colors[action] || 'text-gray-600 bg-gray-50';
   };
 
-  if (loading) {
-    return (
-      <DashboardLayout role="super_admin">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading audit logs...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const handleFilterChange = (key: string, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+    setPage(1); // Reset to first page when filters change
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      action: '',
+      table_name: '',
+      user_id: '',
+      start_date: '',
+      end_date: '',
+    });
+    setPage(1);
+  };
+
+  const exportLogs = () => {
+    const csv = [
+      ['ID', 'User ID', 'Action', 'Table', 'Record ID', 'IP Address', 'Created At'].join(','),
+      ...logs.map((log) =>
+        [
+          log.id,
+          log.user_id || 'N/A',
+          log.action,
+          log.table_name || 'N/A',
+          log.record_id || 'N/A',
+          log.ip_address || 'N/A',
+          new Date(log.created_at).toLocaleString(),
+        ].join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-logs-${new Date().toISOString()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Logs exported successfully');
+  };
 
   return (
-    <DashboardLayout role="super_admin">
-      <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-text-heading flex items-center gap-2">
-            <Shield className="w-8 h-8" />
-            Audit Logs
-          </h1>
-          <p className="text-text-body mt-2">System-wide activity monitoring and compliance tracking</p>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="card">
-            <p className="text-sm text-gray-600">Total Logs</p>
-            <p className="text-2xl font-bold">{logs.length}</p>
+    <div className="space-y-6 p-6">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Shield className="w-8 h-8 text-yellow-300" />
+            <div>
+              <h1 className="text-3xl font-bold">Audit Logs</h1>
+              <p className="text-white/90 mt-1">Complete system activity tracking</p>
+            </div>
           </div>
-          <div className="card">
-            <p className="text-sm text-gray-600">Today's Activity</p>
-            <p className="text-2xl font-bold text-blue-600">
-              {logs.filter(l => {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                return new Date(l.created_at) >= today;
-              }).length}
-            </p>
-          </div>
-          <div className="card">
-            <p className="text-sm text-gray-600">Unique Users</p>
-            <p className="text-2xl font-bold">
-              {new Set(logs.map(l => l.user_id?.email).filter(Boolean)).size}
-            </p>
-          </div>
-          <div className="card">
-            <p className="text-sm text-gray-600">Tables Monitored</p>
-            <p className="text-2xl font-bold">{uniqueTables.length}</p>
+          <div className="text-right">
+            <p className="text-2xl font-bold">{total.toLocaleString()}</p>
+            <p className="text-sm text-white/80">Total Logs</p>
           </div>
         </div>
+      </div>
 
-        {/* Filters */}
-        <div className="card">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+      {/* Filters & Actions */}
+      <div className="card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Filter className="w-4 h-4" />
+              {showFilters ? 'Hide Filters' : 'Show Filters'}
+            </button>
+            {Object.values(filters).some((v) => v) && (
+              <button onClick={clearFilters} className="text-sm text-brand-primary hover:underline">
+                Clear All Filters
+              </button>
+            )}
+          </div>
+          <button onClick={exportLogs} className="btn-primary flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
+        </div>
+
+        {showFilters && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-200">
+            <div>
+              <label className="block text-sm font-medium text-text-body mb-1">Action</label>
               <input
                 type="text"
-                placeholder="Search logs by action, table, or user..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                className="form-input w-full"
+                placeholder="e.g. CREATE, UPDATE, DELETE"
+                value={filters.action}
+                onChange={(e) => handleFilterChange('action', e.target.value)}
               />
             </div>
-            <div className="flex gap-2">
-              <select
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
-                value={filterAction}
-                onChange={(e) => setFilterAction(e.target.value)}
-              >
-                <option value="all">All Actions</option>
-                {uniqueActions.map(action => (
-                  <option key={action} value={action}>{action}</option>
-                ))}
-              </select>
-              <select
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
-                value={filterTable}
-                onChange={(e) => setFilterTable(e.target.value)}
-              >
-                <option value="all">All Tables</option>
-                {uniqueTables.map(table => (
-                  <option key={table} value={table}>{table}</option>
-                ))}
-              </select>
+            <div>
+              <label className="block text-sm font-medium text-text-body mb-1">Table Name</label>
+              <input
+                type="text"
+                className="form-input w-full"
+                placeholder="e.g. service_leads"
+                value={filters.table_name}
+                onChange={(e) => handleFilterChange('table_name', e.target.value)}
+              />
             </div>
-          </div>
-        </div>
-
-        {/* Logs List */}
-        <div className="card">
-          <div className="space-y-3">
-            {filteredLogs.map((log) => (
-              <div key={log.id} className="border-b last:border-b-0 pb-3 last:pb-0">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getActionColor(log.action)}`}>
-                        {log.action}
-                      </span>
-                      {log.table_name && (
-                        <span className="text-sm text-gray-600 flex items-center gap-1">
-                          <Database className="w-3 h-3" />
-                          {log.table_name}
-                        </span>
-                      )}
-                      {log.record_id && (
-                        <span className="text-xs text-gray-400">
-                          ID: {log.record_id.substring(0, 8)}...
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-3 text-sm text-gray-600">
-                      {log.user_id && (
-                        <span className="flex items-center gap-1">
-                          <User className="w-3 h-3" />
-                          {log.user_id.full_name || log.user_id.email}
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(log.created_at).toLocaleString()}
-                      </span>
-                      {log.ip_address && (
-                        <span className="text-xs">IP: {log.ip_address}</span>
-                      )}
-                    </div>
-
-                    {/* Show data changes if available */}
-                    {(log.old_data || log.new_data) && (
-                      <details className="mt-2">
-                        <summary className="text-xs text-blue-600 cursor-pointer hover:underline">
-                          View Details
-                        </summary>
-                        <div className="mt-2 p-2 bg-gray-50 rounded text-xs font-mono space-y-1">
-                          {log.old_data && (
-                            <div>
-                              <span className="font-semibold">Old:</span>
-                              <pre className="text-xs overflow-x-auto">{JSON.stringify(log.old_data, null, 2)}</pre>
-                            </div>
-                          )}
-                          {log.new_data && (
-                            <div>
-                              <span className="font-semibold">New:</span>
-                              <pre className="text-xs overflow-x-auto">{JSON.stringify(log.new_data, null, 2)}</pre>
-                            </div>
-                          )}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {filteredLogs.length === 0 && (
-            <div className="text-center py-12">
-              <Shield className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No audit logs found</p>
+            <div>
+              <label className="block text-sm font-medium text-text-body mb-1">User ID</label>
+              <input
+                type="text"
+                className="form-input w-full"
+                placeholder="Enter user ID"
+                value={filters.user_id}
+                onChange={(e) => handleFilterChange('user_id', e.target.value)}
+              />
             </div>
-          )}
-        </div>
-
-        {/* Pagination */}
-        {logs.length > 0 && (
-          <div className="flex justify-center gap-2">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="btn btn-outline disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <span className="px-4 py-2 text-gray-700">
-              Page {currentPage}
-            </span>
-            <button
-              onClick={() => setCurrentPage(prev => prev + 1)}
-              disabled={logs.length < logsPerPage}
-              className="btn btn-outline disabled:opacity-50"
-            >
-              Next
-            </button>
+            <div>
+              <label className="block text-sm font-medium text-text-body mb-1">Start Date</label>
+              <input
+                type="date"
+                className="form-input w-full"
+                value={filters.start_date}
+                onChange={(e) => handleFilterChange('start_date', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-body mb-1">End Date</label>
+              <input
+                type="date"
+                className="form-input w-full"
+                value={filters.end_date}
+                onChange={(e) => handleFilterChange('end_date', e.target.value)}
+              />
+            </div>
           </div>
         )}
       </div>
-    </DashboardLayout>
+
+      {/* Logs Table */}
+      <div className="card overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-brand-primary" />
+            <p className="ml-3 text-text-body">Loading logs...</p>
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="text-center py-12 text-text-body">
+            <Shield className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+            <p>No audit logs found</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Timestamp
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    User
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Action
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Table
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Record ID
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    IP Address
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {logs.map((log) => (
+                  <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-body">
+                      <span title={new Date(log.created_at).toLocaleString()}>
+                        {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-body">
+                      {log.user_id ? (
+                        <span className="font-mono text-xs">{log.user_id.slice(0, 8)}...</span>
+                      ) : (
+                        <span className="text-gray-400">System</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                          log.action === 'CREATE'
+                            ? 'bg-green-100 text-green-800'
+                            : log.action === 'UPDATE'
+                            ? 'bg-blue-100 text-blue-800'
+                            : log.action === 'DELETE'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-body font-mono">
+                      {log.table_name || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-body font-mono">
+                      {log.record_id ? `${log.record_id.slice(0, 8)}...` : 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-body">
+                      {log.ip_address || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <button
+                        onClick={() => setSelectedLog(log)}
+                        className="text-brand-primary hover:text-brand-secondary flex items-center gap-1"
+                      >
+                        <Eye className="w-4 h-4" />
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between card p-4">
+          <div className="text-sm text-text-body">
+            Showing <span className="font-semibold">{(page - 1) * limit + 1}</span> to{' '}
+            <span className="font-semibold">{Math.min(page * limit, total)}</span> of{' '}
+            <span className="font-semibold">{total}</span> logs
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="btn-secondary flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Previous
+            </button>
+            <span className="text-sm text-text-body">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="btn-secondary flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      {selectedLog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-bold text-text-heading">Audit Log Details</h2>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Log ID</p>
+                  <p className="text-sm text-text-body font-mono">{selectedLog.id}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Timestamp</p>
+                  <p className="text-sm text-text-body">{new Date(selectedLog.created_at).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">User ID</p>
+                  <p className="text-sm text-text-body font-mono">{selectedLog.user_id || 'System'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Action</p>
+                  <p className="text-sm text-text-body font-semibold">{selectedLog.action}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Table Name</p>
+                  <p className="text-sm text-text-body font-mono">{selectedLog.table_name || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Record ID</p>
+                  <p className="text-sm text-text-body font-mono">{selectedLog.record_id || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">IP Address</p>
+                  <p className="text-sm text-text-body">{selectedLog.ip_address || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">User Agent</p>
+                  <p className="text-sm text-text-body truncate" title={selectedLog.user_agent || 'N/A'}>
+                    {selectedLog.user_agent || 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              {selectedLog.old_data && (
+                <div>
+                  <p className="text-sm font-medium text-gray-500 mb-2">Old Data</p>
+                  <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
+                    {JSON.stringify(selectedLog.old_data, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {selectedLog.new_data && (
+                <div>
+                  <p className="text-sm font-medium text-gray-500 mb-2">New Data</p>
+                  <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
+                    {JSON.stringify(selectedLog.new_data, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-gray-200 flex justify-end">
+              <button onClick={() => setSelectedLog(null)} className="btn-secondary">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
-
