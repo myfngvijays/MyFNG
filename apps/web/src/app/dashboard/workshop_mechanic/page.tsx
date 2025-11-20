@@ -236,11 +236,12 @@ export default function WorkshopMechanicDashboard() {
         </div>
         
         <div className="flex justify-between items-start">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-sm text-gray-600">Performance Score</p>
-              <p className="text-2xl font-bold text-brand-primary">{performanceStats.performance_score.toFixed(0)}%</p>
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-sm text-gray-600">Performance Score</p>
+                <p className="text-2xl font-bold text-brand-primary">{performanceStats.performance_score.toFixed(0)}%</p>
+              </div>
             </div>
           </div>
         </div>
