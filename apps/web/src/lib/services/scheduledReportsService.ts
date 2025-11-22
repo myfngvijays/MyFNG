@@ -24,7 +24,7 @@ export interface ReportSchedule {
  * Generate daily report
  */
 export async function generateDailyReport(workshopId: string): Promise<any> {
-  const supabase = createClient();
+  const supabase = await createClient();
   
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
@@ -58,7 +58,7 @@ export async function generateDailyReport(workshopId: string): Promise<any> {
  * Generate weekly report
  */
 export async function generateWeeklyReport(workshopId: string): Promise<any> {
-  const supabase = createClient();
+  const supabase = await createClient();
   
   const lastWeek = new Date();
   lastWeek.setDate(lastWeek.getDate() - 7);
@@ -196,7 +196,7 @@ export async function createScheduledReport(
   workshopId: string,
   schedule: ReportSchedule
 ): Promise<boolean> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   try {
     const { error } = await supabase.from('scheduled_reports').insert({

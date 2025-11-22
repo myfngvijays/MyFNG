@@ -16,7 +16,7 @@ import {
  */
 export async function logAudit(input: CreateAuditLogInput) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     const { error } = await supabase.from('audit_logs').insert({
       user_id: input.user_id || null,
@@ -42,7 +42,7 @@ export async function logAudit(input: CreateAuditLogInput) {
  */
 export async function logLeadActivity(input: CreateLeadActivityInput) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     const { error } = await supabase.from('lead_activities').insert({
       lead_id: input.lead_id || null,
@@ -67,7 +67,7 @@ export async function logLeadActivity(input: CreateLeadActivityInput) {
  */
 export async function logLeadEvent(input: CreateLeadEventInput) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     const { error } = await supabase.from('lead_events').insert({
       lead_id: input.lead_id,
@@ -92,7 +92,7 @@ export async function logLeadEvent(input: CreateLeadEventInput) {
  */
 export async function logLeadStatusChange(input: CreateLeadStatusHistoryInput) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     const { error } = await supabase.from('lead_status_history').insert({
       lead_id: input.lead_id,

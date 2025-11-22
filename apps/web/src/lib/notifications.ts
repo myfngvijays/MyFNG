@@ -17,7 +17,7 @@ interface CreateNotificationParams {
 }
 
 export async function createNotification(params: CreateNotificationParams) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   try {
     const { data, error } = await supabase
@@ -53,7 +53,7 @@ export async function createNotification(params: CreateNotificationParams) {
 }
 
 export async function createBulkNotifications(notifications: CreateNotificationParams[]) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   try {
     const notificationsData = notifications.map(params => ({
@@ -204,7 +204,7 @@ export async function notifyWorkshopAdmin(
   leadNumber: string,
   leadManagerName?: string
 ) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Get all workshop admins for this workshop
   const { data: admins } = await supabase

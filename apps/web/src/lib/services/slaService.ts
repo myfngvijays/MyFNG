@@ -243,7 +243,7 @@ export function calculateLeadSLAStatus(lead: {
  * This should be called periodically (e.g., every minute via cron job)
  */
 export async function updateAllSLAStatuses(): Promise<void> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   try {
     // Get all active leads with SLA tracking

@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import { toast } from 'react-hot-toast';
 import { 
   Phone, 
   CheckCircle, 
@@ -391,7 +391,7 @@ export default function CSEDashboard() {
                           <button
                             onClick={() => {
                               setSelectedLead(lead);
-                              toast.info(lead.customer_feedback);
+                              toast(lead.customer_feedback || 'No feedback', { icon: '💬', duration: 5000 });
                             }}
                             className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
                           >

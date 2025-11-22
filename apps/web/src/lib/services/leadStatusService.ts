@@ -236,7 +236,7 @@ export async function transitionStatus(
   userRole: UserRole,
   notes?: string
 ): Promise<{ success: boolean; error?: string; lead?: any }> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   try {
     // Get current lead

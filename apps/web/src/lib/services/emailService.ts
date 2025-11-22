@@ -238,7 +238,7 @@ async function logNotification(
   subject: string,
   status: string
 ): Promise<void> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   try {
     await supabase.from('notification_logs').insert({

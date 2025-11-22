@@ -222,7 +222,7 @@ export async function savePaymentRecord(
     metadata?: any;
   }
 ): Promise<boolean> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   try {
     const { error } = await supabase.from('payments').insert({
