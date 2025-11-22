@@ -103,6 +103,15 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       if (!formData.service_type.trim()) newErrors.service_type = 'Service type required';
     }
 
+    if (step === 4) {
+      // Pickup validation - only if pickup is required
+      if (formData.pickup_required) {
+        if (!formData.pickup_address && !formData.customer_address) {
+          newErrors.pickup_address = 'Pickup address required';
+        }
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };

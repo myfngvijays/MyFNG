@@ -11,7 +11,7 @@ export async function GET(
   { params }: { params: { leadId: string } }
 ) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();

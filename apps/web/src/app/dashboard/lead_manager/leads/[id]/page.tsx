@@ -38,6 +38,17 @@ export default function LeadReviewPage() {
     }
   }, [params.id]);
 
+  // Fetch workshops when search changes (with debounce)
+  useEffect(() => {
+    if (showWorkshopAssignment) {
+      const delayDebounceFn = setTimeout(() => {
+        fetchWorkshops(workshopSearch);
+      }, 300); // 300ms debounce
+
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [workshopSearch, showWorkshopAssignment]);
+
   const fetchLeadDetails = async () => {
     setLoading(true);
     try {
@@ -55,6 +66,30 @@ export default function LeadReviewPage() {
         .single();
 
       if (error) throw error;
+      
+      // Parse service_type_ids if it's a string (JSONB from database)
+      let serviceTypeIds = data.service_type_ids;
+      if (typeof serviceTypeIds === 'string') {
+        try {
+          serviceTypeIds = JSON.parse(serviceTypeIds);
+        } catch (e) {
+          console.error('Failed to parse service_type_ids:', e);
+          serviceTypeIds = [];
+        }
+      }
+      
+      // Fetch service type names if service_type_ids exists
+      if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
+        const { data: serviceTypes, error: stError } = await supabase
+          .from('service_types')
+          .select('id, name')
+          .in('id', serviceTypeIds);
+        
+        if (!stError && serviceTypes && serviceTypes.length > 0) {
+          data.service_type_names = serviceTypes.map(st => st.name).join(', ');
+        }
+      }
+      
       setLead(data);
       setPriority(data.priority || 'MEDIUM');
     } catch (error: any) {
@@ -65,10 +100,20 @@ export default function LeadReviewPage() {
     }
   };
 
-  const fetchWorkshops = async () => {
+  const fetchWorkshops = async (searchQuery = '') => {
     try {
       const city = lead?.city?.name || lead?.city;
-      const response = await fetch(`/api/lead-manager/available-workshops?city=${encodeURIComponent(city || '')}`);
+      let url = `/api/lead-manager/available-workshops?`;
+      
+      if (searchQuery) {
+        // If search query exists, prioritize search over city
+        url += `search=${encodeURIComponent(searchQuery)}`;
+      } else if (city) {
+        // If no search, filter by city
+        url += `city=${encodeURIComponent(city)}`;
+      }
+      
+      const response = await fetch(url);
       const data = await response.json();
       
       if (data.success) {
@@ -154,10 +199,8 @@ export default function LeadReviewPage() {
     }
   };
 
-  const filteredWorkshops = workshops.filter(w =>
-    w.name.toLowerCase().includes(workshopSearch.toLowerCase()) ||
-    w.city.toLowerCase().includes(workshopSearch.toLowerCase())
-  );
+  // No need for client-side filtering anymore, API handles it
+  const filteredWorkshops = workshops;
 
   if (loading) {
     return (
@@ -187,7 +230,8 @@ export default function LeadReviewPage() {
   }
 
   const canValidate = ['NEW', 'INCOMPLETE'].includes(lead.status);
-  const canAssignWorkshop = lead.status === 'VALIDATED';
+  const canAssignWorkshop = lead.status === 'VALIDATED' || (lead.workshop_id && !['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].includes(lead.status));
+  const isReassignment = lead.workshop_id && lead.status === 'ASSIGNED_TO_WORKSHOP';
 
   return (
     <DashboardLayout role="lead_manager">
@@ -227,7 +271,7 @@ export default function LeadReviewPage() {
                 className="btn-primary flex items-center gap-2"
               >
                 <Building className="w-5 h-5" />
-                Assign Workshop
+                {isReassignment ? 'Change Workshop' : 'Assign Workshop'}
               </button>
             )}
           </div>
@@ -334,7 +378,7 @@ export default function LeadReviewPage() {
               <div className="space-y-3">
                 <div>
                   <label className="text-sm text-gray-600">Service Type</label>
-                  <p className="font-medium">{lead.service_type}</p>
+                  <p className="font-medium">{lead.service_type_names || lead.service_type || 'Not specified'}</p>
                 </div>
                 {lead.description && (
                   <div>
@@ -469,7 +513,27 @@ export default function LeadReviewPage() {
         {showWorkshopAssignment && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 my-8">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Assign Workshop</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-4">
+                {isReassignment ? 'Change Workshop Assignment' : 'Assign Workshop'}
+              </h3>
+              
+              {/* Reassignment Notice */}
+              {isReassignment && lead.workshop && (
+                <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-yellow-900">Currently Assigned To</p>
+                      <p className="text-sm text-yellow-800 mt-1">
+                        {lead.workshop.name} - {lead.workshop.city}
+                      </p>
+                      <p className="text-xs text-yellow-700 mt-2">
+                        ⚠️ Workshop has not accepted yet. You can reassign to another workshop.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               
               {/* Priority Selection */}
               <div className="mb-4">

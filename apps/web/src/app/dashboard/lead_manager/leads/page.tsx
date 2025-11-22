@@ -54,13 +54,13 @@ function LeadManagerLeadsContent() {
       // Apply filters
       switch (activeFilter) {
         case 'NEW':
-          query = query.eq('status', 'NEW').is('assigned_workshop_id', null);
+          query = query.eq('status', 'NEW').is('workshop_id', null);
           break;
         case 'INCOMPLETE':
           query = query.eq('is_incomplete', true);
           break;
         case 'NEED_ASSIGNMENT':
-          query = query.in('status', ['NEW', 'VALIDATED']).is('assigned_workshop_id', null).eq('is_incomplete', false);
+          query = query.in('status', ['NEW', 'VALIDATED']).is('workshop_id', null).eq('is_incomplete', false);
           break;
         case 'WORKSHOP_REJECTED':
           query = query.eq('status', 'REJECTED');
@@ -315,7 +315,7 @@ function LeadManagerLeadsContent() {
                           View
                         </button>
                       </Link>
-                      {!lead.assigned_workshop_id && (
+                      {!lead.workshop_id && (
                         <button className="text-green-600 hover:text-green-800 font-medium text-sm">
                           Assign
                         </button>

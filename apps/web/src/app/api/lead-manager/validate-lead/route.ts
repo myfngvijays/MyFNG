@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     // Verify user is Lead Manager
     const roleCode = (userData.roles as any)?.role_code;
-    if (roleCode !== 'lead_manager') {
+    if (roleCode !== 'LEAD_MANAGER') {
       return NextResponse.json(
         { error: 'Access denied. Only Lead Managers can validate leads.' },
         { status: 403 }

@@ -334,12 +334,12 @@ export default function CreateLeadPage() {
     
     if (currentStep === 4) {
       if (formData.pickup_required) {
+        // Pickup address validation - either pickup_address or customer_address required
         if (!formData.pickup_address && !formData.customer_address) {
           newErrors.pickup_address = 'Pickup address is required';
         }
-        if (!formData.customer_lat || !formData.customer_lng) {
-          newErrors.customer_lat = 'Location is required for pickup. Click "Get Location" button';
-        }
+        // Location is optional - if not provided, will use customer address geocoding
+        // Preferred time slots are required for pickup
         if (!formData.preferred_slot_start) {
           newErrors.preferred_slot_start = 'Preferred pickup start time is required';
         }

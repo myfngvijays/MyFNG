@@ -17,7 +17,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -218,7 +218,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();

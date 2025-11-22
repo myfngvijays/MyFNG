@@ -96,7 +96,40 @@ function TelecallerLeadsContent() {
 
       if (error) throw error;
 
-      setLeads(data || []);
+      // Fetch service type names for all leads
+      const leadsWithServiceNames = await Promise.all(
+        (data || []).map(async (lead) => {
+          let serviceTypeNames = [];
+          
+          if (lead.service_type_ids) {
+            try {
+              const serviceIds = typeof lead.service_type_ids === 'string' 
+                ? JSON.parse(lead.service_type_ids) 
+                : lead.service_type_ids;
+              
+              if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+                const { data: serviceTypesData } = await supabase
+                  .from('service_types')
+                  .select('id, name')
+                  .in('id', serviceIds);
+                
+                if (serviceTypesData) {
+                  serviceTypeNames = serviceTypesData.map(st => st.name);
+                }
+              }
+            } catch (e) {
+              console.error('Error parsing service_type_ids:', e);
+            }
+          }
+          
+          return {
+            ...lead,
+            service_type_names: serviceTypeNames.join(', ') || lead.service_type || 'Not specified'
+          };
+        })
+      );
+
+      setLeads(leadsWithServiceNames);
     } catch (error) {
       console.error('Error fetching leads:', error);
     } finally {
@@ -316,7 +349,7 @@ function TelecallerLeadsContent() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                       <div>
                         <span className="text-gray-500">Service Type:</span>
-                        <p className="font-semibold">{lead.service_type || 'Not specified'}</p>
+                        <p className="font-semibold">{lead.service_type_names}</p>
                       </div>
                       {lead.workshop && (
                         <div>

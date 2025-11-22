@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -49,15 +49,15 @@ export async function GET(request: NextRequest) {
       .order('audit_score', { ascending: false, nullsFirst: false })
       .order('name');
 
-    // Filter by city if provided
-    if (city) {
+    // Apply filters based on priority
+    if (search) {
+      // If search is provided, search across name, city, contact_person
+      query = query.or(`name.ilike.%${search}%,city.ilike.%${search}%,contact_person.ilike.%${search}%`);
+    } else if (city) {
+      // If only city filter (no search), filter by city
       query = query.ilike('city', `%${city}%`);
     }
-
-    // Search filter
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,city.ilike.%${search}%,contact_person.ilike.%${search}%`);
-    }
+    // If neither search nor city, return all verified workshops
 
     const { data: workshops, error: workshopsError } = await query;
 

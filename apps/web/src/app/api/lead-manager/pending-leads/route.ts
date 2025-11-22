@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     // Verify user is Lead Manager
     const roleCode = (userData.roles as any)?.role_code;
-    if (roleCode !== 'lead_manager') {
+    if (roleCode !== 'LEAD_MANAGER') {
       return NextResponse.json(
         { error: 'Access denied. Only Lead Managers can view pending leads.' },
         { status: 403 }
@@ -88,24 +88,19 @@ export async function GET(request: NextRequest) {
     }
 
     // Get summary statistics
-    const { data: stats } = await supabase
+    const { count: newCount } = await supabase
       .from('service_leads')
-      .select('status', { count: 'exact', head: true })
-      .in('status', ['NEW', 'INCOMPLETE', 'VALIDATED']);
-
-    const { data: newCount } = await supabase
-      .from('service_leads')
-      .select('id', { count: 'exact', head: true })
+      .select('*', { count: 'exact', head: true })
       .eq('status', 'NEW');
 
-    const { data: incompleteCount } = await supabase
+    const { count: incompleteCount } = await supabase
       .from('service_leads')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'INCOMPLETE');
+      .select('*', { count: 'exact', head: true })
+      .eq('is_incomplete', true);
 
-    const { data: validatedCount } = await supabase
+    const { count: validatedCount } = await supabase
       .from('service_leads')
-      .select('id', { count: 'exact', head: true })
+      .select('*', { count: 'exact', head: true })
       .eq('status', 'VALIDATED');
 
     return NextResponse.json({
@@ -119,9 +114,9 @@ export async function GET(request: NextRequest) {
       },
       summary: {
         total_pending: count || 0,
-        new_leads: newCount?.length || 0,
-        incomplete_leads: incompleteCount?.length || 0,
-        validated_leads: validatedCount?.length || 0
+        new_leads: newCount || 0,
+        incomplete_leads: incompleteCount || 0,
+        validated_leads: validatedCount || 0
       }
     });
 
