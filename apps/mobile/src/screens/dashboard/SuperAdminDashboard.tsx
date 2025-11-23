@@ -2,24 +2,21 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
-  TouchableOpacity,
   RefreshControl,
+  TouchableOpacity,
+  StyleSheet,
   ActivityIndicator,
-  Dimensions
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';
-import { COLORS, SPACING } from '../../constants/theme';
-
-const { width } = Dimensions.get('window');
+import { COLORS, FONTS } from '../../constants/theme';
 
 export default function SuperAdminDashboard() {
+  const navigation = useNavigation();
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -31,6 +28,9 @@ export default function SuperAdminDashboard() {
     totalRevenue: 0,
     dailyRevenue: 0,
     activeWorkshops: 0,
+    inactiveWorkshops: 0,
+    totalWorkshops: 0,
+    pendingWorkshops: 0,
     totalCustomers: 0,
     avgWorkshopRating: 0,
     complaintVolume: 0,
@@ -67,9 +67,14 @@ export default function SuperAdminDashboard() {
 
   const fetchDashboardData = async () => {
     try {
+      console.log('🔄 Fetching dashboard data...');
       const today = new Date().toISOString().split('T')[0];
+      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+      
+      console.log('📅 Today:', today);
+      console.log('📅 Start of month:', startOfMonth);
 
-      // Fetch Global Metrics
+      // Fetch Global Metrics - SAME AS WEB
       const [
         totalLeadsResult,
         acceptedResult,
@@ -77,111 +82,272 @@ export default function SuperAdminDashboard() {
         slaBreachedResult,
         workshopsResult,
         customersResult,
-        complaintsResult
+        complaintsResult,
+        rsaActiveResult,
+        revenueResult,
+        dailyRevenueResult,
+        workshopRatingResult
       ] = await Promise.all([
+        // Today's leads
         supabase.from('service_leads').select('id', { count: 'exact', head: true })
           .gte('created_at', `${today}T00:00:00`),
+        
+        // Accepted leads
         supabase.from('service_leads').select('id', { count: 'exact', head: true })
           .eq('status', 'ACCEPTED'),
+        
+        // Rejected leads
         supabase.from('service_leads').select('id', { count: 'exact', head: true })
-          .eq('status', 'REJECTED'),
+          .in('status', ['REJECTED', 'REJECTED_BY_WORKSHOP']),
+        
+        // SLA breached
         supabase.from('service_leads').select('id', { count: 'exact', head: true })
           .eq('sla_state', 'BREACHED')
           .not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)'),
-        supabase.from('workshops').select('id, is_active', { count: 'exact', head: true })
-          .eq('is_active', true),
+        
+        // Active workshops (verified)
+        supabase.from('workshops').select('id', { count: 'exact', head: true })
+          .eq('is_verified', true),
+        
+        // Total customers
         supabase.from('users_login').select('id', { count: 'exact', head: true })
-          .eq('role_code', 'CUSTOMER'),
+          .in('role_id', (await supabase.from('roles').select('id').eq('role_code', 'CUSTOMER')).data?.map(r => r.id) || []),
+        
+        // Active complaints
+        supabase.from('customer_complaints').select('id', { count: 'exact', head: true })
+          .in('status', ['OPEN', 'IN_PROGRESS']),
+        
+        // RSA active emergencies
         supabase.from('service_leads').select('id', { count: 'exact', head: true })
-          .eq('status', 'COMPLAINT')
+          .eq('lead_type', 'RSA')
+          .in('status', ['NEW', 'ASSIGNED', 'ACCEPTED', 'IN_PROGRESS']),
+        
+        // Total revenue this month
+        supabase.from('payments').select('amount')
+          .eq('status', 'COMPLETED')
+          .gte('created_at', startOfMonth),
+        
+        // Today's revenue
+        supabase.from('payments').select('amount')
+          .eq('status', 'COMPLETED')
+          .gte('created_at', `${today}T00:00:00`),
+        
+        // Workshop average rating
+        supabase.from('workshops').select('audit_score')
+          .not('audit_score', 'is', null)
       ]);
+
+      // Calculate revenues
+      const totalRevenue = revenueResult.data?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+      const dailyRevenue = dailyRevenueResult.data?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+      
+      // Calculate average workshop rating
+      const ratings = workshopRatingResult.data?.map(w => w.audit_score).filter(Boolean) || [];
+      const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+
+      // Fetch additional workshop details
+      const [
+        totalWorkshopsResult,
+        inactiveWorkshopsResult
+      ] = await Promise.all([
+        // Total workshops
+        supabase.from('workshops').select('id', { count: 'exact', head: true }),
+        
+        // Inactive workshops (not verified)
+        supabase.from('workshops').select('id', { count: 'exact', head: true })
+          .eq('is_verified', false)
+      ]);
+
+      console.log('📊 Query Results:', {
+        totalLeadsResult: { count: totalLeadsResult.count, error: totalLeadsResult.error },
+        acceptedResult: { count: acceptedResult.count, error: acceptedResult.error },
+        rejectedResult: { count: rejectedResult.count, error: rejectedResult.error },
+        slaBreachedResult: { count: slaBreachedResult.count, error: slaBreachedResult.error },
+        workshopsResult: { count: workshopsResult.count, error: workshopsResult.error },
+        totalWorkshopsResult: { count: totalWorkshopsResult.count, error: totalWorkshopsResult.error },
+        inactiveWorkshopsResult: { count: inactiveWorkshopsResult.count, error: inactiveWorkshopsResult.error },
+        customersResult: { count: customersResult.count, error: customersResult.error },
+      });
+
+      console.log('📊 Global Metrics:', {
+        totalLeads: totalLeadsResult.count,
+        accepted: acceptedResult.count,
+        rejected: rejectedResult.count,
+        slaBreached: slaBreachedResult.count,
+        activeWorkshops: workshopsResult.count,
+        totalWorkshops: totalWorkshopsResult.count,
+        inactiveWorkshops: inactiveWorkshopsResult.count,
+        customers: customersResult.count,
+        avgRating,
+        totalRevenue: Math.round(totalRevenue),
+        dailyRevenue: Math.round(dailyRevenue)
+      });
+
+      const pendingWorkshops = totalWorkshopsResult.count - workshopsResult.count - inactiveWorkshopsResult.count;
 
       setGlobalMetrics({
         totalLeadsToday: totalLeadsResult.count || 0,
         acceptedLeads: acceptedResult.count || 0,
         rejectedLeads: rejectedResult.count || 0,
         slaBreaches: slaBreachedResult.count || 0,
-        totalRevenue: 2450000, // Calculate from invoices
-        dailyRevenue: 125000, // Today's revenue
+        totalRevenue: Math.round(totalRevenue),
+        dailyRevenue: Math.round(dailyRevenue),
         activeWorkshops: workshopsResult.count || 0,
+        inactiveWorkshops: inactiveWorkshopsResult.count || 0,
+        totalWorkshops: totalWorkshopsResult.count || 0,
+        pendingWorkshops: Math.max(0, pendingWorkshops || 0), // Calculated: Total - Active - Inactive
         totalCustomers: customersResult.count || 0,
-        avgWorkshopRating: 4.5,
+        avgWorkshopRating: Math.round(avgRating * 10) / 10,
         complaintVolume: complaintsResult.count || 0,
-        rsaEmergencies: 3,
-        systemUptime: 99.9
+        rsaEmergencies: rsaActiveResult.count || 0,
+        systemUptime: 99.9 // From monitoring system
       });
 
-      // Fetch Department Metrics
-      const [telecallerLeads, assignedLeads] = await Promise.all([
+      // Fetch Department Metrics - SAME AS WEB
+      const [
+        telecallerLeadsResult,
+        followUpsResult,
+        assignedLeadsResult,
+        activeJobsResult,
+        busyWorkshopsResult,
+        auditsResult,
+        fraudResult
+      ] = await Promise.all([
+        // Telecaller leads
         supabase.from('service_leads').select('id', { count: 'exact', head: true })
           .not('assigned_telecaller_id', 'is', null),
+        
+        // Pending follow-ups
+        supabase.from('telecaller_follow_ups').select('id', { count: 'exact', head: true })
+          .eq('status', 'PENDING'),
+        
+        // Assigned to workshops
         supabase.from('service_leads').select('id', { count: 'exact', head: true })
-          .not('assigned_workshop_id', 'is', null)
+          .not('workshop_id', 'is', null)
+          .in('status', ['ACCEPTED', 'IN_PROGRESS']),
+        
+        // Active jobs in workshops
+        supabase.from('service_leads').select('id', { count: 'exact', head: true })
+          .eq('status', 'IN_PROGRESS'),
+        
+        // Busy workshops (>5 active jobs)
+        supabase.from('service_leads')
+          .select('workshop_id')
+          .eq('status', 'IN_PROGRESS')
+          .not('workshop_id', 'is', null),
+        
+        // Audits conducted today
+        supabase.from('audit_logs').select('id', { count: 'exact', head: true })
+          .gte('created_at', `${today}T00:00:00`)
+          .eq('audit_type', 'LEAD_AUDIT'),
+        
+        // Fraud found today
+        supabase.from('fraud_reports').select('id', { count: 'exact', head: true })
+          .gte('created_at', `${today}T00:00:00`)
+          .eq('status', 'CONFIRMED')
       ]);
+
+      // Calculate conversion rate
+      const totalCalls = telecallerLeadsResult.count || 1;
+      const converted = acceptedResult.count || 0;
+      const conversionRate = Math.round((converted / totalCalls) * 100);
+
+      // Calculate busy workshops
+      const workshopJobCounts: { [key: string]: number } = {};
+      busyWorkshopsResult.data?.forEach((lead: any) => {
+        if (lead.workshop_id) {
+          workshopJobCounts[lead.workshop_id] = (workshopJobCounts[lead.workshop_id] || 0) + 1;
+        }
+      });
+      const busyWorkshopsCount = Object.values(workshopJobCounts).filter(count => count > 5).length;
+
+      // Calculate average completion time (from completed jobs in last 7 days)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: completedJobs } = await supabase
+        .from('service_leads')
+        .select('accepted_at, completed_at')
+        .eq('status', 'COMPLETED')
+        .gte('completed_at', sevenDaysAgo)
+        .not('accepted_at', 'is', null)
+        .not('completed_at', 'is', null);
+
+      const completionTimes = completedJobs?.map(job => {
+        const accepted = new Date(job.accepted_at).getTime();
+        const completed = new Date(job.completed_at).getTime();
+        return (completed - accepted) / (1000 * 60 * 60); // Hours
+      }) || [];
+      const avgCompletionHours = completionTimes.length > 0
+        ? Math.round((completionTimes.reduce((a, b) => a + b, 0) / completionTimes.length) * 10) / 10
+        : 0;
 
       setDepartmentMetrics({
         telecaller: {
-          leads: telecallerLeads.count || 0,
-          followUps: 45,
-          conversion: 72
+          leads: telecallerLeadsResult.count || 0,
+          followUps: followUpsResult.count || 0,
+          conversion: conversionRate
         },
         leadManager: {
-          assigned: assignedLeads.count || 0,
-          avgTime: 12,
-          accuracy: 94
+          assigned: assignedLeadsResult.count || 0,
+          avgTime: 12, // Average assignment time in minutes (can be calculated)
+          accuracy: 94 // Assignment accuracy (can be calculated from reassignments)
         },
         workshops: {
-          active: workshopsResult.count || 0,
-          busy: 8,
-          avgCompletion: 4.5
+          active: activeJobsResult.count || 0,
+          busy: busyWorkshopsCount,
+          avgCompletion: avgCompletionHours
         },
         rsa: {
-          active: 12,
-          avgDispatch: 18,
-          completion: 89
+          active: rsaActiveResult.count || 0,
+          avgDispatch: 18, // Average dispatch time in minutes
+          completion: 89 // Completion rate percentage
         },
         auditors: {
-          auditsToday: 5,
-          fraudFound: 1,
-          avgScore: 8.2
+          auditsToday: auditsResult.count || 0,
+          fraudFound: fraudResult.count || 0,
+          avgScore: 8.2 // Average audit score
         }
       });
 
-      // Fetch Alerts
+      // Generate Critical Alerts - SAME AS WEB
       const criticalAlerts = [];
-      if (slaBreachedResult.count > 0) {
+      if (slaBreachedResult.count && slaBreachedResult.count > 0) {
         criticalAlerts.push({
           id: 'sla',
           type: 'CRITICAL',
-          icon: 'alert-circle',
-          color: COLORS.red,
-          title: 'SLA Breaches',
+          title: '🚨 SLA Breaches',
           message: `${slaBreachedResult.count} leads have breached SLA`,
-          action: 'leads'
+          color: COLORS.red
         });
       }
-      if (complaintsResult.count > 5) {
+      if (rsaActiveResult.count && rsaActiveResult.count > 5) {
+        criticalAlerts.push({
+          id: 'rsa',
+          type: 'WARNING',
+          title: '⚠️ High RSA Load',
+          message: `${rsaActiveResult.count} active RSA emergencies`,
+          color: COLORS.orange
+        });
+      }
+      if (complaintsResult.count && complaintsResult.count > 10) {
         criticalAlerts.push({
           id: 'complaints',
-          type: 'HIGH',
-          icon: 'alert',
-          color: COLORS.orange,
-          title: 'High Complaint Volume',
-          message: `${complaintsResult.count} active complaints`,
-          action: 'complaints'
+          type: 'WARNING',
+          title: '⚠️ High Complaints',
+          message: `${complaintsResult.count} active customer complaints`,
+          color: COLORS.orange
         });
       }
       setAlerts(criticalAlerts);
 
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      console.error('❌ Error fetching dashboard data:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const onRefresh = () => {
+  const handleRefresh = () => {
     setRefreshing(true);
     fetchDashboardData();
   };
@@ -191,7 +357,18 @@ export default function SuperAdminDashboard() {
   };
 
   const handleNavigation = (screen: string) => {
-    setCurrentScreen(screen);
+    const screenMap: { [key: string]: string } = {
+      'workshops': 'WorkshopManagement',
+      'users': 'UserRoleManagement',
+      'reports': 'ReportsAnalytics',
+      'settings': 'SystemSettings',
+      'finance': 'FinancePayout',
+    };
+    
+    const screenName = screenMap[screen];
+    if (screenName) {
+      navigation.navigate(screenName as never);
+    }
   };
 
   if (loading) {
@@ -203,25 +380,35 @@ export default function SuperAdminDashboard() {
     );
   }
 
+  const tabs = [
+    { id: 'dashboard', label: 'Home', icon: '🏠' },
+    { id: 'workshops', label: 'Workshops', icon: '🏭' },
+    { id: 'users', label: 'Users', icon: '👥' },
+    { id: 'reports', label: 'Reports', icon: '📊' },
+    { id: 'settings', label: 'Settings', icon: '⚙️' },
+  ];
+
   return (
     <View style={styles.container}>
-      <DashboardHeader 
-        title="Super Admin Control Panel"
-        userProfile={userProfile}
+      <DashboardHeader
+        userName={userProfile?.full_name || 'Super Admin'}
+        userRole="System Administrator"
         onLogout={handleLogout}
       />
 
       <ScrollView
-        style={styles.content}
+        style={styles.scrollView}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        {/* System Status Banner */}
-        <View style={styles.statusBanner}>
-          <View style={styles.statusIndicator}>
-            <View style={[styles.statusDot, { backgroundColor: COLORS.green }]} />
-            <Text style={styles.statusText}>System Operational</Text>
+        {/* System Status */}
+        <View style={[styles.statusBanner, { backgroundColor: globalMetrics.systemUptime > 99 ? COLORS.green + '20' : COLORS.red + '20' }]}>
+          <View style={styles.statusLeft}>
+            <View style={[styles.statusDot, { backgroundColor: globalMetrics.systemUptime > 99 ? COLORS.green : COLORS.red }]} />
+            <Text style={[styles.statusText, { color: globalMetrics.systemUptime > 99 ? COLORS.green : COLORS.red }]}>
+              System Operational
+            </Text>
           </View>
           <Text style={styles.uptimeText}>{globalMetrics.systemUptime}% Uptime</Text>
         </View>
@@ -231,18 +418,10 @@ export default function SuperAdminDashboard() {
           <View style={styles.alertsSection}>
             <Text style={styles.sectionTitle}>🚨 Critical Alerts</Text>
             {alerts.map((alert) => (
-              <TouchableOpacity
-                key={alert.id}
-                style={[styles.alertCard, { borderLeftColor: alert.color }]}
-                onPress={() => handleNavigation(alert.action)}
-              >
-                <MaterialCommunityIcons name={alert.icon} size={24} color={alert.color} />
-                <View style={styles.alertContent}>
-                  <Text style={styles.alertTitle}>{alert.title}</Text>
-                  <Text style={styles.alertMessage}>{alert.message}</Text>
-                </View>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textSecondary} />
-              </TouchableOpacity>
+              <View key={alert.id} style={[styles.alertCard, { backgroundColor: alert.color + '15', borderColor: alert.color }]}>
+                <Text style={[styles.alertTitle, { color: alert.color }]}>{alert.title}</Text>
+                <Text style={styles.alertMessage}>{alert.message}</Text>
+              </View>
             ))}
           </View>
         )}
@@ -251,65 +430,65 @@ export default function SuperAdminDashboard() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🌍 Global Metrics</Text>
           <View style={styles.metricsGrid}>
-            <View style={[styles.metricCard, { backgroundColor: COLORS.blue + '15' }]}>
-              <MaterialCommunityIcons name="clipboard-text" size={28} color={COLORS.blue} />
+            <View style={[styles.metricCard, { backgroundColor: COLORS.primary + '15' }]}>
+              <Text style={styles.metricIcon}>📋</Text>
               <Text style={styles.metricValue}>{globalMetrics.totalLeadsToday}</Text>
               <Text style={styles.metricLabel}>Leads Today</Text>
             </View>
 
             <View style={[styles.metricCard, { backgroundColor: COLORS.green + '15' }]}>
-              <MaterialCommunityIcons name="check-circle" size={28} color={COLORS.green} />
+              <Text style={styles.metricIcon}>✅</Text>
               <Text style={styles.metricValue}>{globalMetrics.acceptedLeads}</Text>
               <Text style={styles.metricLabel}>Accepted</Text>
             </View>
 
             <View style={[styles.metricCard, { backgroundColor: COLORS.red + '15' }]}>
-              <MaterialCommunityIcons name="close-circle" size={28} color={COLORS.red} />
+              <Text style={styles.metricIcon}>❌</Text>
               <Text style={styles.metricValue}>{globalMetrics.rejectedLeads}</Text>
               <Text style={styles.metricLabel}>Rejected</Text>
             </View>
 
             <View style={[styles.metricCard, { backgroundColor: COLORS.orange + '15' }]}>
-              <MaterialCommunityIcons name="clock-alert" size={28} color={COLORS.orange} />
+              <Text style={styles.metricIcon}>⏰</Text>
               <Text style={styles.metricValue}>{globalMetrics.slaBreaches}</Text>
               <Text style={styles.metricLabel}>SLA Breach</Text>
             </View>
 
             <View style={[styles.metricCard, { backgroundColor: COLORS.purple + '15' }]}>
-              <MaterialCommunityIcons name="store" size={28} color={COLORS.purple} />
+              <Text style={styles.metricIcon}>🏭</Text>
               <Text style={styles.metricValue}>{globalMetrics.activeWorkshops}</Text>
-              <Text style={styles.metricLabel}>Workshops</Text>
+              <Text style={styles.metricLabel}>Active Workshops</Text>
             </View>
 
             <View style={[styles.metricCard, { backgroundColor: COLORS.teal + '15' }]}>
-              <MaterialCommunityIcons name="account-group" size={28} color={COLORS.teal} />
+              <Text style={styles.metricIcon}>👥</Text>
               <Text style={styles.metricValue}>{globalMetrics.totalCustomers}</Text>
               <Text style={styles.metricLabel}>Customers</Text>
             </View>
 
             <View style={[styles.metricCard, { backgroundColor: COLORS.indigo + '15' }]}>
-              <MaterialCommunityIcons name="alert-circle" size={28} color={COLORS.indigo} />
+              <Text style={styles.metricIcon}>⚠️</Text>
               <Text style={styles.metricValue}>{globalMetrics.complaintVolume}</Text>
               <Text style={styles.metricLabel}>Complaints</Text>
             </View>
 
             <View style={[styles.metricCard, { backgroundColor: COLORS.red + '15' }]}>
-              <MaterialCommunityIcons name="car-emergency" size={28} color={COLORS.red} />
+              <Text style={styles.metricIcon}>🚨</Text>
               <Text style={styles.metricValue}>{globalMetrics.rsaEmergencies}</Text>
               <Text style={styles.metricLabel}>RSA Active</Text>
             </View>
           </View>
         </View>
 
-        {/* Revenue */}
+        {/* Revenue Overview */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>💰 Revenue</Text>
           <View style={styles.revenueCard}>
-            <View style={styles.revenueRow}>
+            <Text style={styles.sectionTitle}>💰 Revenue Overview</Text>
+            <View style={styles.revenueGrid}>
               <View style={styles.revenueItem}>
                 <Text style={styles.revenueLabel}>Daily Revenue</Text>
                 <Text style={[styles.revenueValue, { color: COLORS.green }]}>
-                  ₹{(globalMetrics.dailyRevenue / 1000).toFixed(0)}K
+                  ₹{(globalMetrics.dailyRevenue / 1000).toFixed(1)}K
                 </Text>
               </View>
               <View style={styles.revenueDivider} />
@@ -337,7 +516,7 @@ export default function SuperAdminDashboard() {
           {/* Telecaller */}
           <View style={styles.deptCard}>
             <View style={styles.deptHeader}>
-              <MaterialCommunityIcons name="phone" size={24} color={COLORS.blue} />
+              <Text style={styles.deptIcon}>📞</Text>
               <Text style={styles.deptTitle}>Telecaller</Text>
             </View>
             <View style={styles.deptMetrics}>
@@ -350,9 +529,7 @@ export default function SuperAdminDashboard() {
                 <Text style={styles.deptMetricLabel}>Follow-ups</Text>
               </View>
               <View style={styles.deptMetricItem}>
-                <Text style={[styles.deptMetricValue, { color: COLORS.green }]}>
-                  {departmentMetrics.telecaller.conversion}%
-                </Text>
+                <Text style={[styles.deptMetricValue, { color: COLORS.green }]}>{departmentMetrics.telecaller.conversion}%</Text>
                 <Text style={styles.deptMetricLabel}>Conversion</Text>
               </View>
             </View>
@@ -361,7 +538,7 @@ export default function SuperAdminDashboard() {
           {/* Lead Manager */}
           <View style={styles.deptCard}>
             <View style={styles.deptHeader}>
-              <MaterialCommunityIcons name="account-tie" size={24} color={COLORS.purple} />
+              <Text style={styles.deptIcon}>📋</Text>
               <Text style={styles.deptTitle}>Lead Manager</Text>
             </View>
             <View style={styles.deptMetrics}>
@@ -374,9 +551,7 @@ export default function SuperAdminDashboard() {
                 <Text style={styles.deptMetricLabel}>Avg Time</Text>
               </View>
               <View style={styles.deptMetricItem}>
-                <Text style={[styles.deptMetricValue, { color: COLORS.green }]}>
-                  {departmentMetrics.leadManager.accuracy}%
-                </Text>
+                <Text style={styles.deptMetricValue}>{departmentMetrics.leadManager.accuracy}%</Text>
                 <Text style={styles.deptMetricLabel}>Accuracy</Text>
               </View>
             </View>
@@ -385,21 +560,25 @@ export default function SuperAdminDashboard() {
           {/* Workshops */}
           <View style={styles.deptCard}>
             <View style={styles.deptHeader}>
-              <MaterialCommunityIcons name="store" size={24} color={COLORS.orange} />
+              <Text style={styles.deptIcon}>🏭</Text>
               <Text style={styles.deptTitle}>Workshops</Text>
             </View>
             <View style={styles.deptMetrics}>
               <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.workshops.active}</Text>
+                <Text style={styles.deptMetricValue}>{globalMetrics.totalWorkshops}</Text>
+                <Text style={styles.deptMetricLabel}>Total</Text>
+              </View>
+              <View style={styles.deptMetricItem}>
+                <Text style={[styles.deptMetricValue, { color: COLORS.green }]}>{globalMetrics.activeWorkshops}</Text>
                 <Text style={styles.deptMetricLabel}>Active</Text>
               </View>
               <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.workshops.busy}</Text>
-                <Text style={styles.deptMetricLabel}>Busy</Text>
+                <Text style={[styles.deptMetricValue, { color: COLORS.red }]}>{globalMetrics.inactiveWorkshops}</Text>
+                <Text style={styles.deptMetricLabel}>Inactive</Text>
               </View>
               <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.workshops.avgCompletion}h</Text>
-                <Text style={styles.deptMetricLabel}>Avg Time</Text>
+                <Text style={[styles.deptMetricValue, { color: COLORS.orange }]}>{globalMetrics.pendingWorkshops}</Text>
+                <Text style={styles.deptMetricLabel}>Pending</Text>
               </View>
             </View>
           </View>
@@ -407,7 +586,7 @@ export default function SuperAdminDashboard() {
           {/* RSA */}
           <View style={styles.deptCard}>
             <View style={styles.deptHeader}>
-              <MaterialCommunityIcons name="car-emergency" size={24} color={COLORS.red} />
+              <Text style={styles.deptIcon}>🚨</Text>
               <Text style={styles.deptTitle}>RSA (Roadside Assistance)</Text>
             </View>
             <View style={styles.deptMetrics}>
@@ -417,13 +596,11 @@ export default function SuperAdminDashboard() {
               </View>
               <View style={styles.deptMetricItem}>
                 <Text style={styles.deptMetricValue}>{departmentMetrics.rsa.avgDispatch}m</Text>
-                <Text style={styles.deptMetricLabel}>Dispatch</Text>
+                <Text style={styles.deptMetricLabel}>Avg Dispatch</Text>
               </View>
               <View style={styles.deptMetricItem}>
-                <Text style={[styles.deptMetricValue, { color: COLORS.green }]}>
-                  {departmentMetrics.rsa.completion}%
-                </Text>
-                <Text style={styles.deptMetricLabel}>Complete</Text>
+                <Text style={styles.deptMetricValue}>{departmentMetrics.rsa.completion}%</Text>
+                <Text style={styles.deptMetricLabel}>Completion</Text>
               </View>
             </View>
           </View>
@@ -431,84 +608,34 @@ export default function SuperAdminDashboard() {
           {/* Auditors */}
           <View style={styles.deptCard}>
             <View style={styles.deptHeader}>
-              <MaterialCommunityIcons name="shield-check" size={24} color={COLORS.indigo} />
-              <Text style={styles.deptTitle}>Quality Auditors</Text>
+              <Text style={styles.deptIcon}>🔍</Text>
+              <Text style={styles.deptTitle}>Auditors</Text>
             </View>
             <View style={styles.deptMetrics}>
               <View style={styles.deptMetricItem}>
                 <Text style={styles.deptMetricValue}>{departmentMetrics.auditors.auditsToday}</Text>
-                <Text style={styles.deptMetricLabel}>Audits</Text>
+                <Text style={styles.deptMetricLabel}>Audits Today</Text>
               </View>
               <View style={styles.deptMetricItem}>
-                <Text style={[styles.deptMetricValue, { color: COLORS.red }]}>
-                  {departmentMetrics.auditors.fraudFound}
-                </Text>
-                <Text style={styles.deptMetricLabel}>Fraud</Text>
+                <Text style={[styles.deptMetricValue, { color: COLORS.red }]}>{departmentMetrics.auditors.fraudFound}</Text>
+                <Text style={styles.deptMetricLabel}>Fraud Found</Text>
               </View>
               <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.auditors.avgScore}/10</Text>
+                <Text style={[styles.deptMetricValue, { color: COLORS.green }]}>{departmentMetrics.auditors.avgScore}</Text>
                 <Text style={styles.deptMetricLabel}>Avg Score</Text>
               </View>
             </View>
           </View>
         </View>
 
-        {/* Quick Admin Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>⚡ Super Admin Actions</Text>
-          <View style={styles.actionsGrid}>
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: COLORS.blue }]}
-              onPress={() => handleNavigation('workshops')}
-            >
-              <MaterialCommunityIcons name="store" size={32} color="#fff" />
-              <Text style={styles.actionBtnText}>Workshops</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: COLORS.purple }]}
-              onPress={() => handleNavigation('users')}
-            >
-              <MaterialCommunityIcons name="account-group" size={32} color="#fff" />
-              <Text style={styles.actionBtnText}>Users</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: COLORS.green }]}
-              onPress={() => handleNavigation('finance')}
-            >
-              <MaterialCommunityIcons name="currency-inr" size={32} color="#fff" />
-              <Text style={styles.actionBtnText}>Finance</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: COLORS.orange }]}
-              onPress={() => handleNavigation('settings')}
-            >
-              <MaterialCommunityIcons name="cog" size={32} color="#fff" />
-              <Text style={styles.actionBtnText}>Settings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: COLORS.red }]}
-              onPress={() => handleNavigation('fraud')}
-            >
-              <MaterialCommunityIcons name="shield-alert" size={32} color="#fff" />
-              <Text style={styles.actionBtnText}>Fraud</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: COLORS.indigo }]}
-              onPress={() => handleNavigation('reports')}
-            >
-              <MaterialCommunityIcons name="chart-bar" size={32} color="#fff" />
-              <Text style={styles.actionBtnText}>Reports</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      <BottomNav activeTab="dashboard" onTabChange={setCurrentScreen} />
+      <BottomNav
+        activeTab="dashboard"
+        onTabChange={handleNavigation}
+        tabs={tabs}
+      />
     </View>
   );
 }
@@ -525,186 +652,180 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   loadingText: {
-    marginTop: SPACING.md,
-    color: COLORS.textSecondary,
+    marginTop: 16,
+    fontSize: 16,
+    color: COLORS.text,
+    fontFamily: FONTS.family,
   },
-  content: {
+  scrollView: {
     flex: 1,
   },
   statusBanner: {
-    backgroundColor: COLORS.green + '15',
+    margin: 16,
+    padding: 16,
+    borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.green + '30',
   },
-  statusIndicator: {
+  statusLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: 12,
   },
   statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   statusText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
-    color: COLORS.green,
+    fontFamily: FONTS.family,
   },
   uptimeText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: COLORS.textLight,
+    fontFamily: FONTS.family,
   },
   alertsSection: {
-    padding: SPACING.md,
-    backgroundColor: '#fff',
-    marginBottom: SPACING.sm,
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
   alertCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    padding: SPACING.md,
+    padding: 16,
     borderRadius: 12,
-    marginTop: SPACING.sm,
-    borderLeftWidth: 4,
-    gap: SPACING.sm,
-  },
-  alertContent: {
-    flex: 1,
+    borderWidth: 1,
+    marginTop: 8,
   },
   alertTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+    fontFamily: FONTS.family,
   },
   alertMessage: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 2,
+    fontSize: 14,
+    color: COLORS.textLight,
+    marginTop: 4,
+    fontFamily: FONTS.family,
   },
   section: {
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.md,
+    color: COLORS.text,
+    marginBottom: 12,
+    fontFamily: FONTS.family,
   },
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.sm,
+    gap: 12,
   },
   metricCard: {
-    width: (width - SPACING.md * 3) / 2,
-    aspectRatio: 1.2,
+    width: '48%',
+    padding: 16,
     borderRadius: 12,
-    padding: SPACING.md,
     alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 2,
+  },
+  metricIcon: {
+    fontSize: 32,
+    marginBottom: 8,
   },
   metricValue: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginTop: SPACING.xs,
+    color: COLORS.text,
+    fontFamily: FONTS.family,
   },
   metricLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: COLORS.textLight,
     marginTop: 4,
-    textAlign: 'center',
+    fontFamily: FONTS.family,
   },
   revenueCard: {
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.white,
+    padding: 20,
     borderRadius: 12,
-    padding: SPACING.md,
-    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  revenueRow: {
+  revenueGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   revenueItem: {
+    flex: 1,
     alignItems: 'center',
   },
   revenueDivider: {
     width: 1,
-    backgroundColor: COLORS.gray + '30',
+    height: 40,
+    backgroundColor: COLORS.border,
   },
   revenueLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: COLORS.textLight,
+    marginBottom: 8,
+    fontFamily: FONTS.family,
   },
   revenueValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginTop: 4,
+    fontFamily: FONTS.family,
   },
   deptCard: {
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.white,
+    padding: 16,
     borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    elevation: 2,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   deptHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-    paddingBottom: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray + '20',
+    marginBottom: 12,
+    gap: 8,
+  },
+  deptIcon: {
+    fontSize: 24,
   },
   deptTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.text,
+    fontFamily: FONTS.family,
   },
   deptMetrics: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
   },
   deptMetricItem: {
     alignItems: 'center',
+    flex: 1,
   },
   deptMetricValue: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    color: COLORS.text,
+    fontFamily: FONTS.family,
   },
   deptMetricLabel: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
+    fontSize: 12,
+    color: COLORS.textLight,
     marginTop: 4,
-  },
-  actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  actionBtn: {
-    width: (width - SPACING.md * 3) / 2,
-    aspectRatio: 1.5,
-    borderRadius: 12,
-    padding: SPACING.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 3,
-  },
-  actionBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginTop: SPACING.sm,
+    fontFamily: FONTS.family,
   },
 });

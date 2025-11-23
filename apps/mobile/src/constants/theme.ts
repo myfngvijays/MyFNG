@@ -1,23 +1,42 @@
 // MyFNG Brand Colors
 export const COLORS = {
-  // Brand Primary Colors
+  // Brand Primary Colors (MyFNG Official)
   primary: '#0088E8',        // Primary Blue (fng)
   primaryDark: '#023D95',    // Dark Blue (my)
   primaryHover: '#0367C4',   // Hover Blue
+  secondary: '#023D95',      // Secondary (my blue)
   
   // Background Colors
   white: '#FFFFFF',
   background: '#F5F7FA',     // Light Grey
   
-  // Text Colors
-  heading: '#023D95',        // Dark Blue for headings
-  bodyText: '#3A3F45',       // Body text
+  // Text Colors (MyFNG Brand)
+  text: '#3A3F45',          // Body text
+  textHeading: '#023D95',   // Dark Blue for headings
+  textBody: '#3A3F45',      // Body text
+  textSecondary: '#6B7280',
+  textLight: '#6B7280',
   link: '#0088E8',          // Links
   
+  // UI Colors
+  border: '#E5E7EB',
+  
   // Status Colors
-  success: '#06D6A0',
-  warning: '#FFD23F',
-  danger: '#EF476F',
+  success: '#10B981',
+  warning: '#F59E0B',
+  danger: '#EF4444',
+  error: '#EF4444',
+  info: '#0088E8',
+  
+  // Extended colors for UI variety
+  blue: '#0088E8',
+  darkBlue: '#023D95',
+  green: '#10B981',
+  red: '#EF4444',
+  orange: '#F59E0B',
+  purple: '#8B5CF6',
+  teal: '#14B8A6',
+  indigo: '#6366F1',
   
   // Neutral Grays
   black: '#1A1A1A',
@@ -33,11 +52,6 @@ export const COLORS = {
     800: '#1F2937',
     900: '#111827',
   },
-  
-  // Legacy Support (for compatibility)
-  secondary: '#023D95',
-  accent: '#0367C4',
-  card: '#FFFFFF',
 };
 
 export const SPACING = {

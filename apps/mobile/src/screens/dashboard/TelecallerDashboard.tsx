@@ -10,7 +10,7 @@ import {
   Linking,
   Dimensions
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';
@@ -255,12 +255,12 @@ export default function TelecallerDashboard() {
         <View style={styles.kpiContainer}>
           <View style={styles.kpiRow}>
             <View style={[styles.kpiCard, { backgroundColor: COLORS.blue + '15' }]}>
-              <MaterialCommunityIcons name="phone-incoming" size={28} color={COLORS.blue} />
+              <Text style={{ fontSize: 28, marginBottom: 8 }}>📞</Text>
               <Text style={styles.kpiValue}>{stats.newLeads}</Text>
               <Text style={styles.kpiLabel}>New Leads</Text>
             </View>
             <View style={[styles.kpiCard, { backgroundColor: COLORS.orange + '15' }]}>
-              <MaterialCommunityIcons name="phone-outgoing" size={28} color={COLORS.orange} />
+              <Text style={{ fontSize: 28, marginBottom: 8 }}>📱</Text>
               <Text style={styles.kpiValue}>{stats.pendingCallbacks}</Text>
               <Text style={styles.kpiLabel}>Callbacks</Text>
             </View>
@@ -268,12 +268,12 @@ export default function TelecallerDashboard() {
 
           <View style={styles.kpiRow}>
             <View style={[styles.kpiCard, { backgroundColor: COLORS.purple + '15' }]}>
-              <MaterialCommunityIcons name="calendar-check" size={28} color={COLORS.purple} />
+              <Text style={{ fontSize: 28, marginBottom: 8 }}>📅</Text>
               <Text style={styles.kpiValue}>{stats.followUpToday}</Text>
               <Text style={styles.kpiLabel}>Today's Follow-ups</Text>
             </View>
             <View style={[styles.kpiCard, { backgroundColor: COLORS.green + '15' }]}>
-              <MaterialCommunityIcons name="check-circle" size={28} color={COLORS.green} />
+              <Text style={{ fontSize: 28, marginBottom: 8 }}>✅</Text>
               <Text style={styles.kpiValue}>{stats.bookedLeads}</Text>
               <Text style={styles.kpiLabel}>Booked Leads</Text>
             </View>
@@ -313,7 +313,7 @@ export default function TelecallerDashboard() {
               style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
               onPress={() => setCurrentScreen('leads')}
             >
-              <MaterialCommunityIcons name="phone-ring" size={32} color="#fff" />
+              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📞</Text>
               <Text style={styles.actionButtonText}>View Queue</Text>
             </TouchableOpacity>
 
@@ -321,7 +321,7 @@ export default function TelecallerDashboard() {
               style={[styles.actionButton, { backgroundColor: COLORS.green }]}
               onPress={() => setCurrentScreen('createLead')}
             >
-              <MaterialCommunityIcons name="plus-circle" size={32} color="#fff" />
+              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>➕</Text>
               <Text style={styles.actionButtonText}>Create Lead</Text>
             </TouchableOpacity>
 
@@ -329,7 +329,7 @@ export default function TelecallerDashboard() {
               style={[styles.actionButton, { backgroundColor: COLORS.orange }]}
               onPress={() => setCurrentScreen('followups')}
             >
-              <MaterialCommunityIcons name="calendar-clock" size={32} color="#fff" />
+              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📅</Text>
               <Text style={styles.actionButtonText}>Follow-ups</Text>
             </TouchableOpacity>
 
@@ -337,7 +337,7 @@ export default function TelecallerDashboard() {
               style={[styles.actionButton, { backgroundColor: COLORS.purple }]}
               onPress={() => setCurrentScreen('scripts')}
             >
-              <MaterialCommunityIcons name="script-text" size={32} color="#fff" />
+              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📋</Text>
               <Text style={styles.actionButtonText}>Call Scripts</Text>
             </TouchableOpacity>
           </View>
@@ -381,7 +381,7 @@ export default function TelecallerDashboard() {
             upcomingFollowUps.map((followUp) => (
               <View key={followUp.id} style={styles.followUpCard}>
                 <View style={styles.followUpHeader}>
-                  <MaterialCommunityIcons name="account" size={20} color={COLORS.textSecondary} />
+                  <Text style={{ fontSize: 20, marginRight: 8 }}>👤</Text>
                   <Text style={styles.followUpName}>{followUp.lead?.customer_name}</Text>
                   {followUp.priority === 'URGENT' && (
                     <View style={styles.urgentBadge}>
@@ -399,7 +399,16 @@ export default function TelecallerDashboard() {
         </View>
       </ScrollView>
 
-      <BottomNav activeTab="dashboard" onTabChange={setCurrentScreen} />
+      <BottomNav 
+        activeTab="dashboard" 
+        onTabChange={setCurrentScreen}
+        tabs={[
+          { id: 'dashboard', label: 'Home', icon: '🏠' },
+          { id: 'leads', label: 'Leads', icon: '📋' },
+          { id: 'followups', label: 'Follow-ups', icon: '📅' },
+          { id: 'scripts', label: 'Scripts', icon: '📝' },
+        ]}
+      />
     </View>
   );
 }

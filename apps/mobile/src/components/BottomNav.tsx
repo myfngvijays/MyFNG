@@ -48,10 +48,10 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.sm,
     paddingTop: SPACING.sm,
     shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 12,
   },
   tab: {
     flex: 1,
@@ -62,19 +62,22 @@ const styles = StyleSheet.create({
   icon: {
     fontSize: 24,
     marginBottom: 4,
-    opacity: 0.6,
+    opacity: 0.5,
   },
   activeIcon: {
     opacity: 1,
+    transform: [{ scale: 1.1 }],
   },
   label: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.gray[600],
+    color: COLORS.textSecondary,
     fontWeight: '500',
+    fontFamily: 'Poppins',
   },
   activeLabel: {
     color: COLORS.primary,
     fontWeight: '600',
+    fontFamily: 'Poppins',
   },
 });
 

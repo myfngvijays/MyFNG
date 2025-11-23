@@ -2,10 +2,14 @@
   "name": "myfng-workspace",
   "version": "1.0.0",
   "private": true,
-  "workspaces": [
-    "apps/web",
-    "apps/mobile"
-  ],
+  "workspaces": {
+    "packages": [
+      "apps/web"
+    ],
+    "nohoist": [
+      "**/apps/mobile/**"
+    ]
+  },
   "scripts": {
     "web": "cd apps/web && npm run dev",
     "mobile": "cd apps/mobile && npm start",

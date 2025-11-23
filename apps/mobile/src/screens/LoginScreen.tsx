@@ -10,14 +10,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 
-export default function LoginScreen({ onLoginSuccess }: { onLoginSuccess: (user: any, profile: any) => void }) {
+export default function LoginScreen({ onLoginSuccess }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -27,40 +28,38 @@ export default function LoginScreen({ onLoginSuccess }: { onLoginSuccess: (user:
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Login
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
-        password: password.trim(),
+        password: password,
       });
 
-      if (error) throw error;
+      if (authError) throw authError;
 
-      if (data.user) {
-        // Fetch user profile WITH role information
-        const { data: profileData, error: profileError } = await supabase
-          .from('users_login')
-          .select(`
-            *,
-            role:roles!role_id(role_name, role_code)
-          `)
-          .eq('id', data.user.id)
-          .single();
-
-        if (profileError) {
-          Alert.alert('Error', 'Failed to load user profile');
-          return;
-        }
-
-        if (profileData) {
-          // Add role field based on role_code
-          const profileWithRole = {
-            ...profileData,
-            role: profileData.role?.role_code || profileData.role?.role_name || 'USER'
-          };
-          onLoginSuccess(data.user, profileWithRole);
-        }
+      if (!authData.user) {
+        throw new Error('No user returned');
       }
+
+      // Fetch profile
+      const { data: profile, error: profileError } = await supabase
+        .from('users_login')
+        .select(`
+          *,
+          role:roles(*)
+        `)
+        .eq('id', authData.user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      // Success
+      onLoginSuccess(authData.user, profile);
     } catch (error: any) {
-      Alert.alert('Login Failed', error.message || 'Invalid credentials');
+      console.error('Login error:', error);
+      Alert.alert(
+        'Login Failed',
+        error.message || 'Invalid email or password'
+      );
     } finally {
       setLoading(false);
     }
@@ -68,25 +67,33 @@ export default function LoginScreen({ onLoginSuccess }: { onLoginSuccess: (user:
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <Text style={styles.logo}>MyFNG</Text>
-          <Text style={styles.subtitle}>Workshop Management System</Text>
+        {/* Logo Section */}
+        <View style={styles.logoSection}>
+          <Image 
+            source={require('../../assets/images/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
         </View>
 
-        <View style={styles.form}>
+        {/* Login Form */}
+        <View style={styles.formSection}>
+          <Text style={styles.formTitle}>Welcome Back! 👋</Text>
+          <Text style={styles.formSubtitle}>Sign in to continue</Text>
+
+          {/* Email Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.inputIcon}>📧</Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter your email"
-              placeholderTextColor={COLORS.gray[400]}
+              placeholder="Email"
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -95,33 +102,54 @@ export default function LoginScreen({ onLoginSuccess }: { onLoginSuccess: (user:
             />
           </View>
 
+          {/* Password Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
+            <Text style={styles.inputIcon}>🔒</Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter your password"
-              placeholderTextColor={COLORS.gray[400]}
+              placeholder="Password"
               value={password}
               onChangeText={setPassword}
-              secureTextEntry
+              secureTextEntry={!showPassword}
               editable={!loading}
             />
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.eyeIcon}
+            >
+              <Text style={{fontSize: 18}}>{showPassword ? '👁️' : '🙈'}</Text>
+            </TouchableOpacity>
           </View>
 
+          {/* Login Button */}
           <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
+            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
             onPress={handleLogin}
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color={COLORS.white} />
+              <ActivityIndicator color="#FFF" />
             ) : (
-              <Text style={styles.buttonText}>Login</Text>
+              <>
+                <Text style={styles.loginButtonText}>Sign In</Text>
+                <Text style={{fontSize: 18, color: '#FFF'}}>→</Text>
+              </>
             )}
           </TouchableOpacity>
 
-          <Text style={styles.helpText}>
-            Contact your administrator for login credentials
+          {/* Test Credentials Info */}
+          <View style={styles.infoBox}>
+            <Text style={{fontSize: 18, color: '#3B82F6'}}>ℹ️</Text>
+            <Text style={styles.infoText}>
+              Use your registered credentials to login
+            </Text>
+          </View>
+        </View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            Powered by MyFNG © 2025
           </Text>
         </View>
       </ScrollView>
@@ -132,67 +160,108 @@ export default function LoginScreen({ onLoginSuccess }: { onLoginSuccess: (user:
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F9FAFB',
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: SPACING.lg,
+    padding: 20,
   },
-  header: {
+  logoSection: {
     alignItems: 'center',
-    marginBottom: SPACING.xxl,
+    marginBottom: 30,
   },
   logo: {
-    fontSize: FONT_SIZES.xxxl * 1.5,
+    width: 200,
+    height: 80,
+  },
+  formSection: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  formTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
-    color: COLORS.primary,
-    marginBottom: SPACING.sm,
+    color: '#1F2937',
+    marginBottom: 5,
   },
-  subtitle: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.bodyText,
-  },
-  form: {
-    width: '100%',
+  formSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 25,
   },
   inputContainer: {
-    marginBottom: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 15,
+    paddingHorizontal: 15,
   },
-  label: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.heading,
-    marginBottom: SPACING.xs,
+  inputIcon: {
+    marginRight: 10,
   },
   input: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.gray[300],
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.bodyText,
+    flex: 1,
+    paddingVertical: 15,
+    fontSize: 16,
+    color: '#1F2937',
   },
-  button: {
-    backgroundColor: COLORS.primary,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
+  eyeIcon: {
+    padding: 5,
+  },
+  loginButton: {
+    backgroundColor: '#0088E8',
+    borderRadius: 12,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: SPACING.md,
+    gap: 10,
+    marginTop: 10,
+    shadowColor: '#0088E8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  buttonDisabled: {
+  loginButtonDisabled: {
     opacity: 0.6,
   },
-  buttonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
+  loginButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
-  helpText: {
-    textAlign: 'center',
-    color: COLORS.gray[500],
-    fontSize: FONT_SIZES.sm,
-    marginTop: SPACING.lg,
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 20,
+    gap: 10,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#1E40AF',
+    lineHeight: 18,
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: 30,
+  },
+  footerText: {
+    fontSize: 12,
+    color: '#9CA3AF',
   },
 });

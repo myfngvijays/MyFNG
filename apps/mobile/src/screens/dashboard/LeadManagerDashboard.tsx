@@ -453,7 +453,16 @@ export default function LeadManagerDashboard() {
         </View>
       </ScrollView>
 
-      <BottomNav activeTab="dashboard" onTabChange={setCurrentScreen} />
+      <BottomNav 
+        activeTab="dashboard" 
+        onTabChange={setCurrentScreen}
+        tabs={[
+          { id: 'dashboard', label: 'Home', icon: '🏠' },
+          { id: 'leads', label: 'Leads', icon: '📋' },
+          { id: 'workshops', label: 'Workshops', icon: '🏭' },
+          { id: 'reports', label: 'Reports', icon: '📊' },
+        ]}
+      />
     </View>
   );
 }
