@@ -43,42 +43,37 @@ export default function WorkshopPickupBoyDashboard() {
         .order('scheduled_time', { ascending: true });
 
       // Get stats
-      const { count: pickupCount } = await supabase
+      const { data: allTasks } = await supabase
         .from('pickup_delivery_tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('assigned_to_id', userProfile.id)
-        .in('task_type', ['PICKUP', 'BOTH'])
-        .in('status', ['ASSIGNED', 'PENDING']);
+        .select('*')
+        .eq('assigned_to_id', userProfile.id);
 
-      const { count: deliveryCount } = await supabase
-        .from('pickup_delivery_tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('assigned_to_id', userProfile.id)
-        .in('task_type', ['DELIVERY', 'BOTH'])
-        .in('status', ['ASSIGNED', 'PENDING']);
+      const pickupCount = allTasks?.filter(t => 
+        (t.task_type === 'PICKUP' || t.task_type === 'BOTH') && 
+        (t.status === 'ASSIGNED' || t.status === 'PENDING')
+      ).length || 0;
 
-      const { count: inTransitCount } = await supabase
-        .from('pickup_delivery_tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('assigned_to_id', userProfile.id)
-        .eq('status', 'IN_TRANSIT');
+      const deliveryCount = allTasks?.filter(t => 
+        (t.task_type === 'DELIVERY' || t.task_type === 'BOTH') && 
+        (t.status === 'ASSIGNED' || t.status === 'PENDING')
+      ).length || 0;
+
+      const inTransitCount = allTasks?.filter(t => t.status === 'IN_TRANSIT').length || 0;
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const { count: completedToday } = await supabase
-        .from('pickup_delivery_tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('assigned_to_id', userProfile.id)
-        .eq('status', 'COMPLETED')
-        .gte('completed_at', today.toISOString());
+      const completedToday = allTasks?.filter(t => 
+        t.status === 'COMPLETED' && 
+        new Date(t.completed_at) >= today
+      ).length || 0;
 
       setTasks(assignedTasks || []);
       setStats([
-        { label: 'Pickup Tasks', value: (pickupCount || 0).toString(), icon: <Truck className="w-8 h-8" />, color: 'text-brand-primary' },
-        { label: 'Delivery Tasks', value: (deliveryCount || 0).toString(), icon: <Truck className="w-8 h-8" />, color: 'text-blue-500' },
-        { label: 'In Transit', value: (inTransitCount || 0).toString(), icon: <Navigation className="w-8 h-8" />, color: 'text-green-500' },
-        { label: 'Completed Today', value: (completedToday || 0).toString(), icon: <CheckCircle className="w-8 h-8" />, color: 'text-green-600' },
+        { label: 'Pickup Tasks', value: pickupCount.toString(), icon: <Truck className="w-8 h-8" />, color: 'text-brand-primary' },
+        { label: 'Delivery Tasks', value: deliveryCount.toString(), icon: <Truck className="w-8 h-8" />, color: 'text-blue-500' },
+        { label: 'In Transit', value: inTransitCount.toString(), icon: <Navigation className="w-8 h-8" />, color: 'text-green-500' },
+        { label: 'Completed Today', value: completedToday.toString(), icon: <CheckCircle className="w-8 h-8" />, color: 'text-green-600' },
       ]);
       setLoading(false);
     } catch (error) {

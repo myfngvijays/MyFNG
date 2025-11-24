@@ -7,10 +7,13 @@ import QCChecklist from '@/components/supervisor/QCChecklist';
 import MechanicAssignmentModal from '@/components/supervisor/MechanicAssignmentModal';
 import ReassignMechanicModal from '@/components/supervisor/ReassignMechanicModal';
 import ExtraWorkModal from '@/components/supervisor/ExtraWorkModal';
+import PhotoValidationModal from '@/components/supervisor/PhotoValidationModal';
+import SendBackModal from '@/components/supervisor/SendBackModal';
 import { 
   ArrowLeft, Clock, User, Car, Calendar, Wrench, 
   CheckCircle, AlertTriangle, Image as ImageIcon, Package,
-  DollarSign, FileText, MessageSquare, History, Loader2
+  DollarSign, FileText, MessageSquare, History, Loader2, Save,
+  XCircle, ArrowLeftCircle
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -26,6 +29,10 @@ export default function SupervisorJobDetailPage() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [selectedExtraCharge, setSelectedExtraCharge] = useState<any>(null);
+  const [showPhotoValidation, setShowPhotoValidation] = useState(false);
+  const [showSendBack, setShowSendBack] = useState(false);
+  const [internalNotes, setInternalNotes] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
 
   useEffect(() => {
     if (jobId) {
@@ -79,11 +86,102 @@ export default function SupervisorJobDetailPage() {
 
       if (fetchError) throw fetchError;
       setLead(data);
+      setInternalNotes(data.supervisor_notes || '');
     } catch (err: any) {
       console.error('Error fetching job details:', err);
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function saveInternalNotes() {
+    try {
+      setSavingNotes(true);
+      const supabase = createClient();
+
+      const { error } = await supabase
+        .from('service_leads')
+        .update({
+          supervisor_notes: internalNotes,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+
+      if (error) throw error;
+
+      // Log supervisor action
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: userProfile } = await supabase
+          .from('users_login')
+          .select('id')
+          .eq('email', user.email)
+          .single();
+
+        await supabase
+          .from('supervisor_actions')
+          .insert({
+            supervisor_id: userProfile?.id,
+            lead_id: jobId,
+            action_type: 'INTERNAL_NOTES_UPDATED',
+            action_description: 'Updated internal supervisor notes',
+            notes: internalNotes
+          });
+      }
+
+      alert('Internal notes saved successfully');
+    } catch (error) {
+      console.error('Error saving notes:', error);
+      alert('Failed to save notes');
+    } finally {
+      setSavingNotes(false);
+    }
+  }
+
+  async function changeJobStatus(newStatus: string) {
+    if (!confirm(`Are you sure you want to change status to ${newStatus}?`)) {
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+
+      const { error } = await supabase
+        .from('service_leads')
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+
+      if (error) throw error;
+
+      // Log supervisor action
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: userProfile } = await supabase
+          .from('users_login')
+          .select('id')
+          .eq('email', user.email)
+          .single();
+
+        await supabase
+          .from('supervisor_actions')
+          .insert({
+            supervisor_id: userProfile?.id,
+            lead_id: jobId,
+            action_type: 'STATUS_CHANGED',
+            action_description: `Changed job status to ${newStatus}`,
+            action_data: { old_status: lead.status, new_status: newStatus }
+          });
+      }
+
+      alert(`Status changed to ${newStatus}`);
+      fetchJobDetails();
+    } catch (error) {
+      console.error('Error changing status:', error);
+      alert('Failed to change status');
     }
   }
 
@@ -150,6 +248,29 @@ export default function SupervisorJobDetailPage() {
               <h1 className="text-3xl font-bold text-text-heading">{lead.lead_number}</h1>
               <p className="text-sm text-gray-600 mt-1">Job Details & Progress</p>
             </div>
+          </div>
+          
+          {/* Quick Actions */}
+          <div className="flex gap-2">
+            {lead.mechanic && (
+              <button
+                onClick={() => setShowSendBack(true)}
+                className="btn bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2"
+              >
+                <ArrowLeftCircle className="w-4 h-4" />
+                Send Back
+              </button>
+            )}
+            
+            {lead.media && lead.media.length > 0 && (
+              <button
+                onClick={() => setShowPhotoValidation(true)}
+                className="btn btn-primary flex items-center gap-2"
+              >
+                <ImageIcon className="w-4 h-4" />
+                Validate Photos
+              </button>
+            )}
           </div>
         </div>
 
@@ -318,7 +439,77 @@ export default function SupervisorJobDetailPage() {
           </div>
         )}
 
-        {/* Section 7: QC Section */}
+        {/* Section 7: Internal Notes */}
+        <div className="card bg-blue-50 border-blue-200">
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-blue-600" />
+            Internal Supervisor Notes
+          </h3>
+          <textarea
+            value={internalNotes}
+            onChange={(e) => setInternalNotes(e.target.value)}
+            placeholder="Add your private notes here... (visible only to supervisors and admins)"
+            className="input w-full"
+            rows={4}
+          />
+          <div className="flex items-center justify-between mt-3">
+            <p className="text-xs text-gray-600">
+              These notes are internal and not visible to mechanics or customers
+            </p>
+            <button
+              onClick={saveInternalNotes}
+              disabled={savingNotes}
+              className="btn btn-primary flex items-center gap-2"
+            >
+              {savingNotes ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save Notes
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Section 8: Status Management */}
+        {lead.status === 'COMPLETED' && (
+          <div className="card bg-purple-50 border-purple-200">
+            <h3 className="text-lg font-semibold mb-3">Change Job Status</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Update the job status based on your inspection and validation
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <button
+                onClick={() => changeJobStatus('INSPECTED')}
+                className="btn bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center gap-2"
+              >
+                <CheckCircle className="w-4 h-4" />
+                Mark as INSPECTED
+              </button>
+              <button
+                onClick={() => changeJobStatus('QC_APPROVED')}
+                className="btn bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-2"
+              >
+                <CheckCircle className="w-4 h-4" />
+                QC APPROVED
+              </button>
+              <button
+                onClick={() => changeJobStatus('READY_FOR_DELIVERY')}
+                className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
+              >
+                <Package className="w-4 h-4" />
+                READY FOR DELIVERY
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Section 9: QC Section */}
         {lead.status === 'COMPLETED' && lead.qc_status === 'PENDING' && !showQC && (
           <div className="card bg-purple-50 border-purple-200">
             <div className="flex items-center justify-between">
@@ -351,7 +542,7 @@ export default function SupervisorJobDetailPage() {
           />
         )}
 
-        {/* Section 8: Activity Timeline */}
+        {/* Section 10: Activity Timeline */}
         {lead.events && lead.events.length > 0 && (
           <div className="card">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -414,6 +605,33 @@ export default function SupervisorJobDetailPage() {
           extraCharge={selectedExtraCharge}
           onSuccess={() => {
             setSelectedExtraCharge(null);
+            fetchJobDetails();
+          }}
+        />
+      )}
+
+      {showPhotoValidation && (
+        <PhotoValidationModal
+          isOpen={showPhotoValidation}
+          onClose={() => setShowPhotoValidation(false)}
+          leadId={lead.id}
+          leadNumber={lead.lead_number}
+          onSuccess={() => {
+            setShowPhotoValidation(false);
+            fetchJobDetails();
+          }}
+        />
+      )}
+
+      {showSendBack && lead.mechanic && (
+        <SendBackModal
+          isOpen={showSendBack}
+          onClose={() => setShowSendBack(false)}
+          leadId={lead.id}
+          leadNumber={lead.lead_number}
+          currentMechanicName={lead.mechanic.full_name}
+          onSuccess={() => {
+            setShowSendBack(false);
             fetchJobDetails();
           }}
         />

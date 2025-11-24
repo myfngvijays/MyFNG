@@ -10,6 +10,7 @@ import {
   X,
   Home,
   Users,
+  User,
   FileText,
   Settings,
   Bell,
@@ -21,7 +22,11 @@ import {
   Truck,
   Car,
   Phone,
-  ClipboardList
+  ClipboardList,
+  Calendar,
+  CheckCircle,
+  DollarSign,
+  Clock
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -104,16 +109,23 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       ],
       'WORKSHOP_ADMIN': [
         { href: '/dashboard/workshop_admin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
-        { href: '/dashboard/workshop_admin/leads', icon: <FileText className="w-5 h-5" />, label: 'Leads' },
+        { href: '/dashboard/workshop_admin/pending-leads', icon: <Clock className="w-5 h-5" />, label: 'Pending Approvals' },
+        { href: '/dashboard/workshop_admin/leads', icon: <FileText className="w-5 h-5" />, label: 'All Leads' },
         { href: '/dashboard/workshop_admin/staff', icon: <Users className="w-5 h-5" />, label: 'Staff Management' },
         { href: '/dashboard/workshop_admin/jobs', icon: <Wrench className="w-5 h-5" />, label: 'Active Jobs' },
         { href: '/dashboard/workshop_admin/settings', icon: <Settings className="w-5 h-5" />, label: 'Settings' },
       ],
       'WORKSHOP_SUPERVISOR': [
         { href: '/dashboard/workshop_supervisor', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
-        { href: '/dashboard/workshop_supervisor/job-assignments', icon: <ClipboardList className="w-5 h-5" />, label: 'Job Assignments' },
+        { href: '/dashboard/workshop_supervisor/day-planning', icon: <Calendar className="w-5 h-5" />, label: 'Day Planning' },
+        { href: '/dashboard/workshop_supervisor/jobs', icon: <Wrench className="w-5 h-5" />, label: 'Manage Jobs' },
+        { href: '/dashboard/workshop_supervisor/qc-queue', icon: <CheckCircle className="w-5 h-5" />, label: 'QC Queue' },
+        { href: '/dashboard/workshop_supervisor/extra-work', icon: <DollarSign className="w-5 h-5" />, label: 'Extra Work Approvals' },
+        { href: '/dashboard/workshop_supervisor/pickup-delivery', icon: <Truck className="w-5 h-5" />, label: 'Pickup & Delivery' },
         { href: '/dashboard/workshop_supervisor/team-overview', icon: <Users className="w-5 h-5" />, label: 'Team Overview' },
-        { href: '/dashboard/workshop_supervisor/performance', icon: <TrendingUp className="w-5 h-5" />, label: 'Performance' },
+        { href: '/dashboard/workshop_supervisor/daily-report', icon: <FileText className="w-5 h-5" />, label: 'Daily Report' },
+        { href: '/dashboard/workshop_supervisor/analytics', icon: <TrendingUp className="w-5 h-5" />, label: 'Analytics' },
+        { href: '/dashboard/workshop_supervisor/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
       ],
       'WORKSHOP_MECHANIC': [
         { href: '/dashboard/workshop_mechanic', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
