@@ -11,7 +11,8 @@ import {
   Alert,
   TextInput
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING } from '../../../constants/theme';
@@ -237,7 +238,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
   if (!lead) {
     return (
       <View style={styles.loadingContainer}>
-        <MaterialCommunityIcons name="alert-circle" size={64} color={COLORS.red} />
+        <Icon name="alert-circle" size={64} color={COLORS.red} />
         <Text style={styles.errorText}>Lead not found</Text>
         <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
           <Text style={styles.buttonText}>Go Back</Text>
@@ -270,7 +271,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
           style={[styles.actionButton, styles.actionButtonPrimary]}
           onPress={() => Linking.openURL(`tel:${lead.customer_phone}`)}
         >
-          <MaterialCommunityIcons name="phone" size={20} color="#fff" />
+          <Icon name="phone" size={20} color="#fff" />
           <Text style={styles.actionButtonTextPrimary}>Call</Text>
         </TouchableOpacity>
 
@@ -278,7 +279,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
           style={[styles.actionButton, styles.actionButtonSecondary]}
           onPress={() => Linking.openURL(`whatsapp://send?phone=${lead.customer_phone}`)}
         >
-          <MaterialCommunityIcons name="whatsapp" size={20} color={COLORS.green} />
+          <Icon name="whatsapp" size={20} color={COLORS.green} />
           <Text style={styles.actionButtonTextSecondary}>WhatsApp</Text>
         </TouchableOpacity>
       </View>
@@ -286,19 +287,19 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
       {/* Quick Stats */}
       <View style={styles.statsCard}>
         <View style={styles.statItem}>
-          <MaterialCommunityIcons name="phone" size={24} color={COLORS.primary} />
+          <Icon name="phone" size={24} color={COLORS.primary} />
           <Text style={styles.statValue}>{lead.total_calls || 0}</Text>
           <Text style={styles.statLabel}>Total Calls</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <MaterialCommunityIcons name="priority-high" size={24} color={COLORS.orange} />
+          <Icon name="priority-high" size={24} color={COLORS.orange} />
           <Text style={styles.statValue}>{lead.lead_priority || 'NORMAL'}</Text>
           <Text style={styles.statLabel}>Priority</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <MaterialCommunityIcons name="source-branch" size={24} color={COLORS.blue} />
+          <Icon name="source-branch" size={24} color={COLORS.blue} />
           <Text style={styles.statValue}>{lead.created_from || 'N/A'}</Text>
           <Text style={styles.statLabel}>Source</Text>
         </View>
@@ -396,7 +397,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
           )}
           {lead.pickup_required && (
             <View style={styles.pickupBadge}>
-              <MaterialCommunityIcons name="car-pickup" size={16} color={COLORS.blue} />
+              <Icon name="car-pickup" size={16} color={COLORS.blue} />
               <Text style={styles.pickupText}>Pickup Required</Text>
             </View>
           )}
@@ -420,7 +421,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Call History ({callLogs.length})</Text>
           <TouchableOpacity onPress={() => setShowCallLogForm(!showCallLogForm)}>
-            <MaterialCommunityIcons name="plus-circle" size={24} color={COLORS.primary} />
+            <Icon name="plus-circle" size={24} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
 
@@ -492,7 +493,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Follow-ups ({followUps.length})</Text>
           <TouchableOpacity onPress={() => setShowFollowUpForm(!showFollowUpForm)}>
-            <MaterialCommunityIcons name="plus-circle" size={24} color={COLORS.primary} />
+            <Icon name="plus-circle" size={24} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
 
@@ -557,7 +558,7 @@ interface InfoRowProps {
 function InfoRow({ icon, label, value }: InfoRowProps) {
   return (
     <View style={styles.infoRow}>
-      <MaterialCommunityIcons name={icon as any} size={16} color={COLORS.textSecondary} />
+      <Icon name={icon as any} size={16} color={COLORS.textSecondary} />
       <View style={styles.infoContent}>
         <Text style={styles.infoLabel}>{label}:</Text>
         <Text style={styles.infoValue}>{value}</Text>

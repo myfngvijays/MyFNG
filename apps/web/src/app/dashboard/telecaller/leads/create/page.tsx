@@ -330,15 +330,13 @@ export default function CreateLeadPage() {
     if (currentStep === 3) {
       if (formData.service_types.length === 0) newErrors.service_types = 'Please select at least one service type';
       if (!formData.payment_mode) newErrors.payment_mode = 'Payment mode is required';
-    }
-    
-    if (currentStep === 4) {
+      
+      // Pickup validation - merged from step 4
       if (formData.pickup_required) {
         // Pickup address validation - either pickup_address or customer_address required
         if (!formData.pickup_address && !formData.customer_address) {
           newErrors.pickup_address = 'Pickup address is required';
         }
-        // Location is optional - if not provided, will use customer address geocoding
         // Preferred time slots are required for pickup
         if (!formData.preferred_slot_start) {
           newErrors.preferred_slot_start = 'Preferred pickup start time is required';
@@ -355,7 +353,7 @@ export default function CreateLeadPage() {
 
   const nextStep = () => {
     if (validateStep(step)) {
-      setStep(prev => Math.min(prev + 1, 4));
+      setStep(prev => Math.min(prev + 1, 3));
     }
   };
 
@@ -364,8 +362,8 @@ export default function CreateLeadPage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
-    // Prevent Enter key from submitting form on steps 1-3
-    if (e.key === 'Enter' && step !== 4) {
+    // Prevent Enter key from submitting form on steps 1-2
+    if (e.key === 'Enter' && step !== 3) {
       e.preventDefault();
       console.log('Enter key prevented on step:', step);
     }
@@ -374,16 +372,16 @@ export default function CreateLeadPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // CRITICAL: Only allow submission on step 4
-    if (step !== 4) {
+    // CRITICAL: Only allow submission on step 3
+    if (step !== 3) {
       // Don't proceed - this shouldn't happen as buttons are type="button"
       console.log('Form submit prevented on step:', step);
       return;
     }
     
     // Final validation before submission
-    if (!validateStep(4)) {
-      console.log('Step 4 validation failed');
+    if (!validateStep(3)) {
+      console.log('Step 3 validation failed');
       return;
     }
 
@@ -515,22 +513,21 @@ export default function CreateLeadPage() {
         {/* Progress Steps */}
         <div className="card">
           <div className="flex items-center justify-between">
-            {[1, 2, 3, 4].map(num => (
+            {[1, 2, 3].map(num => (
               <div key={num} className="flex items-center">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
                   step >= num ? 'bg-brand-primary text-white' : 'bg-gray-200 text-gray-600'
                   }`}>
-                  {num}
+                  {step > num ? '✓' : num}
                   </div>
-                {num < 4 && <div className={`w-24 h-1 ${step > num ? 'bg-brand-primary' : 'bg-gray-200'}`} />}
+                {num < 3 && <div className={`w-24 h-1 ${step > num ? 'bg-brand-primary' : 'bg-gray-200'}`} />}
               </div>
             ))}
           </div>
           <div className="flex justify-between mt-3">
             <span className="text-sm font-medium">Customer</span>
             <span className="text-sm font-medium">Vehicle</span>
-            <span className="text-sm font-medium">Service</span>
-            <span className="text-sm font-medium">Additional</span>
+            <span className="text-sm font-medium">Service & Pickup</span>
           </div>
         </div>
 
@@ -659,42 +656,6 @@ export default function CreateLeadPage() {
                     placeholder="Enter pincode"
                     maxLength={6}
                   />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-text-body mb-2">
-                    Location (Latitude & Longitude)
-                  </label>
-                  <div className="flex gap-4 items-center">
-                    <input
-                      type="text"
-                      name="customer_lat"
-                      value={formData.customer_lat}
-                    onChange={handleChange}
-                      className="input flex-1"
-                      placeholder="Latitude"
-                    />
-                    <input
-                      type="text"
-                      name="customer_lng"
-                      value={formData.customer_lng}
-                      onChange={handleChange}
-                      className="input flex-1"
-                      placeholder="Longitude"
-                    />
-                    <button
-                      type="button"
-                      onClick={getCurrentLocation}
-                      disabled={loadingLocation}
-                      className="btn btn-secondary flex items-center gap-2"
-                    >
-                      <Navigation className="w-4 h-4" />
-                      {loadingLocation ? 'Getting...' : 'Get Location'}
-                    </button>
-                  </div>
-                  {errors.customer_lat && (
-                    <p className="mt-1 text-sm text-red-500">{errors.customer_lat}</p>
-                  )}
                 </div>
               </div>
             </div>
@@ -842,12 +803,12 @@ export default function CreateLeadPage() {
             </div>
           )}
 
-          {/* Step 3: Service Requirements */}
+          {/* Step 3: Service Requirements & Pickup */}
           {step === 3 && (
             <div className="space-y-6">
               <h2 className="text-xl font-bold text-text-heading flex items-center gap-2">
                 <Wrench className="w-5 h-5" />
-                Service Requirements
+                Service Requirements & Pickup
               </h2>
 
                 <div>
@@ -962,26 +923,25 @@ export default function CreateLeadPage() {
                   />
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Step 4: Additional Information */}
-          {step === 4 && (
-            <div className="space-y-6">
-              <h2 className="text-xl font-bold text-text-heading flex items-center gap-2">
+              {/* Divider */}
+              <div className="border-t border-gray-200 my-6"></div>
+
+              {/* Pickup Section */}
+              <h3 className="text-lg font-semibold text-text-heading flex items-center gap-2">
                 <Calendar className="w-5 h-5" />
-                Additional Information
-              </h2>
+                Pickup & Additional Details
+              </h3>
 
               <div>
-                <label className="flex items-center gap-2">
+                <label className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg cursor-pointer">
                   <input
                     type="checkbox"
                     name="pickup_required"
                     checked={formData.pickup_required}
                     onChange={handleChange}
                   />
-                  <span className="text-sm font-medium text-text-body">Pickup Required</span>
+                  <span className="text-sm font-medium text-text-body">Customer requires vehicle pickup</span>
                   </label>
                 </div>
 
@@ -1002,6 +962,39 @@ export default function CreateLeadPage() {
                     {errors.pickup_address && (
                       <p className="mt-1 text-sm text-red-500">{errors.pickup_address}</p>
                     )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-text-body mb-2">
+                        Location (Latitude & Longitude)
+                      </label>
+                      <div className="flex gap-4 items-center">
+                        <input
+                          type="text"
+                          name="customer_lat"
+                          value={formData.customer_lat}
+                          onChange={handleChange}
+                          className="input flex-1"
+                          placeholder="Latitude"
+                        />
+                        <input
+                          type="text"
+                          name="customer_lng"
+                          value={formData.customer_lng}
+                          onChange={handleChange}
+                          className="input flex-1"
+                          placeholder="Longitude"
+                        />
+                        <button
+                          type="button"
+                          onClick={getCurrentLocation}
+                          disabled={loadingLocation}
+                          className="btn btn-secondary flex items-center gap-2 whitespace-nowrap"
+                        >
+                          <Navigation className="w-4 h-4" />
+                          {loadingLocation ? 'Getting...' : 'Get Location'}
+                        </button>
+                      </div>
                     </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1087,7 +1080,7 @@ export default function CreateLeadPage() {
               <div></div>
             )}
 
-            {step < 4 ? (
+            {step < 3 ? (
               <button
                 type="button"
                 onClick={nextStep}

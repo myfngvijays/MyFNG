@@ -196,6 +196,24 @@ export async function POST(
         assignment_notes: notes
       });
 
+    // CRITICAL: Create mechanic_jobs entry so mechanic can see the job
+    const { error: mechanicJobError } = await supabase
+      .from('mechanic_jobs')
+      .insert({
+        lead_id: leadId,
+        mechanic_id: mechanic_id,
+        assigned_by: userProfile.id,
+        mechanic_status: 'ASSIGNED',
+        job_priority: lead.lead_priority || 'NORMAL',
+        assigned_at: now,
+        work_notes: notes || null
+      });
+
+    if (mechanicJobError) {
+      console.error('Error creating mechanic job:', mechanicJobError);
+      // Continue even if this fails - mechanic_assignments is the primary record
+    }
+
     // TODO: Send notifications to mechanic, supervisor, pickup boy
     // TODO: Generate OTP if pickup required
 

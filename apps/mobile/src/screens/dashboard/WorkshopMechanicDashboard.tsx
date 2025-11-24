@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import DashboardHeader from '../../components/DashboardHeader';
@@ -7,7 +7,7 @@ import StatCard from '../../components/StatCard';
 import LeadCard from '../../components/LeadCard';
 import { COLORS, SPACING } from '../../constants/theme';
 
-export default function WorkshopMechanicDashboard() {
+export default function WorkshopMechanicDashboard({ navigation }: any) {
   const [userProfile, setUserProfile] = React.useState(null);
 
   React.useEffect(() => {
@@ -36,11 +36,36 @@ export default function WorkshopMechanicDashboard() {
     try {
       if (!userProfile?.id) return;
 
-      // Fetch mechanic's jobs
+      // Fetch mechanic's jobs from mechanic_dashboard view
+      const { data: jobsData, error: jobsError } = await supabase
+        .from('mechanic_dashboard')
+        .select('*')
+        .eq('mechanic_id', userProfile.id)
+        .order('assigned_at', { ascending: false })
+        .limit(10);
+
+      if (jobsError) {
+        console.error('Error fetching jobs:', jobsError);
+      }
+
+      // Get stats
       const [assigned, inProgress, completed] = await Promise.all([
-        supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('assigned_to', userProfile.id),
-        supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('assigned_to', userProfile.id).eq('status', 'in_progress'),
-        supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('assigned_to', userProfile.id).eq('status', 'completed').gte('completed_at', new Date().toISOString().split('T')[0]),
+        supabase
+          .from('mechanic_jobs')
+          .select('id', { count: 'exact', head: true })
+          .eq('mechanic_id', userProfile.id)
+          .eq('mechanic_status', 'ASSIGNED'),
+        supabase
+          .from('mechanic_jobs')
+          .select('id', { count: 'exact', head: true })
+          .eq('mechanic_id', userProfile.id)
+          .eq('mechanic_status', 'IN_PROGRESS'),
+        supabase
+          .from('mechanic_jobs')
+          .select('id', { count: 'exact', head: true })
+          .eq('mechanic_id', userProfile.id)
+          .eq('mechanic_status', 'COMPLETED')
+          .gte('completed_at', new Date().toISOString().split('T')[0]),
       ]);
 
       setStats({
@@ -48,14 +73,6 @@ export default function WorkshopMechanicDashboard() {
         inProgress: inProgress.count || 0,
         completedToday: completed.count || 0,
       });
-
-      // Fetch my jobs
-      const { data: jobsData } = await supabase
-        .from('jobs')
-        .select('*')
-        .eq('assigned_to', userProfile.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
 
       setMyJobs(jobsData || []);
     } catch (error) {
@@ -118,14 +135,18 @@ export default function WorkshopMechanicDashboard() {
           <>
             <Text style={styles.sectionTitle}>Active Jobs</Text>
             {myJobs.map((job) => (
-              <LeadCard
-                key={job.id}
-                customerName={job.customer_name || 'Unknown'}
-                vehicleModel={job.vehicle_model || 'N/A'}
-                serviceType={job.service_type || 'Repair'}
-                status={job.status || 'pending'}
-                date={new Date(job.created_at).toLocaleDateString()}
-              />
+              <TouchableOpacity
+                key={job.job_id || job.id}
+                onPress={() => navigation.navigate('LeadDetail', { leadId: job.lead_id })}
+              >
+                <LeadCard
+                  customerName={job.customer_name || 'Unknown'}
+                  vehicleModel={`${job.vehicle_make || ''} ${job.vehicle_model || 'N/A'}`.trim()}
+                  serviceType={job.service_type || 'Repair'}
+                  status={job.mechanic_status || job.status || 'pending'}
+                  date={new Date(job.assigned_at || job.created_at).toLocaleDateString()}
+                />
+              </TouchableOpacity>
             ))}
           </>
         )}

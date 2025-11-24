@@ -3,115 +3,163 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import DashboardMetrics from '@/components/supervisor/DashboardMetrics';
-import MechanicPerformancePanel from '@/components/supervisor/MechanicPerformancePanel';
-import QuickFilters from '@/components/supervisor/QuickFilters';
-import { RefreshCw, CheckCircle, DollarSign, ArrowRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-
-interface DashboardData {
-  metrics: {
-    totalJobsToday: number;
-    assignedJobs: number;
-    inProgressJobs: number;
-    jobsOnHold: number;
-    jobsAwaitingQC: number;
-    pendingPickups: number;
-    pendingExtraWorkApprovals: number;
-    slaAtRiskJobs: number;
-  };
-  mechanics: Array<{
-    id: string;
-    name: string;
-    profileImage?: string | null;
-    activeJobs: number;
-    completedToday: number;
-    efficiency: number;
-  }>;
-}
+import { Users, Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp } from 'lucide-react';
 
 export default function WorkshopSupervisorDashboard() {
   const router = useRouter();
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [stats, setStats] = useState({
+    total_mechanics: 0,
+    active_jobs: 0,
+    completed_today: 0,
+    pending_qc: 0,
+    overdue_jobs: 0
+  });
+  const [mechanics, setMechanics] = useState<any[]>([]);
+  const [recentJobs, setRecentJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [activeFilter, setActiveFilter] = useState('');
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
 
-    // Set up auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      fetchDashboardData(true);
-    }, 30000);
-
-    // Set up real-time subscription
+    // Setup realtime subscription
     const supabase = createClient();
     const channel = supabase
-      .channel('supervisor-dashboard')
+      .channel('supervisor-dashboard-changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'service_leads'
+          table: 'mechanic_jobs'
         },
-        () => {
-          fetchDashboardData(true);
+        (payload) => {
+          console.log('Real-time update received:', payload);
+          fetchDashboardData();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Supervisor dashboard realtime subscription status:', status);
+      });
 
+    // Cleanup on unmount
     return () => {
-      clearInterval(interval);
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, []);
 
-  async function fetchDashboardData(isRefresh = false) {
+  async function fetchDashboardData() {
+    const supabase = createClient();
+
     try {
-      if (!isRefresh) {
-        setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('No user found');
+        return;
+      }
+
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users_login')
+        .select('id, workshop_id')
+        .eq('email', user.email)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching user profile:', profileError);
+        setLoading(false);
+        return;
+      }
+
+      if (!userProfile || !userProfile.workshop_id) {
+        console.error('No workshop_id found for user');
+        setLoading(false);
+        return;
+      }
+
+      console.log('User profile:', userProfile);
+
+      // Fetch mechanics in this workshop (filter by role)
+      const { data: mechanicsData, error: mechanicsError } = await supabase
+        .from('users_login')
+        .select(`
+          id, 
+          full_name, 
+          email,
+          role:role_id(role_code)
+        `)
+        .eq('workshop_id', userProfile.workshop_id);
+
+      if (mechanicsError) {
+        console.error('Error fetching mechanics:', mechanicsError);
       } else {
-        setRefreshing(true);
+        // Filter only mechanics (not admins, supervisors, etc)
+        const onlyMechanics = (mechanicsData || []).filter((user: any) => 
+          user.role?.role_code === 'WORKSHOP_MECHANIC'
+        );
+        console.log('Total users in workshop:', mechanicsData?.length || 0);
+        console.log('Mechanics only:', onlyMechanics.length);
+        
+        // Update stats with mechanics count
+        setMechanics(onlyMechanics);
       }
-      setError(null);
 
-      const response = await fetch('/api/supervisor/dashboard');
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch dashboard data');
-      }
+      // Fetch active jobs from mechanic_dashboard view for this workshop
+      const { data: jobsData, error: jobsError } = await supabase
+        .from('mechanic_jobs')
+        .select(`
+          *,
+          service_leads:lead_id(lead_number, customer_name, vehicle_number),
+          mechanic:mechanic_id(full_name, workshop_id)
+        `)
+        .in('mechanic_status', ['ASSIGNED', 'IN_PROGRESS', 'HOLD'])
+        .order('assigned_at', { ascending: false })
+        .limit(20);
 
-      const result = await response.json();
-
-      if (result.success) {
-        setDashboardData(result.data);
+      if (jobsError) {
+        console.error('Error fetching jobs:', jobsError);
       } else {
-        throw new Error(result.error || 'Unknown error');
+        console.log('Jobs fetched:', jobsData?.length || 0);
+        // Filter jobs by workshop
+        const workshopJobs = jobsData?.filter(job => 
+          job.mechanic?.workshop_id === userProfile.workshop_id
+        ) || [];
+        console.log('Workshop jobs:', workshopJobs.length);
+        setRecentJobs(workshopJobs.slice(0, 10));
       }
-    } catch (err: any) {
-      console.error('Dashboard fetch error:', err);
-      setError(err.message);
-    } finally {
+
+      // Calculate stats
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const completedToday = jobsData?.filter(job => {
+        if (job.completed_at && job.mechanic?.workshop_id === userProfile.workshop_id) {
+          const completedDate = new Date(job.completed_at);
+          completedDate.setHours(0, 0, 0, 0);
+          return completedDate.getTime() === today.getTime();
+        }
+        return false;
+      }).length || 0;
+
+      const workshopJobs = jobsData?.filter(job => 
+        job.mechanic?.workshop_id === userProfile.workshop_id
+      ) || [];
+
+      const overdueJobs = workshopJobs.filter(job => 
+        job.sla_remaining_minutes !== null && job.sla_remaining_minutes < 0
+      ).length || 0;
+
+      setStats({
+        total_mechanics: mechanics.length || 0,
+        active_jobs: workshopJobs.length || 0,
+        completed_today: completedToday,
+        pending_qc: 0,
+        overdue_jobs: overdueJobs
+      });
+
       setLoading(false);
-      setRefreshing(false);
-    }
-  }
-
-  function handleMechanicClick(mechanicId: string) {
-    // Navigate to jobs list filtered by mechanic
-    router.push(`/dashboard/workshop_supervisor/jobs?mechanic_id=${mechanicId}`);
-  }
-
-  function handleFilterChange(filter: string) {
-    setActiveFilter(filter);
-    // Navigate to jobs list with filter
-    if (filter) {
-      router.push(`/dashboard/workshop_supervisor/jobs?status=${filter}`);
-    } else {
-      router.push('/dashboard/workshop_supervisor/jobs');
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setLoading(false);
     }
   }
 
@@ -119,29 +167,7 @@ export default function WorkshopSupervisorDashboard() {
     return (
       <DashboardLayout role="workshop_supervisor">
         <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-text-body">Loading dashboard...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  if (error) {
-    return (
-      <DashboardLayout role="workshop_supervisor">
-        <div className="card bg-red-50 border-red-200">
-          <div className="text-center py-8">
-            <p className="text-red-600 font-semibold">Error loading dashboard</p>
-            <p className="text-sm text-gray-600 mt-2">{error}</p>
-            <button
-              onClick={() => fetchDashboardData()}
-              className="btn btn-primary mt-4"
-            >
-              Retry
-            </button>
-          </div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -151,117 +177,133 @@ export default function WorkshopSupervisorDashboard() {
     <DashboardLayout role="workshop_supervisor">
       <div className="space-y-6">
         {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg -mx-6 -mt-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🔍 Supervisor Dashboard</h1>
-              <p className="text-white font-medium mt-1">Monitor operations, manage mechanics, and oversee quality control</p>
-            </div>
-            <button
-              onClick={() => fetchDashboardData(true)}
-              disabled={refreshing}
-              className="btn bg-white text-blue-700 hover:bg-blue-50 flex items-center gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-          </div>
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg p-6 text-white">
+          <h1 className="text-3xl font-bold mb-2">👨‍💼 Supervisor Dashboard</h1>
+          <p className="text-blue-100">Oversee team performance and quality control</p>
         </div>
 
-        {/* Metrics Cards */}
-        {dashboardData && (
-          <DashboardMetrics 
-            metrics={dashboardData.metrics}
-            loading={loading}
-          />
-        )}
-
-        {/* Quick Action Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div 
-            onClick={() => router.push('/dashboard/workshop_supervisor/qc-queue')}
-            className="card bg-gradient-to-br from-green-50 to-green-100 hover:shadow-xl transition-all cursor-pointer border-2 border-green-200 hover:border-green-400"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-green-500 text-white rounded-full">
-                  <CheckCircle className="w-8 h-8" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-800">QC Queue</h3>
-                  <p className="text-sm text-gray-600">
-                    {dashboardData?.metrics.jobsAwaitingQC || 0} jobs waiting for quality check
-                  </p>
-                </div>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
+            <div className="flex items-center gap-3">
+              <Users className="w-8 h-8 text-brand-primary" />
+              <div>
+                <p className="text-sm text-text-body">Total Mechanics</p>
+                <p className="text-2xl font-bold text-text-heading">{stats.total_mechanics}</p>
               </div>
-              <ArrowRight className="w-6 h-6 text-green-600" />
             </div>
           </div>
 
-          <div 
-            onClick={() => router.push('/dashboard/workshop_supervisor/extra-work')}
-            className="card bg-gradient-to-br from-orange-50 to-orange-100 hover:shadow-xl transition-all cursor-pointer border-2 border-orange-200 hover:border-orange-400"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-orange-500 text-white rounded-full">
-                  <DollarSign className="w-8 h-8" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-800">Extra Work Approvals</h3>
-                  <p className="text-sm text-gray-600">
-                    {dashboardData?.metrics.pendingExtraWorkApprovals || 0} requests pending
-                  </p>
-                </div>
+          <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100">
+            <div className="flex items-center gap-3">
+              <Wrench className="w-8 h-8 text-yellow-600" />
+              <div>
+                <p className="text-sm text-text-body">Active Jobs</p>
+                <p className="text-2xl font-bold text-text-heading">{stats.active_jobs}</p>
               </div>
-              <ArrowRight className="w-6 h-6 text-orange-600" />
+            </div>
+          </div>
+
+          <div className="card bg-gradient-to-br from-green-50 to-green-100">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="w-8 h-8 text-green-600" />
+              <div>
+                <p className="text-sm text-text-body">Completed Today</p>
+                <p className="text-2xl font-bold text-text-heading">{stats.completed_today}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="card bg-gradient-to-br from-purple-50 to-purple-100">
+            <div className="flex items-center gap-3">
+              <Clock className="w-8 h-8 text-purple-600" />
+              <div>
+                <p className="text-sm text-text-body">Pending QC</p>
+                <p className="text-2xl font-bold text-text-heading">{stats.pending_qc}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="card bg-gradient-to-br from-red-50 to-red-100">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+              <div>
+                <p className="text-sm text-text-body">Overdue Jobs</p>
+                <p className="text-2xl font-bold text-text-heading">{stats.overdue_jobs}</p>
+              </div>
             </div>
           </div>
         </div>
-
-        {/* Quick Filters */}
-        <QuickFilters
-          activeFilter={activeFilter}
-          onFilterChange={handleFilterChange}
-        />
-
-        {/* Mechanic Performance Panel */}
-        {dashboardData && (
-          <MechanicPerformancePanel
-            mechanics={dashboardData.mechanics}
-            onMechanicClick={handleMechanicClick}
-            loading={loading}
-          />
-        )}
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
-            onClick={() => router.push('/dashboard/workshop_supervisor/jobs')}
-            className="card hover:shadow-lg transition-shadow duration-200 cursor-pointer"
+            onClick={() => router.push('/dashboard/workshop_supervisor/job-assignments')}
+            className="card hover:shadow-lg transition cursor-pointer"
           >
-            <div className="text-left">
-              <h3 className="text-lg font-semibold text-text-heading">View All Jobs</h3>
-              <p className="text-sm text-gray-600 mt-1">
-                Manage job assignments, view progress, and perform quality control
-              </p>
+            <div className="flex items-center gap-3">
+              <Wrench className="w-6 h-6 text-brand-primary" />
+              <div className="text-left">
+                <p className="font-semibold">Job Assignments</p>
+                <p className="text-sm text-gray-600">Assign and monitor jobs</p>
+              </div>
             </div>
           </button>
 
           <button
-            onClick={() => router.push('/dashboard/workshop_supervisor/analytics')}
-            className="card hover:shadow-lg transition-shadow duration-200 cursor-pointer"
+            onClick={() => router.push('/dashboard/workshop_supervisor/team-overview')}
+            className="card hover:shadow-lg transition cursor-pointer"
           >
-            <div className="text-left">
-              <h3 className="text-lg font-semibold text-text-heading">View Analytics</h3>
-              <p className="text-sm text-gray-600 mt-1">
-                Track performance metrics, KPIs, and team efficiency
-              </p>
+            <div className="flex items-center gap-3">
+              <Users className="w-6 h-6 text-brand-primary" />
+              <div className="text-left">
+                <p className="font-semibold">Team Overview</p>
+                <p className="text-sm text-gray-600">View team performance</p>
+              </div>
             </div>
           </button>
+
+          <button
+            onClick={() => router.push('/dashboard/workshop_supervisor/performance')}
+            className="card hover:shadow-lg transition cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <TrendingUp className="w-6 h-6 text-brand-primary" />
+              <div className="text-left">
+                <p className="font-semibold">Performance</p>
+                <p className="text-sm text-gray-600">Analyze metrics</p>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        {/* Recent Jobs */}
+        <div className="card">
+          <h2 className="text-xl font-bold mb-4">Recent Jobs</h2>
+          <div className="space-y-3">
+            {recentJobs.slice(0, 5).map((job) => (
+              <div key={job.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex-1">
+                  <p className="font-semibold">{job.service_leads?.lead_number}</p>
+                  <p className="text-sm text-gray-600">
+                    {job.mechanic?.full_name} - {job.service_leads?.customer_name}
+                  </p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                  job.mechanic_status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
+                  job.mechanic_status === 'ASSIGNED' ? 'bg-green-100 text-green-700' :
+                  'bg-yellow-100 text-yellow-700'
+                }`}>
+                  {job.mechanic_status}
+                </span>
+              </div>
+            ))}
+            {recentJobs.length === 0 && (
+              <p className="text-center text-gray-500 py-4">No active jobs</p>
+            )}
+          </div>
         </div>
       </div>
     </DashboardLayout>
   );
 }
-

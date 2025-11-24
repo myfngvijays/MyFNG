@@ -10,7 +10,8 @@ import {
   Alert,
   Platform
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING } from '../../../constants/theme';
@@ -156,7 +157,7 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
         <View style={styles.cardHeader}>
           <View style={{ flex: 1 }}>
             <View style={styles.customerInfo}>
-              <MaterialCommunityIcons name="account" size={16} color={COLORS.primary} />
+              <Icon name="account" size={16} color={COLORS.primary} />
               <Text style={styles.customerName}>{item.lead?.customer_name}</Text>
             </View>
             <Text style={styles.leadNumber}>#{item.lead?.lead_number}</Text>
@@ -172,7 +173,7 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
         {/* Follow-up Details */}
         <View style={styles.detailsContainer}>
           <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="calendar-clock" size={16} color={COLORS.textSecondary} />
+            <Icon name="calendar-clock" size={16} color={COLORS.textSecondary} />
             <Text style={[
               styles.detailText,
               isOverdue && styles.overdueText
@@ -184,13 +185,13 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
           </View>
 
           <View style={styles.detailRow}>
-            <MaterialCommunityIcons name="phone-forward" size={16} color={COLORS.textSecondary} />
+            <Icon name="phone-forward" size={16} color={COLORS.textSecondary} />
             <Text style={styles.detailText}>{item.follow_up_type}</Text>
           </View>
 
           {item.reason && (
             <View style={styles.detailRow}>
-              <MaterialCommunityIcons name="text" size={16} color={COLORS.textSecondary} />
+              <Icon name="text" size={16} color={COLORS.textSecondary} />
               <Text style={styles.detailText}>{item.reason}</Text>
             </View>
           )}
@@ -200,7 +201,7 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
               styles.priorityBadge,
               { backgroundColor: getPriorityColor(item.priority) }
             ]}>
-              <MaterialCommunityIcons name="alert-circle" size={14} color={COLORS.red} />
+              <Icon name="alert-circle" size={14} color={COLORS.red} />
               <Text style={styles.priorityText}>{item.priority}</Text>
             </View>
           )}
@@ -213,7 +214,7 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
               style={[styles.actionButton, styles.viewButton]}
               onPress={() => handleViewLead(item.lead_id)}
             >
-              <MaterialCommunityIcons name="eye" size={18} color={COLORS.primary} />
+              <Icon name="eye" size={18} color={COLORS.primary} />
               <Text style={styles.actionButtonText}>View Lead</Text>
             </TouchableOpacity>
 
@@ -221,7 +222,7 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
               style={[styles.actionButton, styles.completeButton]}
               onPress={() => handleMarkCompleted(item.id)}
             >
-              <MaterialCommunityIcons name="check-circle" size={18} color={COLORS.green} />
+              <Icon name="check-circle" size={18} color={COLORS.green} />
               <Text style={styles.actionButtonText}>Complete</Text>
             </TouchableOpacity>
 
@@ -229,7 +230,7 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
               style={[styles.actionButton, styles.missedButton]}
               onPress={() => handleMarkMissed(item.id)}
             >
-              <MaterialCommunityIcons name="close-circle" size={18} color={COLORS.red} />
+              <Icon name="close-circle" size={18} color={COLORS.red} />
               <Text style={styles.actionButtonText}>Missed</Text>
             </TouchableOpacity>
           </View>
@@ -237,7 +238,7 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
 
         {item.status === 'COMPLETED' && item.completed_at && (
           <View style={styles.completedInfo}>
-            <MaterialCommunityIcons name="check" size={14} color={COLORS.green} />
+            <Icon name="check" size={14} color={COLORS.green} />
             <Text style={styles.completedText}>
               Completed on {new Date(item.completed_at).toLocaleString()}
             </Text>
@@ -335,7 +336,7 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
       >
         {followUps.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="calendar-check" size={64} color={COLORS.gray} />
+            <Icon name="calendar-check" size={64} color={COLORS.gray} />
             <Text style={styles.emptyTitle}>No Follow-ups</Text>
             <Text style={styles.emptyText}>
               {filter === 'pending'

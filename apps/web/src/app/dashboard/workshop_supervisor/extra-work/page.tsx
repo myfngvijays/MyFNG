@@ -99,7 +99,7 @@ export default function ExtraWorkApprovalsPage() {
       const requestsWithMechanics = await Promise.all((extraWork || []).map(async (req: any) => {
         const { data: mechanic } = await supabase
           .from('users_login')
-          .select('name')
+          .select('full_name')
           .eq('id', req.requested_by)
           .single();
 
@@ -109,7 +109,7 @@ export default function ExtraWorkApprovalsPage() {
           lead_number: req.service_leads.lead_number,
           customer_name: req.service_leads.customer_name,
           vehicle_number: req.service_leads.vehicle_number,
-          mechanic_name: mechanic?.name || 'Unknown',
+          mechanic_name: mechanic?.full_name || 'Unknown',
           description: req.description,
           reason: req.reason,
           amount: parseFloat(req.amount),

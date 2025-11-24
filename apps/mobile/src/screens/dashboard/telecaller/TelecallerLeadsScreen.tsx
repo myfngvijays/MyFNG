@@ -11,7 +11,8 @@ import {
   Linking,
   Modal
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING } from '../../../constants/theme';
@@ -135,13 +136,13 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       <View style={styles.badgesRow}>
         {item.is_incomplete && (
           <View style={[styles.badge, { backgroundColor: COLORS.yellow + '30' }]}>
-            <MaterialCommunityIcons name="alert-circle" size={12} color={COLORS.yellow} />
+            <Icon name="alert-circle" size={12} color={COLORS.yellow} />
             <Text style={[styles.badgeText, { color: COLORS.yellow }]}>Incomplete</Text>
           </View>
         )}
         {item.follow_up_required && (
           <View style={[styles.badge, { backgroundColor: COLORS.purple + '30' }]}>
-            <MaterialCommunityIcons name="calendar-clock" size={12} color={COLORS.purple} />
+            <Icon name="calendar-clock" size={12} color={COLORS.purple} />
             <Text style={[styles.badgeText, { color: COLORS.purple }]}>Follow-up</Text>
           </View>
         )}
@@ -149,7 +150,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
 
       {/* Contact Info */}
       <View style={styles.infoRow}>
-        <MaterialCommunityIcons name="phone" size={16} color={COLORS.textSecondary} />
+        <Icon name="phone" size={16} color={COLORS.textSecondary} />
         <Text style={styles.infoText}>
           {showPhone[item.id] ? item.customer_phone : maskPhone(item.customer_phone)}
         </Text>
@@ -159,7 +160,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       </View>
 
       <View style={styles.infoRow}>
-        <MaterialCommunityIcons name="car" size={16} color={COLORS.textSecondary} />
+        <Icon name="car" size={16} color={COLORS.textSecondary} />
         <Text style={styles.infoText}>
           {item.vehicle_make || 'N/A'} {item.vehicle_model || ''}
           {item.vehicle_number ? ` (${item.vehicle_number})` : ''}
@@ -167,14 +168,14 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       </View>
 
       <View style={styles.infoRow}>
-        <MaterialCommunityIcons name="map-marker" size={16} color={COLORS.textSecondary} />
+        <Icon name="map-marker" size={16} color={COLORS.textSecondary} />
         <Text style={styles.infoText}>{item.city || 'N/A'}</Text>
       </View>
 
       {/* Service Type */}
       {item.service_type && (
         <View style={styles.infoRow}>
-          <MaterialCommunityIcons name="wrench" size={16} color={COLORS.textSecondary} />
+          <Icon name="wrench" size={16} color={COLORS.textSecondary} />
           <Text style={styles.infoText}>{item.service_type}</Text>
         </View>
       )}
@@ -201,7 +202,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
           style={[styles.actionButton, styles.primaryButton]}
           onPress={() => makeCall(item.customer_phone)}
         >
-          <MaterialCommunityIcons name="phone" size={18} color="#fff" />
+          <Icon name="phone" size={18} color="#fff" />
           <Text style={styles.primaryButtonText}>Call Now</Text>
         </TouchableOpacity>
 
@@ -209,7 +210,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
           style={[styles.actionButton, styles.secondaryButton]}
           onPress={() => navigation.navigate('TelecallerLeadDetail', { leadId: item.id })}
         >
-          <MaterialCommunityIcons name="eye" size={18} color={COLORS.primary} />
+          <Icon name="eye" size={18} color={COLORS.primary} />
           <Text style={styles.secondaryButtonText}>View</Text>
         </TouchableOpacity>
 
@@ -218,7 +219,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
             style={[styles.actionButton, styles.secondaryButton]}
             onPress={() => navigation.navigate('TelecallerCreateLead', { editLeadId: item.id })}
           >
-            <MaterialCommunityIcons name="pencil" size={18} color={COLORS.primary} />
+            <Icon name="pencil" size={18} color={COLORS.primary} />
           </TouchableOpacity>
         )}
       </View>
@@ -246,7 +247,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
     <View style={styles.container}>
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <MaterialCommunityIcons name="magnify" size={20} color={COLORS.textSecondary} />
+        <Icon name="magnify" size={20} color={COLORS.textSecondary} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search by name, phone, lead number..."
@@ -300,7 +301,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="phone-off" size={64} color={COLORS.textSecondary} />
+            <Icon name="phone-off" size={64} color={COLORS.textSecondary} />
             <Text style={styles.emptyText}>No leads found</Text>
           </View>
         }
@@ -311,7 +312,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
         style={styles.fab}
         onPress={() => navigation.navigate('TelecallerCreateLead')}
       >
-        <MaterialCommunityIcons name="plus" size={28} color="#fff" />
+        <Icon name="plus" size={28} color="#fff" />
       </TouchableOpacity>
     </View>
   );

@@ -11,7 +11,8 @@ import {
   Alert,
   Modal
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
 
@@ -310,7 +311,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
               <Text style={styles.leadNumber}>#{item.lead_number}</Text>
               {item.reopen_count > 0 && (
                 <View style={styles.reopenBadge}>
-                  <MaterialCommunityIcons name="refresh-circle" size={14} color={COLORS.red} />
+                  <Icon name="refresh-circle" size={14} color={COLORS.red} />
                   <Text style={styles.reopenText}>Reopened ({item.reopen_count})</Text>
                 </View>
               )}
@@ -321,7 +322,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
           
           {/* Priority Badge */}
           <View style={[styles.priorityBadge, { backgroundColor: priorityColor + '20' }]}>
-            <MaterialCommunityIcons name="priority-high" size={16} color={priorityColor} />
+            <Icon name="priority-high" size={16} color={priorityColor} />
             <Text style={[styles.priorityText, { color: priorityColor }]}>
               {item.lead_priority || 'NORMAL'}
             </Text>
@@ -331,15 +332,15 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
         {/* Info Row */}
         <View style={styles.infoRow}>
           <View style={styles.infoItem}>
-            <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.textSecondary} />
+            <Icon name="map-marker" size={14} color={COLORS.textSecondary} />
             <Text style={styles.infoText}>{item.city_info?.name || item.city || 'N/A'}</Text>
           </View>
           <View style={styles.infoItem}>
-            <MaterialCommunityIcons name="car" size={14} color={COLORS.textSecondary} />
+            <Icon name="car" size={14} color={COLORS.textSecondary} />
             <Text style={styles.infoText}>{item.vehicle_model || 'N/A'}</Text>
           </View>
           <View style={styles.infoItem}>
-            <MaterialCommunityIcons name="source-branch" size={14} color={COLORS.textSecondary} />
+            <Icon name="source-branch" size={14} color={COLORS.textSecondary} />
             <Text style={styles.infoText}>{item.created_from || 'N/A'}</Text>
           </View>
         </View>
@@ -347,12 +348,12 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
         {/* Workshop Assignment */}
         {item.workshop ? (
           <View style={styles.workshopRow}>
-            <MaterialCommunityIcons name="store" size={16} color={COLORS.primary} />
+            <Icon name="store" size={16} color={COLORS.primary} />
             <Text style={styles.workshopText}>{item.workshop.name}</Text>
           </View>
         ) : (
           <View style={[styles.workshopRow, { backgroundColor: COLORS.orange + '15' }]}>
-            <MaterialCommunityIcons name="alert" size={16} color={COLORS.orange} />
+            <Icon name="alert" size={16} color={COLORS.orange} />
             <Text style={[styles.workshopText, { color: COLORS.orange }]}>Not Assigned</Text>
           </View>
         )}
@@ -365,7 +366,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
           
           {item.sla_expires_at && (
             <View style={[styles.slaBadge, { backgroundColor: slaColor + '20' }]}>
-              <MaterialCommunityIcons name="clock-outline" size={14} color={slaColor} />
+              <Icon name="clock-outline" size={14} color={slaColor} />
               <Text style={[styles.slaText, { color: slaColor }]}>
                 {item.sla_state || 'ON_TRACK'}
               </Text>
@@ -379,7 +380,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
             style={styles.quickActionBtn}
             onPress={() => handleLeadAction(item, 'VIEW')}
           >
-            <MaterialCommunityIcons name="eye" size={18} color={COLORS.primary} />
+            <Icon name="eye" size={18} color={COLORS.primary} />
             <Text style={styles.quickActionText}>View</Text>
           </TouchableOpacity>
 
@@ -388,7 +389,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
               style={styles.quickActionBtn}
               onPress={() => handleLeadAction(item, 'ASSIGN')}
             >
-              <MaterialCommunityIcons name="account-arrow-right" size={18} color={COLORS.green} />
+              <Icon name="account-arrow-right" size={18} color={COLORS.green} />
               <Text style={styles.quickActionText}>Assign</Text>
             </TouchableOpacity>
           )}
@@ -398,7 +399,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
               style={styles.quickActionBtn}
               onPress={() => handleLeadAction(item, 'COMPLETE')}
             >
-              <MaterialCommunityIcons name="clipboard-check" size={18} color={COLORS.orange} />
+              <Icon name="clipboard-check" size={18} color={COLORS.orange} />
               <Text style={styles.quickActionText}>Complete</Text>
             </TouchableOpacity>
           )}
@@ -410,7 +411,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
               setShowActionsModal(true);
             }}
           >
-            <MaterialCommunityIcons name="dots-horizontal" size={18} color={COLORS.gray} />
+            <Icon name="dots-horizontal" size={18} color={COLORS.gray} />
             <Text style={styles.quickActionText}>More</Text>
           </TouchableOpacity>
         </View>
@@ -432,17 +433,17 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+          <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Lead Management</Text>
         <TouchableOpacity onPress={onRefresh}>
-          <MaterialCommunityIcons name="refresh" size={24} color="#fff" />
+          <Icon name="refresh" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <MaterialCommunityIcons name="magnify" size={20} color={COLORS.textSecondary} />
+        <Icon name="magnify" size={20} color={COLORS.textSecondary} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search leads..."
@@ -452,7 +453,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
         />
         {searchTerm.length > 0 && (
           <TouchableOpacity onPress={() => setSearchTerm('')}>
-            <MaterialCommunityIcons name="close-circle" size={20} color={COLORS.textSecondary} />
+            <Icon name="close-circle" size={20} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
       </View>
@@ -471,7 +472,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
               ]}
               onPress={() => setActiveFilter(item.value)}
             >
-              <MaterialCommunityIcons
+              <Icon
                 name={item.icon as any}
                 size={16}
                 color={activeFilter === item.value ? '#fff' : COLORS.textSecondary}
@@ -529,7 +530,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="inbox" size={64} color={COLORS.gray} />
+            <Icon name="inbox" size={64} color={COLORS.gray} />
             <Text style={styles.emptyTitle}>No Leads Found</Text>
             <Text style={styles.emptyText}>
               {searchTerm
@@ -559,7 +560,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
               style={styles.modalAction}
               onPress={() => handleLeadAction(selectedLead, 'SEND_TO_TELECALLER')}
             >
-              <MaterialCommunityIcons name="phone-forward" size={24} color={COLORS.teal} />
+              <Icon name="phone-forward" size={24} color={COLORS.teal} />
               <Text style={styles.modalActionText}>Send to Telecaller</Text>
             </TouchableOpacity>
 
@@ -568,7 +569,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
                 style={styles.modalAction}
                 onPress={() => handleLeadAction(selectedLead, 'REASSIGN')}
               >
-                <MaterialCommunityIcons name="swap-horizontal" size={24} color={COLORS.blue} />
+                <Icon name="swap-horizontal" size={24} color={COLORS.blue} />
                 <Text style={styles.modalActionText}>Reassign Workshop</Text>
               </TouchableOpacity>
             )}
@@ -577,7 +578,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
               style={styles.modalAction}
               onPress={() => handleLeadAction(selectedLead, 'ESCALATE')}
             >
-              <MaterialCommunityIcons name="alert-octagon" size={24} color={COLORS.orange} />
+              <Icon name="alert-octagon" size={24} color={COLORS.orange} />
               <Text style={styles.modalActionText}>Escalate</Text>
             </TouchableOpacity>
 
@@ -585,7 +586,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
               style={[styles.modalAction, styles.modalActionDanger]}
               onPress={() => handleLeadAction(selectedLead, 'CANCEL')}
             >
-              <MaterialCommunityIcons name="close-circle" size={24} color={COLORS.red} />
+              <Icon name="close-circle" size={24} color={COLORS.red} />
               <Text style={[styles.modalActionText, { color: COLORS.red }]}>Cancel Lead</Text>
             </TouchableOpacity>
 

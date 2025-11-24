@@ -4,11 +4,12 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardNavigator from './src/navigation/DashboardNavigator';
+import { AuthProvider } from './src/context/AuthContext';
 import { supabase } from './src/lib/supabase';
 
 const Stack = createNativeStackNavigator();
 
-export default function App() {
+function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -86,7 +87,7 @@ export default function App() {
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF6B00" />
+        <ActivityIndicator size="large" color="#0088E8" />
         <Text style={styles.loadingText}>Loading MyFNG...</Text>
       </View>
     );
@@ -114,6 +115,14 @@ export default function App() {
         )}
       </Stack.Navigator>
     </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

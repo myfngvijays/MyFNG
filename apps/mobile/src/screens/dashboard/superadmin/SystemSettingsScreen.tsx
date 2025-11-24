@@ -9,7 +9,8 @@ import {
   TextInput,
   Alert
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { COLORS, SPACING } from '../../../constants/theme';
 
 export default function SystemSettingsScreen({ navigation }: any) {
@@ -83,7 +84,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+          <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>System Settings</Text>
         <View style={{ width: 24 }} />
@@ -97,7 +98,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <MaterialCommunityIcons name="wrench" size={24} color={COLORS.red} />
+                <Icon name="wrench" size={24} color={COLORS.red} />
                 <View style={{ flex: 1, marginLeft: SPACING.md }}>
                   <Text style={styles.settingLabel}>Maintenance Mode</Text>
                   <Text style={styles.settingDescription}>
@@ -117,7 +118,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <MaterialCommunityIcons name="auto-fix" size={24} color={COLORS.blue} />
+                <Icon name="auto-fix" size={24} color={COLORS.blue} />
                 <View style={{ flex: 1, marginLeft: SPACING.md }}>
                   <Text style={styles.settingLabel}>Auto Lead Assignment</Text>
                   <Text style={styles.settingDescription}>
@@ -141,7 +142,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <MaterialCommunityIcons name="message-text" size={24} color={COLORS.green} />
+                <Icon name="message-text" size={24} color={COLORS.green} />
                 <Text style={styles.settingLabel}>SMS Notifications</Text>
               </View>
               <Switch
@@ -155,7 +156,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <MaterialCommunityIcons name="email" size={24} color={COLORS.blue} />
+                <Icon name="email" size={24} color={COLORS.blue} />
                 <Text style={styles.settingLabel}>Email Notifications</Text>
               </View>
               <Switch
@@ -169,7 +170,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <MaterialCommunityIcons name="bell" size={24} color={COLORS.orange} />
+                <Icon name="bell" size={24} color={COLORS.orange} />
                 <Text style={styles.settingLabel}>Push Notifications</Text>
               </View>
               <Switch
@@ -188,7 +189,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <MaterialCommunityIcons name="two-factor-authentication" size={24} color={COLORS.purple} />
+                <Icon name="two-factor-authentication" size={24} color={COLORS.purple} />
                 <View style={{ flex: 1, marginLeft: SPACING.md }}>
                   <Text style={styles.settingLabel}>Two-Factor Authentication</Text>
                   <Text style={styles.settingDescription}>
@@ -207,7 +208,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <MaterialCommunityIcons name="api" size={24} color={COLORS.teal} />
+                <Icon name="api" size={24} color={COLORS.teal} />
                 <Text style={styles.settingLabel}>API Access</Text>
               </View>
               <Switch
@@ -281,7 +282,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <MaterialCommunityIcons name="backup-restore" size={24} color={COLORS.green} />
+                <Icon name="backup-restore" size={24} color={COLORS.green} />
                 <View style={{ flex: 1, marginLeft: SPACING.md }}>
                   <Text style={styles.settingLabel}>Automatic Backup</Text>
                   <Text style={styles.settingDescription}>
@@ -303,42 +304,42 @@ export default function SystemSettingsScreen({ navigation }: any) {
           <Text style={styles.sectionTitle}>⚙️ System Actions</Text>
 
           <TouchableOpacity style={styles.actionCard} onPress={handleClearCache}>
-            <MaterialCommunityIcons name="broom" size={24} color={COLORS.orange} />
+            <Icon name="broom" size={24} color={COLORS.orange} />
             <View style={{ flex: 1, marginLeft: SPACING.md }}>
               <Text style={styles.actionLabel}>Clear System Cache</Text>
               <Text style={styles.actionDescription}>Free up memory and improve performance</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textSecondary} />
+            <Icon name="chevron-right" size={20} color={COLORS.textSecondary} />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionCard} onPress={handleExportLogs}>
-            <MaterialCommunityIcons name="file-export" size={24} color={COLORS.blue} />
+            <Icon name="file-export" size={24} color={COLORS.blue} />
             <View style={{ flex: 1, marginLeft: SPACING.md }}>
               <Text style={styles.actionLabel}>Export System Logs</Text>
               <Text style={styles.actionDescription}>Download logs for debugging</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textSecondary} />
+            <Icon name="chevron-right" size={20} color={COLORS.textSecondary} />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionCard}>
-            <MaterialCommunityIcons name="database-sync" size={24} color={COLORS.purple} />
+            <Icon name="database-sync" size={24} color={COLORS.purple} />
             <View style={{ flex: 1, marginLeft: SPACING.md }}>
               <Text style={styles.actionLabel}>Sync Database</Text>
               <Text style={styles.actionDescription}>Force database synchronization</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textSecondary} />
+            <Icon name="chevron-right" size={20} color={COLORS.textSecondary} />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.actionCard, { backgroundColor: COLORS.red + '15' }]}
             onPress={() => Alert.alert('Danger', 'This action requires additional authorization')}
           >
-            <MaterialCommunityIcons name="restart" size={24} color={COLORS.red} />
+            <Icon name="restart" size={24} color={COLORS.red} />
             <View style={{ flex: 1, marginLeft: SPACING.md }}>
               <Text style={[styles.actionLabel, { color: COLORS.red }]}>Restart System</Text>
               <Text style={styles.actionDescription}>Emergency system restart</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.red} />
+            <Icon name="chevron-right" size={20} color={COLORS.red} />
           </TouchableOpacity>
         </View>
 
@@ -348,7 +349,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
 
           <TouchableOpacity style={styles.integrationCard}>
             <View style={styles.integrationHeader}>
-              <MaterialCommunityIcons name="whatsapp" size={28} color="#25D366" />
+              <Icon name="whatsapp" size={28} color="#25D366" />
               <View style={{ flex: 1, marginLeft: SPACING.md }}>
                 <Text style={styles.integrationName}>WhatsApp Business</Text>
                 <Text style={styles.integrationStatus}>Connected</Text>
@@ -359,7 +360,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
 
           <TouchableOpacity style={styles.integrationCard}>
             <View style={styles.integrationHeader}>
-              <MaterialCommunityIcons name="google-maps" size={28} color="#4285F4" />
+              <Icon name="google-maps" size={28} color="#4285F4" />
               <View style={{ flex: 1, marginLeft: SPACING.md }}>
                 <Text style={styles.integrationName}>Google Maps API</Text>
                 <Text style={styles.integrationStatus}>Connected</Text>
@@ -370,7 +371,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
 
           <TouchableOpacity style={styles.integrationCard}>
             <View style={styles.integrationHeader}>
-              <MaterialCommunityIcons name="credit-card" size={28} color="#635BFF" />
+              <Icon name="credit-card" size={28} color="#635BFF" />
               <View style={{ flex: 1, marginLeft: SPACING.md }}>
                 <Text style={styles.integrationName}>Payment Gateway</Text>
                 <Text style={styles.integrationStatus}>Connected</Text>

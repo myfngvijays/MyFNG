@@ -9,7 +9,8 @@ import {
   Alert,
   TextInput
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
 
@@ -165,7 +166,7 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+          <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {mode === 'reassign' ? 'Reassign' : 'Assign'} Workshop
@@ -184,7 +185,7 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
 
       {/* Search */}
       <View style={styles.searchContainer}>
-        <MaterialCommunityIcons name="magnify" size={20} color={COLORS.textSecondary} />
+        <Icon name="magnify" size={20} color={COLORS.textSecondary} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search workshops..."
@@ -218,7 +219,7 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
                 )}
               </View>
               {selectedWorkshop?.id === workshop.id && (
-                <MaterialCommunityIcons name="check-circle" size={28} color={COLORS.green} />
+                <Icon name="check-circle" size={28} color={COLORS.green} />
               )}
             </View>
           </TouchableOpacity>
@@ -226,7 +227,7 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
 
         {filteredWorkshops.length === 0 && (
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="store-off" size={64} color={COLORS.gray} />
+            <Icon name="store-off" size={64} color={COLORS.gray} />
             <Text style={styles.emptyText}>No workshops found</Text>
           </View>
         )}
@@ -262,7 +263,7 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
             <ActivityIndicator color="#fff" />
           ) : (
             <>
-              <MaterialCommunityIcons name="check-circle" size={24} color="#fff" />
+              <Icon name="check-circle" size={24} color="#fff" />
               <Text style={styles.assignButtonText}>
                 {mode === 'reassign' ? 'Reassign Workshop' : 'Assign Workshop'}
               </Text>

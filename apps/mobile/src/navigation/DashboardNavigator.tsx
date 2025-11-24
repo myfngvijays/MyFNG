@@ -274,12 +274,31 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
 
   // Workshop Mechanic Navigation
   if (roleCode === 'WORKSHOP_MECHANIC') {
+    const MechanicJobHistoryScreen = require('../screens/dashboard/workshop_mechanic/MechanicJobHistoryScreen').default;
+    const MechanicProfileScreen = require('../screens/dashboard/workshop_mechanic/MechanicProfileScreen').default;
+    const MechanicLeadDetailScreen = require('../screens/dashboard/workshop_mechanic/MechanicLeadDetailScreen').default;
+    
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
-          name="WorkshopMechanicDashboard" 
+          name="Dashboard" 
           component={WorkshopMechanicDashboard}
           options={{ title: 'Mechanic Dashboard' }}
+        />
+        <Stack.Screen 
+          name="LeadDetail" 
+          component={MechanicLeadDetailScreen}
+          options={{ title: 'Lead Details' }}
+        />
+        <Stack.Screen 
+          name="JobHistory" 
+          component={MechanicJobHistoryScreen}
+          options={{ title: 'Job History' }}
+        />
+        <Stack.Screen 
+          name="Profile" 
+          component={MechanicProfileScreen}
+          options={{ title: 'My Profile' }}
         />
       </Stack.Navigator>
     );

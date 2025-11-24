@@ -94,6 +94,58 @@ export default function MechanicJobDetailPage() {
   useEffect(() => {
     if (leadId) {
       fetchJobDetails();
+
+      // Setup realtime subscription for this specific job
+      const supabase = createClient();
+      const channel = supabase
+        .channel(`job-${leadId}-changes`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'mechanic_jobs',
+            filter: `lead_id=eq.${leadId}`
+          },
+          (payload) => {
+            console.log('Job updated in real-time:', payload);
+            fetchJobDetails();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'service_checklists',
+            filter: `lead_id=eq.${leadId}`
+          },
+          (payload) => {
+            console.log('Checklist updated in real-time:', payload);
+            fetchJobDetails();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'mechanic_media',
+            filter: `lead_id=eq.${leadId}`
+          },
+          (payload) => {
+            console.log('Media updated in real-time:', payload);
+            fetchJobDetails();
+          }
+        )
+        .subscribe((status) => {
+          console.log('Job detail realtime subscription status:', status);
+        });
+
+      // Cleanup on unmount
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [leadId]);
 
@@ -108,27 +160,35 @@ export default function MechanicJobDetailPage() {
     const supabase = createClient();
 
     try {
+      console.log('Fetching job details for lead_id:', leadId);
+      
       // Get job details
-      const { data: jobData } = await supabase
+      const { data: jobData, error: jobError } = await supabase
         .from('mechanic_jobs')
         .select(`
           *,
           service_leads:lead_id (
             lead_number,
             customer_name,
+            customer_phone,
             vehicle_number,
             vehicle_make,
             vehicle_model,
             vehicle_variant,
-            vehicle_year,
-            odometer_reading,
-            fuel_type,
+            vehicle_fuel_type,
             problem_description,
-            service_types
+            service_type_ids,
+            subservice_ids
           )
         `)
         .eq('lead_id', leadId)
         .single();
+
+      if (jobError) {
+        console.error('Error fetching job from mechanic_jobs:', jobError);
+      }
+
+      console.log('Job data received:', jobData);
 
       if (jobData) {
         const jobDetail: JobDetail = {
@@ -140,17 +200,17 @@ export default function MechanicJobDetailPage() {
           vehicle_make: jobData.service_leads?.vehicle_make || '',
           vehicle_model: jobData.service_leads?.vehicle_model || '',
           vehicle_variant: jobData.service_leads?.vehicle_variant || '',
-          vehicle_year: jobData.service_leads?.vehicle_year || 0,
-          odometer_reading: jobData.service_leads?.odometer_reading || 0,
-          fuel_type: jobData.service_leads?.fuel_type || '',
+          vehicle_year: 0,
+          odometer_reading: 0,
+          fuel_type: jobData.service_leads?.vehicle_fuel_type || '',
           problem_description: jobData.service_leads?.problem_description || '',
-          service_types: jobData.service_leads?.service_types || [],
+          service_types: jobData.service_leads?.service_type_ids || jobData.service_leads?.subservice_ids || [],
           mechanic_status: jobData.mechanic_status,
           job_priority: jobData.job_priority,
-          sla_remaining_minutes: jobData.sla_remaining_minutes,
+          sla_remaining_minutes: jobData.sla_remaining_minutes ?? calculateSLARemaining(jobData.expected_completion_time),
           assigned_at: jobData.assigned_at,
           started_at: jobData.started_at,
-          expected_completion_time: jobData.expected_completion_time,
+          expected_completion_time: jobData.expected_completion_time ?? calculateExpectedCompletion(jobData.assigned_at, jobData.job_priority),
           work_notes: jobData.work_notes || '',
           checklist_completed: jobData.checklist_completed,
           before_images_count: jobData.before_images_count,
@@ -165,39 +225,55 @@ export default function MechanicJobDetailPage() {
       }
 
       // Get checklist
-      const { data: checklistData } = await supabase
+      const { data: checklistData, error: checklistError } = await supabase
         .from('service_checklists')
         .select('*')
         .eq('lead_id', leadId)
-        .single();
+        .maybeSingle();
+
+      if (checklistError) {
+        console.error('Checklist error:', checklistError);
+      }
 
       if (checklistData && checklistData.checklist_items) {
         setChecklist(checklistData.checklist_items);
       }
 
       // Get media
-      const { data: mediaData } = await supabase
+      const { data: mediaData, error: mediaError } = await supabase
         .from('mechanic_media')
         .select('*')
         .eq('lead_id', leadId)
         .order('uploaded_at', { ascending: false });
 
+      if (mediaError) {
+        console.error('Media error:', mediaError);
+      }
+
       setMedia(mediaData || []);
 
       // Get parts
-      const { data: partsData } = await supabase
+      const { data: partsData, error: partsError } = await supabase
         .from('mechanic_parts_usage')
         .select('*')
         .eq('lead_id', leadId);
 
+      if (partsError) {
+        console.error('Parts error:', partsError);
+      }
+
       setParts(partsData || []);
 
       // Get extra work requests
-      const { data: extraWorkData } = await supabase
+      const { data: extraWorkData, error: extraWorkError } = await supabase
         .from('mechanic_extra_work_requests')
         .select('*')
         .eq('lead_id', leadId)
         .order('created_at', { ascending: false });
+
+      if (extraWorkError) {
+        console.error('Extra work error:', extraWorkError);
+      }
 
       setExtraWorkRequests(extraWorkData || []);
 
@@ -209,8 +285,14 @@ export default function MechanicJobDetailPage() {
   }
 
   async function updateJobStatus(newStatus: string) {
+    console.log('Updating job status to:', newStatus);
     const supabase = createClient();
     
+    if (!job || !leadId) {
+      console.error('No job or leadId available');
+      return;
+    }
+
     const updates: any = {
       mechanic_status: newStatus,
       updated_at: new Date().toISOString()
@@ -224,12 +306,19 @@ export default function MechanicJobDetailPage() {
       updates.completed_at = new Date().toISOString();
     }
 
-    const { error } = await supabase
+    console.log('Updating mechanic_jobs with:', updates);
+
+    const { data, error } = await supabase
       .from('mechanic_jobs')
       .update(updates)
-      .eq('lead_id', leadId);
+      .eq('lead_id', leadId)
+      .select();
 
-    if (!error) {
+    if (error) {
+      console.error('Error updating job status:', error);
+      alert('Failed to update job status: ' + error.message);
+    } else {
+      console.log('Job status updated successfully:', data);
       fetchJobDetails();
     }
   }
@@ -379,9 +468,19 @@ export default function MechanicJobDetailPage() {
     return (
       <DashboardLayout role="workshop_mechanic">
         <div className="text-center py-12">
-          <p className="text-gray-500">Job not found</p>
+          <p className="text-gray-500 text-xl mb-2">Job not found</p>
+          <p className="text-sm text-gray-400 mb-4">Lead ID: {leadId}</p>
+          <p className="text-sm text-gray-400 mb-4">
+            Check console for details or verify the mechanic_jobs entry exists for this lead.
+          </p>
           <button onClick={() => router.back()} className="btn btn-primary mt-4">
             Go Back
+          </button>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="btn btn-outline mt-4 ml-2"
+          >
+            Refresh Page
           </button>
         </div>
       </DashboardLayout>
@@ -398,6 +497,31 @@ export default function MechanicJobDetailPage() {
       default: return 'bg-gray-100 text-gray-800';
     }
   };
+
+  function getServiceTypeName(serviceTypeId: string): string {
+    const serviceTypeMap: { [key: string]: string } = {
+      'd0000001-0001-0001-0001-000000000001': 'General Service',
+      'd0000001-0001-0001-0001-000000000002': 'AC Service',
+      'd0000001-0001-0001-0001-000000000006': 'Car Wash',
+      'e0000001-0001-0001-0001-000000000002': 'Filter Replacement',
+      'e0000001-0001-0001-0001-000000000007': 'Brake Pad Replacement',
+    };
+    return serviceTypeMap[serviceTypeId] || 'Service';
+  }
+
+  function calculateExpectedCompletion(assignedAt: string | null, priority: string): string | null {
+    if (!assignedAt) return null;
+    const assigned = new Date(assignedAt);
+    const hoursToAdd = priority === 'URGENT' ? 2 : priority === 'HIGH' ? 4 : priority === 'LOW' ? 24 : 8;
+    return new Date(assigned.getTime() + hoursToAdd * 60 * 60 * 1000).toISOString();
+  }
+
+  function calculateSLARemaining(expectedCompletionTime: string | null): number | null {
+    if (!expectedCompletionTime) return null;
+    const now = new Date();
+    const expected = new Date(expectedCompletionTime);
+    return Math.floor((expected.getTime() - now.getTime()) / (1000 * 60));
+  }
 
   const canStartJob = job.mechanic_status === 'ASSIGNED';
   const canCompleteJob = job.mechanic_status === 'IN_PROGRESS' && 
@@ -439,21 +563,31 @@ export default function MechanicJobDetailPage() {
               <div>
                 <p className="text-sm text-gray-600">SLA Remaining</p>
                 <p className="text-2xl font-bold">
-                  {job.sla_remaining_minutes < 0 ? (
-                    <span className="text-red-600">Overdue by {Math.abs(job.sla_remaining_minutes)}m</span>
-                  ) : job.sla_remaining_minutes < 60 ? (
-                    <span className="text-orange-600">{job.sla_remaining_minutes} minutes</span>
+                  {job.sla_remaining_minutes !== null && job.sla_remaining_minutes !== undefined ? (
+                    job.sla_remaining_minutes < 0 ? (
+                      <span className="text-red-600">Overdue by {Math.abs(job.sla_remaining_minutes)}m</span>
+                    ) : job.sla_remaining_minutes < 60 ? (
+                      <span className="text-orange-600">{job.sla_remaining_minutes} minutes</span>
+                    ) : (
+                      <span className="text-green-600">
+                        {Math.floor(job.sla_remaining_minutes / 60)}h {job.sla_remaining_minutes % 60}m
+                      </span>
+                    )
                   ) : (
-                    <span className="text-green-600">
-                      {Math.floor(job.sla_remaining_minutes / 60)}h {job.sla_remaining_minutes % 60}m
-                    </span>
+                    <span className="text-gray-500">No SLA set</span>
                   )}
                 </p>
               </div>
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-600">Expected Completion</p>
-              <p className="font-semibold">{new Date(job.expected_completion_time).toLocaleString()}</p>
+              <p className="font-semibold">
+                {job.expected_completion_time ? (
+                  new Date(job.expected_completion_time).toLocaleString()
+                ) : (
+                  <span className="text-gray-500">Not set</span>
+                )}
+              </p>
             </div>
           </div>
         </div>
@@ -540,11 +674,15 @@ export default function MechanicJobDetailPage() {
                 <div>
                   <p className="text-sm text-gray-600">Service Types</p>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {job.service_types.map((type, idx) => (
-                      <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                        {type}
-                      </span>
-                    ))}
+                    {job.service_types && job.service_types.length > 0 ? (
+                      job.service_types.map((type, idx) => (
+                        <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                          {getServiceTypeName(type)}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-gray-500">No service type specified</span>
+                    )}
                   </div>
                 </div>
               </div>

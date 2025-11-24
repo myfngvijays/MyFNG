@@ -12,7 +12,8 @@ import {
   Alert,
   ScrollView
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
 
@@ -244,7 +245,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
           style={[styles.pendingCard, { borderLeftColor: COLORS.orange }]}
           onPress={() => setActiveTab('payouts')}
         >
-          <MaterialCommunityIcons name="cash-multiple" size={32} color={COLORS.orange} />
+          <Icon name="cash-multiple" size={32} color={COLORS.orange} />
           <View style={styles.pendingInfo}>
             <Text style={styles.pendingCount}>{financeOverview.pendingPayouts}</Text>
             <Text style={styles.pendingLabel}>Pending Payouts</Text>
@@ -252,14 +253,14 @@ export default function FinancePayoutScreen({ navigation }: any) {
               ₹{(financeOverview.pendingPayoutsAmount / 1000).toFixed(1)}K
             </Text>
           </View>
-          <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.textSecondary} />
+          <Icon name="chevron-right" size={24} color={COLORS.textSecondary} />
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.pendingCard, { borderLeftColor: COLORS.red }]}
           onPress={() => setActiveTab('refunds')}
         >
-          <MaterialCommunityIcons name="arrow-u-left-top" size={32} color={COLORS.red} />
+          <Icon name="arrow-u-left-top" size={32} color={COLORS.red} />
           <View style={styles.pendingInfo}>
             <Text style={styles.pendingCount}>{financeOverview.pendingRefunds}</Text>
             <Text style={styles.pendingLabel}>Pending Refunds</Text>
@@ -267,13 +268,13 @@ export default function FinancePayoutScreen({ navigation }: any) {
               ₹{(financeOverview.pendingRefundsAmount / 1000).toFixed(1)}K
             </Text>
           </View>
-          <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.textSecondary} />
+          <Icon name="chevron-right" size={24} color={COLORS.textSecondary} />
         </TouchableOpacity>
       </View>
 
       {/* Outstanding */}
       <View style={styles.outstandingCard}>
-        <MaterialCommunityIcons name="alert-circle" size={24} color={COLORS.orange} />
+        <Icon name="alert-circle" size={24} color={COLORS.orange} />
         <View style={{ flex: 1, marginLeft: SPACING.md }}>
           <Text style={styles.outstandingLabel}>Outstanding Payments</Text>
           <Text style={styles.outstandingAmount}>
@@ -287,22 +288,22 @@ export default function FinancePayoutScreen({ navigation }: any) {
         <Text style={styles.sectionTitle}>⚡ Quick Actions</Text>
         <View style={styles.quickActionsGrid}>
           <TouchableOpacity style={styles.quickActionCard} onPress={() => setActiveTab('invoices')}>
-            <MaterialCommunityIcons name="file-document" size={28} color={COLORS.blue} />
+            <Icon name="file-document" size={28} color={COLORS.blue} />
             <Text style={styles.quickActionText}>Invoices</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.quickActionCard}>
-            <MaterialCommunityIcons name="percent" size={28} color={COLORS.purple} />
+            <Icon name="percent" size={28} color={COLORS.purple} />
             <Text style={styles.quickActionText}>GST Config</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.quickActionCard}>
-            <MaterialCommunityIcons name="chart-line" size={28} color={COLORS.green} />
+            <Icon name="chart-line" size={28} color={COLORS.green} />
             <Text style={styles.quickActionText}>Reports</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.quickActionCard}>
-            <MaterialCommunityIcons name="cog" size={28} color={COLORS.orange} />
+            <Icon name="cog" size={28} color={COLORS.orange} />
             <Text style={styles.quickActionText}>Settings</Text>
           </TouchableOpacity>
         </View>
@@ -332,7 +333,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
           style={[styles.actionBtn, { backgroundColor: COLORS.green + '20' }]}
           onPress={() => handleApprovePayout(item.id, item.amount)}
         >
-          <MaterialCommunityIcons name="check" size={18} color={COLORS.green} />
+          <Icon name="check" size={18} color={COLORS.green} />
           <Text style={[styles.actionBtnText, { color: COLORS.green }]}>Approve</Text>
         </TouchableOpacity>
 
@@ -340,7 +341,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
           style={[styles.actionBtn, { backgroundColor: COLORS.red + '20' }]}
           onPress={() => handleRejectPayout(item.id)}
         >
-          <MaterialCommunityIcons name="close" size={18} color={COLORS.red} />
+          <Icon name="close" size={18} color={COLORS.red} />
           <Text style={[styles.actionBtnText, { color: COLORS.red }]}>Reject</Text>
         </TouchableOpacity>
       </View>
@@ -372,14 +373,14 @@ export default function FinancePayoutScreen({ navigation }: any) {
           style={[styles.actionBtn, { backgroundColor: COLORS.green + '20' }]}
           onPress={() => handleApproveRefund(item.id, item.amount)}
         >
-          <MaterialCommunityIcons name="check" size={18} color={COLORS.green} />
+          <Icon name="check" size={18} color={COLORS.green} />
           <Text style={[styles.actionBtnText, { color: COLORS.green }]}>Approve</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: COLORS.red + '20' }]}
         >
-          <MaterialCommunityIcons name="close" size={18} color={COLORS.red} />
+          <Icon name="close" size={18} color={COLORS.red} />
           <Text style={[styles.actionBtnText, { color: COLORS.red }]}>Reject</Text>
         </TouchableOpacity>
       </View>
@@ -420,11 +421,11 @@ export default function FinancePayoutScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+          <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Finance & Payout Control</Text>
         <TouchableOpacity onPress={onRefresh}>
-          <MaterialCommunityIcons name="refresh" size={24} color="#fff" />
+          <Icon name="refresh" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -481,7 +482,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <MaterialCommunityIcons name="cash-check" size={64} color={COLORS.gray} />
+              <Icon name="cash-check" size={64} color={COLORS.gray} />
               <Text style={styles.emptyTitle}>No Pending Payouts</Text>
               <Text style={styles.emptyText}>All payouts have been processed</Text>
             </View>
@@ -498,7 +499,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <MaterialCommunityIcons name="arrow-u-left-top" size={64} color={COLORS.gray} />
+              <Icon name="arrow-u-left-top" size={64} color={COLORS.gray} />
               <Text style={styles.emptyTitle}>No Pending Refunds</Text>
               <Text style={styles.emptyText}>All refunds have been processed</Text>
             </View>
@@ -515,7 +516,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <MaterialCommunityIcons name="file-document-outline" size={64} color={COLORS.gray} />
+              <Icon name="file-document-outline" size={64} color={COLORS.gray} />
               <Text style={styles.emptyTitle}>No Invoices</Text>
               <Text style={styles.emptyText}>No invoices found</Text>
             </View>

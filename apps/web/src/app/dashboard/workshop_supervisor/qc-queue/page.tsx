@@ -94,7 +94,7 @@ export default function QCQueuePage() {
         // Get mechanic name
         const { data: mechanic } = await supabase
           .from('users_login')
-          .select('name')
+          .select('full_name')
           .eq('id', job.assigned_mechanic_id)
           .single();
 
@@ -113,7 +113,7 @@ export default function QCQueuePage() {
 
         return {
           ...job,
-          mechanic_name: mechanic?.name || 'Unknown',
+          mechanic_name: mechanic?.full_name || 'Unknown',
           before_images_count: beforeCount || 0,
           after_images_count: afterCount || 0,
           work_summary: job.notes || 'No summary provided'

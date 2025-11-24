@@ -9,6 +9,7 @@ import {
   PlayCircle, PauseCircle, ImagePlus
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 type FilterType = 'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'HOLD' | 'COMPLETED' | 'NEED_APPROVAL';
 
@@ -56,6 +57,53 @@ export default function WorkshopMechanicDashboard() {
 
   useEffect(() => {
     fetchMechanicData();
+
+    // Setup realtime subscription for mechanic_jobs
+    const supabase = createClient();
+    let channel: RealtimeChannel;
+
+    const setupRealtimeSubscription = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: userProfile } = await supabase
+        .from('users_login')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+
+      if (!userProfile) return;
+
+      // Subscribe to changes in mechanic_dashboard view (filtered by mechanic_id)
+      channel = supabase
+        .channel('mechanic-jobs-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'mechanic_jobs',
+            filter: `mechanic_id=eq.${userProfile.id}`
+          },
+          (payload) => {
+            console.log('Real-time update received:', payload);
+            // Refresh data when any change occurs
+            fetchMechanicData();
+          }
+        )
+        .subscribe((status) => {
+          console.log('Realtime subscription status:', status);
+        });
+    };
+
+    setupRealtimeSubscription();
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -84,52 +132,78 @@ export default function WorkshopMechanicDashboard() {
         .eq('mechanic_id', userProfile.id)
         .order('assigned_at', { ascending: false });
 
-      // Get today's stats
+      console.log('Dashboard data fetched:', dashboardData);
+
+      // Set jobs data
+      if (dashboardData) {
+        setJobs(dashboardData);
+      }
+
+      // Calculate stats from the fetched data
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const { count: assignedToday } = await supabase
-        .from('mechanic_jobs')
-        .select('*', { count: 'exact', head: true })
-        .eq('mechanic_id', userProfile.id)
-        .gte('assigned_at', today.toISOString());
+      const assignedToday = dashboardData?.filter(job => {
+        const assignedDate = new Date(job.assigned_at);
+        assignedDate.setHours(0, 0, 0, 0);
+        return assignedDate.getTime() === today.getTime();
+      }).length || 0;
 
-      const { count: inProgress } = await supabase
-        .from('mechanic_jobs')
-        .select('*', { count: 'exact', head: true })
-        .eq('mechanic_id', userProfile.id)
-        .eq('mechanic_status', 'IN_PROGRESS');
+      const inProgress = dashboardData?.filter(job => 
+        job.mechanic_status === 'IN_PROGRESS'
+      ).length || 0;
 
-      const { count: completedToday } = await supabase
-        .from('mechanic_jobs')
-        .select('*', { count: 'exact', head: true })
-        .eq('mechanic_id', userProfile.id)
-        .eq('mechanic_status', 'COMPLETED')
-        .gte('completed_at', today.toISOString());
+      const completedToday = dashboardData?.filter(job => {
+        if (job.completed_at) {
+          const completedDate = new Date(job.completed_at);
+          completedDate.setHours(0, 0, 0, 0);
+          return completedDate.getTime() === today.getTime();
+        }
+        return false;
+      }).length || 0;
 
-      const { count: needApproval } = await supabase
+      const pendingPickups = dashboardData?.filter(job => 
+        job.pickup_required && job.pickup_status === 'NOT_ASSIGNED'
+      ).length || 0;
+
+      // Get need approval count
+      const { count: needApproval, error: approvalError } = await supabase
         .from('mechanic_extra_work_requests')
         .select('*', { count: 'exact', head: true })
         .eq('mechanic_id', userProfile.id)
         .eq('status', 'PENDING');
 
+      if (approvalError) {
+        console.error('Error fetching extra work requests:', approvalError);
+      }
+
+      setStats({
+        assigned_today: assignedToday,
+        in_progress: inProgress,
+        pending_pickups: pendingPickups,
+        completed_today: completedToday,
+        need_approval: needApproval || 0
+      });
+
+      console.log('Stats calculated:', {
+        assigned_today: assignedToday,
+        in_progress: inProgress,
+        pending_pickups: pendingPickups,
+        completed_today: completedToday,
+        need_approval: needApproval || 0
+      });
+
       // Get performance metrics
-      const { data: performanceData } = await supabase
+      const { data: performanceData, error: performanceError } = await supabase
         .from('mechanic_performance_metrics')
         .select('*')
         .eq('mechanic_id', userProfile.id)
         .eq('date', today.toISOString().split('T')[0])
-        .single();
+        .maybeSingle();
 
-      setJobs(dashboardData || []);
-      setFilteredJobs(dashboardData || []);
-      setStats({
-        assigned_today: assignedToday || 0,
-        in_progress: inProgress || 0,
-        pending_pickups: 0, // Will be calculated from pickup_status
-        completed_today: completedToday || 0,
-        need_approval: needApproval || 0
-      });
+      if (performanceError) {
+        console.error('Error fetching performance metrics:', performanceError);
+      }
       
       if (performanceData) {
         setPerformanceStats({

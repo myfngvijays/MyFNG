@@ -11,6 +11,7 @@ import {
   Dimensions
 } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../components/Icon';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';

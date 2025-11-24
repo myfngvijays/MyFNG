@@ -10,7 +10,8 @@ import {
   TextInput,
   Alert
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
 
@@ -314,7 +315,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
   if (!lead) {
     return (
       <View style={styles.loadingContainer}>
-        <MaterialCommunityIcons name="alert-circle" size={64} color={COLORS.red} />
+        <Icon name="alert-circle" size={64} color={COLORS.red} />
         <Text style={styles.errorText}>Lead not found</Text>
         <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
           <Text style={styles.buttonText}>Go Back</Text>
@@ -328,7 +329,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+          <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Lead #{lead.lead_number}</Text>
@@ -336,11 +337,11 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         </View>
         {!editMode ? (
           <TouchableOpacity onPress={() => setEditMode(true)}>
-            <MaterialCommunityIcons name="pencil" size={24} color="#fff" />
+            <Icon name="pencil" size={24} color="#fff" />
           </TouchableOpacity>
         ) : (
           <TouchableOpacity onPress={handleSave} disabled={saving}>
-            <MaterialCommunityIcons name="check" size={24} color="#fff" />
+            <Icon name="check" size={24} color="#fff" />
           </TouchableOpacity>
         )}
       </View>
@@ -363,7 +364,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
           </View>
           {lead.is_incomplete && (
             <View style={styles.incompleteBadge}>
-              <MaterialCommunityIcons name="alert-circle" size={16} color={COLORS.orange} />
+              <Icon name="alert-circle" size={16} color={COLORS.orange} />
               <Text style={styles.incompleteText}>INCOMPLETE</Text>
             </View>
           )}
@@ -372,7 +373,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         {/* SLA Alert */}
         {(lead.sla_state === 'BREACHED' || lead.sla_state === 'AT_RISK') && (
           <View style={[styles.alert, { backgroundColor: lead.sla_state === 'BREACHED' ? COLORS.red + '15' : COLORS.orange + '15' }]}>
-            <MaterialCommunityIcons 
+            <Icon 
               name={lead.sla_state === 'BREACHED' ? 'alert-circle' : 'clock-alert'} 
               size={20} 
               color={lead.sla_state === 'BREACHED' ? COLORS.red : COLORS.orange} 
@@ -387,25 +388,25 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         <View style={styles.quickActionsBar}>
           {!lead.assigned_workshop_id && (
             <TouchableOpacity style={styles.quickAction} onPress={handleAssignWorkshop}>
-              <MaterialCommunityIcons name="account-arrow-right" size={20} color={COLORS.green} />
+              <Icon name="account-arrow-right" size={20} color={COLORS.green} />
               <Text style={styles.quickActionText}>Assign Workshop</Text>
             </TouchableOpacity>
           )}
           
           {lead.is_incomplete && (
             <TouchableOpacity style={styles.quickAction} onPress={handleMarkComplete}>
-              <MaterialCommunityIcons name="check-circle" size={20} color={COLORS.blue} />
+              <Icon name="check-circle" size={20} color={COLORS.blue} />
               <Text style={styles.quickActionText}>Mark Complete</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity style={styles.quickAction} onPress={handleSendToTelecaller}>
-            <MaterialCommunityIcons name="phone-forward" size={20} color={COLORS.teal} />
+            <Icon name="phone-forward" size={20} color={COLORS.teal} />
             <Text style={styles.quickActionText}>To Telecaller</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.quickAction} onPress={handleEscalate}>
-            <MaterialCommunityIcons name="alert-octagon" size={20} color={COLORS.orange} />
+            <Icon name="alert-octagon" size={20} color={COLORS.orange} />
             <Text style={styles.quickActionText}>Escalate</Text>
           </TouchableOpacity>
         </View>
@@ -413,7 +414,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         {/* Customer Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="account" size={24} color={COLORS.primary} />
+            <Icon name="account" size={24} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Customer Details</Text>
           </View>
           <View style={styles.sectionContent}>
@@ -491,7 +492,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         {/* Vehicle Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="car" size={24} color={COLORS.primary} />
+            <Icon name="car" size={24} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Vehicle Details</Text>
           </View>
           <View style={styles.sectionContent}>
@@ -580,7 +581,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         {/* Service Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="wrench" size={24} color={COLORS.primary} />
+            <Icon name="wrench" size={24} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Service Details</Text>
           </View>
           <View style={styles.sectionContent}>
@@ -623,7 +624,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         {/* Pickup Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="car-pickup" size={24} color={COLORS.primary} />
+            <Icon name="car-pickup" size={24} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Pickup Details</Text>
           </View>
           <View style={styles.sectionContent}>
@@ -633,7 +634,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
                   style={styles.checkboxRow}
                   onPress={() => setEditedData({ ...editedData, pickup_required: !editedData.pickup_required })}
                 >
-                  <MaterialCommunityIcons
+                  <Icon
                     name={editedData.pickup_required ? 'checkbox-marked' : 'checkbox-blank-outline'}
                     size={24}
                     color={COLORS.primary}
@@ -674,7 +675,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         {lead.workshop && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <MaterialCommunityIcons name="store" size={24} color={COLORS.primary} />
+              <Icon name="store" size={24} color={COLORS.primary} />
               <Text style={styles.sectionTitle}>Assigned Workshop</Text>
             </View>
             <View style={styles.sectionContent}>
@@ -692,7 +693,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         {callLogs.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <MaterialCommunityIcons name="phone-log" size={24} color={COLORS.primary} />
+              <Icon name="phone-log" size={24} color={COLORS.primary} />
               <Text style={styles.sectionTitle}>Call History ({callLogs.length})</Text>
             </View>
             <View style={styles.sectionContent}>
@@ -719,7 +720,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         {/* Internal Notes Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="note-text" size={24} color={COLORS.primary} />
+            <Icon name="note-text" size={24} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Internal Notes (Lead Manager Only)</Text>
           </View>
           <View style={styles.sectionContent}>
@@ -757,7 +758,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
                 <ActivityIndicator color="#fff" />
               ) : (
                 <>
-                  <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
+                  <Icon name="content-save" size={20} color="#fff" />
                   <Text style={styles.saveButtonText}>Save Changes</Text>
                 </>
               )}
@@ -787,7 +788,7 @@ interface InfoRowProps {
 function InfoRow({ icon, label, value }: InfoRowProps) {
   return (
     <View style={styles.infoRow}>
-      <MaterialCommunityIcons name={icon as any} size={16} color={COLORS.textSecondary} />
+      <Icon name={icon as any} size={16} color={COLORS.textSecondary} />
       <View style={styles.infoContent}>
         <Text style={styles.infoLabel}>{label}:</Text>
         <Text style={styles.infoValue}>{value}</Text>

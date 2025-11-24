@@ -11,7 +11,8 @@ import {
   Clipboard,
   Alert
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
 
@@ -128,7 +129,7 @@ export default function TelecallerScriptsScreen() {
               </View>
               {script.category && (
                 <View style={styles.categoryBadge}>
-                  <MaterialCommunityIcons
+                  <Icon
                     name={getCategoryIcon(script.category)}
                     size={12}
                     color={COLORS.textSecondary}
@@ -138,7 +139,7 @@ export default function TelecallerScriptsScreen() {
               )}
             </View>
           </View>
-          <MaterialCommunityIcons
+          <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
             size={24}
             color={COLORS.textSecondary}
@@ -161,7 +162,7 @@ export default function TelecallerScriptsScreen() {
               style={styles.actionButton}
               onPress={() => handleCopyScript(script.script_content, script.script_title)}
             >
-              <MaterialCommunityIcons name="content-copy" size={18} color={COLORS.primary} />
+              <Icon name="content-copy" size={18} color={COLORS.primary} />
               <Text style={styles.actionButtonText}>Copy Script</Text>
             </TouchableOpacity>
           </View>
@@ -183,7 +184,7 @@ export default function TelecallerScriptsScreen() {
     <View style={styles.container}>
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <MaterialCommunityIcons name="magnify" size={20} color={COLORS.textSecondary} />
+        <Icon name="magnify" size={20} color={COLORS.textSecondary} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search scripts..."
@@ -193,7 +194,7 @@ export default function TelecallerScriptsScreen() {
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <MaterialCommunityIcons name="close-circle" size={20} color={COLORS.textSecondary} />
+            <Icon name="close-circle" size={20} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
       </View>
@@ -210,7 +211,7 @@ export default function TelecallerScriptsScreen() {
               ]}
               onPress={() => setSelectedCategory(category.value)}
             >
-              <MaterialCommunityIcons
+              <Icon
                 name={category.icon as any}
                 size={18}
                 color={selectedCategory === category.value ? '#fff' : COLORS.textSecondary}
@@ -230,7 +231,7 @@ export default function TelecallerScriptsScreen() {
 
       {/* Quick Info */}
       <View style={styles.infoCard}>
-        <MaterialCommunityIcons name="information" size={20} color={COLORS.primary} />
+        <Icon name="information" size={20} color={COLORS.primary} />
         <Text style={styles.infoText}>
           Tap any script to expand and copy. Use these scripts as a guide during calls.
         </Text>
@@ -245,7 +246,7 @@ export default function TelecallerScriptsScreen() {
       >
         {scripts.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="script-text-outline" size={64} color={COLORS.gray} />
+            <Icon name="script-text-outline" size={64} color={COLORS.gray} />
             <Text style={styles.emptyTitle}>No Scripts Found</Text>
             <Text style={styles.emptyText}>
               {searchQuery

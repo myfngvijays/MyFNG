@@ -10,7 +10,8 @@ import {
   Platform,
   Alert
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING } from '../../../constants/theme';
@@ -101,9 +102,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
 
     if (step === 3) {
       if (!formData.service_type.trim()) newErrors.service_type = 'Service type required';
-    }
-
-    if (step === 4) {
+      
       // Pickup validation - only if pickup is required
       if (formData.pickup_required) {
         if (!formData.pickup_address && !formData.customer_address) {
@@ -118,7 +117,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
 
   const handleNext = () => {
     if (validateStep(currentStep)) {
-      setCurrentStep(prev => Math.min(prev + 1, 4));
+      setCurrentStep(prev => Math.min(prev + 1, 3));
     }
   };
 
@@ -430,7 +429,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
 
   const renderStep3 = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Service Requirements</Text>
+      <Text style={styles.stepTitle}>Service Requirements & Pickup</Text>
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Service Type *</Text>
@@ -490,23 +489,16 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           placeholderTextColor={COLORS.textSecondary}
         />
       </View>
-    </View>
-  );
 
-  const renderStep4 = () => (
-    <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Additional Information</Text>
-
+      {/* Pickup Section */}
+      <View style={styles.sectionDivider} />
+      
       <View style={styles.checkboxGroup}>
         <TouchableOpacity
           style={styles.checkbox}
           onPress={() => updateField('pickup_required', !formData.pickup_required)}
         >
-          <MaterialCommunityIcons
-            name={formData.pickup_required ? 'checkbox-marked' : 'checkbox-blank-outline'}
-            size={24}
-            color={formData.pickup_required ? COLORS.primary : COLORS.textSecondary}
-          />
+          <Text style={styles.checkboxEmoji}>{formData.pickup_required ? '✅' : '⬜'}</Text>
           <Text style={styles.checkboxLabel}>Customer requires vehicle pickup</Text>
         </TouchableOpacity>
       </View>
@@ -516,15 +508,21 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Pickup Address</Text>
             <TextInput
-              style={[styles.input, styles.textArea]}
+              style={[styles.input, styles.textArea, errors.pickup_address && styles.inputError]}
               value={formData.pickup_address}
               onChangeText={(value) => updateField('pickup_address', value)}
-              placeholder="Leave empty to use customer address"
+              placeholder="Enter pickup address or leave empty to use customer address"
               multiline
               numberOfLines={2}
               placeholderTextColor={COLORS.textSecondary}
             />
+            {errors.pickup_address && <Text style={styles.errorText}>{errors.pickup_address}</Text>}
           </View>
+
+          <TouchableOpacity style={styles.locationButton}>
+            <Text style={styles.locationButtonEmoji}>📍</Text>
+            <Text style={styles.locationButtonText}>Get Current Location (Lat/Lng)</Text>
+          </TouchableOpacity>
         </>
       )}
 
@@ -566,6 +564,8 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
     </View>
   );
 
+  const renderStep4 = () => null; // No longer used - merged into step 3
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -574,14 +574,14 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
     >
       {/* Progress Bar */}
       <View style={styles.progressContainer}>
-        {[1, 2, 3, 4].map(step => (
+        {[1, 2, 3].map(step => (
           <View key={step} style={styles.progressStep}>
             <View style={[
               styles.progressDot,
               currentStep >= step && styles.progressDotActive
             ]}>
               {currentStep > step ? (
-                <MaterialCommunityIcons name="check" size={16} color="#fff" />
+                <Text style={styles.progressDotText}>✓</Text>
               ) : (
                 <Text style={[
                   styles.progressDotText,
@@ -591,7 +591,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
                 </Text>
               )}
             </View>
-            {step < 4 && (
+            {step < 3 && (
               <View style={[
                 styles.progressLine,
                 currentStep > step && styles.progressLineActive
@@ -605,8 +605,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       <View style={styles.stepLabels}>
         <Text style={[styles.stepLabel, currentStep === 1 && styles.stepLabelActive]}>Customer</Text>
         <Text style={[styles.stepLabel, currentStep === 2 && styles.stepLabelActive]}>Vehicle</Text>
-        <Text style={[styles.stepLabel, currentStep === 3 && styles.stepLabelActive]}>Service</Text>
-        <Text style={[styles.stepLabel, currentStep === 4 && styles.stepLabelActive]}>Additional</Text>
+        <Text style={[styles.stepLabel, currentStep === 3 && styles.stepLabelActive]}>Service & Pickup</Text>
       </View>
 
       {/* Form Content */}
@@ -614,7 +613,6 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
         {currentStep === 1 && renderStep1()}
         {currentStep === 2 && renderStep2()}
         {currentStep === 3 && renderStep3()}
-        {currentStep === 4 && renderStep4()}
       </ScrollView>
 
       {/* Navigation Buttons */}
@@ -628,13 +626,13 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           </TouchableOpacity>
         )}
 
-        {currentStep < 4 ? (
+        {currentStep < 3 ? (
           <TouchableOpacity
             style={[styles.button, styles.buttonPrimary, currentStep === 1 && styles.buttonFull]}
             onPress={handleNext}
           >
             <Text style={styles.buttonPrimaryText}>Next</Text>
-            <MaterialCommunityIcons name="arrow-right" size={20} color="#fff" />
+            <Text style={styles.buttonPrimaryText}>→</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -647,7 +645,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
             ) : (
               <>
                 <Text style={styles.buttonPrimaryText}>Create Lead</Text>
-                <MaterialCommunityIcons name="check-circle" size={20} color="#fff" />
+                <Text style={styles.buttonPrimaryText}>✓</Text>
               </>
             )}
           </TouchableOpacity>
@@ -798,12 +796,45 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderRadius: 8,
   },
+  checkboxEmoji: {
+    fontSize: 24,
+  },
   checkboxLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.textPrimary,
     marginLeft: SPACING.sm,
     flex: 1,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: COLORS.gray + '30',
+    marginVertical: SPACING.lg,
+  },
+  locationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.green + '15',
+    padding: SPACING.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.green + '40',
+    marginBottom: SPACING.md,
+  },
+  locationButtonEmoji: {
+    fontSize: 20,
+    marginRight: SPACING.xs,
+  },
+  locationButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.green,
+  },
+  helperText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 4,
   },
   serviceTypeGrid: {
     flexDirection: 'row',

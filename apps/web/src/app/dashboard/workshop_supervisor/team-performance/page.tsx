@@ -54,32 +54,40 @@ export default function TeamPerformancePage() {
         return;
       }
 
-      // Fetch team members
-      let query = supabase
+      // Fetch team members with role information
+      const { data: allTeamData } = await supabase
         .from('users_login')
-        .select('id, name, role')
+        .select(`
+          id, 
+          full_name,
+          role:role_id(role_code)
+        `)
         .eq('workshop_id', userProfile.workshop_id)
         .eq('is_active', true);
 
+      // Filter based on role_code
+      let teamData = allTeamData || [];
       if (filter === 'mechanics') {
-        query = query.eq('role', 'workshop_mechanic');
+        teamData = teamData.filter((user: any) => user.role?.role_code === 'WORKSHOP_MECHANIC');
       } else if (filter === 'pickup_boys') {
-        query = query.eq('role', 'workshop_pickup_boy');
+        teamData = teamData.filter((user: any) => user.role?.role_code === 'WORKSHOP_PICKUP_BOY');
       } else {
-        query = query.in('role', ['workshop_mechanic', 'workshop_pickup_boy']);
+        teamData = teamData.filter((user: any) => 
+          user.role?.role_code === 'WORKSHOP_MECHANIC' || 
+          user.role?.role_code === 'WORKSHOP_PICKUP_BOY'
+        );
       }
 
-      const { data: teamData, error: teamError } = await query;
-
-      if (teamError) {
-        console.error('Error fetching team:', teamError);
-        toast.error('Failed to fetch team data');
+      if (!teamData || teamData.length === 0) {
+        console.log('No team members found');
+        setTeamMembers([]);
+        setLoading(false);
         return;
       }
 
       // For each team member, calculate their metrics
-      const teamMetrics = await Promise.all((teamData || []).map(async (member) => {
-        const isPickupBoy = member.role === 'workshop_pickup_boy';
+      const teamMetrics = await Promise.all(teamData.map(async (member: any) => {
+        const isPickupBoy = member.role?.role_code === 'WORKSHOP_PICKUP_BOY';
         
         // Fetch assigned jobs
         const assignedField = isPickupBoy ? 'assigned_pickup_boy_id' : 'assigned_mechanic_id';
@@ -137,8 +145,8 @@ export default function TeamPerformancePage() {
 
         return {
           id: member.id,
-          name: member.name || 'Unknown',
-          role: member.role,
+          name: member.full_name || 'Unknown',
+          role: member.role?.role_code || 'UNKNOWN',
           total_assigned: totalAssigned,
           total_completed: totalCompleted,
           avg_completion_time: avgCompletionTime,

@@ -12,7 +12,8 @@ import {
   Alert,
   ScrollView
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
 
@@ -215,7 +216,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
         {/* Avatar & Info */}
         <View style={styles.userHeader}>
           <View style={[styles.avatar, { backgroundColor: roleColor + '20' }]}>
-            <MaterialCommunityIcons name={roleIcon} size={28} color={roleColor} />
+            <Icon name={roleIcon} size={28} color={roleColor} />
           </View>
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{item.full_name}</Text>
@@ -232,7 +233,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
 
         {/* Role Badge */}
         <View style={[styles.roleBadge, { backgroundColor: roleColor + '15' }]}>
-          <MaterialCommunityIcons name={roleIcon} size={16} color={roleColor} />
+          <Icon name={roleIcon} size={16} color={roleColor} />
           <Text style={[styles.roleText, { color: roleColor }]}>
             {item.role?.role_name || item.role_code}
           </Text>
@@ -244,7 +245,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
             style={[styles.quickActionBtn, { backgroundColor: COLORS.blue + '20' }]}
             onPress={() => handleChangeRole(item.id, item.role_code)}
           >
-            <MaterialCommunityIcons name="account-convert" size={16} color={COLORS.blue} />
+            <Icon name="account-convert" size={16} color={COLORS.blue} />
             <Text style={[styles.quickActionText, { color: COLORS.blue }]}>Change Role</Text>
           </TouchableOpacity>
 
@@ -252,7 +253,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
             style={[styles.quickActionBtn, { backgroundColor: COLORS.orange + '20' }]}
             onPress={() => handleResetPassword(item.id, item.email)}
           >
-            <MaterialCommunityIcons name="lock-reset" size={16} color={COLORS.orange} />
+            <Icon name="lock-reset" size={16} color={COLORS.orange} />
             <Text style={[styles.quickActionText, { color: COLORS.orange }]}>Reset</Text>
           </TouchableOpacity>
 
@@ -263,7 +264,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
             ]}
             onPress={() => handleToggleUserStatus(item.id, item.is_active)}
           >
-            <MaterialCommunityIcons
+            <Icon
               name={item.is_active ? 'account-off' : 'account-check'}
               size={16}
               color={item.is_active ? COLORS.red : COLORS.green}
@@ -294,17 +295,17 @@ export default function UserRoleManagementScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+          <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>User & Role Management</Text>
         <TouchableOpacity onPress={() => setShowCreateModal(true)}>
-          <MaterialCommunityIcons name="account-plus" size={24} color="#fff" />
+          <Icon name="account-plus" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
 
       {/* Search */}
       <View style={styles.searchContainer}>
-        <MaterialCommunityIcons name="magnify" size={20} color={COLORS.textSecondary} />
+        <Icon name="magnify" size={20} color={COLORS.textSecondary} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search users..."
@@ -336,7 +337,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
             style={[styles.filterChip, filterRole === role.code && styles.filterChipActive]}
             onPress={() => setFilterRole(role.code)}
           >
-            <MaterialCommunityIcons
+            <Icon
               name={role.icon}
               size={16}
               color={filterRole === role.code ? '#fff' : role.color}
@@ -367,7 +368,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="account-off" size={64} color={COLORS.gray} />
+            <Icon name="account-off" size={64} color={COLORS.gray} />
             <Text style={styles.emptyTitle}>No Users Found</Text>
             <Text style={styles.emptyText}>
               {searchTerm ? `No users match "${searchTerm}"` : 'No users in this category'}
@@ -429,7 +430,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
                     ]}
                     onPress={() => setNewUser({ ...newUser, role_code: role.code })}
                   >
-                    <MaterialCommunityIcons
+                    <Icon
                       name={role.icon}
                       size={20}
                       color={newUser.role_code === role.code ? '#fff' : role.color}
@@ -485,7 +486,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
                   ]}
                   onPress={() => handleChangeRole(selectedUser?.id, role.code)}
                 >
-                  <MaterialCommunityIcons
+                  <Icon
                     name={role.icon}
                     size={20}
                     color={selectedUser?.role_code === role.code ? '#fff' : role.color}

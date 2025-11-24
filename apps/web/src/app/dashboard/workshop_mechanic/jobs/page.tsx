@@ -28,12 +28,20 @@ export default function MechanicJobsPage() {
 
       if (!userProfile) return;
 
-      const { data: jobsData } = await supabase
-        .from('service_leads')
+      console.log('Fetching jobs for mechanic:', userProfile.id);
+
+      // Fetch from mechanic_dashboard view
+      const { data: jobsData, error } = await supabase
+        .from('mechanic_dashboard')
         .select('*')
-        .eq('assigned_to_id', userProfile.id)
-        .in('status', ['ACCEPTED', 'IN_PROGRESS'])
-        .order('updated_at', { ascending: false });
+        .eq('mechanic_id', userProfile.id)
+        .order('assigned_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching jobs:', error);
+      } else {
+        console.log('Jobs fetched:', jobsData);
+      }
 
       setJobs(jobsData || []);
       setLoading(false);
@@ -43,24 +51,30 @@ export default function MechanicJobsPage() {
     }
   }
 
-  async function updateJobStatus(jobId: string, newStatus: string) {
+  async function updateJobStatus(leadId: string, newStatus: string) {
     const supabase = createClient();
     
     const updates: any = {
-      status: newStatus,
+      mechanic_status: newStatus,
       updated_at: new Date().toISOString()
     };
+
+    if (newStatus === 'IN_PROGRESS') {
+      updates.started_at = new Date().toISOString();
+    }
 
     if (newStatus === 'COMPLETED') {
       updates.completed_at = new Date().toISOString();
     }
 
     const { error } = await supabase
-      .from('service_leads')
+      .from('mechanic_jobs')
       .update(updates)
-      .eq('id', jobId);
+      .eq('lead_id', leadId);
 
-    if (!error) {
+    if (error) {
+      console.error('Error updating job status:', error);
+    } else {
       fetchJobs();
     }
   }
@@ -92,13 +106,13 @@ export default function MechanicJobsPage() {
           <div className="card">
             <p className="text-sm text-gray-600">In Progress</p>
             <p className="text-2xl font-bold text-blue-600">
-              {jobs.filter(j => j.status === 'IN_PROGRESS').length}
+              {jobs.filter(j => j.mechanic_status === 'IN_PROGRESS').length}
             </p>
           </div>
           <div className="card">
             <p className="text-sm text-gray-600">Ready to Start</p>
             <p className="text-2xl font-bold text-green-600">
-              {jobs.filter(j => j.status === 'ACCEPTED').length}
+              {jobs.filter(j => j.mechanic_status === 'ASSIGNED').length}
             </p>
           </div>
         </div>
@@ -106,16 +120,16 @@ export default function MechanicJobsPage() {
         {/* Jobs List */}
         <div className="space-y-4">
           {jobs.map((job) => (
-            <div key={job.id} className="card hover:shadow-lg transition">
+            <div key={job.job_id} className="card hover:shadow-lg transition">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-bold">{job.lead_number}</h3>
-                  <p className="text-lg text-gray-700">{job.service_type}</p>
+                  <p className="text-lg text-gray-700">{job.problem_description}</p>
                 </div>
                 <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                  job.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                  job.mechanic_status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
                 }`}>
-                  {job.status === 'IN_PROGRESS' ? 'In Progress' : 'Ready to Start'}
+                  {job.mechanic_status === 'IN_PROGRESS' ? 'In Progress' : 'Assigned'}
                 </span>
               </div>
 
@@ -134,31 +148,31 @@ export default function MechanicJobsPage() {
                 </div>
               </div>
 
-              {job.description && (
+              {job.problem_description && (
                 <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                   <p className="text-sm text-gray-600 mb-1">Work Description</p>
-                  <p className="text-sm">{job.description}</p>
+                  <p className="text-sm">{job.problem_description}</p>
                 </div>
               )}
 
               <div className="flex flex-wrap gap-2">
-                {job.status === 'ACCEPTED' && (
+                {job.mechanic_status === 'ASSIGNED' && (
                   <button
-                    onClick={() => updateJobStatus(job.id, 'IN_PROGRESS')}
+                    onClick={() => updateJobStatus(job.lead_id, 'IN_PROGRESS')}
                     className="btn bg-blue-500 hover:bg-blue-600 text-white"
                   >
                     <Wrench className="w-5 h-5" />
                     Start Job
                   </button>
                 )}
-                {job.status === 'IN_PROGRESS' && (
+                {job.mechanic_status === 'IN_PROGRESS' && (
                   <>
                     <button className="btn btn-outline">
                       <Camera className="w-5 h-5" />
                       Upload Photos
                     </button>
                     <button
-                      onClick={() => updateJobStatus(job.id, 'COMPLETED')}
+                      onClick={() => updateJobStatus(job.lead_id, 'COMPLETED')}
                       className="btn bg-green-500 hover:bg-green-600 text-white"
                     >
                       <CheckCircle className="w-5 h-5" />
@@ -169,7 +183,7 @@ export default function MechanicJobsPage() {
               </div>
 
               <div className="mt-4 pt-4 border-t text-xs text-gray-500">
-                Assigned: {new Date(job.accepted_at || job.created_at).toLocaleString()}
+                Assigned: {new Date(job.assigned_at).toLocaleString()}
               </div>
             </div>
           ))}

@@ -10,7 +10,8 @@ import {
   Alert,
   Dimensions
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
 
@@ -183,11 +184,11 @@ export default function ReportsAnalyticsScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+          <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Reports & Analytics</Text>
         <TouchableOpacity onPress={onRefresh}>
-          <MaterialCommunityIcons name="refresh" size={24} color="#fff" />
+          <Icon name="refresh" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -224,37 +225,37 @@ export default function ReportsAnalyticsScreen({ navigation }: any) {
 
           <View style={styles.statsGrid}>
             <View style={[styles.statCard, { backgroundColor: COLORS.blue + '15' }]}>
-              <MaterialCommunityIcons name="clipboard-text" size={24} color={COLORS.blue} />
+              <Icon name="clipboard-text" size={24} color={COLORS.blue} />
               <Text style={styles.statValue}>{operationalStats.totalLeads}</Text>
               <Text style={styles.statLabel}>Total Leads</Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: COLORS.green + '15' }]}>
-              <MaterialCommunityIcons name="check-circle" size={24} color={COLORS.green} />
+              <Icon name="check-circle" size={24} color={COLORS.green} />
               <Text style={styles.statValue}>{operationalStats.convertedLeads}</Text>
               <Text style={styles.statLabel}>Converted</Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: COLORS.purple + '15' }]}>
-              <MaterialCommunityIcons name="percent" size={24} color={COLORS.purple} />
+              <Icon name="percent" size={24} color={COLORS.purple} />
               <Text style={styles.statValue}>{operationalStats.conversionRate.toFixed(1)}%</Text>
               <Text style={styles.statLabel}>Conversion Rate</Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: COLORS.orange + '15' }]}>
-              <MaterialCommunityIcons name="clock-fast" size={24} color={COLORS.orange} />
+              <Icon name="clock-fast" size={24} color={COLORS.orange} />
               <Text style={styles.statValue}>{operationalStats.avgResponseTime}m</Text>
               <Text style={styles.statLabel}>Avg Response</Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: COLORS.teal + '15' }]}>
-              <MaterialCommunityIcons name="chart-timeline-variant" size={24} color={COLORS.teal} />
+              <Icon name="chart-timeline-variant" size={24} color={COLORS.teal} />
               <Text style={styles.statValue}>{operationalStats.slaCompliance.toFixed(1)}%</Text>
               <Text style={styles.statLabel}>SLA Compliance</Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: COLORS.indigo + '15' }]}>
-              <MaterialCommunityIcons name="store" size={24} color={COLORS.indigo} />
+              <Icon name="store" size={24} color={COLORS.indigo} />
               <Text style={styles.statValue}>{operationalStats.activeWorkshops}</Text>
               <Text style={styles.statLabel}>Active Workshops</Text>
             </View>
@@ -384,7 +385,7 @@ export default function ReportsAnalyticsScreen({ navigation }: any) {
               style={styles.exportBtn}
               onPress={() => handleExportReport('csv')}
             >
-              <MaterialCommunityIcons name="file-delimited" size={32} color={COLORS.green} />
+              <Icon name="file-delimited" size={32} color={COLORS.green} />
               <Text style={styles.exportText}>CSV</Text>
             </TouchableOpacity>
 
@@ -392,7 +393,7 @@ export default function ReportsAnalyticsScreen({ navigation }: any) {
               style={styles.exportBtn}
               onPress={() => handleExportReport('pdf')}
             >
-              <MaterialCommunityIcons name="file-pdf-box" size={32} color={COLORS.red} />
+              <Icon name="file-pdf-box" size={32} color={COLORS.red} />
               <Text style={styles.exportText}>PDF</Text>
             </TouchableOpacity>
 
@@ -400,7 +401,7 @@ export default function ReportsAnalyticsScreen({ navigation }: any) {
               style={styles.exportBtn}
               onPress={() => handleExportReport('excel')}
             >
-              <MaterialCommunityIcons name="microsoft-excel" size={32} color={COLORS.green} />
+              <Icon name="microsoft-excel" size={32} color={COLORS.green} />
               <Text style={styles.exportText}>Excel</Text>
             </TouchableOpacity>
 
@@ -408,7 +409,7 @@ export default function ReportsAnalyticsScreen({ navigation }: any) {
               style={styles.exportBtn}
               onPress={() => Alert.alert('Email', 'Report will be sent to your email')}
             >
-              <MaterialCommunityIcons name="email" size={32} color={COLORS.blue} />
+              <Icon name="email" size={32} color={COLORS.blue} />
               <Text style={styles.exportText}>Email</Text>
             </TouchableOpacity>
           </View>

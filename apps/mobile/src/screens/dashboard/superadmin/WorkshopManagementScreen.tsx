@@ -11,7 +11,8 @@ import {
   Modal,
   Alert
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
 
@@ -205,11 +206,11 @@ export default function WorkshopManagementScreen({ navigation }: any) {
           <View style={{ flex: 1 }}>
             <Text style={styles.workshopName}>{item.name}</Text>
             <View style={styles.locationRow}>
-              <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.textSecondary} />
+              <Icon name="map-marker" size={14} color={COLORS.textSecondary} />
               <Text style={styles.locationText}>{item.city}</Text>
             </View>
             <View style={styles.locationRow}>
-              <MaterialCommunityIcons name="phone" size={14} color={COLORS.textSecondary} />
+              <Icon name="phone" size={14} color={COLORS.textSecondary} />
               <Text style={styles.locationText}>{item.phone}</Text>
             </View>
           </View>
@@ -243,7 +244,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
         {/* Info */}
         {item.approval_status === 'PENDING' && (
           <View style={styles.pendingBanner}>
-            <MaterialCommunityIcons name="clock-alert" size={16} color={COLORS.orange} />
+            <Icon name="clock-alert" size={16} color={COLORS.orange} />
             <Text style={styles.pendingText}>Pending Approval</Text>
           </View>
         )}
@@ -275,7 +276,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
               style={[styles.quickActionBtn, { backgroundColor: COLORS.green + '20' }]}
               onPress={() => handleApprove(item.id)}
             >
-              <MaterialCommunityIcons name="check" size={18} color={COLORS.green} />
+              <Icon name="check" size={18} color={COLORS.green} />
               <Text style={[styles.quickActionText, { color: COLORS.green }]}>Approve</Text>
             </TouchableOpacity>
           )}
@@ -285,7 +286,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
               style={[styles.quickActionBtn, { backgroundColor: COLORS.orange + '20' }]}
               onPress={() => handleDisable(item.id)}
             >
-              <MaterialCommunityIcons name="pause" size={18} color={COLORS.orange} />
+              <Icon name="pause" size={18} color={COLORS.orange} />
               <Text style={[styles.quickActionText, { color: COLORS.orange }]}>Disable</Text>
             </TouchableOpacity>
           ) : (
@@ -294,7 +295,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
                 style={[styles.quickActionBtn, { backgroundColor: COLORS.green + '20' }]}
                 onPress={() => handleEnable(item.id)}
               >
-                <MaterialCommunityIcons name="play" size={18} color={COLORS.green} />
+                <Icon name="play" size={18} color={COLORS.green} />
                 <Text style={[styles.quickActionText, { color: COLORS.green }]}>Enable</Text>
               </TouchableOpacity>
             )
@@ -307,7 +308,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
               setShowActionModal(true);
             }}
           >
-            <MaterialCommunityIcons name="dots-horizontal" size={18} color={COLORS.blue} />
+            <Icon name="dots-horizontal" size={18} color={COLORS.blue} />
             <Text style={[styles.quickActionText, { color: COLORS.blue }]}>More</Text>
           </TouchableOpacity>
         </View>
@@ -329,17 +330,17 @@ export default function WorkshopManagementScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+          <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Workshop Management</Text>
         <TouchableOpacity onPress={onRefresh}>
-          <MaterialCommunityIcons name="refresh" size={24} color="#fff" />
+          <Icon name="refresh" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
 
       {/* Search */}
       <View style={styles.searchContainer}>
-        <MaterialCommunityIcons name="magnify" size={20} color={COLORS.textSecondary} />
+        <Icon name="magnify" size={20} color={COLORS.textSecondary} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search workshops..."
@@ -404,7 +405,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="store-off" size={64} color={COLORS.gray} />
+            <Icon name="store-off" size={64} color={COLORS.gray} />
             <Text style={styles.emptyTitle}>No Workshops Found</Text>
             <Text style={styles.emptyText}>
               {searchTerm ? `No workshops match "${searchTerm}"` : `No workshops in ${filter} category`}
@@ -436,7 +437,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
                 // Navigate to details
               }}
             >
-              <MaterialCommunityIcons name="eye" size={24} color={COLORS.blue} />
+              <Icon name="eye" size={24} color={COLORS.blue} />
               <Text style={styles.modalActionText}>View Details</Text>
             </TouchableOpacity>
 
@@ -447,7 +448,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
                 // Navigate to edit
               }}
             >
-              <MaterialCommunityIcons name="pencil" size={24} color={COLORS.orange} />
+              <Icon name="pencil" size={24} color={COLORS.orange} />
               <Text style={styles.modalActionText}>Edit Workshop</Text>
             </TouchableOpacity>
 
@@ -459,7 +460,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
                   handleBlacklist(selectedWorkshop?.id);
                 }}
               >
-                <MaterialCommunityIcons name="cancel" size={24} color={COLORS.red} />
+                <Icon name="cancel" size={24} color={COLORS.red} />
                 <Text style={[styles.modalActionText, { color: COLORS.red }]}>Blacklist</Text>
               </TouchableOpacity>
             )}

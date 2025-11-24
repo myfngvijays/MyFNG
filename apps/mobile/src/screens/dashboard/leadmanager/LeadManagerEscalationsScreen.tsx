@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   Alert
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
 
@@ -122,7 +123,7 @@ export default function LeadManagerEscalationsScreen({ navigation }: any) {
             styles.escalationBadge,
             { backgroundColor: item.escalation === 'ESCALATED' ? COLORS.red : COLORS.green }
           ]}>
-            <MaterialCommunityIcons
+            <Icon
               name={item.escalation === 'ESCALATED' ? 'alert-octagon' : 'check-circle'}
               size={16}
               color="#fff"
@@ -132,22 +133,22 @@ export default function LeadManagerEscalationsScreen({ navigation }: any) {
         </View>
 
         <View style={styles.reasonRow}>
-          <MaterialCommunityIcons name="information-outline" size={16} color={COLORS.orange} />
+          <Icon name="information-outline" size={16} color={COLORS.orange} />
           <Text style={styles.reasonText}>{reason}</Text>
         </View>
 
         <View style={styles.infoRow}>
           <View style={styles.infoItem}>
-            <MaterialCommunityIcons name="map-marker" size={14} color={COLORS.textSecondary} />
+            <Icon name="map-marker" size={14} color={COLORS.textSecondary} />
             <Text style={styles.infoText}>{item.city_info?.name || item.city}</Text>
           </View>
           <View style={styles.infoItem}>
-            <MaterialCommunityIcons name="car" size={14} color={COLORS.textSecondary} />
+            <Icon name="car" size={14} color={COLORS.textSecondary} />
             <Text style={styles.infoText}>{item.vehicle_model}</Text>
           </View>
           {item.workshop && (
             <View style={styles.infoItem}>
-              <MaterialCommunityIcons name="store" size={14} color={COLORS.textSecondary} />
+              <Icon name="store" size={14} color={COLORS.textSecondary} />
               <Text style={styles.infoText}>{item.workshop.name}</Text>
             </View>
           )}
@@ -162,7 +163,7 @@ export default function LeadManagerEscalationsScreen({ navigation }: any) {
                 : COLORS.orange + '20'
             }
           ]}>
-            <MaterialCommunityIcons
+            <Icon
               name={item.sla_state === 'BREACHED' ? 'alert-circle' : 'clock-alert'}
               size={16}
               color={item.sla_state === 'BREACHED' ? COLORS.red : COLORS.orange}
@@ -181,7 +182,7 @@ export default function LeadManagerEscalationsScreen({ navigation }: any) {
             style={styles.resolveButton}
             onPress={() => handleResolveEscalation(item.id)}
           >
-            <MaterialCommunityIcons name="check" size={18} color={COLORS.green} />
+            <Icon name="check" size={18} color={COLORS.green} />
             <Text style={styles.resolveButtonText}>Mark Resolved</Text>
           </TouchableOpacity>
         )}
@@ -203,11 +204,11 @@ export default function LeadManagerEscalationsScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+          <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Escalations</Text>
         <TouchableOpacity onPress={onRefresh}>
-          <MaterialCommunityIcons name="refresh" size={24} color="#fff" />
+          <Icon name="refresh" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -252,7 +253,7 @@ export default function LeadManagerEscalationsScreen({ navigation }: any) {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons
+            <Icon
               name={filter === 'resolved' ? 'check-all' : 'alert-octagon-outline'}
               size={64}
               color={COLORS.gray}

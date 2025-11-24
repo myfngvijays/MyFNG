@@ -111,8 +111,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       ],
       'WORKSHOP_SUPERVISOR': [
         { href: '/dashboard/workshop_supervisor', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
-        { href: '/dashboard/workshop_supervisor/assignments', icon: <ClipboardList className="w-5 h-5" />, label: 'Job Assignments' },
-        { href: '/dashboard/workshop_supervisor/team', icon: <Users className="w-5 h-5" />, label: 'Team Overview' },
+        { href: '/dashboard/workshop_supervisor/job-assignments', icon: <ClipboardList className="w-5 h-5" />, label: 'Job Assignments' },
+        { href: '/dashboard/workshop_supervisor/team-overview', icon: <Users className="w-5 h-5" />, label: 'Team Overview' },
         { href: '/dashboard/workshop_supervisor/performance', icon: <TrendingUp className="w-5 h-5" />, label: 'Performance' },
       ],
       'WORKSHOP_MECHANIC': [

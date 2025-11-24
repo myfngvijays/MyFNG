@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   Dimensions
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
+import { Icon } from '../../components/Icon';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';
@@ -266,12 +267,12 @@ export default function LeadManagerDashboard() {
                 style={[styles.alertCard, { backgroundColor: COLORS.red + '20' }]}
                 onPress={() => handleFilterClick('SLA_BREACHED')}
               >
-                <MaterialCommunityIcons name="alert-circle" size={24} color={COLORS.red} />
+                <Icon name="alert-circle" size={24} color={COLORS.red} />
                 <View style={styles.alertContent}>
                   <Text style={[styles.alertValue, { color: COLORS.red }]}>{stats.slaBreached}</Text>
                   <Text style={styles.alertLabel}>SLA BREACHED</Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.red} />
+                <Icon name="chevron-right" size={20} color={COLORS.red} />
               </TouchableOpacity>
             )}
 
@@ -280,12 +281,12 @@ export default function LeadManagerDashboard() {
                 style={[styles.alertCard, { backgroundColor: COLORS.orange + '20' }]}
                 onPress={() => handleFilterClick('SLA_AT_RISK')}
               >
-                <MaterialCommunityIcons name="clock-alert" size={24} color={COLORS.orange} />
+                <Icon name="clock-alert" size={24} color={COLORS.orange} />
                 <View style={styles.alertContent}>
                   <Text style={[styles.alertValue, { color: COLORS.orange }]}>{stats.slaAtRisk}</Text>
                   <Text style={styles.alertLabel}>SLA AT RISK</Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.orange} />
+                <Icon name="chevron-right" size={20} color={COLORS.orange} />
               </TouchableOpacity>
             )}
 
@@ -294,12 +295,12 @@ export default function LeadManagerDashboard() {
                 style={[styles.alertCard, { backgroundColor: COLORS.red + '15' }]}
                 onPress={() => handleFilterClick('WORKSHOP_REJECTED')}
               >
-                <MaterialCommunityIcons name="close-circle" size={24} color={COLORS.red} />
+                <Icon name="close-circle" size={24} color={COLORS.red} />
                 <View style={styles.alertContent}>
                   <Text style={[styles.alertValue, { color: COLORS.red }]}>{stats.workshopRejected}</Text>
                   <Text style={styles.alertLabel}>WORKSHOP REJECTED</Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.red} />
+                <Icon name="chevron-right" size={20} color={COLORS.red} />
               </TouchableOpacity>
             )}
           </View>
@@ -315,7 +316,7 @@ export default function LeadManagerDashboard() {
               style={[styles.kpiCard, { backgroundColor: COLORS.blue + '15' }]}
               onPress={() => handleFilterClick('NEW')}
             >
-              <MaterialCommunityIcons name="new-box" size={32} color={COLORS.blue} />
+              <Icon name="new-box" size={32} color={COLORS.blue} />
               <Text style={styles.kpiValue}>{stats.newLeads}</Text>
               <Text style={styles.kpiLabel}>New Leads</Text>
             </TouchableOpacity>
@@ -325,7 +326,7 @@ export default function LeadManagerDashboard() {
               style={[styles.kpiCard, { backgroundColor: COLORS.orange + '15' }]}
               onPress={() => handleFilterClick('INCOMPLETE')}
             >
-              <MaterialCommunityIcons name="clipboard-alert" size={32} color={COLORS.orange} />
+              <Icon name="clipboard-alert" size={32} color={COLORS.orange} />
               <Text style={styles.kpiValue}>{stats.incompleteLeads}</Text>
               <Text style={styles.kpiLabel}>Incomplete</Text>
             </TouchableOpacity>
@@ -335,7 +336,7 @@ export default function LeadManagerDashboard() {
               style={[styles.kpiCard, { backgroundColor: COLORS.purple + '15' }]}
               onPress={() => handleFilterClick('NEED_ASSIGNMENT')}
             >
-              <MaterialCommunityIcons name="hand-pointing-right" size={32} color={COLORS.purple} />
+              <Icon name="hand-pointing-right" size={32} color={COLORS.purple} />
               <Text style={styles.kpiValue}>{stats.pendingAssignment}</Text>
               <Text style={styles.kpiLabel}>Need Assignment</Text>
             </TouchableOpacity>
@@ -345,7 +346,7 @@ export default function LeadManagerDashboard() {
               style={[styles.kpiCard, { backgroundColor: COLORS.indigo + '15' }]}
               onPress={() => handleFilterClick('AWAITING_ACCEPTANCE')}
             >
-              <MaterialCommunityIcons name="clock-check-outline" size={32} color={COLORS.indigo} />
+              <Icon name="clock-check-outline" size={32} color={COLORS.indigo} />
               <Text style={styles.kpiValue}>{stats.awaitingAcceptance}</Text>
               <Text style={styles.kpiLabel}>Awaiting Accept</Text>
             </TouchableOpacity>
@@ -355,7 +356,7 @@ export default function LeadManagerDashboard() {
               style={[styles.kpiCard, { backgroundColor: COLORS.red + '15' }]}
               onPress={() => handleFilterClick('REOPENED')}
             >
-              <MaterialCommunityIcons name="refresh-circle" size={32} color={COLORS.red} />
+              <Icon name="refresh-circle" size={32} color={COLORS.red} />
               <Text style={styles.kpiValue}>{stats.reopenedLeads}</Text>
               <Text style={styles.kpiLabel}>Reopened</Text>
             </TouchableOpacity>
@@ -365,7 +366,7 @@ export default function LeadManagerDashboard() {
               style={[styles.kpiCard, { backgroundColor: COLORS.teal + '15' }]}
               onPress={() => handleFilterClick('TELECALLER_PENDING')}
             >
-              <MaterialCommunityIcons name="phone-forward" size={32} color={COLORS.teal} />
+              <Icon name="phone-forward" size={32} color={COLORS.teal} />
               <Text style={styles.kpiValue}>{stats.telecallerPending}</Text>
               <Text style={styles.kpiLabel}>Tel. Pending</Text>
             </TouchableOpacity>
@@ -375,7 +376,7 @@ export default function LeadManagerDashboard() {
               style={[styles.kpiCard, { backgroundColor: COLORS.green + '15' }]}
               onPress={() => handleFilterClick('PICKUP_PENDING')}
             >
-              <MaterialCommunityIcons name="car-pickup" size={32} color={COLORS.green} />
+              <Icon name="car-pickup" size={32} color={COLORS.green} />
               <Text style={styles.kpiValue}>{stats.pickupPending}</Text>
               <Text style={styles.kpiLabel}>Pickup Pending</Text>
             </TouchableOpacity>
@@ -385,7 +386,7 @@ export default function LeadManagerDashboard() {
               style={[styles.kpiCard, { backgroundColor: COLORS.gray + '15' }]}
               onPress={() => handleFilterClick('all')}
             >
-              <MaterialCommunityIcons name="format-list-bulleted" size={32} color={COLORS.gray} />
+              <Icon name="format-list-bulleted" size={32} color={COLORS.gray} />
               <Text style={styles.kpiValue}>{stats.totalLeads}</Text>
               <Text style={styles.kpiLabel}>Total Active</Text>
             </TouchableOpacity>
@@ -422,7 +423,7 @@ export default function LeadManagerDashboard() {
               style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
               onPress={() => handleFilterClick('all')}
             >
-              <MaterialCommunityIcons name="format-list-bulleted-square" size={32} color="#fff" />
+              <Icon name="format-list-bulleted-square" size={32} color="#fff" />
               <Text style={styles.actionButtonText}>All Leads</Text>
             </TouchableOpacity>
 
@@ -430,7 +431,7 @@ export default function LeadManagerDashboard() {
               style={[styles.actionButton, { backgroundColor: COLORS.orange }]}
               onPress={() => setCurrentScreen('escalations')}
             >
-              <MaterialCommunityIcons name="alert-octagon" size={32} color="#fff" />
+              <Icon name="alert-octagon" size={32} color="#fff" />
               <Text style={styles.actionButtonText}>Escalations</Text>
             </TouchableOpacity>
 
@@ -438,7 +439,7 @@ export default function LeadManagerDashboard() {
               style={[styles.actionButton, { backgroundColor: COLORS.purple }]}
               onPress={() => handleFilterClick('NEED_ASSIGNMENT')}
             >
-              <MaterialCommunityIcons name="account-arrow-right" size={32} color="#fff" />
+              <Icon name="account-arrow-right" size={32} color="#fff" />
               <Text style={styles.actionButtonText}>Assign Leads</Text>
             </TouchableOpacity>
 
@@ -446,7 +447,7 @@ export default function LeadManagerDashboard() {
               style={[styles.actionButton, { backgroundColor: COLORS.green }]}
               onPress={() => handleFilterClick('INCOMPLETE')}
             >
-              <MaterialCommunityIcons name="clipboard-check" size={32} color="#fff" />
+              <Icon name="clipboard-check" size={32} color="#fff" />
               <Text style={styles.actionButtonText}>Fix Incomplete</Text>
             </TouchableOpacity>
           </View>
