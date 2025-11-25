@@ -51,10 +51,13 @@ interface ChecklistItem {
 
 interface MediaItem {
   id: string;
-  media_url: string;
+  file_url: string;
+  media_url?: string;
   media_category: string;
-  description: string;
-  uploaded_at: string;
+  caption?: string;
+  description?: string;
+  uploaded_at?: string;
+  created_at: string;
 }
 
 interface PartsItem {
@@ -286,71 +289,82 @@ export default function MechanicJobDetailPage() {
 
   async function updateJobStatus(newStatus: string) {
     console.log('Updating job status to:', newStatus);
-    const supabase = createClient();
     
     if (!job || !leadId) {
       console.error('No job or leadId available');
       return;
     }
 
-    const updates: any = {
-      mechanic_status: newStatus,
-      updated_at: new Date().toISOString()
-    };
+    try {
+      // Call API to update status (it will handle all validations and updates)
+      const response = await fetch(`/api/mechanic/jobs/${leadId}/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: newStatus,
+          notes: `Status changed to ${newStatus}`
+        }),
+      });
 
-    if (newStatus === 'IN_PROGRESS' && !job?.started_at) {
-      updates.started_at = new Date().toISOString();
-    }
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Error updating status:', errorData);
+        alert(`Failed to update status: ${errorData.error}`);
+        return;
+      }
 
-    if (newStatus === 'COMPLETED') {
-      updates.completed_at = new Date().toISOString();
-    }
-
-    console.log('Updating mechanic_jobs with:', updates);
-
-    const { data, error } = await supabase
-      .from('mechanic_jobs')
-      .update(updates)
-      .eq('lead_id', leadId)
-      .select();
-
-    if (error) {
+      const result = await response.json();
+      console.log('Status updated successfully:', result);
+      
+      // Refresh job details to show updates
+      await fetchJobDetails();
+      alert(`Job status updated to ${newStatus}`);
+    } catch (error) {
       console.error('Error updating job status:', error);
-      alert('Failed to update job status: ' + error.message);
-    } else {
-      console.log('Job status updated successfully:', data);
-      fetchJobDetails();
+      alert('Failed to update job status. Please try again.');
     }
   }
 
   async function updateChecklistItem(itemId: string, status: string, notes: string = '') {
-    const supabase = createClient();
+    try {
+      // Call API to update checklist item (it will handle completion calculation)
+      const response = await fetch(`/api/mechanic/jobs/${leadId}/checklist`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          item_id: itemId,
+          status,
+          notes
+        }),
+      });
 
-    const updatedChecklist = checklist.map(item =>
-      item.id === itemId
-        ? { ...item, status, notes, completed_at: status === 'COMPLETED' ? new Date().toISOString() : item.completed_at }
-        : item
-    );
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Error updating checklist:', errorData);
+        alert(`Failed to update checklist: ${errorData.error}`);
+        return;
+      }
 
-    const { error } = await supabase
-      .from('service_checklists')
-      .update({
-        checklist_items: updatedChecklist,
-        updated_at: new Date().toISOString()
-      })
-      .eq('lead_id', leadId);
-
-    if (!error) {
+      const result = await response.json();
+      console.log('Checklist updated successfully:', result);
+      
+      // Update local state
+      const updatedChecklist = checklist.map(item =>
+        item.id === itemId
+          ? { ...item, status, notes, completed_at: status === 'COMPLETED' ? new Date().toISOString() : item.completed_at }
+          : item
+      );
       setChecklist(updatedChecklist);
       
-      // Trigger completion calculation
-      await supabase.rpc('update_checklist_completion', {
-        p_checklist_id: (await supabase
-          .from('service_checklists')
-          .select('id')
-          .eq('lead_id', leadId)
-          .single()).data?.id
-      });
+      // Refresh job details to show updated completion status
+      await fetchJobDetails();
+    } catch (error) {
+      console.error('Error updating checklist item:', error);
+      alert('Failed to update checklist item. Please try again.');
     }
   }
 
@@ -363,6 +377,12 @@ export default function MechanicJobDetailPage() {
 
     try {
       for (const file of Array.from(files)) {
+        // Validate file
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`File ${file.name} is too large. Maximum size is 10MB.`);
+          continue;
+        }
+
         // Upload to storage
         const fileExt = file.name.split('.').pop();
         const fileName = `${leadId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -374,6 +394,7 @@ export default function MechanicJobDetailPage() {
 
         if (uploadError) {
           console.error('Upload error:', uploadError);
+          alert(`Failed to upload ${file.name}`);
           continue;
         }
 
@@ -382,40 +403,66 @@ export default function MechanicJobDetailPage() {
           .from('service-media')
           .getPublicUrl(filePath);
 
-        // Get current user
-        const { data: { user } } = await supabase.auth.getUser();
-
-        // Save to database
-        await supabase
-          .from('mechanic_media')
-          .insert({
-            lead_id: leadId,
-            mechanic_id: user?.id,
+        // Call API to save media record (this will update counts automatically)
+        const response = await fetch(`/api/mechanic/jobs/${leadId}/media`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
             media_url: publicUrl,
             media_category: selectedCategory,
-            media_type: 'IMAGE',
-            file_size_kb: Math.round(file.size / 1024)
-          });
+            media_type: file.type.startsWith('image') ? 'IMAGE' : 'VIDEO',
+            file_size_kb: Math.round(file.size / 1024),
+            description: ''
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('Error saving media:', errorData);
+          alert(`Failed to save ${file.name}: ${errorData.error}`);
+        }
       }
 
-      fetchJobDetails();
+      // Refresh data to show new media
+      await fetchJobDetails();
+      alert('Media uploaded successfully!');
     } catch (error) {
       console.error('Error uploading media:', error);
+      alert('Error uploading media. Please try again.');
     } finally {
       setUploadingMedia(false);
     }
   }
 
   async function saveWorkNotes() {
-    const supabase = createClient();
+    try {
+      // Call API to save work notes
+      const response = await fetch(`/api/mechanic/jobs/${leadId}/notes`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          work_notes: workNotes
+        }),
+      });
 
-    await supabase
-      .from('mechanic_jobs')
-      .update({
-        work_notes: workNotes,
-        updated_at: new Date().toISOString()
-      })
-      .eq('lead_id', leadId);
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Error saving notes:', errorData);
+        alert(`Failed to save notes: ${errorData.error}`);
+        return;
+      }
+
+      const result = await response.json();
+      console.log('Notes saved successfully:', result);
+      alert('Work notes saved successfully!');
+    } catch (error) {
+      console.error('Error saving work notes:', error);
+      alert('Failed to save work notes. Please try again.');
+    }
   }
 
   async function submitExtraWorkRequest() {
@@ -444,14 +491,35 @@ export default function MechanicJobDetailPage() {
   }
 
   async function updatePartUsage(partId: string, field: string, value: any) {
-    const supabase = createClient();
+    try {
+      // Call API to update part usage
+      const response = await fetch(`/api/mechanic/jobs/${leadId}/parts`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          part_id: partId,
+          [field]: value
+        }),
+      });
 
-    await supabase
-      .from('mechanic_parts_usage')
-      .update({ [field]: value, updated_at: new Date().toISOString() })
-      .eq('id', partId);
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Error updating part:', errorData);
+        alert(`Failed to update part: ${errorData.error}`);
+        return;
+      }
 
-    fetchJobDetails();
+      const result = await response.json();
+      console.log('Part updated successfully:', result);
+      
+      // Refresh job details to show updated parts
+      await fetchJobDetails();
+    } catch (error) {
+      console.error('Error updating part usage:', error);
+      alert('Failed to update part usage. Please try again.');
+    }
   }
 
   if (loading) {
@@ -624,6 +692,16 @@ export default function MechanicJobDetailPage() {
                 </button>
               )}
             </>
+          )}
+
+          {job.mechanic_status === 'HOLD' && (
+            <button 
+              onClick={() => updateJobStatus('IN_PROGRESS')}
+              className="btn bg-blue-500 hover:bg-blue-600 text-white"
+            >
+              <PlayCircle className="w-5 h-5" />
+              Resume Job
+            </button>
           )}
 
           <button 
@@ -838,10 +916,10 @@ export default function MechanicJobDetailPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {media.map((item) => (
                   <div key={item.id} className="border rounded-lg overflow-hidden">
-                    <img src={item.media_url} alt="Job media" className="w-full h-48 object-cover" />
+                    <img src={item.file_url} alt="Job media" className="w-full h-48 object-cover" />
                     <div className="p-2">
                       <p className="text-xs font-semibold">{item.media_category.replace('_', ' ')}</p>
-                      <p className="text-xs text-gray-500">{new Date(item.uploaded_at).toLocaleDateString()}</p>
+                      <p className="text-xs text-gray-500">{new Date(item.uploaded_at || item.created_at).toLocaleDateString()}</p>
                     </div>
                   </div>
                 ))}
