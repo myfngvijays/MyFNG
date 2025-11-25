@@ -37,7 +37,9 @@ export default function WorkshopJobsPage() {
         .from('service_leads')
         .select(`
           *,
-          assigned_to:users_login!service_leads_assigned_to_id_fkey(full_name, phone)
+          assigned_to:users_login!service_leads_assigned_to_id_fkey(full_name, phone),
+          assigned_mechanic:users_login!service_leads_assigned_mechanic_id_fkey(full_name, phone),
+          assigned_pickup_boy:users_login!service_leads_assigned_pickup_boy_id_fkey(full_name, phone)
         `)
         .eq('workshop_id', workshopId)
         .order('updated_at', { ascending: false });
@@ -49,7 +51,34 @@ export default function WorkshopJobsPage() {
       }
 
       const { data } = await query;
-      setJobs(data || []);
+
+      // Fetch service type names for each job
+      const jobsWithServiceNames = await Promise.all((data || []).map(async (job) => {
+        let serviceTypeIds = job.service_type_ids;
+        if (typeof serviceTypeIds === 'string') {
+          try {
+            serviceTypeIds = JSON.parse(serviceTypeIds);
+          } catch (e) {
+            console.error('Failed to parse service_type_ids:', e);
+            serviceTypeIds = [];
+          }
+        }
+
+        if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
+          const { data: serviceTypes } = await supabase
+            .from('service_types')
+            .select('id, name')
+            .in('id', serviceTypeIds);
+
+          if (serviceTypes && serviceTypes.length > 0) {
+            job.service_type_names = serviceTypes.map((st: any) => st.name).join(', ');
+          }
+        }
+
+        return job;
+      }));
+
+      setJobs(jobsWithServiceNames || []);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching jobs:', error);
@@ -161,7 +190,9 @@ export default function WorkshopJobsPage() {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">{job.lead_number}</h3>
-                  <p className="text-lg text-gray-700">{job.service_type}</p>
+                  <p className="text-lg text-gray-700">
+                    {job.service_type_names || job.service_type}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2 ${getStatusColor(job.status)}`}>
@@ -185,14 +216,14 @@ export default function WorkshopJobsPage() {
                   )}
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Assigned To</p>
-                  {job.assigned_to ? (
+                  <p className="text-sm text-gray-600 mb-1">Mechanic</p>
+                  {job.assigned_mechanic ? (
                     <>
                       <p className="font-semibold flex items-center gap-2">
                         <User className="w-4 h-4" />
-                        {job.assigned_to.full_name}
+                        {job.assigned_mechanic.full_name}
                       </p>
-                      <p className="text-sm text-gray-600">{job.assigned_to.phone}</p>
+                      <p className="text-sm text-gray-600">{job.assigned_mechanic.phone}</p>
                     </>
                   ) : (
                     <p className="text-sm text-yellow-600 flex items-center gap-1">
@@ -202,6 +233,27 @@ export default function WorkshopJobsPage() {
                   )}
                 </div>
               </div>
+
+              {/* Pickup Boy Row */}
+              {job.pickup_required && (
+                <div className="mt-3 pt-3 border-t">
+                  <p className="text-sm text-gray-600 mb-1">Pickup Boy</p>
+                  {job.assigned_pickup_boy ? (
+                    <>
+                      <p className="font-semibold flex items-center gap-2">
+                        <User className="w-4 h-4 text-purple-600" />
+                        {job.assigned_pickup_boy.full_name}
+                      </p>
+                      <p className="text-sm text-gray-600">{job.assigned_pickup_boy.phone}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-yellow-600 flex items-center gap-1">
+                      <AlertTriangle className="w-4 h-4" />
+                      Pickup required - Not assigned
+                    </p>
+                  )}
+                </div>
+              )}
 
               {job.estimated_amount && (
                 <div className="mt-4 flex items-center justify-between">

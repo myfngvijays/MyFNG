@@ -17,14 +17,15 @@ interface ExtraChargesSectionProps {
 
 interface ExtraCharge {
   id: string;
-  charge_description: string;
+  description: string;
   amount: number;
   reason: string;
-  supporting_image_url?: string;
+  image_url?: string;
+  attachment_url?: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   requested_by: string;
   approved_by?: string;
-  rejected_by?: string;
+  approved_at?: string;
   created_at: string;
   requester?: { full_name: string };
   approver?: { full_name: string };
@@ -78,13 +79,13 @@ export default function ExtraChargesSection({ lead, onUpdate }: ExtraChargesSect
     const filePath = `lead-media/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
-      .from('myfng-media')
+      .from('service-media')
       .upload(filePath, file);
 
     if (uploadError) throw uploadError;
 
     const { data: { publicUrl } } = supabase.storage
-      .from('myfng-media')
+      .from('service-media')
       .getPublicUrl(filePath);
 
     return publicUrl;
@@ -116,10 +117,10 @@ export default function ExtraChargesSection({ lead, onUpdate }: ExtraChargesSect
 
       const { error } = await supabase.from('lead_extra_charges').insert({
         lead_id: lead.id,
-        charge_description: description,
+        description: description,
         amount,
         reason,
-        supporting_image_url: imageUrl,
+        image_url: imageUrl,
         status: 'PENDING',
         requested_by: user.id,
       });
@@ -163,9 +164,12 @@ export default function ExtraChargesSection({ lead, onUpdate }: ExtraChargesSect
 
       const updateData: any = {
         status: action,
-        [`${action.toLowerCase()}_by`]: user.id,
-        [`${action.toLowerCase()}_at`]: new Date().toISOString(),
       };
+
+      if (action === 'APPROVED') {
+        updateData.approved_by = user.id;
+        updateData.approved_at = new Date().toISOString();
+      }
 
       const { error } = await supabase
         .from('lead_extra_charges')
@@ -343,7 +347,7 @@ export default function ExtraChargesSection({ lead, onUpdate }: ExtraChargesSect
             >
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1">
-                  <h3 className="font-semibold text-lg">{charge.charge_description}</h3>
+                  <h3 className="font-semibold text-lg">{charge.description}</h3>
                   <p className="text-2xl font-bold text-gray-800">₹{charge.amount.toFixed(2)}</p>
                 </div>
                 <div className="text-right">
@@ -370,14 +374,14 @@ export default function ExtraChargesSection({ lead, onUpdate }: ExtraChargesSect
                   <p className="text-gray-600 mt-1">{charge.reason}</p>
                 </div>
                 
-                {charge.supporting_image_url && (
+                {charge.image_url && (
                   <div>
                     <span className="font-medium text-gray-700 flex items-center gap-1">
                       <ImageIcon className="w-4 h-4" />
                       Supporting Image:
                     </span>
                     <a
-                      href={charge.supporting_image_url}
+                      href={charge.image_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:underline"

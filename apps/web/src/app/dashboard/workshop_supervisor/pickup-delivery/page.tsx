@@ -19,7 +19,7 @@ interface PickupDeliveryJob {
   vehicle_make: string;
   vehicle_model: string;
   pickup_status: string;
-  delivery_status: string;
+  delivery_status: string | null;
   job_status: string;
   pickup_boy: any;
   assigned_mechanic: any;
@@ -38,6 +38,8 @@ export default function PickupDeliveryCoordinationPage() {
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'ready_for_pickup' | 'ready_for_delivery'>('all');
+  const [instructionsEdit, setInstructionsEdit] = useState<Record<string, string>>({});
+  const [savingInstructions, setSavingInstructions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchData();
@@ -89,18 +91,15 @@ export default function PickupDeliveryCoordinationPage() {
           lead_number,
           customer_name,
           customer_phone,
-          customer_address,
+          address,
           vehicle_number,
           vehicle_make,
           vehicle_model,
           pickup_status,
-          delivery_status,
           status,
-          pickup_scheduled_time,
-          delivery_scheduled_time,
-          special_instructions,
           pickup_required,
-          pickup_boy:assigned_pickup_boy_id(id, full_name, phone_number, profile_image),
+          customer_special_notes,
+          pickup_boy:assigned_pickup_boy_id(id, full_name, phone, profile_image),
           mechanic:assigned_mechanic_id(id, full_name)
         `)
         .eq('workshop_id', userProfile.workshop_id)
@@ -136,6 +135,11 @@ export default function PickupDeliveryCoordinationPage() {
             ...job,
             job_status: job.status,
             assigned_mechanic: job.mechanic,
+            customer_address: job.address,
+            delivery_status: null,
+            pickup_scheduled_time: null,
+            delivery_scheduled_time: null,
+            special_instructions: job.customer_special_notes,
             is_invoice_ready: invoiceData?.status === 'PAID' || invoiceData?.status === 'GENERATED',
             paperwork_complete: (documentsData?.length || 0) > 0,
             is_car_washed: job.status === 'READY_FOR_DELIVERY' // Assume washed if ready
@@ -151,7 +155,7 @@ export default function PickupDeliveryCoordinationPage() {
         .select(`
           id,
           full_name,
-          phone_number,
+          phone,
           profile_image,
           roles!inner(role_code)
         `)
@@ -239,7 +243,6 @@ export default function PickupDeliveryCoordinationPage() {
         .from('service_leads')
         .update({
           status: 'READY_FOR_DELIVERY',
-          delivery_status: 'PENDING',
           updated_at: new Date().toISOString()
         })
         .eq('id', jobId);
@@ -254,22 +257,35 @@ export default function PickupDeliveryCoordinationPage() {
     }
   }
 
-  async function updateSpecialInstructions(jobId: string, instructions: string) {
+  async function updateSpecialInstructions(jobId: string) {
     try {
+      setSavingInstructions(prev => ({ ...prev, [jobId]: true }));
       const supabase = createClient();
 
       const { error } = await supabase
         .from('service_leads')
         .update({
-          special_instructions: instructions,
+          customer_special_notes: instructionsEdit[jobId] || '',
           updated_at: new Date().toISOString()
         })
         .eq('id', jobId);
 
       if (error) throw error;
+      
+      alert('Instructions saved successfully!');
       fetchData();
+      
+      // Clear the edit state
+      setInstructionsEdit(prev => {
+        const newState = { ...prev };
+        delete newState[jobId];
+        return newState;
+      });
     } catch (error) {
       console.error('Error updating instructions:', error);
+      alert('Failed to save instructions');
+    } finally {
+      setSavingInstructions(prev => ({ ...prev, [jobId]: false }));
     }
   }
 
@@ -378,7 +394,7 @@ export default function PickupDeliveryCoordinationPage() {
                     <p className="font-semibold text-sm">{boy.full_name}</p>
                     <div className="flex items-center gap-2 text-xs text-gray-600 mt-1">
                       <Phone className="w-3 h-3" />
-                      <span>{boy.phone_number}</span>
+                      <span>{boy.phone}</span>
                     </div>
                     <p className="text-xs text-gray-600 mt-1">
                       {boy.activeTasks} active task{boy.activeTasks !== 1 ? 's' : ''}
@@ -418,43 +434,49 @@ export default function PickupDeliveryCoordinationPage() {
         <div className="space-y-4">
           {jobs.map((job) => (
             <div key={job.id} className="card">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 {/* Column 1: Customer & Vehicle */}
-                <div>
-                  <p className="text-xs text-gray-600 mb-1">#{job.lead_number}</p>
-                  <p className="font-bold">{job.customer_name}</p>
-                  <div className="flex items-center gap-1 text-sm text-gray-600 mt-1">
-                    <Phone className="w-3 h-3" />
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-600">#{job.lead_number}</p>
+                  <p className="font-bold text-lg">{job.customer_name}</p>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Phone className="w-4 h-4 flex-shrink-0" />
                     <span>{job.customer_phone}</span>
                   </div>
-                  <div className="flex items-center gap-1 text-sm text-gray-600 mt-1">
-                    <Car className="w-3 h-3" />
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Car className="w-4 h-4 flex-shrink-0" />
                     <span>{job.vehicle_number}</span>
                   </div>
+                  <p className="text-sm text-gray-700">{job.vehicle_make} {job.vehicle_model}</p>
                 </div>
 
                 {/* Column 2: Status */}
+                <div className="space-y-3">
                 <div>
                   <p className="text-xs text-gray-600 mb-2">Pickup Status</p>
-                  <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${getPickupStatusColor(job.pickup_status)}`}>
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getPickupStatusColor(job.pickup_status)}`}>
                     {job.pickup_status.replace(/_/g, ' ')}
                   </span>
-                  <p className="text-xs text-gray-600 mt-3 mb-1">Job Status</p>
-                  <span className="text-xs font-semibold">{job.job_status}</span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 mb-2">Job Status</p>
+                    <span className="text-sm font-semibold text-gray-800">{job.job_status.replace(/_/g, ' ')}</span>
+                  </div>
                 </div>
 
-                {/* Column 3: Pickup Boy */}
+                {/* Column 3: Assignment */}
+                <div className="space-y-3">
                 <div>
                   <p className="text-xs text-gray-600 mb-2">Pickup Boy</p>
                   {job.pickup_boy ? (
                     <div className="flex items-center gap-2">
-                      <User className="w-4 h-4" />
+                        <User className="w-4 h-4 text-brand-primary flex-shrink-0" />
                       <span className="text-sm font-semibold">{job.pickup_boy.full_name}</span>
                     </div>
                   ) : (
                     <select
                       onChange={(e) => e.target.value && assignPickupBoy(job.id, e.target.value)}
-                      className="input input-sm w-full"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                       defaultValue=""
                     >
                       <option value="">Assign...</option>
@@ -465,60 +487,85 @@ export default function PickupDeliveryCoordinationPage() {
                       ))}
                     </select>
                   )}
+                  </div>
                   
                   {job.assigned_mechanic && (
-                    <div className="mt-2">
-                      <p className="text-xs text-gray-600">Mechanic</p>
-                      <p className="text-sm">{job.assigned_mechanic.full_name}</p>
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Mechanic</p>
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-green-600 flex-shrink-0" />
+                        <span className="text-sm font-medium">{job.assigned_mechanic.full_name}</span>
+                      </div>
                     </div>
                   )}
                 </div>
 
                 {/* Column 4: Checklist */}
                 <div>
-                  <p className="text-xs text-gray-600 mb-2">Delivery Checklist</p>
-                  <div className="space-y-1 text-xs">
+                  <p className="text-xs text-gray-600 mb-3 font-semibold">Delivery Checklist</p>
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       {job.is_invoice_ready ? (
-                        <CheckCircle className="w-4 h-4 text-green-600" />
+                        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
                       ) : (
-                        <AlertTriangle className="w-4 h-4 text-orange-600" />
+                        <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0" />
                       )}
-                      <span>Invoice Ready</span>
+                      <span className="text-sm">Invoice Ready</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {job.is_car_washed ? (
-                        <CheckCircle className="w-4 h-4 text-green-600" />
+                        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
                       ) : (
-                        <AlertTriangle className="w-4 h-4 text-orange-600" />
+                        <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0" />
                       )}
-                      <span>Car Washed</span>
+                      <span className="text-sm">Car Washed</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {job.paperwork_complete ? (
-                        <CheckCircle className="w-4 h-4 text-green-600" />
+                        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
                       ) : (
-                        <AlertTriangle className="w-4 h-4 text-orange-600" />
+                        <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0" />
                       )}
-                      <span>Paperwork Complete</span>
+                      <span className="text-sm">Paperwork Complete</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Column 5: Actions */}
+                <div className="space-y-2">
                 <div>
                   <textarea
-                    placeholder="Special instructions..."
-                    value={job.special_instructions || ''}
-                    onChange={(e) => updateSpecialInstructions(job.id, e.target.value)}
-                    className="input input-sm w-full mb-2"
-                    rows={2}
-                  />
+                      placeholder="Special instructions for pickup/delivery..."
+                      value={instructionsEdit[job.id] !== undefined ? instructionsEdit[job.id] : (job.special_instructions || '')}
+                      onChange={(e) => setInstructionsEdit(prev => ({ ...prev, [job.id]: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent resize-none"
+                      rows={3}
+                    />
+                    {instructionsEdit[job.id] !== undefined && instructionsEdit[job.id] !== job.special_instructions && (
+                      <button
+                        onClick={() => updateSpecialInstructions(job.id)}
+                        disabled={savingInstructions[job.id]}
+                        className="btn bg-green-600 hover:bg-green-700 text-white w-full text-sm py-2 mt-2 flex items-center justify-center gap-2"
+                      >
+                        {savingInstructions[job.id] ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <MessageCircle className="w-4 h-4" />
+                            Send Instructions
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                   
                   {job.job_status === 'QC_APPROVED' && (
                     <button
                       onClick={() => markReadyForDelivery(job.id)}
-                      className="btn btn-primary btn-sm w-full"
+                      className="btn btn-primary w-full text-sm py-2"
                     >
                       Mark Ready for Delivery
                     </button>
@@ -526,7 +573,7 @@ export default function PickupDeliveryCoordinationPage() {
                   
                   <button
                     onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}`)}
-                    className="btn btn-outline btn-sm w-full mt-2"
+                    className="btn btn-outline w-full text-sm py-2"
                   >
                     View Details
                   </button>

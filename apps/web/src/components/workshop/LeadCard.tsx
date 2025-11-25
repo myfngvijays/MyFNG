@@ -29,6 +29,7 @@ interface LeadCardProps {
     vehicle_make?: string;
     vehicle_model?: string;
     service_type: string;
+    service_type_names?: string;
     status: string;
     priority: string;
     pickup_required?: boolean;
@@ -201,9 +202,11 @@ export default function LeadCard({ lead, onAccept, onReject, onView }: LeadCardP
 
       {/* Service Details */}
       <div className="mb-3 space-y-2">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-600">Service Type:</span>
-          <span className="font-medium text-gray-900">{lead.service_type}</span>
+        <div className="text-sm">
+          <span className="text-gray-600 block mb-1">Service Type:</span>
+          <span className="font-medium text-gray-900 block break-words">
+            {lead.service_type_names || lead.service_type}
+          </span>
         </div>
         
         <div className="flex items-center justify-between text-sm">

@@ -103,11 +103,12 @@ export default function WorkshopLeadsPage() {
     if (!targetWorkshopId) return;
 
     try {
+      // Only fetch ACCEPTED or later status leads (not ASSIGNED_TO_WORKSHOP)
       const { data, error } = await supabase
         .from('service_leads')
         .select('*')
         .eq('workshop_id', targetWorkshopId)
-        .eq('lead_type', 'NORMAL') // Only show NORMAL service leads
+        .not('status', 'in', '(ASSIGNED_TO_WORKSHOP,ASSIGNED)')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -115,7 +116,34 @@ export default function WorkshopLeadsPage() {
         return;
       }
 
-      setLeads(data || []);
+      // Fetch service type names for each lead
+      const leadsWithServiceNames = await Promise.all((data || []).map(async (lead) => {
+        // Parse service_type_ids if it's a string
+        let serviceTypeIds = lead.service_type_ids;
+        if (typeof serviceTypeIds === 'string') {
+          try {
+            serviceTypeIds = JSON.parse(serviceTypeIds);
+          } catch (e) {
+            console.error('Failed to parse service_type_ids:', e);
+            serviceTypeIds = [];
+          }
+        }
+
+        if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
+          const { data: serviceTypes } = await supabase
+            .from('service_types')
+            .select('id, name')
+            .in('id', serviceTypeIds);
+
+          if (serviceTypes && serviceTypes.length > 0) {
+            lead.service_type_names = serviceTypes.map((st: any) => st.name).join(', ');
+          }
+        }
+
+        return lead;
+      }));
+
+      setLeads(leadsWithServiceNames || []);
     } catch (error) {
       console.error('Error fetching leads:', error);
     }
@@ -347,7 +375,7 @@ export default function WorkshopLeadsPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {filteredLeads.map((lead) => (
               <LeadCard
                 key={lead.id}

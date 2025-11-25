@@ -17,7 +17,10 @@ interface Job {
   vehicle_number: string;
   vehicle_make: string;
   vehicle_model: string;
+  vehicle_variant?: string;
   service_type: string;
+  service_type_names?: string[];
+  service_type_ids?: any[];
   status: string;
   priority: string;
   sla_status: string;
@@ -26,6 +29,11 @@ interface Job {
   pickup_status: string | null;
   qc_status: string;
   mechanic: {
+    id: string;
+    name: string;
+    profileImage?: string | null;
+  } | null;
+  pickup_boy: {
     id: string;
     name: string;
     profileImage?: string | null;
@@ -167,6 +175,7 @@ function SupervisorJobsContent() {
   }
 
   function handleFilterChange(newFilters: FilterState) {
+    console.log('Filter changed:', newFilters);
     setFilters(newFilters);
     setPage(1); // Reset to first page when filters change
   }

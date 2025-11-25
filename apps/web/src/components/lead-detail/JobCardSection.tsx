@@ -18,11 +18,11 @@ interface JobCardSectionProps {
 interface JobCard {
   id: string;
   job_card_number: string;
-  estimated_hours: number;
-  actual_hours?: number;
+  labor_charges?: number;
+  additional_work?: string;
   mechanic_notes?: string;
-  status: string;
   created_at: string;
+  updated_at?: string;
 }
 
 interface JobCardPart {
@@ -32,7 +32,6 @@ interface JobCardPart {
   quantity: number;
   unit_price: number;
   total_price: number;
-  supplier?: string;
 }
 
 export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) {
@@ -42,7 +41,8 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
   const [showCreateForm, setShowCreateForm] = useState(false);
   
   // Job card form
-  const [estimatedHours, setEstimatedHours] = useState(2);
+  const [laborCharges, setLaborCharges] = useState(0);
+  const [additionalWork, setAdditionalWork] = useState('');
   const [mechanicNotes, setMechanicNotes] = useState('');
   
   // Part form
@@ -50,7 +50,6 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
   const [partNumber, setPartNumber] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
-  const [supplier, setSupplier] = useState('');
 
   useEffect(() => {
     fetchJobCard();
@@ -105,9 +104,9 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
         .insert({
           lead_id: lead.id,
           job_card_number: jobCardNumber,
-          estimated_hours: estimatedHours,
+          labor_charges: laborCharges,
+          additional_work: additionalWork || null,
           mechanic_notes: mechanicNotes || null,
-          status: 'PENDING',
           created_by: user.id,
         })
         .select()
@@ -159,8 +158,6 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
         quantity,
         unit_price: unitPrice,
         total_price: totalPrice,
-        supplier: supplier || null,
-        added_by: user.id,
       });
 
       if (error) throw error;
@@ -179,7 +176,6 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
       setPartNumber('');
       setQuantity(1);
       setUnitPrice(0);
-      setSupplier('');
 
       alert('✅ Part added successfully!');
       fetchJobCard();
@@ -243,14 +239,27 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
               <h3 className="font-semibold">Create New Job Card</h3>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Estimated Hours *
+                  Labor Charges (₹) *
                 </label>
                 <input
                   type="number"
-                  value={estimatedHours}
-                  onChange={(e) => setEstimatedHours(parseFloat(e.target.value))}
-                  min="0.5"
-                  step="0.5"
+                  value={laborCharges}
+                  onChange={(e) => setLaborCharges(parseFloat(e.target.value) || 0)}
+                  min="0"
+                  step="100"
+                  placeholder="e.g., 2000"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Additional Work (Optional)
+                </label>
+                <textarea
+                  value={additionalWork}
+                  onChange={(e) => setAdditionalWork(e.target.value)}
+                  rows={2}
+                  placeholder="Any additional work required..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
@@ -295,23 +304,29 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
                 <p className="font-semibold">{jobCard.job_card_number}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Status</p>
-                <span className="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                  {jobCard.status}
-                </span>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Estimated Hours</p>
-                <p className="font-semibold">{jobCard.estimated_hours}h</p>
+                <p className="text-sm text-gray-600">Labor Charges</p>
+                <p className="font-semibold text-green-600">₹{jobCard.labor_charges?.toFixed(2) || '0.00'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Created</p>
                 <p className="font-semibold">{new Date(jobCard.created_at).toLocaleString()}</p>
               </div>
+              <div>
+                <p className="text-sm text-gray-600">Updated</p>
+                <p className="font-semibold">
+                  {jobCard.updated_at ? new Date(jobCard.updated_at).toLocaleString() : 'N/A'}
+                </p>
+              </div>
             </div>
+            {jobCard.additional_work && (
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <p className="text-sm text-gray-600">Additional Work</p>
+                <p className="text-sm">{jobCard.additional_work}</p>
+              </div>
+            )}
             {jobCard.mechanic_notes && (
               <div className="mt-3 pt-3 border-t border-blue-200">
-                <p className="text-sm text-gray-600">Notes</p>
+                <p className="text-sm text-gray-600">Mechanic Notes</p>
                 <p className="text-sm">{jobCard.mechanic_notes}</p>
               </div>
             )}
@@ -362,16 +377,6 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
-                <input
-                  type="text"
-                  value={supplier}
-                  onChange={(e) => setSupplier(e.target.value)}
-                  placeholder="e.g., ABC Auto Parts"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
             </div>
             <button
               onClick={addPart}
@@ -398,7 +403,6 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
                       <th className="px-4 py-2 text-right">Qty</th>
                       <th className="px-4 py-2 text-right">Unit Price</th>
                       <th className="px-4 py-2 text-right">Total</th>
-                      <th className="px-4 py-2 text-left">Supplier</th>
                       <th className="px-4 py-2"></th>
                     </tr>
                   </thead>
@@ -410,7 +414,6 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
                         <td className="px-4 py-2 text-right">{part.quantity}</td>
                         <td className="px-4 py-2 text-right">₹{part.unit_price.toFixed(2)}</td>
                         <td className="px-4 py-2 text-right font-semibold">₹{part.total_price.toFixed(2)}</td>
-                        <td className="px-4 py-2 text-gray-600">{part.supplier || '-'}</td>
                         <td className="px-4 py-2">
                           <button
                             onClick={() => deletePart(part.id)}
@@ -426,7 +429,7 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
                     <tr>
                       <td colSpan={4} className="px-4 py-2 text-right">Total Parts Cost:</td>
                       <td className="px-4 py-2 text-right">₹{totalPartsCost.toFixed(2)}</td>
-                      <td colSpan={2}></td>
+                      <td></td>
                     </tr>
                   </tfoot>
                 </table>

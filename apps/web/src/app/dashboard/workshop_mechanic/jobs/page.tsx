@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Wrench, Clock, Camera, CheckCircle, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function MechanicJobsPage() {
+  const router = useRouter();
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -167,7 +169,10 @@ export default function MechanicJobsPage() {
                 )}
                 {job.mechanic_status === 'IN_PROGRESS' && (
                   <>
-                    <button className="btn btn-outline">
+                    <button 
+                      onClick={() => router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}?action=upload`)}
+                      className="btn btn-outline"
+                    >
                       <Camera className="w-5 h-5" />
                       Upload Photos
                     </button>

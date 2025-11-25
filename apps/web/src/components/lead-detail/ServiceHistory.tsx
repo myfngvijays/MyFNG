@@ -18,6 +18,8 @@ interface PastLead {
   id: string;
   lead_number: string;
   service_type: string;
+  service_type_ids?: any;
+  service_type_names?: string;
   status: string;
   created_at: string;
   completed_at?: string;
@@ -51,7 +53,32 @@ export default function ServiceHistory({ lead }: ServiceHistoryProps) {
           .order('created_at', { ascending: false })
           .limit(10);
 
-        setCustomerHistory(customerData || []);
+        // Fetch service names for customer history
+        const customerWithNames = await Promise.all((customerData || []).map(async (pastLead) => {
+          let serviceTypeIds = pastLead.service_type_ids;
+          if (typeof serviceTypeIds === 'string') {
+            try {
+              serviceTypeIds = JSON.parse(serviceTypeIds);
+            } catch (e) {
+              serviceTypeIds = [];
+            }
+          }
+
+          if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
+            const { data: serviceTypes } = await supabase
+              .from('service_types')
+              .select('id, name')
+              .in('id', serviceTypeIds);
+
+            if (serviceTypes && serviceTypes.length > 0) {
+              pastLead.service_type_names = serviceTypes.map((st: any) => st.name).join(', ');
+            }
+          }
+
+          return pastLead;
+        }));
+
+        setCustomerHistory(customerWithNames || []);
       }
 
       // Fetch past leads for this vehicle (excluding current lead)
@@ -64,7 +91,32 @@ export default function ServiceHistory({ lead }: ServiceHistoryProps) {
           .order('created_at', { ascending: false })
           .limit(10);
 
-        setVehicleHistory(vehicleData || []);
+        // Fetch service names for vehicle history
+        const vehicleWithNames = await Promise.all((vehicleData || []).map(async (pastLead) => {
+          let serviceTypeIds = pastLead.service_type_ids;
+          if (typeof serviceTypeIds === 'string') {
+            try {
+              serviceTypeIds = JSON.parse(serviceTypeIds);
+            } catch (e) {
+              serviceTypeIds = [];
+            }
+          }
+
+          if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
+            const { data: serviceTypes } = await supabase
+              .from('service_types')
+              .select('id, name')
+              .in('id', serviceTypeIds);
+
+            if (serviceTypes && serviceTypes.length > 0) {
+              pastLead.service_type_names = serviceTypes.map((st: any) => st.name).join(', ');
+            }
+          }
+
+          return pastLead;
+        }));
+
+        setVehicleHistory(vehicleWithNames || []);
       }
     } catch (error) {
       console.error('Error fetching service history:', error);
@@ -79,7 +131,9 @@ export default function ServiceHistory({ lead }: ServiceHistoryProps) {
         <div className="flex justify-between items-start mb-2">
           <div>
             <h3 className="font-semibold text-gray-800">{pastLead.lead_number}</h3>
-            <p className="text-sm text-gray-600">{pastLead.service_type}</p>
+            <p className="text-sm text-gray-600">
+              {pastLead.service_type_names || pastLead.service_type}
+            </p>
           </div>
           <span
             className={`px-2 py-1 text-xs font-semibold rounded-full ${

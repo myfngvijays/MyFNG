@@ -19,11 +19,17 @@ export interface FilterState {
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
   { value: 'NEW', label: 'New' },
-  { value: 'ASSIGNED', label: 'Assigned' },
+  { value: 'INCOMPLETE', label: 'Incomplete' },
+  { value: 'VALIDATED', label: 'Validated' },
+  { value: 'ASSIGNED_TO_WORKSHOP', label: 'Assigned to Workshop' },
+  { value: 'ACCEPTED', label: 'Accepted' },
   { value: 'IN_PROGRESS', label: 'In Progress' },
   { value: 'HOLD', label: 'On Hold' },
   { value: 'COMPLETED', label: 'Completed' },
-  { value: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' }
+  { value: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
+  { value: 'DELIVERED', label: 'Delivered' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'REJECTED', label: 'Rejected' }
 ];
 
 const SLA_STATUS_OPTIONS = [

@@ -40,6 +40,40 @@ export default function QCQueuePage() {
 
   useEffect(() => {
     fetchQCQueue();
+    
+    // Setup real-time subscription
+    const supabase = createClient();
+    const channel = supabase
+      .channel('qc-queue-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'service_leads'
+        },
+        (payload) => {
+          console.log('QC Queue updated:', payload);
+          fetchQCQueue();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_media'
+        },
+        (payload) => {
+          console.log('Media updated:', payload);
+          fetchQCQueue();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
   }, []);
 
   async function fetchQCQueue() {
@@ -64,7 +98,7 @@ export default function QCQueuePage() {
         return;
       }
 
-      // Fetch jobs pending QC
+      // Fetch jobs pending QC - COMPLETED status means ready for QC
       const { data: qcJobs, error } = await supabase
         .from('service_leads')
         .select(`
@@ -77,10 +111,12 @@ export default function QCQueuePage() {
           mechanic_completed_at,
           notes,
           status,
+          qc_status,
           assigned_mechanic_id
         `)
         .eq('workshop_id', userProfile.workshop_id)
-        .in('status', ['QC_PENDING', 'WORK_COMPLETED'])
+        .eq('status', 'COMPLETED')
+        .eq('qc_status', 'PENDING')
         .order('mechanic_completed_at', { ascending: true });
 
       if (error) {
@@ -89,7 +125,7 @@ export default function QCQueuePage() {
         return;
       }
 
-      // Fetch mechanic names and image counts
+      // Fetch mechanic names and image counts from mechanic_media
       const jobsWithDetails = await Promise.all((qcJobs || []).map(async (job) => {
         // Get mechanic name
         const { data: mechanic } = await supabase
@@ -98,18 +134,18 @@ export default function QCQueuePage() {
           .eq('id', job.assigned_mechanic_id)
           .single();
 
-        // Get image counts
+        // Get image counts from mechanic_media
         const { count: beforeCount } = await supabase
-          .from('lead_media')
+          .from('mechanic_media')
           .select('*', { count: 'exact', head: true })
           .eq('lead_id', job.id)
-          .eq('category', 'BEFORE');
+          .eq('media_category', 'BEFORE');
 
         const { count: afterCount } = await supabase
-          .from('lead_media')
+          .from('mechanic_media')
           .select('*', { count: 'exact', head: true })
           .eq('lead_id', job.id)
-          .eq('category', 'AFTER');
+          .eq('media_category', 'AFTER');
 
         return {
           ...job,

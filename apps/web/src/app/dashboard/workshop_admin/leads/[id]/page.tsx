@@ -122,7 +122,31 @@ export default function LeadDetailPage() {
         return;
       }
 
-      setLead(data);
+      if (data) {
+        // Fetch service type names
+        let serviceTypeIds = data.service_type_ids;
+        if (typeof serviceTypeIds === 'string') {
+          try {
+            serviceTypeIds = JSON.parse(serviceTypeIds);
+          } catch (e) {
+            console.error('Failed to parse service_type_ids:', e);
+            serviceTypeIds = [];
+          }
+        }
+
+        if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
+          const { data: serviceTypes } = await supabase
+            .from('service_types')
+            .select('id, name')
+            .in('id', serviceTypeIds);
+
+          if (serviceTypes && serviceTypes.length > 0) {
+            data.service_type_names = serviceTypes.map((st: any) => st.name);
+          }
+        }
+
+        setLead(data);
+      }
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -425,7 +449,11 @@ export default function LeadDetailPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="text-sm text-gray-600">Service Type</label>
-              <p className="text-lg font-semibold text-gray-900">{lead.service_type}</p>
+              <p className="text-lg font-semibold text-gray-900">
+                {lead.service_type_names && lead.service_type_names.length > 0 
+                  ? lead.service_type_names.join(', ') 
+                  : lead.service_type}
+              </p>
             </div>
 
             <div>

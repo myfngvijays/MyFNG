@@ -17,6 +17,28 @@ export default function WorkshopPickupBoyDashboard() {
 
   useEffect(() => {
     fetchPickupData();
+
+    // Setup real-time subscription
+    const supabase = createClient();
+    const channel = supabase
+      .channel('pickup-boy-dashboard')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'service_leads'
+        },
+        (payload) => {
+          console.log('Dashboard updated:', payload);
+          fetchPickupData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
   }, []);
 
   async function fetchPickupData() {
@@ -34,37 +56,38 @@ export default function WorkshopPickupBoyDashboard() {
 
       if (!userProfile) return;
 
-      // Fetch tasks assigned to this pickup boy
+      // Fetch tasks assigned to this pickup boy from service_leads
       const { data: assignedTasks } = await supabase
-        .from('pickup_delivery_tasks')
+        .from('service_leads')
         .select('*')
-        .eq('assigned_to_id', userProfile.id)
-        .in('status', ['ASSIGNED', 'IN_TRANSIT'])
-        .order('scheduled_time', { ascending: true });
+        .eq('assigned_pickup_boy_id', userProfile.id)
+        .in('status', ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP', 'IN_PROGRESS'])
+        .order('created_at', { ascending: false })
+        .limit(5);
 
-      // Get stats
+      // Get all tasks for stats
       const { data: allTasks } = await supabase
-        .from('pickup_delivery_tasks')
+        .from('service_leads')
         .select('*')
-        .eq('assigned_to_id', userProfile.id);
+        .eq('assigned_pickup_boy_id', userProfile.id);
 
       const pickupCount = allTasks?.filter(t => 
-        (t.task_type === 'PICKUP' || t.task_type === 'BOTH') && 
-        (t.status === 'ASSIGNED' || t.status === 'PENDING')
+        t.pickup_required && 
+        (t.status === 'ACCEPTED' || t.status === 'ASSIGNED_TO_WORKSHOP')
       ).length || 0;
 
       const deliveryCount = allTasks?.filter(t => 
-        (t.task_type === 'DELIVERY' || t.task_type === 'BOTH') && 
-        (t.status === 'ASSIGNED' || t.status === 'PENDING')
+        t.status === 'COMPLETED' || t.status === 'READY_FOR_DELIVERY'
       ).length || 0;
 
-      const inTransitCount = allTasks?.filter(t => t.status === 'IN_TRANSIT').length || 0;
+      const inTransitCount = allTasks?.filter(t => t.status === 'IN_PROGRESS').length || 0;
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const completedToday = allTasks?.filter(t => 
-        t.status === 'COMPLETED' && 
+        (t.status === 'DELIVERED' || t.status === 'CLOSED') && 
+        t.completed_at &&
         new Date(t.completed_at) >= today
       ).length || 0;
 
@@ -127,33 +150,44 @@ export default function WorkshopPickupBoyDashboard() {
                 <div key={task.id} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition">
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1">
-                      <p className="font-semibold text-text-heading text-lg">{task.task_number}</p>
+                      <p className="font-semibold text-text-heading text-lg">{task.lead_number}</p>
                       <p className="text-sm text-text-body">{task.customer_name} - {task.vehicle_number}</p>
                       <div className="mt-2 space-y-1">
-                        <p className="text-xs text-gray-500 flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          Pickup: {task.pickup_address}
-                        </p>
-                        {task.delivery_address && (
+                        {task.pickup_address && (
                           <p className="text-xs text-gray-500 flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
-                            Delivery: {task.delivery_address}
+                            Pickup: {task.pickup_address}
+                          </p>
+                        )}
+                        {task.address && (
+                          <p className="text-xs text-gray-500 flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            Address: {task.address}
                           </p>
                         )}
                       </div>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ml-4 ${
-                      task.status === 'IN_TRANSIT' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                      task.status === 'IN_PROGRESS' ? 'bg-green-100 text-green-700' : 
+                      task.status === 'ACCEPTED' ? 'bg-blue-100 text-blue-700' :
+                      'bg-yellow-100 text-yellow-700'
                     }`}>
                       {task.status.replace('_', ' ')}
                     </span>
                   </div>
                   <div className="flex gap-2">
-                    <button className="btn btn-outline text-sm flex-1">
+                    <button 
+                      onClick={() => window.open(`https://maps.google.com/?q=${task.customer_lat},${task.customer_lng}`, '_blank')}
+                      className="btn btn-outline text-sm flex-1"
+                      disabled={!task.customer_lat || !task.customer_lng}
+                    >
                       <MapPin className="w-4 h-4" />
                       Navigate
                     </button>
-                    <button className="btn btn-primary text-sm flex-1">
+                    <button 
+                      onClick={() => window.location.href = `/dashboard/workshop_pickup_boy/tasks/${task.id}`}
+                      className="btn btn-primary text-sm flex-1"
+                    >
                       View Details
                     </button>
                   </div>

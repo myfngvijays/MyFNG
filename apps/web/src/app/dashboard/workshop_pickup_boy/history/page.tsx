@@ -12,23 +12,23 @@ import toast from 'react-hot-toast';
 
 interface HistoryTask {
   id: string;
-  task_number: string;
-  task_type: string;
-  lead_id: string;
+  lead_number: string;
   customer_name: string;
   customer_phone: string;
   vehicle_number: string;
   vehicle_make: string;
   vehicle_model: string;
-  pickup_address: string;
-  delivery_address: string;
+  address: string;
+  city: string;
+  pincode: string;
   status: string;
-  scheduled_time: string;
-  started_at: string;
+  preferred_date: string;
+  created_at: string;
   completed_at: string;
   cancelled_at: string;
-  cancellation_reason: string;
-  notes: string;
+  notes_internal: string;
+  pickup_required: boolean;
+  pickup_otp_verified_at: string;
 }
 
 export default function PickupBoyHistoryPage() {
@@ -75,14 +75,13 @@ export default function PickupBoyHistoryPage() {
         return;
       }
 
-      // Fetch completed and cancelled tasks
+      // Fetch completed tasks from service_leads
       const { data, error } = await supabase
-        .from('pickup_delivery_tasks')
+        .from('service_leads')
         .select('*')
-        .eq('assigned_to_id', userProfile.id)
+        .eq('assigned_pickup_boy_id', userProfile.id)
         .in('status', ['COMPLETED', 'CANCELLED'])
-        .order('completed_at', { ascending: false, nullsFirst: false })
-        .order('cancelled_at', { ascending: false, nullsFirst: false });
+        .order('completed_at', { ascending: false, nullsFirst: false });
 
       if (error) {
         console.error('Error fetching history:', error);
@@ -95,14 +94,14 @@ export default function PickupBoyHistoryPage() {
       // Calculate stats
       const completed = data?.filter(t => t.status === 'COMPLETED').length || 0;
       const cancelled = data?.filter(t => t.status === 'CANCELLED').length || 0;
-      const pickups = data?.filter(t => ['PICKUP', 'BOTH'].includes(t.task_type) && t.status === 'COMPLETED').length || 0;
-      const deliveries = data?.filter(t => ['DELIVERY', 'BOTH'].includes(t.task_type) && t.status === 'COMPLETED').length || 0;
+      const withPickup = data?.filter(t => t.pickup_required && t.status === 'COMPLETED').length || 0;
+      const delivered = data?.filter(t => t.pickup_otp_verified_at && t.status === 'COMPLETED').length || 0;
 
       setStats({
         totalCompleted: completed,
         totalCancelled: cancelled,
-        totalPickups: pickups,
-        totalDeliveries: deliveries
+        totalPickups: withPickup,
+        totalDeliveries: delivered
       });
 
     } catch (error) {
@@ -149,10 +148,8 @@ export default function PickupBoyHistoryPage() {
     setFilteredHistory(filtered);
   }
 
-  function getTaskTypeIcon(taskType: string) {
-    if (taskType === 'PICKUP') return '📦';
-    if (taskType === 'DELIVERY') return '🚚';
-    if (taskType === 'BOTH') return '🔄';
+  function getTaskTypeIcon(task: HistoryTask) {
+    if (task.pickup_required) return '🚚';
     return '📋';
   }
 
@@ -346,23 +343,21 @@ export default function PickupBoyHistoryPage() {
               <div key={task.id} className="card hover:shadow-lg transition-shadow">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="text-4xl">{getTaskTypeIcon(task.task_type)}</div>
+                    <div className="text-4xl">{getTaskTypeIcon(task)}</div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-lg font-bold text-text-heading">
-                          {task.task_number}
+                          {task.lead_number}
                         </h3>
                         {getStatusBadge(task.status)}
                       </div>
                       <p className="text-sm text-gray-600">
-                        {task.task_type === 'PICKUP' && 'Pickup Task'}
-                        {task.task_type === 'DELIVERY' && 'Delivery Task'}
-                        {task.task_type === 'BOTH' && 'Pickup & Delivery'}
+                        {task.pickup_required ? 'Pickup & Delivery Task' : 'Service Task'}
                       </p>
                     </div>
                   </div>
                   <button
-                    onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.lead_id}`)}
+                    onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
                     className="btn bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm"
                   >
                     <Eye className="w-4 h-4" />
@@ -387,12 +382,12 @@ export default function PickupBoyHistoryPage() {
 
                   {/* Timing */}
                   <div className="space-y-2 text-sm">
-                    {task.scheduled_time && (
+                    {task.preferred_date && (
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4 text-gray-500" />
-                        <span className="text-gray-600">Scheduled:</span>
+                        <span className="text-gray-600">Preferred:</span>
                         <span className="font-medium">
-                          {new Date(task.scheduled_time).toLocaleString()}
+                          {new Date(task.preferred_date).toLocaleDateString()}
                         </span>
                       </div>
                     )}
@@ -419,40 +414,30 @@ export default function PickupBoyHistoryPage() {
 
                 {/* Address */}
                 <div className="space-y-2 text-sm">
-                  {task.pickup_address && (
+                  {task.address && (
                     <div className="flex items-start gap-2">
                       <MapPin className="w-4 h-4 text-blue-500 mt-0.5" />
                       <div>
-                        <span className="text-gray-600 font-medium">Pickup:</span>{' '}
-                        <span className="text-gray-700">{task.pickup_address}</span>
+                        <span className="text-gray-600 font-medium">Address:</span>{' '}
+                        <span className="text-gray-700">{task.address}</span>
+                        {task.city && <span className="text-gray-600">, {task.city}</span>}
+                        {task.pincode && <span className="text-gray-600"> - {task.pincode}</span>}
                       </div>
                     </div>
                   )}
-                  {task.delivery_address && (
-                    <div className="flex items-start gap-2">
-                      <Navigation className="w-4 h-4 text-green-500 mt-0.5" />
-                      <div>
-                        <span className="text-gray-600 font-medium">Delivery:</span>{' '}
-                        <span className="text-gray-700">{task.delivery_address}</span>
-                      </div>
+                  {task.pickup_otp_verified_at && (
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      <span className="text-sm text-green-600">OTP Verified</span>
                     </div>
                   )}
                 </div>
 
-                {/* Cancellation Reason */}
-                {task.status === 'CANCELLED' && task.cancellation_reason && (
-                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-red-800">
-                      <span className="font-semibold">Cancellation Reason:</span> {task.cancellation_reason}
-                    </p>
-                  </div>
-                )}
-
                 {/* Notes */}
-                {task.notes && (
+                {task.notes_internal && (
                   <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
                     <p className="text-sm text-gray-700">
-                      <span className="font-semibold">Notes:</span> {task.notes}
+                      <span className="font-semibold">Notes:</span> {task.notes_internal}
                     </p>
                   </div>
                 )}

@@ -15,7 +15,9 @@ interface Job {
   vehicle_number: string;
   vehicle_make: string;
   vehicle_model: string;
+  vehicle_variant?: string;
   service_type: string;
+  service_type_ids?: any[];
   status: string;
   priority: string;
   sla_status: string;
@@ -24,6 +26,11 @@ interface Job {
   pickup_status: string | null;
   qc_status: string;
   mechanic: {
+    id: string;
+    name: string;
+    profileImage?: string | null;
+  } | null;
+  pickup_boy: {
     id: string;
     name: string;
     profileImage?: string | null;
@@ -65,8 +72,14 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
     switch (job.status) {
       case 'NEW':
         return 'bg-blue-100 text-blue-700';
-      case 'ASSIGNED':
+      case 'INCOMPLETE':
+        return 'bg-yellow-100 text-yellow-700';
+      case 'VALIDATED':
+        return 'bg-cyan-100 text-cyan-700';
+      case 'ASSIGNED_TO_WORKSHOP':
         return 'bg-purple-100 text-purple-700';
+      case 'ACCEPTED':
+        return 'bg-indigo-100 text-indigo-700';
       case 'IN_PROGRESS':
         return 'bg-green-100 text-green-700';
       case 'HOLD':
@@ -74,7 +87,13 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
       case 'COMPLETED':
         return 'bg-teal-100 text-teal-700';
       case 'READY_FOR_DELIVERY':
-        return 'bg-indigo-100 text-indigo-700';
+        return 'bg-emerald-100 text-emerald-700';
+      case 'DELIVERED':
+        return 'bg-lime-100 text-lime-700';
+      case 'CANCELLED':
+        return 'bg-red-100 text-red-700';
+      case 'REJECTED':
+        return 'bg-rose-100 text-rose-700';
       default:
         return 'bg-gray-100 text-gray-700';
     }
@@ -148,10 +167,17 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
           </div>
         )}
 
-        {job.pickup_required && (
-          <div className="flex items-center gap-1 text-xs bg-cyan-50 text-cyan-700 px-2 py-1 rounded">
+        {job.pickup_boy && (
+          <div className="flex items-center gap-1 text-xs bg-green-50 text-green-700 px-2 py-1 rounded">
             <Truck className="w-3 h-3" />
-            {job.pickup_status || 'Pickup Required'}
+            Pickup: {job.pickup_boy.name}
+          </div>
+        )}
+
+        {job.pickup_required && !job.pickup_boy && (
+          <div className="flex items-center gap-1 text-xs bg-yellow-50 text-yellow-700 px-2 py-1 rounded">
+            <Truck className="w-3 h-3" />
+            Pickup Not Assigned
           </div>
         )}
 

@@ -53,6 +53,7 @@ interface MediaItem {
   id: string;
   file_url: string;
   media_url?: string;
+  media_type?: string;
   media_category: string;
   caption?: string;
   description?: string;
@@ -93,6 +94,7 @@ export default function MechanicJobDetailPage() {
     additional_work_required: '',
     estimated_cost: ''
   });
+  const [zoomedMedia, setZoomedMedia] = useState<MediaItem | null>(null);
 
   useEffect(() => {
     if (leadId) {
@@ -194,6 +196,17 @@ export default function MechanicJobDetailPage() {
       console.log('Job data received:', jobData);
 
       if (jobData) {
+        // Parse service_type_ids if it's a string (JSONB from Supabase)
+        let serviceTypeIds = jobData.service_leads?.service_type_ids || jobData.service_leads?.subservice_ids || [];
+        if (typeof serviceTypeIds === 'string') {
+          try {
+            serviceTypeIds = JSON.parse(serviceTypeIds);
+          } catch (e) {
+            console.error('Failed to parse service_type_ids:', e);
+            serviceTypeIds = [];
+          }
+        }
+        
         const jobDetail: JobDetail = {
           id: jobData.id,
           lead_id: jobData.lead_id,
@@ -207,7 +220,7 @@ export default function MechanicJobDetailPage() {
           odometer_reading: 0,
           fuel_type: jobData.service_leads?.vehicle_fuel_type || '',
           problem_description: jobData.service_leads?.problem_description || '',
-          service_types: jobData.service_leads?.service_type_ids || jobData.service_leads?.subservice_ids || [],
+          service_types: serviceTypeIds,
           mechanic_status: jobData.mechanic_status,
           job_priority: jobData.job_priority,
           sla_remaining_minutes: jobData.sla_remaining_minutes ?? calculateSLARemaining(jobData.expected_completion_time),
@@ -353,11 +366,11 @@ export default function MechanicJobDetailPage() {
       console.log('Checklist updated successfully:', result);
       
       // Update local state
-      const updatedChecklist = checklist.map(item =>
-        item.id === itemId
-          ? { ...item, status, notes, completed_at: status === 'COMPLETED' ? new Date().toISOString() : item.completed_at }
-          : item
-      );
+    const updatedChecklist = checklist.map(item =>
+      item.id === itemId
+        ? { ...item, status, notes, completed_at: status === 'COMPLETED' ? new Date().toISOString() : item.completed_at }
+        : item
+    );
       setChecklist(updatedChecklist);
       
       // Refresh job details to show updated completion status
@@ -466,27 +479,62 @@ export default function MechanicJobDetailPage() {
   }
 
   async function submitExtraWorkRequest() {
+    if (!extraWorkForm.issue_description || !extraWorkForm.additional_work_required) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    try {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
+      if (!user) {
+        alert('User not authenticated');
+        return;
+      }
+
+      // Get mechanic profile
+      const { data: userProfile } = await supabase
+        .from('users_login')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+
+      if (!userProfile) {
+        alert('User profile not found');
+        return;
+      }
+
+      // Insert into lead_extra_charges table
     const { error } = await supabase
-      .from('mechanic_extra_work_requests')
+        .from('lead_extra_charges')
       .insert({
         lead_id: leadId,
-        mechanic_id: user?.id,
-        issue_description: extraWorkForm.issue_description,
-        additional_work_required: extraWorkForm.additional_work_required,
-        estimated_cost: extraWorkForm.estimated_cost ? parseFloat(extraWorkForm.estimated_cost) : null,
+          requested_by: userProfile.id,
+          description: extraWorkForm.additional_work_required,
+          reason: extraWorkForm.issue_description,
+          amount: extraWorkForm.estimated_cost ? parseFloat(extraWorkForm.estimated_cost) : 0,
+          category: 'ADDITIONAL_SERVICE',
+          is_urgent: false,
         status: 'PENDING'
       });
 
-    if (!error) {
+      if (error) {
+        console.error('Error submitting extra work request:', error);
+        alert(`Failed to submit request: ${error.message}`);
+        return;
+      }
+
+      alert('Extra work request submitted successfully!');
       setShowExtraWorkForm(false);
       setExtraWorkForm({ issue_description: '', additional_work_required: '', estimated_cost: '' });
       fetchJobDetails();
       
-      // Update job status to WAITING_APPROVAL
-      await updateJobStatus('WAITING_APPROVAL');
+      // Update job status to HOLD (waiting for approval)
+      await updateJobStatus('HOLD');
+    } catch (error) {
+      console.error('Error submitting extra work request:', error);
+      alert('Failed to submit extra work request. Please try again.');
     }
   }
 
@@ -896,11 +944,11 @@ export default function MechanicJobDetailPage() {
                 <div>
                   <label className="btn btn-primary cursor-pointer">
                     <Upload className="w-5 h-5" />
-                    {uploadingMedia ? 'Uploading...' : 'Upload Photos'}
+                    {uploadingMedia ? 'Uploading...' : 'Upload Photos/Videos'}
                     <input
                       type="file"
                       multiple
-                      accept="image/*"
+                      accept="image/*,video/*"
                       onChange={handleMediaUpload}
                       disabled={uploadingMedia}
                       className="hidden"
@@ -912,20 +960,59 @@ export default function MechanicJobDetailPage() {
 
             {/* Media Grid */}
             <div className="card">
-              <h2 className="text-xl font-bold mb-4">Uploaded Media</h2>
+              <h2 className="text-xl font-bold mb-4">Uploaded Media ({media.length})</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {media.map((item) => (
-                  <div key={item.id} className="border rounded-lg overflow-hidden">
-                    <img src={item.file_url} alt="Job media" className="w-full h-48 object-cover" />
-                    <div className="p-2">
-                      <p className="text-xs font-semibold">{item.media_category.replace('_', ' ')}</p>
-                      <p className="text-xs text-gray-500">{new Date(item.uploaded_at || item.created_at).toLocaleDateString()}</p>
+                  <div key={item.id} className="border rounded-lg overflow-hidden group relative">
+                    {/* Image or Video */}
+                    {item.media_type === 'VIDEO' || item.file_url.match(/\.(mp4|webm|ogg|mov)$/i) ? (
+                      <div className="relative w-full h-48 bg-black">
+                        <video 
+                          src={item.file_url} 
+                          className="w-full h-48 object-contain"
+                          controls
+                          preload="metadata"
+                        />
+                        <div className="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-1 rounded">
+                          VIDEO
+                        </div>
+                      </div>
+                    ) : (
+                      <div 
+                        className="relative cursor-pointer"
+                        onClick={() => setZoomedMedia(item)}
+                      >
+                        <img 
+                          src={item.file_url} 
+                          alt="Job media" 
+                          className="w-full h-48 object-cover group-hover:opacity-90 transition-opacity" 
+                        />
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                          <Camera className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="p-2 bg-gray-50">
+                      <p className="text-xs font-semibold text-blue-600">
+                        {item.media_category.replace(/_/g, ' ')}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(item.uploaded_at || item.created_at).toLocaleString()}
+                      </p>
+                      {item.caption && (
+                        <p className="text-xs text-gray-700 mt-1">{item.caption}</p>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
               {media.length === 0 && (
-                <p className="text-center text-gray-500 py-8">No media uploaded yet</p>
+                <div className="text-center text-gray-500 py-12 bg-gray-50 rounded-lg">
+                  <Camera className="w-16 h-16 mx-auto mb-3 text-gray-400" />
+                  <p className="font-medium">No media uploaded yet</p>
+                  <p className="text-sm mt-1">Upload photos or videos to document your work</p>
+                </div>
               )}
             </div>
           </div>
@@ -1125,6 +1212,56 @@ export default function MechanicJobDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Image Zoom Modal */}
+      {zoomedMedia && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+          onClick={() => setZoomedMedia(null)}
+        >
+          <div className="relative max-w-7xl max-h-full" onClick={(e) => e.stopPropagation()}>
+            {/* Close Button */}
+            <button
+              onClick={() => setZoomedMedia(null)}
+              className="absolute -top-12 right-0 text-white hover:text-gray-300 transition-colors"
+            >
+              <X className="w-8 h-8" />
+            </button>
+            
+            {/* Image */}
+            <img 
+              src={zoomedMedia.file_url} 
+              alt="Zoomed media"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            />
+            
+            {/* Info Bar */}
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent text-white p-4 rounded-b-lg">
+              <p className="font-semibold">{zoomedMedia.media_category.replace(/_/g, ' ')}</p>
+              <p className="text-sm text-gray-300">
+                {new Date(zoomedMedia.uploaded_at || zoomedMedia.created_at).toLocaleString()}
+              </p>
+              {zoomedMedia.caption && (
+                <p className="text-sm mt-2">{zoomedMedia.caption}</p>
+              )}
+            </div>
+            
+            {/* Download Button */}
+            <a
+              href={zoomedMedia.file_url}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute top-0 right-12 bg-white text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download
+            </a>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

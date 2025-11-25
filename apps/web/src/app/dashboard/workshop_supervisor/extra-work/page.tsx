@@ -39,6 +39,28 @@ export default function ExtraWorkApprovalsPage() {
 
   useEffect(() => {
     fetchExtraWorkRequests();
+    
+    // Setup real-time subscription
+    const supabase = createClient();
+    const channel = supabase
+      .channel('extra-work-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'lead_extra_charges'
+        },
+        (payload) => {
+          console.log('Extra work request updated:', payload);
+          fetchExtraWorkRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
   }, []);
 
   async function fetchExtraWorkRequests() {

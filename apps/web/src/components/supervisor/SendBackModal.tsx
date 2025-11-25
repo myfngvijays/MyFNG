@@ -109,14 +109,13 @@ Priority: ${priority}
 Please address all issues and resubmit.
       `.trim();
 
-      // Update lead status
+      // Update lead status to HOLD and add notes
       const { error: updateError } = await supabase
         .from('service_leads')
         .update({
-          status: 'SENT_BACK',
+          status: 'HOLD',
           priority: priority,
-          supervisor_send_back_notes: sendBackMessage,
-          supervisor_send_back_count: supabase.rpc('increment', { field: 'supervisor_send_back_count' }),
+          notes_internal: sendBackMessage,
           updated_at: new Date().toISOString()
         })
         .eq('id', leadId);

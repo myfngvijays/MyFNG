@@ -85,8 +85,31 @@ export default function SupervisorJobDetailPage() {
         .single();
 
       if (fetchError) throw fetchError;
+      
+      // Fetch service type names if service_type_ids exists
+      // Parse service_type_ids if it's a string (JSONB from Supabase)
+      let serviceTypeIds = data.service_type_ids;
+      if (typeof serviceTypeIds === 'string') {
+        try {
+          serviceTypeIds = JSON.parse(serviceTypeIds);
+        } catch (e) {
+          console.error('Failed to parse service_type_ids:', e);
+        }
+      }
+      
+      if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
+        const { data: serviceTypes } = await supabase
+          .from('service_types')
+          .select('id, name')
+          .in('id', serviceTypeIds);
+        
+        if (serviceTypes && serviceTypes.length > 0) {
+          data.service_type_names = serviceTypes.map((st: any) => st.name);
+        }
+      }
+      
       setLead(data);
-      setInternalNotes(data.supervisor_notes || '');
+      setInternalNotes(data.notes_internal || '');
     } catch (err: any) {
       console.error('Error fetching job details:', err);
       setError(err.message);
@@ -103,7 +126,7 @@ export default function SupervisorJobDetailPage() {
       const { error } = await supabase
         .from('service_leads')
         .update({
-          supervisor_notes: internalNotes,
+          notes_internal: internalNotes,
           updated_at: new Date().toISOString()
         })
         .eq('id', jobId);
@@ -335,7 +358,24 @@ export default function SupervisorJobDetailPage() {
         {/* Section 3: Service Details */}
         <div className="card">
           <h3 className="text-lg font-semibold mb-3">Service Request</h3>
-          <p className="text-gray-700">{lead.service_type}</p>
+          {lead.service_type_names && lead.service_type_names.length > 0 ? (
+            <div className="space-y-2">
+              {lead.service_type_names.map((serviceName: string, index: number) => (
+                <div key={index} className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  <p className="text-gray-700 font-medium">{serviceName}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-700">{lead.service_type || 'General Service'}</p>
+          )}
+          {lead.problem_description && (
+            <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-600 font-semibold">Problem Description:</p>
+              <p className="text-sm text-gray-700 mt-1">{lead.problem_description}</p>
+            </div>
+          )}
           {lead.issue_description && (
             <p className="text-sm text-gray-600 mt-2">{lead.issue_description}</p>
           )}

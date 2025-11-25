@@ -15,14 +15,14 @@ interface PickupTask {
   vehicle_number: string;
   vehicle_make: string;
   vehicle_model: string;
-  pickup_address: string;
-  pickup_city: string;
-  pickup_pincode: string;
-  pickup_status: string;
+  address: string;
+  city: string;
+  pincode: string;
+  status: string;
   preferred_date: string;
   preferred_time_slot: string;
-  status: string;
   pickup_otp: string;
+  pickup_otp_verified_at: string;
 }
 
 export default function PickupTasksPage() {
@@ -33,6 +33,28 @@ export default function PickupTasksPage() {
 
   useEffect(() => {
     fetchTasks();
+
+    // Setup real-time subscription
+    const supabase = createClient();
+    const channel = supabase
+      .channel('pickup-boy-tasks')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'service_leads'
+        },
+        (payload) => {
+          console.log('Pickup tasks updated:', payload);
+          fetchTasks();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
   }, [filter]);
 
   async function fetchTasks() {
@@ -62,17 +84,18 @@ export default function PickupTasksPage() {
         .from('service_leads')
         .select('*')
         .eq('assigned_pickup_boy_id', userProfile.id)
-        .order('preferred_date', { ascending: true });
+        .not('status', 'in', '(REJECTED,CANCELLED)')
+        .order('created_at', { ascending: false });
 
       if (filter === 'scheduled') {
-        query = query.eq('pickup_status', 'PICKUP_SCHEDULED');
+        query = query.in('status', ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP']);
       } else if (filter === 'in_transit') {
-        query = query.eq('pickup_status', 'IN_TRANSIT');
+        query = query.eq('status', 'IN_PROGRESS');
       } else if (filter === 'completed') {
-        query = query.in('pickup_status', ['DELIVERED', 'VERIFIED']);
+        query = query.eq('status', 'COMPLETED');
       } else {
-        // All active tasks (not completed or cancelled)
-        query = query.in('pickup_status', ['PICKUP_SCHEDULED', 'IN_TRANSIT']);
+        // All active tasks (assigned but not completed)
+        query = query.in('status', ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP', 'IN_PROGRESS']);
       }
 
       const { data, error } = await query;
@@ -92,14 +115,15 @@ export default function PickupTasksPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const badges: Record<string, { class: string; text: string }> = {
-      'PICKUP_SCHEDULED': { class: 'badge-yellow', text: 'Scheduled' },
-      'IN_TRANSIT': { class: 'badge-blue', text: 'In Transit' },
-      'DELIVERED': { class: 'badge-green', text: 'Delivered' },
-      'VERIFIED': { class: 'badge-green', text: 'Verified' }
-    };
-    return badges[status] || { class: 'badge-gray', text: status };
+  const getStatusBadge = (status: string, hasOtp: boolean, otpVerified: boolean) => {
+    if (status === 'ACCEPTED' || status === 'ASSIGNED_TO_WORKSHOP') {
+      if (!hasOtp) return { class: 'badge-yellow', text: 'Ready to Start' };
+      if (!otpVerified) return { class: 'badge-orange', text: 'OTP Pending' };
+      return { class: 'badge-blue', text: 'In Transit' };
+    }
+    if (status === 'IN_PROGRESS') return { class: 'badge-blue', text: 'In Progress' };
+    if (status === 'COMPLETED') return { class: 'badge-green', text: 'Completed' };
+    return { class: 'badge-gray', text: status.replace(/_/g, ' ') };
   };
 
   const openGoogleMaps = (address: string, city: string, pincode: string) => {
@@ -187,7 +211,7 @@ export default function PickupTasksPage() {
         ) : (
           <div className="space-y-4">
             {tasks.map((task) => {
-              const statusBadge = getStatusBadge(task.pickup_status);
+              const statusBadge = getStatusBadge(task.status, !!task.pickup_otp, !!task.pickup_otp_verified_at);
               return (
                 <div 
                   key={task.id} 
@@ -203,7 +227,10 @@ export default function PickupTasksPage() {
                       <div className="text-right">
                         <p className="text-sm text-gray-600">Preferred Date</p>
                         <p className="font-semibold">
-                          {new Date(task.preferred_date).toLocaleDateString()}
+                          {task.preferred_date 
+                            ? new Date(task.preferred_date).toLocaleDateString()
+                            : 'Not specified'
+                          }
                         </p>
                         {task.preferred_time_slot && (
                           <p className="text-sm text-gray-600">{task.preferred_time_slot}</p>
@@ -234,43 +261,27 @@ export default function PickupTasksPage() {
                         <div className="flex items-start gap-2">
                           <MapPin className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
                           <div className="flex-1">
-                            <p className="text-sm font-medium">{task.pickup_address}</p>
-                            <p className="text-sm text-gray-600">{task.pickup_city}, {task.pickup_pincode}</p>
+                            <p className="text-sm font-medium">{task.address || 'Address not provided'}</p>
+                            {task.city && <p className="text-sm text-gray-600">{task.city}{task.pincode ? `, ${task.pincode}` : ''}</p>}
                           </div>
                         </div>
+                        {task.address && (
                         <button
-                          onClick={() => openGoogleMaps(task.pickup_address, task.pickup_city, task.pickup_pincode)}
+                            onClick={() => openGoogleMaps(task.address, task.city || '', task.pincode || '')}
                           className="btn-secondary bg-green-600 hover:bg-green-700 text-white text-sm flex items-center gap-2"
                         >
                           <Navigation className="w-4 h-4" />
                           Open in Maps
                         </button>
+                        )}
                       </div>
                     </div>
 
                     {/* Action Buttons */}
                     <div className="flex gap-2 pt-2 border-t">
-                      {task.pickup_status === 'PICKUP_SCHEDULED' && (
-                        <button
-                          onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
-                          className="btn-primary flex-1 flex items-center justify-center gap-2"
-                        >
-                          <PlayCircle className="w-4 h-4" />
-                          Start Pickup
-                        </button>
-                      )}
-                      {task.pickup_status === 'IN_TRANSIT' && (
-                        <button
-                          onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
-                          className="btn-primary bg-blue-600 hover:bg-blue-700 flex-1 flex items-center justify-center gap-2"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          Complete Delivery
-                        </button>
-                      )}
                       <button
                         onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
-                        className="btn-secondary flex-1"
+                        className="btn-primary flex-1"
                       >
                         View Details
                       </button>

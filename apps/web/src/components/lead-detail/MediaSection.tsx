@@ -17,13 +17,20 @@ interface MediaSectionProps {
 
 interface MediaFile {
   id: string;
-  media_url: string;
+  file_url: string;
   media_type: 'IMAGE' | 'VIDEO' | 'DOCUMENT';
-  media_category: 'CUSTOMER_UPLOAD' | 'INSPECTION' | 'PROGRESS' | 'COMPLETION' | 'AUDIT' | 'DOCUMENT';
-  caption?: string;
+  category: string;
+  title?: string;
+  description?: string;
+  file_name?: string;
   uploaded_by?: string;
   created_at: string;
   uploader?: { full_name: string };
+}
+
+interface PreviewMedia {
+  url: string;
+  type: 'IMAGE' | 'VIDEO';
 }
 
 export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
@@ -31,8 +38,8 @@ export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('INSPECTION');
-  const [caption, setCaption] = useState('');
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [description, setDescription] = useState('');
+  const [previewMedia, setPreviewMedia] = useState<PreviewMedia | null>(null);
 
   useEffect(() => {
     fetchMedia();
@@ -62,19 +69,33 @@ export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
   }
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    // Validate each file
+    const validFiles: File[] = [];
+    const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'video/mp4', 'video/quicktime'];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
 
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
-      alert('File size must be less than 10MB');
-      return;
+        alert(`${file.name}: File size must be less than 10MB`);
+        continue;
     }
 
     // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'video/mp4', 'video/quicktime'];
     if (!validTypes.includes(file.type)) {
-      alert('Invalid file type. Only images (JPEG, PNG, WEBP) and videos (MP4, MOV) are allowed.');
+        alert(`${file.name}: Invalid file type. Only images (JPEG, PNG, WEBP) and videos (MP4, MOV) are allowed.`);
+        continue;
+      }
+
+      validFiles.push(file);
+    }
+
+    if (validFiles.length === 0) {
+      alert('No valid files to upload');
       return;
     }
 
@@ -85,30 +106,39 @@ export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      let successCount = 0;
+      let failCount = 0;
+
+      // Upload each file
+      for (const file of validFiles) {
+        try {
       // Upload to Supabase Storage
       const fileExt = file.name.split('.').pop();
       const fileName = `${lead.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `lead-media/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('myfng-media')
+            .from('service-media')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
-        .from('myfng-media')
+            .from('service-media')
         .getPublicUrl(filePath);
 
       // Save media record
       const mediaType = file.type.startsWith('image') ? 'IMAGE' : 'VIDEO';
       const { error: insertError } = await supabase.from('lead_media').insert({
         lead_id: lead.id,
-        media_url: publicUrl,
+            file_url: publicUrl,
         media_type: mediaType,
-        media_category: selectedCategory,
-        caption: caption || null,
+            category: selectedCategory,
+            description: description || null,
+            file_name: file.name,
+            file_size: file.size,
+            mime_type: file.type,
         uploaded_by: user.id,
       });
 
@@ -119,19 +149,32 @@ export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
         lead_id: lead.id,
         event_type: 'MEDIA_UPLOADED',
         event_description: `${mediaType} uploaded - ${selectedCategory}`,
-        event_data: { media_category: selectedCategory, media_type: mediaType },
+            event_data: { media_category: selectedCategory, media_type: mediaType, file_name: file.name },
         created_by: user.id,
       });
 
-      alert('✅ Media uploaded successfully!');
-      setCaption('');
+          successCount++;
+        } catch (error) {
+          console.error(`Error uploading ${file.name}:`, error);
+          failCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        alert(`✅ ${successCount} file(s) uploaded successfully!${failCount > 0 ? ` (${failCount} failed)` : ''}`);
+        setDescription('');
       fetchMedia();
       onUpdate?.();
+      } else {
+        alert('❌ All uploads failed. Please try again.');
+      }
     } catch (error: any) {
       console.error('Error uploading media:', error);
       alert(`Failed to upload: ${error.message}`);
     } finally {
       setUploading(false);
+      // Reset the input
+      event.target.value = '';
     }
   }
 
@@ -157,8 +200,8 @@ export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
   }
 
   const groupedMedia = mediaFiles.reduce((acc, file) => {
-    if (!acc[file.media_category]) acc[file.media_category] = [];
-    acc[file.media_category].push(file);
+    if (!acc[file.category]) acc[file.category] = [];
+    acc[file.category].push(file);
     return acc;
   }, {} as Record<string, MediaFile[]>);
 
@@ -189,11 +232,11 @@ export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Caption (Optional)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
             <input
               type="text"
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               placeholder="Add a description..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
             />
@@ -201,16 +244,19 @@ export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
           <div>
             <label className="btn btn-primary cursor-pointer inline-flex items-center gap-2">
               <Upload className="w-4 h-4" />
-              {uploading ? 'Uploading...' : 'Choose File'}
+              {uploading ? 'Uploading...' : 'Choose Files (Multiple)'}
               <input
                 type="file"
                 accept="image/*,video/*"
+                multiple
                 onChange={handleFileUpload}
                 disabled={uploading}
                 className="hidden"
               />
             </label>
-            <p className="text-xs text-gray-500 mt-2">Max 10MB • Images: JPEG, PNG, WEBP • Videos: MP4, MOV</p>
+            <p className="text-xs text-gray-500 mt-2">
+              📁 Select multiple files • Max 10MB each • Images: JPEG, PNG, WEBP • Videos: MP4, MOV
+            </p>
           </div>
         </div>
       </div>
@@ -242,21 +288,30 @@ export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
                     <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
                       {file.media_type === 'IMAGE' ? (
                         <img
-                          src={file.media_url}
-                          alt={file.caption || 'Lead media'}
-                          className="w-full h-full object-cover cursor-pointer"
-                          onClick={() => setPreviewImage(file.media_url)}
+                          src={file.file_url}
+                          alt={file.description || 'Lead media'}
+                          className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition"
+                          onClick={() => setPreviewMedia({ url: file.file_url, type: 'IMAGE' })}
                         />
                       ) : (
+                        <div className="relative w-full h-full">
                         <video
-                          src={file.media_url}
+                            src={file.file_url}
                           className="w-full h-full object-cover"
-                          controls
-                        />
+                          />
+                          <div 
+                            className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 cursor-pointer hover:bg-opacity-50 transition"
+                            onClick={() => setPreviewMedia({ url: file.file_url, type: 'VIDEO' })}
+                          >
+                            <div className="bg-white rounded-full p-3">
+                              <Video className="w-6 h-6 text-brand-primary" />
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
-                    {file.caption && (
-                      <p className="text-xs text-gray-600 mt-1 truncate">{file.caption}</p>
+                    {file.description && (
+                      <p className="text-xs text-gray-600 mt-1 truncate">{file.description}</p>
                     )}
                     <p className="text-xs text-gray-400">
                       {new Date(file.created_at).toLocaleDateString()}
@@ -275,24 +330,40 @@ export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
         </div>
       )}
 
-      {/* Image Preview Modal */}
-      {previewImage && (
+      {/* Media Preview Modal */}
+      {previewMedia && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
-          onClick={() => setPreviewImage(null)}
+          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+          onClick={() => setPreviewMedia(null)}
         >
-          <div className="relative max-w-4xl max-h-[90vh]">
+          <div className="relative max-w-5xl w-full max-h-[90vh]">
+            {previewMedia.type === 'IMAGE' ? (
             <img
-              src={previewImage}
+                src={previewMedia.url}
               alt="Preview"
-              className="max-w-full max-h-[90vh] object-contain"
-            />
+                className="max-w-full max-h-[90vh] object-contain mx-auto"
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <video
+                src={previewMedia.url}
+                controls
+                autoPlay
+                className="max-w-full max-h-[90vh] mx-auto"
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
             <button
-              onClick={() => setPreviewImage(null)}
-              className="absolute top-4 right-4 bg-white text-gray-800 p-2 rounded-full"
+              onClick={() => setPreviewMedia(null)}
+              className="absolute top-4 right-4 bg-white text-gray-800 p-2 rounded-full hover:bg-gray-200 transition"
             >
               <X className="w-6 h-6" />
             </button>
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white bg-opacity-90 px-4 py-2 rounded-full">
+              <p className="text-sm font-medium">
+                {previewMedia.type === 'IMAGE' ? '🖼️ Image Preview' : '🎬 Video Preview'}
+              </p>
+            </div>
           </div>
         </div>
       )}

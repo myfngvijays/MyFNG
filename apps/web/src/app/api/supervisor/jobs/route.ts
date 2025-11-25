@@ -59,6 +59,8 @@ export async function GET(request: Request) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const offset = (page - 1) * limit;
 
+    console.log('Supervisor jobs API - Filters:', { status, mechanicId, serviceType, slaStatus, search, page });
+
     // Build query
     let query = supabase
       .from('service_leads')
@@ -70,7 +72,9 @@ export async function GET(request: Request) {
         vehicle_number,
         vehicle_make,
         vehicle_model,
+        vehicle_variant,
         service_type,
+        service_type_ids,
         status,
         priority,
         sla_status,
@@ -78,13 +82,15 @@ export async function GET(request: Request) {
         sla_start_deadline,
         pickup_required,
         pickup_status,
+        assigned_pickup_boy_id,
         created_at,
         updated_at,
         assigned_mechanic_id,
         qc_status,
         mechanic:assigned_mechanic_id(id, full_name, profile_image),
+        pickup_boy:assigned_pickup_boy_id(id, full_name, profile_image),
         extra_charges:lead_extra_charges(id, status),
-        media:lead_media(id, media_type)
+        media:mechanic_media(id, media_category)
       `, { count: 'exact' })
       .eq('workshop_id', workshopId)
       .not('status', 'in', '(REJECTED,CANCELLED)');
@@ -126,7 +132,7 @@ export async function GET(request: Request) {
     }
 
     // Transform data to include computed fields
-    const transformedJobs = (jobs || []).map((job: any) => {
+    const transformedJobs = await Promise.all((jobs || []).map(async (job: any) => {
       // Calculate SLA time remaining
       let timeRemaining = null;
       let slaDeadline = null;
@@ -151,16 +157,16 @@ export async function GET(request: Request) {
         }
       }
 
-      // Check image status
-      const mediaByType = (job.media || []).reduce((acc: any, m: any) => {
-        acc[m.media_type] = true;
+      // Check image status from mechanic_media table
+      const mediaByCategory = (job.media || []).reduce((acc: any, m: any) => {
+        acc[m.media_category] = true;
         return acc;
       }, {});
 
       const images = {
-        before: mediaByType['BEFORE'] || false,
-        progress: mediaByType['PROGRESS'] || false,
-        after: mediaByType['AFTER'] || false
+        before: mediaByCategory['BEFORE'] || false,
+        progress: mediaByCategory['PROGRESS'] || false,
+        after: mediaByCategory['AFTER'] || false
       };
 
       // Check for pending extra work
@@ -171,6 +177,38 @@ export async function GET(request: Request) {
         ? `xxxxxx${job.customer_phone.slice(-4)}` 
         : null;
 
+      // Parse service types from JSONB array and fetch names
+      let serviceTypeDisplay = job.service_type || 'General Service';
+      let serviceTypeNames: string[] = [];
+      
+      // Parse service_type_ids if it's a string (JSONB from Supabase)
+      let serviceTypeIds = job.service_type_ids;
+      if (typeof serviceTypeIds === 'string') {
+        try {
+          serviceTypeIds = JSON.parse(serviceTypeIds);
+        } catch (e) {
+          console.error('Failed to parse service_type_ids:', e);
+        }
+      }
+      
+      if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
+        // Fetch service type names from database
+        const { data: serviceTypes } = await supabase
+          .from('service_types')
+          .select('id, name')
+          .in('id', serviceTypeIds);
+        
+        if (serviceTypes && serviceTypes.length > 0) {
+          serviceTypeNames = serviceTypes.map((st: any) => st.name);
+          
+          if (serviceTypeNames.length === 1) {
+            serviceTypeDisplay = serviceTypeNames[0];
+          } else {
+            serviceTypeDisplay = serviceTypeNames.join(', ');
+          }
+        }
+      }
+
       return {
         id: job.id,
         lead_number: job.lead_number,
@@ -179,7 +217,10 @@ export async function GET(request: Request) {
         vehicle_number: job.vehicle_number,
         vehicle_make: job.vehicle_make,
         vehicle_model: job.vehicle_model,
-        service_type: job.service_type,
+        vehicle_variant: job.vehicle_variant,
+        service_type: serviceTypeDisplay,
+        service_type_names: serviceTypeNames,
+        service_type_ids: job.service_type_ids,
         status: job.status,
         priority: job.priority,
         sla_status: job.sla_status,
@@ -192,12 +233,17 @@ export async function GET(request: Request) {
           name: job.mechanic.full_name,
           profileImage: job.mechanic.profile_image
         } : null,
+        pickup_boy: job.pickup_boy ? {
+          id: job.pickup_boy.id,
+          name: job.pickup_boy.full_name,
+          profileImage: job.pickup_boy.profile_image
+        } : null,
         images,
         extra_work_pending: extraWorkPending,
         created_at: job.created_at,
         updated_at: job.updated_at
       };
-    });
+    }));
 
     return NextResponse.json({
       success: true,
