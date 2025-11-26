@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Wrench, User, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function WorkshopJobsPage() {
+  const router = useRouter();
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('active'); // active, completed, all
@@ -277,7 +279,10 @@ export default function WorkshopJobsPage() {
                     <span>Completed: {new Date(job.completed_at).toLocaleDateString()}</span>
                   )}
                 </div>
-                <button className="btn btn-outline text-sm">
+                <button 
+                  onClick={() => router.push(`/dashboard/workshop_admin/leads/${job.id}`)}
+                  className="btn btn-outline text-sm hover:bg-blue-50 hover:border-blue-500 transition"
+                >
                   View Details
                 </button>
               </div>

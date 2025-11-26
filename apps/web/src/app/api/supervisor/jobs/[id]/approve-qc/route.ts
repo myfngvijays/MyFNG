@@ -52,11 +52,13 @@ export async function POST(
       return NextResponse.json({ error: 'Job not in your workshop' }, { status: 403 });
     }
 
-    // Verify lead is in QC_PENDING or WORK_COMPLETED status
-    if (lead.status !== 'QC_PENDING' && lead.status !== 'WORK_COMPLETED') {
+    // Verify lead is in QC_PENDING, WORK_COMPLETED, or COMPLETED status
+    const validStatuses = ['QC_PENDING', 'WORK_COMPLETED', 'COMPLETED'];
+    if (!validStatuses.includes(lead.status)) {
       return NextResponse.json({ 
-        error: 'Job must be in QC_PENDING or WORK_COMPLETED status',
-        current_status: lead.status
+        error: 'Job must be in QC_PENDING, WORK_COMPLETED, or COMPLETED status',
+        current_status: lead.status,
+        valid_statuses: validStatuses
       }, { status: 400 });
     }
 

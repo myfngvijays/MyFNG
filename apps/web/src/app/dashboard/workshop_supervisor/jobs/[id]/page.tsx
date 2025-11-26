@@ -168,43 +168,28 @@ export default function SupervisorJobDetailPage() {
     }
 
     try {
-      const supabase = createClient();
-
-      const { error } = await supabase
-        .from('service_leads')
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString()
+      const response = await fetch(`/api/supervisor/jobs/${jobId}/change-status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          new_status: newStatus,
+          notes: `Status changed to ${newStatus} by supervisor`
         })
-        .eq('id', jobId);
+      });
 
-      if (error) throw error;
+      const data = await response.json();
 
-      // Log supervisor action
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: userProfile } = await supabase
-          .from('users_login')
-          .select('id')
-          .eq('email', user.email)
-          .single();
-
-        await supabase
-          .from('supervisor_actions')
-          .insert({
-            supervisor_id: userProfile?.id,
-            lead_id: jobId,
-            action_type: 'STATUS_CHANGED',
-            action_description: `Changed job status to ${newStatus}`,
-            action_data: { old_status: lead.status, new_status: newStatus }
-          });
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to change status');
       }
 
-      alert(`Status changed to ${newStatus}`);
+      alert(`Status changed to ${newStatus} successfully!`);
       fetchJobDetails();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error changing status:', error);
-      alert('Failed to change status');
+      alert(`Failed to change status: ${error.message || 'Unknown error'}`);
     }
   }
 
@@ -517,34 +502,49 @@ export default function SupervisorJobDetailPage() {
         </div>
 
         {/* Section 8: Status Management */}
-        {lead.status === 'COMPLETED' && (
+        {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS' || lead.status === 'INSPECTED' || lead.status === 'QC_PENDING' || lead.status === 'WORK_COMPLETED') && (
           <div className="card bg-purple-50 border-purple-200">
             <h3 className="text-lg font-semibold mb-3">Change Job Status</h3>
             <p className="text-sm text-gray-600 mb-4">
               Update the job status based on your inspection and validation
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <button
-                onClick={() => changeJobStatus('INSPECTED')}
-                className="btn bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center gap-2"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Mark as INSPECTED
-              </button>
-              <button
-                onClick={() => changeJobStatus('QC_APPROVED')}
-                className="btn bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-2"
-              >
-                <CheckCircle className="w-4 h-4" />
-                QC APPROVED
-              </button>
-              <button
-                onClick={() => changeJobStatus('READY_FOR_DELIVERY')}
-                className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
-              >
-                <Package className="w-4 h-4" />
-                READY FOR DELIVERY
-              </button>
+              {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS') && (
+                <button
+                  onClick={() => changeJobStatus('IN_PROGRESS')}
+                  className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Mark as IN PROGRESS
+                </button>
+              )}
+              {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS') && (
+                <button
+                  onClick={() => changeJobStatus('INSPECTED')}
+                  className="btn bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Mark as INSPECTED
+                </button>
+              )}
+              {(lead.status === 'INSPECTED' || lead.status === 'WORK_COMPLETED' || lead.status === 'QC_PENDING') && (
+                <button
+                  onClick={() => changeJobStatus('QC_APPROVED')}
+                  className="btn bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  QC APPROVED
+                </button>
+              )}
+              {lead.status === 'QC_APPROVED' && (
+                <button
+                  onClick={() => changeJobStatus('READY_FOR_DELIVERY')}
+                  className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
+                >
+                  <Package className="w-4 h-4" />
+                  READY FOR DELIVERY
+                </button>
+              )}
             </div>
           </div>
         )}

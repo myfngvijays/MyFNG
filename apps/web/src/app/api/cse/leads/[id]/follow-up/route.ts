@@ -48,6 +48,7 @@ export async function POST(
       feedback_text,
       call_duration,
       escalated,
+      escalated_to,
       escalation_reason,
       notes
     } = body;
@@ -116,12 +117,74 @@ export async function POST(
         .eq('id', leadId);
     }
 
+    // Update lead with CSAT and notes
+    const leadUpdate: any = {
+      updated_at: now,
+    };
+
+    if (satisfaction_score) {
+      leadUpdate.csat = satisfaction_score;
+    }
+
+    if (notes) {
+      leadUpdate.cse_notes = notes;
+    }
+
+    // Mark follow-up as completed
+    if (resolution_status === 'RESOLVED' || resolution_status === 'NO_ACTION_NEEDED') {
+      leadUpdate.cse_followup_due = false;
+    }
+
+    await supabase
+      .from('service_leads')
+      .update(leadUpdate)
+      .eq('id', leadId);
+
+    // Create support ticket if issues reported
+    let supportTicketId: string | null = null;
+    if (issues_reported && issue_category) {
+      const ticketNumber = `TKT-${Date.now().toString().slice(-8)}`;
+      const severity = issues_reported.length > 100 || satisfaction_score && satisfaction_score <= 2 ? 'HIGH' : 'MEDIUM';
+
+      const { data: ticket, error: ticketError } = await supabase
+        .from('support_tickets')
+        .insert({
+          ticket_number: ticketNumber,
+          lead_id: leadId,
+          invoice_id: lead.invoice_id,
+          ticket_type: issue_category === 'QUALITY' ? 'QUALITY_ISSUE' : 
+                      issue_category === 'PRICING' ? 'BILLING_DISPUTE' : 
+                      'SERVICE_COMPLAINT',
+          severity: severity,
+          title: `Customer Issue: ${issue_category}`,
+          description: issues_reported,
+          status: 'OPEN',
+          assigned_to: lead.workshop_admin_id || lead.assigned_supervisor_id || null,
+          metadata: {
+            cse_followup_id: followup.id,
+            satisfaction_score: satisfaction_score,
+            issue_category: issue_category,
+            resolution_status: resolution_status,
+            reported_at: now,
+          },
+          created_by: userProfile.id,
+        })
+        .select('id')
+        .single();
+
+      if (!ticketError && ticket) {
+        supportTicketId = ticket.id;
+      }
+    }
+
     // If customer has issues and escalation is needed
     if (escalated) {
       await supabase
         .from('service_leads')
         .update({
           escalation: true,
+          escalated_to: escalated_to || null,
+          escalated_at: now,
           updated_at: now
         })
         .eq('id', leadId);
@@ -153,12 +216,16 @@ export async function POST(
       success: true,
       message: 'Follow-up logged successfully',
       followup: followup,
+      support_ticket_id: supportTicketId,
       escalated: escalated,
+      csat_updated: !!satisfaction_score,
       next_step: escalated 
         ? 'Issue escalated to management'
-        : satisfaction_score && satisfaction_score >= 4
-          ? 'Customer satisfied - Ready to close lead'
-          : 'Continue monitoring'
+        : supportTicketId
+          ? 'Support ticket created - Workshop will resolve'
+          : satisfaction_score && satisfaction_score >= 4
+            ? 'Customer satisfied - Ready to close lead'
+            : 'Continue monitoring'
     }, { status: 201 });
 
   } catch (error) {

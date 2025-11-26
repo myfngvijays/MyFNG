@@ -5,6 +5,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createFinanceEvent } from '@/lib/services/financeEventService';
 
 export async function POST(
   request: NextRequest,
@@ -60,18 +61,61 @@ export async function POST(
 
     const now = new Date().toISOString();
     const body = await request.json();
-    const { review_notes, items_verified, taxes_verified, customer_details_verified } = body;
+    const { review_notes, items_verified, taxes_verified, customer_details_verified, skip_validation } = body;
+
+    // Check if this is second approval (Finance Manager)
+    const isSecondApproval = invoice.requires_second_approval && 
+                              invoice.invoice_approved && 
+                              invoice.invoice_approved_by !== userProfile.id;
+
+    // If not second approval, check threshold for second approval requirement
+    const threshold = parseFloat(invoice.second_approval_threshold || '50000');
+    const requiresSecondApproval = !isSecondApproval && parseFloat(invoice.final_amount || '0') > threshold;
+
+    // Run validation if not skipped (only for first approval)
+    if (!skip_validation && !isSecondApproval) {
+      const validationResponse = await fetch(
+        `${request.nextUrl.origin}/api/billing/invoices/${invoiceId}/validate`,
+        { method: 'GET' }
+      );
+      
+      if (validationResponse.ok) {
+        const validationData = await validationResponse.json();
+        if (!validationData.validation?.valid) {
+          return NextResponse.json({
+            error: 'Invoice validation failed',
+            validation: validationData.validation,
+            hint: 'Please fix the issues before approving'
+          }, { status: 400 });
+        }
+      }
+    }
 
     // Update invoice
+    const updateData: any = {
+      invoice_approved: true,
+      invoice_approved_by: userProfile.id,
+      invoice_approved_at: now,
+      updated_at: now,
+    };
+
+    if (isSecondApproval) {
+      // Second approval - mark as fully approved
+      updateData.second_approver_id = userProfile.id;
+      updateData.second_approved_at = now;
+      updateData.status = 'APPROVED';
+    } else if (requiresSecondApproval) {
+      // First approval but requires second approval
+      updateData.requires_second_approval = true;
+      updateData.status = 'PENDING_SECOND_APPROVAL';
+    } else {
+      // First approval and no second approval needed
+      updateData.status = 'APPROVED';
+    }
+
     const { data: updatedInvoice, error: updateError } = await supabase
       .from('invoices')
-      .update({
-        invoice_approved: true,
-        invoice_approved_by: userProfile.id,
-        invoice_approved_at: now,
-        status: 'APPROVED',
-        updated_at: now,
-      })
+      .update(updateData)
       .eq('id', invoiceId)
       .select()
       .single();
@@ -87,16 +131,38 @@ export async function POST(
       .insert({
         invoice_id: invoiceId,
         reviewed_by: userProfile.id,
-        review_status: 'APPROVED',
-        review_notes: review_notes || 'Invoice approved after verification',
+        review_status: isSecondApproval ? 'SECOND_APPROVED' : 'APPROVED',
+        review_notes: review_notes || (isSecondApproval ? 'Second approval by Finance Manager' : 'Invoice approved after verification'),
         items_verified: items_verified ?? true,
         taxes_verified: taxes_verified ?? true,
         customer_details_verified: customer_details_verified ?? true,
         reviewed_at: now,
       });
 
-    // Update lead status to AWAITING_PAYMENT
-    if (invoice.lead_id) {
+    // Create finance event
+    await createFinanceEvent({
+      eventType: isSecondApproval ? 'invoice_approved' : 'invoice_approved',
+      entityType: 'invoice',
+      entityId: invoiceId,
+      actorId: userProfile.id,
+      actorRole: userProfile.role,
+      actorName: userProfile.name,
+      eventData: {
+        invoice_number: invoice.invoice_number,
+        final_amount: invoice.final_amount,
+        is_second_approval: isSecondApproval,
+        requires_second_approval: requiresSecondApproval,
+        review_notes: review_notes,
+        items_verified: items_verified,
+        taxes_verified: taxes_verified,
+        customer_details_verified: customer_details_verified,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+      userAgent: request.headers.get('user-agent') || undefined,
+    });
+
+    // Update lead status to AWAITING_PAYMENT (only if fully approved)
+    if (invoice.lead_id && updatedInvoice.status === 'APPROVED') {
       await supabase
         .from('service_leads')
         .update({
@@ -140,9 +206,17 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: 'Invoice approved successfully',
+      message: isSecondApproval 
+        ? 'Invoice second approval completed successfully' 
+        : requiresSecondApproval
+        ? 'Invoice approved. Awaiting Finance Manager second approval.'
+        : 'Invoice approved successfully',
       invoice: updatedInvoice,
-      next_step: 'Send invoice to customer and await payment',
+      is_second_approval: isSecondApproval,
+      requires_second_approval: requiresSecondApproval,
+      next_step: updatedInvoice.status === 'APPROVED' 
+        ? 'Send invoice to customer and await payment'
+        : 'Awaiting Finance Manager second approval',
     }, { status: 200 });
 
   } catch (error) {

@@ -5,6 +5,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createFinanceEvent } from '@/lib/services/financeEventService';
 
 export async function POST(
   request: NextRequest,
@@ -53,12 +54,16 @@ export async function POST(
 
     const body = await request.json();
     const {
-      payment_mode, // CASH, POS, UPI, CARD, WALLET, NETBANKING
+      payment_mode, // CASH, POS, UPI, CARD, WALLET, NETBANKING, COD
       paid_amount,
       payment_txn_id,
       payment_reference,
       payment_remarks,
       staff_name,
+      is_cod = false,
+      cod_due_date,
+      cash_deposit_pending = false,
+      bank_deposit_slip_url,
     } = body;
 
     if (!payment_mode || !paid_amount) {
@@ -69,15 +74,48 @@ export async function POST(
 
     const paidAmount = parseFloat(paid_amount);
     const invoiceAmount = parseFloat(invoice.final_amount || '0');
+    const currentPaidAmount = parseFloat(invoice.paid_amount || '0');
+    const balanceDue = invoiceAmount - currentPaidAmount;
 
-    if (paidAmount <= 0 || paidAmount > invoiceAmount) {
+    if (paidAmount <= 0) {
       return NextResponse.json({ 
-        error: 'Invalid payment amount' 
+        error: 'Payment amount must be greater than 0' 
       }, { status: 400 });
+    }
+
+    if (paidAmount > balanceDue) {
+      return NextResponse.json({ 
+        error: 'Payment amount exceeds balance due',
+        balance_due: balanceDue,
+        provided_amount: paidAmount,
+      }, { status: 400 });
+    }
+
+    // Check for duplicate transaction
+    if (payment_txn_id || payment_reference) {
+      const txnRef = payment_txn_id || payment_reference;
+      const { data: existingTxn } = await supabase
+        .from('payment_transactions')
+        .select('id, transaction_id, amount')
+        .or(`transaction_id.eq.${txnRef},gateway_payment_id.eq.${txnRef}`)
+        .eq('status', 'SUCCESS')
+        .single();
+
+      if (existingTxn) {
+        return NextResponse.json({
+          error: 'Duplicate transaction detected',
+          existing_transaction: existingTxn,
+        }, { status: 409 });
+      }
     }
 
     const now = new Date().toISOString();
     const transactionId = payment_txn_id || `TXN-${Date.now()}-${invoiceId.substring(0, 8)}`;
+    
+    // Calculate new totals
+    const newPaidAmount = currentPaidAmount + paidAmount;
+    const newBalanceDue = invoiceAmount - newPaidAmount;
+    const isFullPayment = newPaidAmount >= invoiceAmount;
 
     // Create payment transaction record
     const { data: paymentTransaction, error: transactionError } = await supabase
@@ -89,13 +127,16 @@ export async function POST(
         amount: paidAmount,
         currency: 'INR',
         payment_method: payment_mode,
-        payment_gateway: payment_mode === 'CASH' ? null : 'OFFLINE',
+        payment_gateway: payment_mode === 'CASH' || payment_mode === 'POS' ? 'OFFLINE' : null,
         gateway_payment_id: payment_reference,
-        status: 'SUCCESS',
-        completed_at: now,
+        gateway_order_id: payment_txn_id,
+        status: is_cod ? 'COD_PENDING' : 'SUCCESS',
+        completed_at: is_cod ? null : now,
         payment_received_by: userProfile.id,
         payment_remarks: payment_remarks || `Payment received via ${payment_mode}`,
         staff_name: staff_name || userProfile.name,
+        cash_deposit_pending: payment_mode === 'CASH' ? (cash_deposit_pending || false) : false,
+        notes: is_cod ? `COD - Due date: ${cod_due_date || 'TBD'}` : undefined,
         created_by: userProfile.id,
         created_at: now,
       })
@@ -108,21 +149,30 @@ export async function POST(
     }
 
     // Update invoice
-    const isFullPayment = paidAmount >= invoiceAmount;
+    const updateData: any = {
+      payment_status: isFullPayment ? 'PAID' : 'PARTIAL',
+      paid_amount: newPaidAmount,
+      balance_due: newBalanceDue,
+      payment_mode: payment_mode,
+      payment_txn_id: transactionId,
+      payment_received_by: userProfile.id,
+      payment_remarks: payment_remarks || `Payment received via ${payment_mode} by ${staff_name || userProfile.name}`,
+      payment_collected_at: now,
+      status: isFullPayment ? 'PAID' : (is_cod ? 'COD_PENDING' : 'PARTIAL'),
+      updated_at: now,
+    };
+
+    if (isFullPayment && !is_cod) {
+      updateData.paid_at = now;
+    }
+
+    if (is_cod) {
+      updateData.cod_due_date = cod_due_date;
+    }
+
     const { data: updatedInvoice, error: updateError } = await supabase
       .from('invoices')
-      .update({
-        payment_status: isFullPayment ? 'PAID' : 'PARTIAL',
-        paid_amount: paidAmount,
-        payment_mode: payment_mode,
-        payment_txn_id: transactionId,
-        paid_at: now,
-        payment_received_by: userProfile.id,
-        payment_remarks: payment_remarks || `Payment received via ${payment_mode} by ${staff_name || userProfile.name}`,
-        payment_collected_at: now,
-        status: isFullPayment ? 'PAID' : 'PARTIAL',
-        updated_at: now,
-      })
+      .update(updateData)
       .eq('id', invoiceId)
       .select()
       .single();
@@ -132,20 +182,45 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to update invoice' }, { status: 500 });
     }
 
+    // Create finance event
+    await createFinanceEvent({
+      eventType: is_cod ? 'payment_received' : (isFullPayment ? 'payment_received' : 'payment_partial'),
+      entityType: 'payment',
+      entityId: paymentTransaction.id,
+      actorId: userProfile.id,
+      actorRole: userProfile.role,
+      actorName: userProfile.name,
+      eventData: {
+        invoice_id: invoiceId,
+        invoice_number: invoice.invoice_number,
+        payment_mode: payment_mode,
+        amount: paidAmount,
+        is_cod: is_cod,
+        is_partial: !isFullPayment,
+        transaction_id: transactionId,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+      userAgent: request.headers.get('user-agent') || undefined,
+    });
+
     // Update lead status
     if (invoice.lead_id) {
-      // After full payment, mark vehicle as ready for delivery
-      const newLeadStatus = isFullPayment ? 'READY_FOR_DELIVERY' : 'PARTIAL_PAYMENT';
+      // After full payment, mark vehicle as ready for delivery (unless COD)
+      const newLeadStatus = is_cod 
+        ? 'COD_PENDING'
+        : isFullPayment 
+        ? 'READY_FOR_DELIVERY' 
+        : 'PARTIAL_PAYMENT';
       
       await supabase
         .from('service_leads')
         .update({
-          payment_status: isFullPayment ? 'PAID' : 'PARTIAL',
+          payment_status: is_cod ? 'COD_PENDING' : (isFullPayment ? 'PAID' : 'PARTIAL'),
           payment_mode: payment_mode,
           payment_txn_id: transactionId,
           payment_collected_at: now,
           status: newLeadStatus,
-          ready_for_delivery_at: isFullPayment ? now : null,
+          ready_for_delivery_at: isFullPayment && !is_cod ? now : null,
           updated_at: now,
         })
         .eq('id', invoice.lead_id);
@@ -187,10 +262,21 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: isFullPayment ? 'Payment recorded successfully' : 'Partial payment recorded',
+      message: is_cod 
+        ? 'COD payment recorded. Awaiting collection.' 
+        : isFullPayment 
+        ? 'Payment recorded successfully' 
+        : 'Partial payment recorded',
       payment: paymentTransaction,
       invoice: updatedInvoice,
-      next_step: isFullPayment ? 'Vehicle ready for delivery' : 'Awaiting remaining payment',
+      balance_due: newBalanceDue,
+      is_full_payment: isFullPayment,
+      is_cod: is_cod,
+      next_step: is_cod
+        ? 'COD payment recorded. Schedule collection.'
+        : isFullPayment 
+        ? 'Vehicle ready for delivery' 
+        : `Awaiting remaining payment of ₹${newBalanceDue.toFixed(2)}`,
     }, { status: 200 });
 
   } catch (error) {

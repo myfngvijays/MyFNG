@@ -1,0 +1,236 @@
+/**
+ * Supervisor Change Job Status API
+ * Purpose: Allow supervisor to change job status after pickup completion
+ */
+
+import { createClient } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = await createClient();
+    
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get user profile
+    const { data: userProfile, error: profileError } = await supabase
+      .from('users_login')
+      .select('id, role, workshop_id')
+      .eq('email', user.email)
+      .single();
+
+    if (profileError || !userProfile) {
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    }
+
+    // Verify user is supervisor
+    if (userProfile.role !== 'workshop_supervisor') {
+      return NextResponse.json({ error: 'Forbidden: Supervisor only' }, { status: 403 });
+    }
+
+    const leadId = params.id;
+    const body = await request.json();
+    const { new_status, notes } = body;
+
+    if (!new_status) {
+      return NextResponse.json({ error: 'new_status is required' }, { status: 400 });
+    }
+
+    // Valid status transitions for supervisor
+    const validStatuses = ['IN_PROGRESS', 'INSPECTED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_DELIVERY'];
+    if (!validStatuses.includes(new_status)) {
+      return NextResponse.json({ 
+        error: 'Invalid status for supervisor',
+        valid_statuses: validStatuses
+      }, { status: 400 });
+    }
+
+    // Get lead details
+    const { data: lead, error: leadError } = await supabase
+      .from('service_leads')
+      .select('*')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !lead) {
+      return NextResponse.json({ error: 'Job not found' }, { status: 404 });
+    }
+
+    // Verify lead is from this workshop
+    if (lead.workshop_id !== userProfile.workshop_id) {
+      return NextResponse.json({ error: 'Job not in your workshop' }, { status: 403 });
+    }
+
+    // Validate status transition
+    const currentStatus = lead.status;
+    let isValidTransition = false;
+
+    // After pickup completion, status is DELIVERED
+    // Supervisor can change to IN_PROGRESS or INSPECTED
+    if (currentStatus === 'DELIVERED' && (new_status === 'IN_PROGRESS' || new_status === 'INSPECTED')) {
+      isValidTransition = true;
+    }
+    // From IN_PROGRESS to QC_PENDING or QC_APPROVED
+    else if (currentStatus === 'IN_PROGRESS' && (new_status === 'QC_PENDING' || new_status === 'QC_APPROVED')) {
+      isValidTransition = true;
+    }
+    // From INSPECTED to QC_PENDING or QC_APPROVED
+    else if (currentStatus === 'INSPECTED' && (new_status === 'QC_PENDING' || new_status === 'QC_APPROVED')) {
+      isValidTransition = true;
+    }
+    // From QC_PENDING to QC_APPROVED or READY_FOR_DELIVERY
+    else if (currentStatus === 'QC_PENDING' && (new_status === 'QC_APPROVED' || new_status === 'READY_FOR_DELIVERY')) {
+      isValidTransition = true;
+    }
+    // From QC_APPROVED to READY_FOR_DELIVERY
+    else if (currentStatus === 'QC_APPROVED' && new_status === 'READY_FOR_DELIVERY') {
+      isValidTransition = true;
+    }
+    // From WORK_COMPLETED to QC_PENDING or QC_APPROVED
+    else if (currentStatus === 'WORK_COMPLETED' && (new_status === 'QC_PENDING' || new_status === 'QC_APPROVED')) {
+      isValidTransition = true;
+    }
+
+    if (!isValidTransition) {
+      return NextResponse.json({ 
+        error: 'Invalid status transition',
+        current_status: currentStatus,
+        requested_status: new_status,
+        hint: `Cannot change from ${currentStatus} to ${new_status}`
+      }, { status: 400 });
+    }
+
+    const now = new Date().toISOString();
+
+    // Update lead status
+    const updateData: any = {
+      status: new_status,
+      updated_at: now
+    };
+
+    // Set specific timestamps based on status
+    if (new_status === 'IN_PROGRESS') {
+      updateData.mechanic_started_at = now;
+    } else if (new_status === 'QC_APPROVED') {
+      updateData.qc_status = 'APPROVED';
+      updateData.qc_performed_by = userProfile.id;
+      updateData.qc_performed_at = now;
+    } else if (new_status === 'READY_FOR_DELIVERY') {
+      updateData.ready_for_delivery_at = now;
+      updateData.marked_ready_by = userProfile.id;
+    }
+
+    const { data: updatedLead, error: updateError } = await supabase
+      .from('service_leads')
+      .update(updateData)
+      .eq('id', leadId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating lead status:', updateError);
+      return NextResponse.json({ 
+        error: 'Failed to change status',
+        details: updateError.message
+      }, { status: 500 });
+    }
+
+    // Log status change in lead_status_history
+    await supabase
+      .from('lead_status_history')
+      .insert({
+        lead_id: leadId,
+        old_status: currentStatus,
+        new_status: new_status,
+        changed_by: userProfile.id,
+        changed_at: now,
+        reason: 'Status changed by supervisor',
+        notes: notes || `Status changed from ${currentStatus} to ${new_status}`
+      });
+
+    // Create activity log
+    await supabase
+      .from('lead_activities')
+      .insert({
+        lead_id: leadId,
+        user_id: userProfile.id,
+        activity_type: 'STATUS_CHANGED',
+        description: `Supervisor changed status from ${currentStatus} to ${new_status}`,
+        old_status: currentStatus,
+        new_status: new_status,
+        metadata: {
+          supervisor_id: userProfile.id,
+          changed_at: now,
+          notes: notes
+        }
+      });
+
+    // Log supervisor action
+    await supabase
+      .from('supervisor_actions')
+      .insert({
+        supervisor_id: userProfile.id,
+        lead_id: leadId,
+        action_type: 'STATUS_CHANGED',
+        action_description: `Changed job status from ${currentStatus} to ${new_status}`,
+        action_data: { 
+          old_status: currentStatus, 
+          new_status: new_status,
+          notes: notes
+        },
+        created_at: now
+      });
+
+    // Update mechanic_jobs if status is IN_PROGRESS
+    if (new_status === 'IN_PROGRESS' && lead.assigned_mechanic_id) {
+      await supabase
+        .from('mechanic_jobs')
+        .update({
+          mechanic_status: 'IN_PROGRESS',
+          started_at: now,
+          updated_at: now
+        })
+        .eq('lead_id', leadId)
+        .eq('mechanic_id', lead.assigned_mechanic_id);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Status changed from ${currentStatus} to ${new_status}`,
+      lead: updatedLead,
+      next_step: getNextStep(new_status)
+    }, { status: 200 });
+
+  } catch (error: any) {
+    console.error('Error in change status API:', error);
+    return NextResponse.json(
+      { error: 'Internal server error', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+function getNextStep(status: string): string {
+  switch (status) {
+    case 'IN_PROGRESS':
+      return 'Mechanic can start working on the job';
+    case 'INSPECTED':
+      return 'Job inspected, ready for QC';
+    case 'QC_PENDING':
+      return 'Awaiting quality check approval';
+    case 'QC_APPROVED':
+      return 'QC approved, ready for billing';
+    case 'READY_FOR_DELIVERY':
+      return 'Job ready for delivery to customer';
+    default:
+      return 'Status updated';
+  }
+}
+

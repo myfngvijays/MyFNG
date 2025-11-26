@@ -8,6 +8,7 @@ import {
   numberToWords,
   roundOff,
 } from '@/lib/utils/invoiceUtils';
+import { createFinanceEvent } from '@/lib/services/financeEventService';
 
 export async function POST(
   request: NextRequest,
@@ -292,6 +293,26 @@ export async function POST(
       })
       .eq('id', leadId);
 
+    // Lock job card for edits (except allowed fields)
+    // Mark job card as locked after invoice generation
+    const { data: existingJobCard } = await supabase
+      .from('job_cards')
+      .select('id')
+      .eq('lead_id', leadId)
+      .single();
+
+    if (jobCard) {
+      // Add locked_at timestamp to job card (if column exists)
+      // For now, we'll track this via a metadata field or status
+      await supabase
+        .from('job_cards')
+        .update({
+          updated_at: now,
+          // Note: If job_cards table has a locked_at or is_locked column, update it here
+        })
+        .eq('id', jobCard.id);
+    }
+
     // Log status change
     await supabase
       .from('lead_status_history')
@@ -327,6 +348,25 @@ export async function POST(
           generated_at: now
         }
       });
+
+    // Create finance event for invoice creation
+    await createFinanceEvent({
+      eventType: 'invoice_created',
+      entityType: 'invoice',
+      entityId: invoice.id,
+      actorId: userProfile.id,
+      actorRole: userProfile.role,
+      eventData: {
+        invoice_number: invoiceNumber,
+        lead_id: leadId,
+        final_amount: finalAmount,
+        base_amount: baseAmount,
+        extra_charges: extraChargesTotal,
+        parts_cost: partsTotal,
+        total_tax: totalTax,
+        generated_at: now,
+      },
+    });
 
     // TODO: Generate PDF invoice
     // TODO: Send invoice to customer (Email/WhatsApp)

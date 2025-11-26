@@ -7,6 +7,9 @@ import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { sendInvoiceEmail } from '@/lib/services/emailService';
 import { sendSMS } from '@/lib/services/smsService';
+import { sendInvoiceViaWhatsApp } from '@/lib/services/whatsappService';
+import { createShortUrl } from '@/lib/services/urlShortener';
+import { createFinanceEvent } from '@/lib/services/financeEventService';
 
 export async function POST(
   request: NextRequest,
@@ -78,18 +81,81 @@ export async function POST(
 
     const now = new Date().toISOString();
     const results: any = {};
+    const sendFailures: any[] = [];
+
+    // Generate PDF and short URL first
+    const invoiceLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/invoice/${invoice.invoice_number}`;
+    const { shortUrl } = await createShortUrl(invoiceLink, 'invoice', invoiceId);
+    
+    // Generate PDF URL
+    const pdfUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/billing/invoices/${invoiceId}/generate-pdf`;
+
+    // Helper function to record send failure
+    const recordFailure = (method: string, error: string) => {
+      sendFailures.push({
+        method,
+        error,
+        attempted_at: new Date().toISOString(),
+      });
+    };
+
+    // Helper function to retry sending
+    const retrySend = async (
+      sendFn: () => Promise<{ success: boolean; error?: string }>,
+      method: string,
+      maxRetries: number = 3
+    ): Promise<{ success: boolean; error?: string }> => {
+      let lastError: string | undefined;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const result = await sendFn();
+          if (result.success) {
+            return result;
+          }
+          lastError = result.error;
+          if (attempt < maxRetries) {
+            // Wait before retry (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          }
+        } catch (error: any) {
+          lastError = error.message;
+        }
+      }
+      recordFailure(method, lastError || 'Failed after retries');
+      return { success: false, error: lastError };
+    };
 
     // Send via Email
     if (methods.includes('EMAIL') && invoice.lead?.customer_email) {
       try {
-        const emailSent = await sendInvoiceEmail(
-          invoice.lead.customer_email,
-          invoice.lead.id,
-          invoice.lead.customer_name,
-          invoice
+        // Fetch PDF for attachment
+        const pdfResponse = await fetch(pdfUrl);
+        let pdfAttachment: { filename: string; content: string } | undefined;
+        
+        if (pdfResponse.ok) {
+          const pdfBlob = await pdfResponse.blob();
+          const pdfBase64 = Buffer.from(await pdfBlob.arrayBuffer()).toString('base64');
+          pdfAttachment = {
+            filename: `Invoice-${invoice.invoice_number}.pdf`,
+            content: pdfBase64,
+          };
+        }
+
+        const emailResult = await retrySend(
+          async () => {
+            const sent = await sendInvoiceEmail(
+              invoice.lead.customer_email,
+              invoice.lead.id,
+              invoice.lead.customer_name,
+              invoice,
+              pdfAttachment
+            );
+            return { success: sent, error: sent ? undefined : 'Failed to send email' };
+          },
+          'EMAIL'
         );
 
-        if (emailSent) {
+        if (emailResult.success) {
           await supabase
             .from('invoices')
             .update({
@@ -108,14 +174,16 @@ export async function POST(
               sharing_method: 'EMAIL',
               recipient_email: invoice.lead.customer_email,
               sharing_status: 'SENT',
+              sharing_link: shortUrl,
               shared_at: now,
             });
 
           results.email = { success: true, message: 'Email sent successfully' };
         } else {
-          results.email = { success: false, message: 'Failed to send email' };
+          results.email = { success: false, message: emailResult.error || 'Failed to send email' };
         }
       } catch (error: any) {
+        recordFailure('EMAIL', error.message);
         results.email = { success: false, message: error.message };
       }
     }
@@ -123,16 +191,17 @@ export async function POST(
     // Send via SMS
     if (methods.includes('SMS') && invoice.lead?.customer_phone) {
       try {
-        const invoiceLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/invoice/${invoice.invoice_number}`;
-        const { sendLeadNotification } = await import('@/lib/services/smsService');
-        const smsMessage = `Invoice ${invoice.invoice_number} generated. Amount: ₹${invoice.final_amount.toFixed(2)}. View & Pay: ${invoiceLink}`;
-        const { sendSMS } = await import('@/lib/services/smsService');
-        const smsSent = await sendSMS(
-          invoice.lead.customer_phone,
-          smsMessage
+        const smsMessage = `Invoice ${invoice.invoice_number} generated. Amount: ₹${invoice.final_amount.toFixed(2)}. View & Pay: ${shortUrl}`;
+        
+        const smsResult = await retrySend(
+          async () => {
+            const sent = await sendSMS(invoice.lead.customer_phone, smsMessage);
+            return { success: sent, error: sent ? undefined : 'Failed to send SMS' };
+          },
+          'SMS'
         );
 
-        if (smsSent) {
+        if (smsResult.success) {
           await supabase
             .from('invoices')
             .update({
@@ -151,41 +220,76 @@ export async function POST(
               sharing_method: 'SMS',
               recipient_phone: invoice.lead.customer_phone,
               sharing_status: 'SENT',
-              sharing_link: invoiceLink,
+              sharing_link: shortUrl,
               shared_at: now,
             });
 
           results.sms = { success: true, message: 'SMS sent successfully' };
         } else {
-          results.sms = { success: false, message: 'Failed to send SMS' };
+          results.sms = { success: false, message: smsResult.error || 'Failed to send SMS' };
         }
       } catch (error: any) {
+        recordFailure('SMS', error.message);
         results.sms = { success: false, message: error.message };
       }
     }
 
-    // Send via WhatsApp (placeholder - needs WhatsApp Business API)
+    // Send via WhatsApp
     if (methods.includes('WHATSAPP') && invoice.lead?.customer_phone) {
       try {
-        // TODO: Implement WhatsApp Business API integration
-        // For now, just log it
-        await supabase
-          .from('invoice_sharing_logs')
-          .insert({
-            invoice_id: invoiceId,
-            shared_by: userProfile.id,
-            sharing_method: 'WHATSAPP',
-            recipient_phone: invoice.lead.customer_phone,
-            sharing_status: 'PENDING',
-            error_message: 'WhatsApp integration pending',
-            shared_at: now,
-          });
+        const whatsappResult = await retrySend(
+          async () => {
+            const result = await sendInvoiceViaWhatsApp(
+              invoice.lead.customer_phone,
+              invoice.invoice_number,
+              invoice.final_amount,
+              shortUrl,
+              pdfUrl
+            );
+            return result;
+          },
+          'WHATSAPP'
+        );
 
-        results.whatsapp = { 
-          success: false, 
-          message: 'WhatsApp integration pending. Please use Email or SMS.' 
-        };
+        if (whatsappResult.success) {
+          await supabase
+            .from('invoices')
+            .update({
+              sent_via_whatsapp: true,
+              whatsapp_sent_at: now,
+              status: invoice.status === 'GENERATED' ? 'SENT' : invoice.status,
+              updated_at: now,
+            })
+            .eq('id', invoiceId);
+
+          await supabase
+            .from('invoice_sharing_logs')
+            .insert({
+              invoice_id: invoiceId,
+              shared_by: userProfile.id,
+              sharing_method: 'WHATSAPP',
+              recipient_phone: invoice.lead.customer_phone,
+              sharing_status: 'SENT',
+              sharing_link: shortUrl,
+              shared_at: now,
+            });
+
+          const whatsappResponse: { success: boolean; message: string; messageId?: string } = { 
+            success: true, 
+            message: 'WhatsApp message sent successfully',
+          };
+          if ('messageId' in whatsappResult) {
+            whatsappResponse.messageId = (whatsappResult as any).messageId;
+          }
+          results.whatsapp = whatsappResponse;
+        } else {
+          results.whatsapp = { 
+            success: false, 
+            message: whatsappResult.error || 'Failed to send WhatsApp message' 
+          };
+        }
       } catch (error: any) {
+        recordFailure('WHATSAPP', error.message);
         results.whatsapp = { success: false, message: error.message };
       }
     }
@@ -204,8 +308,21 @@ export async function POST(
       results.in_app = { success: true, message: 'Invoice marked as sent' };
     }
 
-    // Update lead status if invoice sent
-    if (invoice.lead_id && Object.values(results).some((r: any) => r.success)) {
+    // Update invoice with send_failures if any
+    if (sendFailures.length > 0) {
+      const currentFailures = invoice.send_failures || [];
+      await supabase
+        .from('invoices')
+        .update({
+          send_failures: [...currentFailures, ...sendFailures],
+          updated_at: now,
+        })
+        .eq('id', invoiceId);
+    }
+
+    // Update lead status if invoice sent successfully
+    const hasSuccess = Object.values(results).some((r: any) => r.success);
+    if (invoice.lead_id && hasSuccess) {
       await supabase
         .from('service_leads')
         .update({
@@ -229,15 +346,59 @@ export async function POST(
             invoice_number: invoice.invoice_number,
             sharing_methods: methods,
             results: results,
+            short_url: shortUrl,
           },
         });
+
+      // Create finance event
+      await createFinanceEvent({
+        eventType: 'invoice_sent',
+        entityType: 'invoice',
+        entityId: invoiceId,
+        actorId: userProfile.id,
+        actorRole: userProfile.role,
+        actorName: userProfile.name,
+        eventData: {
+          invoice_number: invoice.invoice_number,
+          sharing_methods: methods,
+          results: results,
+          short_url: shortUrl,
+        },
+        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+        userAgent: request.headers.get('user-agent') || undefined,
+      });
+    }
+
+    // Create lead_event entries
+    if (invoice.lead_id) {
+      for (const method of methods) {
+        const result = results[method.toLowerCase()];
+        if (result?.success) {
+          await supabase
+            .from('lead_events')
+            .insert({
+              lead_id: invoice.lead_id,
+              event_type: `invoice_sent_${method.toLowerCase()}`,
+              event_data: {
+                invoice_id: invoiceId,
+                invoice_number: invoice.invoice_number,
+                method: method,
+                short_url: shortUrl,
+                timestamp: now,
+              },
+              created_at: now,
+            });
+        }
+      }
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Invoice sharing completed',
+      message: hasSuccess ? 'Invoice sharing completed' : 'Invoice sharing completed with some failures',
       results: results,
-      next_step: 'Awaiting customer payment',
+      short_url: shortUrl,
+      send_failures: sendFailures.length > 0 ? sendFailures : undefined,
+      next_step: hasSuccess ? 'Awaiting customer payment' : 'Some sharing methods failed. Please retry.',
     }, { status: 200 });
 
   } catch (error) {

@@ -98,7 +98,7 @@ export default function QCQueuePage() {
         return;
       }
 
-      // Fetch jobs pending QC - COMPLETED status means ready for QC
+      // Fetch jobs pending QC - WORK_COMPLETED or QC_PENDING status means ready for QC
       const { data: qcJobs, error } = await supabase
         .from('service_leads')
         .select(`
@@ -115,8 +115,8 @@ export default function QCQueuePage() {
           assigned_mechanic_id
         `)
         .eq('workshop_id', userProfile.workshop_id)
-        .eq('status', 'COMPLETED')
-        .eq('qc_status', 'PENDING')
+        .in('status', ['WORK_COMPLETED', 'QC_PENDING', 'COMPLETED'])
+        .in('qc_status', ['PENDING', null])
         .order('mechanic_completed_at', { ascending: true });
 
       if (error) {

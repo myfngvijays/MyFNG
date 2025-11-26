@@ -125,46 +125,122 @@ export default function WorkshopMechanicDashboard() {
 
       if (!userProfile) return;
 
-      // Fetch jobs from mechanic_dashboard view
-      const { data: dashboardData } = await supabase
-        .from('mechanic_dashboard')
-        .select('*')
+      // Fetch jobs from mechanic_jobs table directly (more reliable than view)
+      const { data: mechanicJobs, error: jobsError } = await supabase
+        .from('mechanic_jobs')
+        .select(`
+          *,
+          lead:service_leads(
+            id,
+            lead_number,
+            customer_name,
+            vehicle_number,
+            vehicle_make,
+            vehicle_model,
+            service_types,
+            problem_description,
+            status,
+            pickup_required
+          ),
+          pickup:pickup_tracking(pickup_status)
+        `)
         .eq('mechanic_id', userProfile.id)
         .order('assigned_at', { ascending: false });
+
+      if (jobsError) {
+        console.error('Error fetching mechanic jobs:', jobsError);
+      }
+
+      // Transform data to match dashboard format
+      const dashboardData = (mechanicJobs || []).map((mj: any) => ({
+        id: mj.id,
+        job_id: mj.id,
+        lead_id: mj.lead_id,
+        lead_number: mj.lead?.lead_number || 'N/A',
+        customer_name: mj.lead?.customer_name || 'N/A',
+        vehicle_number: mj.lead?.vehicle_number || 'N/A',
+        vehicle_make: mj.lead?.vehicle_make || '',
+        vehicle_model: mj.lead?.vehicle_model || '',
+        service_types: typeof mj.lead?.service_types === 'string' 
+          ? JSON.parse(mj.lead?.service_types || '[]')
+          : (mj.lead?.service_types || []),
+        problem_description: mj.lead?.problem_description || '',
+        mechanic_status: mj.mechanic_status,
+        job_priority: mj.job_priority,
+        assigned_at: mj.assigned_at,
+        started_at: mj.started_at,
+        completed_at: mj.completed_at,
+        sla_remaining_minutes: mj.sla_remaining_minutes,
+        checklist_completed: mj.checklist_completed,
+        before_images_count: mj.before_images_count || 0,
+        progress_images_count: mj.progress_images_count || 0,
+        after_images_count: mj.after_images_count || 0,
+        pickup_status: mj.pickup?.[0]?.pickup_status || 'NOT_REQUIRED',
+        pickup_required: mj.lead?.pickup_required || false,
+        has_pending_extra_work: false, // Will be calculated separately
+        has_parts_assigned: false, // Will be calculated separately
+      }));
+
+      // Check for pending extra work and parts
+      const leadIds = dashboardData.map((j: any) => j.lead_id).filter((id: any) => id);
+      if (leadIds.length > 0) {
+        try {
+          const { data: extraWork } = await supabase
+            .from('mechanic_extra_work_requests')
+            .select('lead_id')
+            .in('lead_id', leadIds)
+            .eq('status', 'PENDING')
+            .eq('mechanic_id', userProfile.id);
+
+          const { data: partsUsage } = await supabase
+            .from('mechanic_parts_usage')
+            .select('lead_id')
+            .in('lead_id', leadIds);
+
+          const extraWorkLeadIds = new Set(extraWork?.map((ew: any) => ew.lead_id) || []);
+          const partsLeadIds = new Set(partsUsage?.map((p: any) => p.lead_id) || []);
+
+          dashboardData.forEach((job: any) => {
+            job.has_pending_extra_work = extraWorkLeadIds.has(job.lead_id);
+            job.has_parts_assigned = partsLeadIds.has(job.lead_id);
+          });
+        } catch (err) {
+          console.error('Error fetching extra work/parts:', err);
+        }
+      }
 
       console.log('Dashboard data fetched:', dashboardData);
 
       // Set jobs data
-      if (dashboardData) {
-        setJobs(dashboardData);
-      }
+      setJobs(dashboardData);
 
       // Calculate stats from the fetched data
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const assignedToday = dashboardData?.filter(job => {
+      const assignedToday = dashboardData.filter((job: any) => {
+        if (!job.assigned_at) return false;
         const assignedDate = new Date(job.assigned_at);
         assignedDate.setHours(0, 0, 0, 0);
         return assignedDate.getTime() === today.getTime();
-      }).length || 0;
+      }).length;
 
-      const inProgress = dashboardData?.filter(job => 
+      const inProgress = dashboardData.filter((job: any) => 
         job.mechanic_status === 'IN_PROGRESS'
-      ).length || 0;
+      ).length;
 
-      const completedToday = dashboardData?.filter(job => {
+      const completedToday = dashboardData.filter((job: any) => {
         if (job.completed_at) {
           const completedDate = new Date(job.completed_at);
           completedDate.setHours(0, 0, 0, 0);
           return completedDate.getTime() === today.getTime();
         }
         return false;
-      }).length || 0;
+      }).length;
 
-      const pendingPickups = dashboardData?.filter(job => 
-        job.pickup_required && job.pickup_status === 'NOT_ASSIGNED'
-      ).length || 0;
+      const pendingPickups = dashboardData.filter((job: any) => 
+        job.pickup_required && (job.pickup_status === 'NOT_ASSIGNED' || job.pickup_status === 'PENDING')
+      ).length;
 
       // Get need approval count
       const { count: needApproval, error: approvalError } = await supabase
