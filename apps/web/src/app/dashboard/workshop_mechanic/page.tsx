@@ -22,6 +22,7 @@ interface JobCardData {
   vehicle_make: string;
   vehicle_model: string;
   service_types: string[];
+  service_type_names: string[];
   mechanic_status: string;
   job_priority: string;
   sla_remaining_minutes: number;
@@ -86,13 +87,12 @@ export default function WorkshopMechanicDashboard() {
             filter: `mechanic_id=eq.${userProfile.id}`
           },
           (payload) => {
-            console.log('Real-time update received:', payload);
             // Refresh data when any change occurs
             fetchMechanicData();
           }
         )
         .subscribe((status) => {
-          console.log('Realtime subscription status:', status);
+          // Subscription status
         });
     };
 
@@ -137,7 +137,8 @@ export default function WorkshopMechanicDashboard() {
             vehicle_number,
             vehicle_make,
             vehicle_model,
-            service_types,
+            service_type,
+            service_type_ids,
             problem_description,
             status,
             pickup_required,
@@ -145,41 +146,111 @@ export default function WorkshopMechanicDashboard() {
           )
         `)
         .eq('mechanic_id', userProfile.id)
-        .order('assigned_at', { ascending: false });
+        .order('assigned_at', { ascending: false })
+        .order('created_at', { ascending: false }); // Also order by created_at as fallback
 
       if (jobsError) {
         console.error('Error fetching mechanic jobs:', jobsError);
       }
 
+      // Fetch service names for all leads
+      const allServiceTypeIds = new Set<string>();
+      (mechanicJobs || []).forEach((mj: any) => {
+        if (mj.lead?.service_type_ids) {
+          let ids: string[] = [];
+          if (typeof mj.lead.service_type_ids === 'string') {
+            try {
+              ids = JSON.parse(mj.lead.service_type_ids);
+            } catch {
+              // Try parsing as escaped JSON string
+              try {
+                const unescaped = mj.lead.service_type_ids.replace(/\\"/g, '"').replace(/^"|"$/g, '');
+                ids = JSON.parse(unescaped);
+              } catch {
+                ids = [];
+              }
+            }
+          } else {
+            ids = mj.lead.service_type_ids;
+          }
+          ids.forEach((id: string) => allServiceTypeIds.add(id));
+        } else if (mj.lead?.service_type) {
+          allServiceTypeIds.add(mj.lead.service_type);
+        }
+      });
+
+      // Fetch service names
+      const serviceNamesMap = new Map<string, string>();
+      if (allServiceTypeIds.size > 0) {
+        const { data: serviceTypesData } = await supabase
+          .from('service_types')
+          .select('id, name')
+          .in('id', Array.from(allServiceTypeIds));
+
+        if (serviceTypesData) {
+          serviceTypesData.forEach((st: any) => {
+            serviceNamesMap.set(st.id, st.name);
+          });
+        }
+      }
+
       // Transform data to match dashboard format
-      const dashboardData = (mechanicJobs || []).map((mj: any) => ({
-        id: mj.id,
-        job_id: mj.id,
-        lead_id: mj.lead_id,
-        lead_number: mj.lead?.lead_number || 'N/A',
-        customer_name: mj.lead?.customer_name || 'N/A',
-        vehicle_number: mj.lead?.vehicle_number || 'N/A',
-        vehicle_make: mj.lead?.vehicle_make || '',
-        vehicle_model: mj.lead?.vehicle_model || '',
-        service_types: typeof mj.lead?.service_types === 'string' 
-          ? JSON.parse(mj.lead?.service_types || '[]')
-          : (mj.lead?.service_types || []),
-        problem_description: mj.lead?.problem_description || '',
-        mechanic_status: mj.mechanic_status,
-        job_priority: mj.job_priority,
-        assigned_at: mj.assigned_at,
-        started_at: mj.started_at,
-        completed_at: mj.completed_at,
-        sla_remaining_minutes: mj.sla_remaining_minutes,
-        checklist_completed: mj.checklist_completed,
-        before_images_count: mj.before_images_count || 0,
-        progress_images_count: mj.progress_images_count || 0,
-        after_images_count: mj.after_images_count || 0,
-        pickup_status: mj.lead?.pickup_status || 'NOT_REQUIRED',
-        pickup_required: mj.lead?.pickup_required || false,
-        has_pending_extra_work: false, // Will be calculated separately
-        has_parts_assigned: false, // Will be calculated separately
-      }));
+      const dashboardData = (mechanicJobs || []).map((mj: any) => {
+        // Parse service_type_ids
+        let serviceTypeIds: string[] = [];
+        if (mj.lead?.service_type_ids) {
+          if (typeof mj.lead.service_type_ids === 'string') {
+            try {
+              serviceTypeIds = JSON.parse(mj.lead.service_type_ids);
+            } catch {
+              // Try parsing as escaped JSON string
+              try {
+                const unescaped = mj.lead.service_type_ids.replace(/\\"/g, '"').replace(/^"|"$/g, '');
+                serviceTypeIds = JSON.parse(unescaped);
+              } catch {
+                serviceTypeIds = [];
+              }
+            }
+          } else {
+            serviceTypeIds = mj.lead.service_type_ids;
+          }
+        } else if (mj.lead?.service_type) {
+          serviceTypeIds = [mj.lead.service_type];
+        }
+
+        // Get service names
+        const serviceNames = serviceTypeIds
+          .map((id: string) => serviceNamesMap.get(id))
+          .filter((name): name is string => !!name);
+
+        return {
+          id: mj.id,
+          job_id: mj.id,
+          lead_id: mj.lead_id,
+          lead_number: mj.lead?.lead_number || 'N/A',
+          customer_name: mj.lead?.customer_name || 'N/A',
+          vehicle_number: mj.lead?.vehicle_number || 'N/A',
+          vehicle_make: mj.lead?.vehicle_make || '',
+          vehicle_model: mj.lead?.vehicle_model || '',
+          service_types: serviceTypeIds, // Keep IDs for reference
+          service_type_names: serviceNames, // Add names for display
+          problem_description: mj.lead?.problem_description || '',
+          mechanic_status: mj.mechanic_status,
+          job_priority: mj.job_priority,
+          assigned_at: mj.assigned_at,
+          started_at: mj.started_at,
+          completed_at: mj.completed_at,
+          sla_remaining_minutes: mj.sla_remaining_minutes,
+          checklist_completed: mj.checklist_completed,
+          before_images_count: mj.before_images_count || 0,
+          progress_images_count: mj.progress_images_count || 0,
+          after_images_count: mj.after_images_count || 0,
+          pickup_status: mj.lead?.pickup_status || 'NOT_REQUIRED',
+          pickup_required: mj.lead?.pickup_required || false,
+          has_pending_extra_work: false, // Will be calculated separately
+          has_parts_assigned: false, // Will be calculated separately
+        };
+      });
 
       // Check for pending extra work and parts
       const leadIds = dashboardData.map((j: any) => j.lead_id).filter((id: any) => id);
@@ -208,8 +279,6 @@ export default function WorkshopMechanicDashboard() {
           console.error('Error fetching extra work/parts:', err);
         }
       }
-
-      console.log('Dashboard data fetched:', dashboardData);
 
       // Set jobs data
       setJobs(dashboardData);
@@ -254,14 +323,6 @@ export default function WorkshopMechanicDashboard() {
       }
 
       setStats({
-        assigned_today: assignedToday,
-        in_progress: inProgress,
-        pending_pickups: pendingPickups,
-        completed_today: completedToday,
-        need_approval: needApproval || 0
-      });
-
-      console.log('Stats calculated:', {
         assigned_today: assignedToday,
         in_progress: inProgress,
         pending_pickups: pendingPickups,
@@ -502,7 +563,11 @@ export default function WorkshopMechanicDashboard() {
                       
                       <div>
                         <p className="text-sm text-gray-600">Service Type</p>
-                        <p className="font-semibold">{job.service_types?.join(', ') || 'N/A'}</p>
+                        <p className="font-semibold">
+                          {job.service_type_names && job.service_type_names.length > 0
+                            ? job.service_type_names.join(', ')
+                            : job.service_types?.join(', ') || 'N/A'}
+                        </p>
                       </div>
                       
                       <div>

@@ -126,20 +126,23 @@ export default function AssignTeamPage() {
     setSubmitting(true);
 
     try {
+      const requestBody = {
+        mechanic_id: selectedMechanic,
+        supervisor_id: selectedSupervisor || null,
+        pickup_boy_id: selectedPickupBoy || null,
+        notes: notes
+      };
+      
       const response = await fetch(`/api/workshop/leads/${leadId}/assign-team`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mechanic_id: selectedMechanic,
-          supervisor_id: selectedSupervisor || null,
-          pickup_boy_id: selectedPickupBoy || null,
-          notes: notes
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const data = await response.json();
 
       if (!response.ok) {
+        console.error('Error assigning team:', data);
         toast.error(data.error || 'Failed to assign team');
         return;
       }
@@ -149,9 +152,9 @@ export default function AssignTeamPage() {
         router.push(`/dashboard/workshop_admin/leads/${leadId}`);
       }, 1000);
 
-    } catch (error) {
-      console.error('Error assigning team:', error);
-      toast.error('Failed to assign team');
+    } catch (error: any) {
+      console.error('Unexpected error:', error);
+      toast.error('Failed to assign team: ' + (error?.message || 'Unknown error'));
     } finally {
       setSubmitting(false);
     }

@@ -2,26 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useRouter } from 'next/navigation';
 import { Store, Search, Filter, CheckCircle, XCircle, AlertTriangle, Plus } from 'lucide-react';
 
 export default function WorkshopManagementPage() {
+  const router = useRouter();
   const supabase = createClientComponentClient();
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newWorkshop, setNewWorkshop] = useState({
-    name: '',
-    contact_person: '',
-    phone: '',
-    email: '',
-    address: '',
-    city: '',
-    state: '',
-    pincode: '',
-    gst_number: ''
-  });
 
   useEffect(() => {
     fetchWorkshops();
@@ -105,52 +95,6 @@ export default function WorkshopManagementPage() {
     }
   };
 
-  const handleAddWorkshop = async () => {
-    // Validate required fields
-    if (!newWorkshop.name || !newWorkshop.contact_person || !newWorkshop.phone || 
-        !newWorkshop.email || !newWorkshop.address || !newWorkshop.city || 
-        !newWorkshop.state || !newWorkshop.pincode) {
-      alert('Please fill all required fields');
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('workshops')
-        .insert([{
-          name: newWorkshop.name,
-          contact_person: newWorkshop.contact_person,
-          phone: newWorkshop.phone,
-          email: newWorkshop.email,
-          address: newWorkshop.address,
-          city: newWorkshop.city,
-          state: newWorkshop.state,
-          pincode: newWorkshop.pincode,
-          gst_number: newWorkshop.gst_number || null,
-          is_verified: false
-        }]);
-
-      if (!error) {
-        alert('Workshop added successfully!');
-        setShowAddModal(false);
-        setNewWorkshop({
-          name: '',
-          contact_person: '',
-          phone: '',
-          email: '',
-          address: '',
-          city: '',
-          state: '',
-          pincode: '',
-          gst_number: ''
-        });
-        fetchWorkshops();
-      }
-    } catch (error) {
-      alert('Failed to add workshop');
-    }
-  };
-
   const filteredWorkshops = workshops.filter((w) =>
     searchTerm === '' ||
     w.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -185,7 +129,7 @@ export default function WorkshopManagementPage() {
               </p>
             </div>
             <button 
-              onClick={() => setShowAddModal(true)}
+              onClick={() => router.push('/dashboard/super_admin/workshops/add')}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
@@ -365,176 +309,6 @@ export default function WorkshopManagementPage() {
             </div>
           )}
         </div>
-
-        {/* Add Workshop Modal */}
-        {showAddModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <h3 className="text-xl font-bold mb-4">Add New Workshop</h3>
-              
-              <div className="space-y-4">
-                {/* Workshop Name */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Workshop Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={newWorkshop.name}
-                    onChange={(e) => setNewWorkshop({ ...newWorkshop, name: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter workshop name"
-                  />
-                </div>
-
-                {/* Contact Person */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contact Person *
-                  </label>
-                  <input
-                    type="text"
-                    value={newWorkshop.contact_person}
-                    onChange={(e) => setNewWorkshop({ ...newWorkshop, contact_person: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter contact person name"
-                  />
-                </div>
-
-                {/* Phone & Email */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Phone *
-                    </label>
-                    <input
-                      type="tel"
-                      value={newWorkshop.phone}
-                      onChange={(e) => setNewWorkshop({ ...newWorkshop, phone: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="10-digit phone number"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email *
-                    </label>
-                    <input
-                      type="email"
-                      value={newWorkshop.email}
-                      onChange={(e) => setNewWorkshop({ ...newWorkshop, email: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="workshop@example.com"
-                    />
-                  </div>
-                </div>
-
-                {/* Address */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Address *
-                  </label>
-                  <textarea
-                    value={newWorkshop.address}
-                    onChange={(e) => setNewWorkshop({ ...newWorkshop, address: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter complete address"
-                    rows={2}
-                  />
-                </div>
-
-                {/* City, State, Pincode */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      City *
-                    </label>
-                    <input
-                      type="text"
-                      value={newWorkshop.city}
-                      onChange={(e) => setNewWorkshop({ ...newWorkshop, city: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="City"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      State *
-                    </label>
-                    <input
-                      type="text"
-                      value={newWorkshop.state}
-                      onChange={(e) => setNewWorkshop({ ...newWorkshop, state: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="State"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Pincode *
-                    </label>
-                    <input
-                      type="text"
-                      value={newWorkshop.pincode}
-                      onChange={(e) => setNewWorkshop({ ...newWorkshop, pincode: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="6-digit pincode"
-                    />
-                  </div>
-                </div>
-
-                {/* GST Number (Optional) */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    GST Number (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={newWorkshop.gst_number}
-                    onChange={(e) => setNewWorkshop({ ...newWorkshop, gst_number: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="GST registration number"
-                  />
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setNewWorkshop({
-                      name: '',
-                      contact_person: '',
-                      phone: '',
-                      email: '',
-                      address: '',
-                      city: '',
-                      state: '',
-                      pincode: '',
-                      gst_number: ''
-                    });
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddWorkshop}
-                  disabled={!newWorkshop.name || !newWorkshop.phone || !newWorkshop.email || 
-                           !newWorkshop.address || !newWorkshop.city || !newWorkshop.state || 
-                           !newWorkshop.pincode || !newWorkshop.contact_person}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                >
-                  Add Workshop
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

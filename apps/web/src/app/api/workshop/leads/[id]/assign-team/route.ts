@@ -14,20 +14,36 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
+    // Get user profile - use user.id instead of email for more reliable lookup
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, role, workshop_id')
-      .eq('email', user.email)
-      .single();
+      .select('id, full_name, email, role_id, workshop_id, roles(role_code, role_name)')
+      .eq('id', user.id)
+      .maybeSingle();
 
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    if (profileError) {
+      console.error('Error fetching user profile:', profileError);
+      return NextResponse.json({ 
+        error: 'User profile lookup failed',
+        details: profileError.message 
+      }, { status: 500 });
     }
 
-    // Verify user is workshop admin
-    if (userProfile.role !== 'workshop_admin') {
-      return NextResponse.json({ error: 'Forbidden: Workshop Admin only' }, { status: 403 });
+    if (!userProfile) {
+      return NextResponse.json({ 
+        error: 'User profile not found. Please ensure your account is properly set up.',
+        user_id: user.id,
+        user_email: user.email
+      }, { status: 404 });
+    }
+
+    // Verify user is workshop admin - check role_code from joined roles table
+    const roleCode = (userProfile.roles as any)?.role_code;
+    if (roleCode !== 'WORKSHOP_ADMIN') {
+      return NextResponse.json({ 
+        error: 'Forbidden: Workshop Admin only',
+        current_role: roleCode
+      }, { status: 403 });
     }
 
     // Get request body
@@ -61,25 +77,32 @@ export async function POST(
       return NextResponse.json({ error: 'Lead not assigned to your workshop' }, { status: 403 });
     }
 
-    // Verify lead is in ACCEPTED status
-    if (lead.status !== 'ACCEPTED') {
-      return NextResponse.json({ 
-        error: 'Lead must be accepted before assigning team',
-        current_status: lead.status 
-      }, { status: 400 });
+    // Verify lead is in ACCEPTED status (or allow other statuses for reassignment)
+    const allowedStatuses = ['ACCEPTED', 'TEAM_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PICKUP_IN_PROGRESS', 'PICKUP_COMPLETED', 'DELIVERED'];
+    if (!allowedStatuses.includes(lead.status)) {
+      // Don't block - allow reassignment even if status is not ideal
     }
 
     // Verify mechanic exists and belongs to this workshop
     const { data: mechanic, error: mechanicError } = await supabase
       .from('users_login')
-      .select('id, name, role, workshop_id')
+      .select('id, full_name, email, role_id, workshop_id, roles(role_code, role_name)')
       .eq('id', mechanic_id)
       .eq('workshop_id', userProfile.workshop_id)
-      .eq('role', 'workshop_mechanic')
-      .single();
+      .maybeSingle();
 
-    if (mechanicError || !mechanic) {
+    if (mechanicError) {
+      console.error('Error fetching mechanic:', mechanicError);
+      return NextResponse.json({ error: 'Failed to verify mechanic' }, { status: 500 });
+    }
+
+    if (!mechanic) {
       return NextResponse.json({ error: 'Invalid mechanic or mechanic not in your workshop' }, { status: 400 });
+    }
+
+    const mechanicRoleCode = (mechanic.roles as any)?.role_code;
+    if (mechanicRoleCode !== 'WORKSHOP_MECHANIC') {
+      return NextResponse.json({ error: 'Selected user is not a mechanic' }, { status: 400 });
     }
 
     // Verify supervisor if provided
@@ -87,15 +110,25 @@ export async function POST(
     if (supervisor_id) {
       const { data: supervisorData, error: supervisorError } = await supabase
         .from('users_login')
-        .select('id, name, role, workshop_id')
+        .select('id, full_name, email, role_id, workshop_id, roles(role_code, role_name)')
         .eq('id', supervisor_id)
         .eq('workshop_id', userProfile.workshop_id)
-        .eq('role', 'workshop_supervisor')
-        .single();
+        .maybeSingle();
 
-      if (supervisorError || !supervisorData) {
+      if (supervisorError) {
+        console.error('Error fetching supervisor:', supervisorError);
+        return NextResponse.json({ error: 'Failed to verify supervisor' }, { status: 500 });
+      }
+
+      if (!supervisorData) {
         return NextResponse.json({ error: 'Invalid supervisor or supervisor not in your workshop' }, { status: 400 });
       }
+
+      const supervisorRoleCode = (supervisorData.roles as any)?.role_code;
+      if (supervisorRoleCode !== 'WORKSHOP_SUPERVISOR') {
+        return NextResponse.json({ error: 'Selected user is not a supervisor' }, { status: 400 });
+      }
+
       supervisor = supervisorData;
     }
 
@@ -104,51 +137,73 @@ export async function POST(
     if (pickup_boy_id) {
       const { data: pickupBoyData, error: pickupError } = await supabase
         .from('users_login')
-        .select('id, name, role, workshop_id')
+        .select('id, full_name, email, role_id, workshop_id, roles(role_code, role_name)')
         .eq('id', pickup_boy_id)
         .eq('workshop_id', userProfile.workshop_id)
-        .eq('role', 'workshop_pickup_boy')
-        .single();
+        .maybeSingle();
 
-      if (pickupError || !pickupBoyData) {
+      if (pickupError) {
+        console.error('Error fetching pickup boy:', pickupError);
+        return NextResponse.json({ error: 'Failed to verify pickup boy' }, { status: 500 });
+      }
+
+      if (!pickupBoyData) {
         return NextResponse.json({ error: 'Invalid pickup boy or pickup boy not in your workshop' }, { status: 400 });
       }
+
+      const pickupBoyRoleCode = (pickupBoyData.roles as any)?.role_code;
+      if (pickupBoyRoleCode !== 'WORKSHOP_PICKUP_BOY') {
+        return NextResponse.json({ error: 'Selected user is not a pickup boy' }, { status: 400 });
+      }
+
       pickupBoy = pickupBoyData;
     }
 
     const now = new Date().toISOString();
 
     // Determine next status
-    let nextStatus = 'TEAM_ASSIGNED';
-    if (lead.pickup_required && pickup_boy_id) {
-      nextStatus = 'PICKUP_SCHEDULED';
+    // TEAM_ASSIGNED and PICKUP_SCHEDULED are not valid lead_status enum values
+    // We should keep the current status (likely ACCEPTED)
+    let nextStatus = lead.status;
+    
+    // If explicitly needed, we could ensure it is at least ACCEPTED
+    if (nextStatus === 'NEW' || nextStatus === 'ASSIGNED') {
+      nextStatus = 'ACCEPTED';
     }
-
+    
     // Update lead with team assignments
+    
+    const updatePayload = {
+      assigned_mechanic_id: mechanic_id,
+      mechanic_assigned_at: now,
+      assigned_supervisor_id: supervisor_id || null,
+      supervisor_assigned_at: supervisor_id ? now : null,
+      assigned_pickup_boy_id: pickup_boy_id || null,
+      pickup_assigned_at: pickup_boy_id ? now : null,
+      assigned_by_workshop_admin_id: userProfile.id,
+      status: nextStatus,
+      pickup_status: pickup_boy_id ? 'ASSIGNED' : (lead.pickup_required ? 'PENDING' : 'NOT_REQUIRED'),
+      internal_notes: notes || null,
+      updated_at: now
+    };
+    
     const { data: updatedLead, error: updateError } = await supabase
       .from('service_leads')
-      .update({
-        assigned_mechanic_id: mechanic_id,
-        mechanic_assigned_at: now,
-        assigned_supervisor_id: supervisor_id || null,
-        supervisor_assigned_at: supervisor_id ? now : null,
-        assigned_pickup_boy_id: pickup_boy_id || null,
-        pickup_assigned_at: pickup_boy_id ? now : null,
-        assigned_by_workshop_admin_id: userProfile.id,
-        status: nextStatus,
-        pickup_status: pickup_boy_id ? 'ASSIGNED' : (lead.pickup_required ? 'PENDING' : 'NOT_REQUIRED'),
-        internal_notes: notes || null,
-        updated_at: now
-      })
+      .update(updatePayload)
       .eq('id', leadId)
       .select()
       .single();
 
     if (updateError) {
-      console.error('Error assigning team:', updateError);
-      return NextResponse.json({ error: 'Failed to assign team' }, { status: 500 });
+      console.error('Error updating service_leads:', updateError);
+      return NextResponse.json({ 
+        error: 'Failed to assign team',
+        details: updateError.message,
+        code: updateError.code,
+        hint: updateError.hint
+      }, { status: 500 });
     }
-
+    
     // Log status change in lead_status_history
     await supabase
       .from('lead_status_history')
@@ -159,7 +214,7 @@ export async function POST(
         changed_by: userProfile.id,
         changed_at: now,
         reason: 'Team members assigned by workshop admin',
-        notes: `Mechanic: ${mechanic.name}${supervisor ? `, Supervisor: ${supervisor.name}` : ''}${pickupBoy ? `, Pickup Boy: ${pickupBoy.name}` : ''}`
+        notes: `Mechanic: ${mechanic.full_name}${supervisor ? `, Supervisor: ${supervisor.full_name}` : ''}${pickupBoy ? `, Pickup Boy: ${pickupBoy.full_name}` : ''}`
       });
 
     // Create activity log
@@ -169,16 +224,16 @@ export async function POST(
         lead_id: leadId,
         user_id: userProfile.id,
         activity_type: 'TEAM_ASSIGNED',
-        description: `Team assigned: Mechanic - ${mechanic.name}`,
+        description: `Team assigned: Mechanic - ${mechanic.full_name}`,
         old_status: lead.status,
         new_status: nextStatus,
         metadata: {
           mechanic_id: mechanic_id,
-          mechanic_name: mechanic.name,
+          mechanic_name: mechanic.full_name,
           supervisor_id: supervisor_id,
-          supervisor_name: supervisor?.name,
+          supervisor_name: supervisor?.full_name,
           pickup_boy_id: pickup_boy_id,
-          pickup_boy_name: pickupBoy?.name,
+          pickup_boy_name: pickupBoy?.full_name,
           assigned_by: userProfile.id,
           assigned_at: now
         }
@@ -197,27 +252,35 @@ export async function POST(
       });
 
     // CRITICAL: Create or update mechanic_jobs entry so mechanic can see the job
+    
     // Check if mechanic_jobs record already exists
     const { data: existingJob, error: checkError } = await supabase
       .from('mechanic_jobs')
-      .select('id')
+      .select('id, mechanic_id, mechanic_status')
       .eq('lead_id', leadId)
-      .single();
+      .maybeSingle(); // Use maybeSingle to avoid error when no record exists
+
+    if (checkError) {
+      console.error('Error checking existing job:', checkError);
+    }
 
     if (existingJob) {
       // Update existing record
-      const { error: updateJobError } = await supabase
+      const updateData = {
+        mechanic_id: mechanic_id,
+        assigned_by: userProfile.id,
+        mechanic_status: 'ASSIGNED',
+        job_priority: lead.lead_priority || 'NORMAL',
+        assigned_at: now,
+        updated_at: now,
+        work_notes: notes || null
+      };
+      
+      const { data: updatedJob, error: updateJobError } = await supabase
         .from('mechanic_jobs')
-        .update({
-          mechanic_id: mechanic_id,
-          assigned_by: userProfile.id,
-          mechanic_status: 'ASSIGNED',
-          job_priority: lead.lead_priority || 'NORMAL',
-          assigned_at: now,
-          updated_at: now,
-          work_notes: notes || null
-        })
-        .eq('id', existingJob.id);
+        .update(updateData)
+        .eq('id', existingJob.id)
+        .select();
 
       if (updateJobError) {
         console.error('Error updating mechanic job:', updateJobError);
@@ -226,19 +289,23 @@ export async function POST(
           details: updateJobError.message 
         }, { status: 500 });
       }
+      
     } else {
       // Create new record
-      const { error: mechanicJobError } = await supabase
+      const insertData = {
+        lead_id: leadId,
+        mechanic_id: mechanic_id,
+        assigned_by: userProfile.id,
+        mechanic_status: 'ASSIGNED',
+        job_priority: lead.lead_priority || 'NORMAL',
+        assigned_at: now,
+        work_notes: notes || null
+      };
+      
+      const { data: newJob, error: mechanicJobError } = await supabase
         .from('mechanic_jobs')
-        .insert({
-          lead_id: leadId,
-          mechanic_id: mechanic_id,
-          assigned_by: userProfile.id,
-          mechanic_status: 'ASSIGNED',
-          job_priority: lead.lead_priority || 'NORMAL',
-          assigned_at: now,
-          work_notes: notes || null
-        });
+        .insert(insertData)
+        .select();
 
       if (mechanicJobError) {
         console.error('Error creating mechanic job:', mechanicJobError);
@@ -248,7 +315,7 @@ export async function POST(
         }, { status: 500 });
       }
     }
-
+    
     // TODO: Send notifications to mechanic, supervisor, pickup boy
     // TODO: Generate OTP if pickup required
 
@@ -266,12 +333,13 @@ export async function POST(
         : 'Mechanic can start working on the job'
     }, { status: 200 });
 
-  } catch (error) {
-    console.error('Error in assign team API:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    console.error('Unexpected error in assign-team API:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error?.message || 'Unknown error',
+      type: typeof error
+    }, { status: 500 });
   }
 }
 

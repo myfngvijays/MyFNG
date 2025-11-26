@@ -18,17 +18,17 @@ interface JobCardSectionProps {
 interface JobCard {
   id: string;
   job_card_number: string;
-  labor_charges?: number;
-  additional_work?: string;
-  mechanic_notes?: string;
+  labor_charges: number;
+  additional_work: string | null;
+  mechanic_notes: string | null;
   created_at: string;
-  updated_at?: string;
+  updated_at: string;
 }
 
 interface JobCardPart {
   id: string;
   part_name: string;
-  part_number?: string;
+  part_number: string | null;
   quantity: number;
   unit_price: number;
   total_price: number;
@@ -37,15 +37,14 @@ interface JobCardPart {
 export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) {
   const [jobCard, setJobCard] = useState<JobCard | null>(null);
   const [parts, setParts] = useState<JobCardPart[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
   
-  // Job card form
+  // Form fields
   const [laborCharges, setLaborCharges] = useState(0);
   const [additionalWork, setAdditionalWork] = useState('');
   const [mechanicNotes, setMechanicNotes] = useState('');
-  
-  // Part form
   const [partName, setPartName] = useState('');
   const [partNumber, setPartNumber] = useState('');
   const [quantity, setQuantity] = useState(1);
@@ -60,11 +59,21 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
     const supabase = createClient();
 
     try {
+      // First, check if user is authenticated
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        setJobCard(null);
+        setParts([]);
+        setLoading(false);
+        return;
+      }
+
       const { data: jobCardData, error: jobCardError } = await supabase
         .from('job_cards')
         .select('*')
         .eq('lead_id', lead.id)
-        .single();
+        .maybeSingle();
 
       // Handle 406 (Not Acceptable) - RLS or permission issue
       if (jobCardError) {
@@ -76,16 +85,15 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
           return;
         }
         
-        if (jobCardError.status === 406 || jobCardError.message?.includes('406')) {
-          // RLS blocking access - log but don't throw, allow user to continue
-          console.warn('Job card access restricted by RLS:', jobCardError);
+        if ((jobCardError as any).status === 406 || jobCardError.message?.includes('406')) {
+          // RLS blocking access
           setJobCard(null);
           setParts([]);
           setLoading(false);
           return;
         }
         
-        // Other errors - log but continue
+        // Other errors
         console.error('Error fetching job card:', jobCardError);
         setJobCard(null);
         setParts([]);
@@ -93,24 +101,31 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
         return;
       }
 
-      setJobCard(jobCardData);
-
       if (jobCardData) {
+        setJobCard(jobCardData);
+        setLaborCharges(parseFloat(jobCardData.labor_charges || '0'));
+        setAdditionalWork(jobCardData.additional_work || '');
+        setMechanicNotes(jobCardData.mechanic_notes || '');
+
+        // Fetch parts
         const { data: partsData, error: partsError } = await supabase
           .from('job_card_parts')
           .select('*')
           .eq('job_card_id', jobCardData.id)
           .order('created_at', { ascending: true });
 
-        if (partsError && partsError.status !== 406) {
+        if (partsError) {
           console.error('Error fetching parts:', partsError);
+          setParts([]);
+        } else {
+          setParts(partsData || []);
         }
-
-        setParts(partsData || []);
+      } else {
+        setJobCard(null);
+        setParts([]);
       }
-    } catch (error: any) {
-      // Handle any unexpected errors gracefully
-      console.error('Error fetching job card:', error);
+    } catch (error) {
+      console.error('Unexpected error:', error);
       setJobCard(null);
       setParts([]);
     } finally {
@@ -118,357 +133,335 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
     }
   }
 
-  async function createJobCard() {
-    setLoading(true);
+  async function saveJobCard() {
+    if (!jobCard) return;
+    
+    setSaving(true);
     const supabase = createClient();
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      // Generate job card number
-      const jobCardNumber = `JC-${lead.lead_number}-${Date.now().toString().slice(-6)}`;
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('job_cards')
-        .insert({
-          lead_id: lead.id,
-          job_card_number: jobCardNumber,
+        .update({
           labor_charges: laborCharges,
           additional_work: additionalWork || null,
           mechanic_notes: mechanicNotes || null,
-          created_by: user.id,
+          updated_at: new Date().toISOString(),
         })
-        .select()
-        .single();
+        .eq('id', jobCard.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error updating job card:', error);
+        alert('Failed to save job card: ' + error.message);
+        return;
+      }
 
-      // Create event
-      await supabase.from('lead_events').insert({
-        lead_id: lead.id,
-        event_type: 'JOB_CARD_CREATED',
-        event_description: `Job card ${jobCardNumber} created`,
-        event_data: { job_card_id: data.id },
-        created_by: user.id,
-      });
-
-      setJobCard(data);
-      setShowCreateForm(false);
-      alert('✅ Job card created successfully!');
+      setEditing(false);
+      fetchJobCard();
       onUpdate?.();
-    } catch (error: any) {
-      console.error('Error creating job card:', error);
-      alert(`Failed to create job card: ${error.message}`);
+    } catch (error) {
+      console.error('Unexpected error:', error);
+      alert('Failed to save job card');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
   async function addPart() {
-    if (!jobCard) return;
-    if (!partName || quantity <= 0 || unitPrice < 0) {
-      alert('Please fill in all required fields');
-      return;
-    }
+    if (!partName || !jobCard) return;
 
-    setLoading(true);
+    const totalPrice = quantity * unitPrice;
+    setSaving(true);
     const supabase = createClient();
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      const { data, error } = await supabase
+        .from('job_card_parts')
+        .insert({
+          job_card_id: jobCard.id,
+          part_name: partName,
+          part_number: partNumber || null,
+          quantity: quantity,
+          unit_price: unitPrice,
+          total_price: totalPrice,
+        })
+        .select()
+        .single();
 
-      const totalPrice = quantity * unitPrice;
+      if (error) {
+        console.error('Error adding part:', error);
+        alert('Failed to add part: ' + error.message);
+        return;
+      }
 
-      const { error } = await supabase.from('job_card_parts').insert({
-        job_card_id: jobCard.id,
-        part_name: partName,
-        part_number: partNumber || null,
-        quantity,
-        unit_price: unitPrice,
-        total_price: totalPrice,
-      });
-
-      if (error) throw error;
-
-      // Create event
-      await supabase.from('lead_events').insert({
-        lead_id: lead.id,
-        event_type: 'PART_ADDED',
-        event_description: `Part added: ${partName} (Qty: ${quantity})`,
-        event_data: { part_name: partName, quantity, unit_price: unitPrice },
-        created_by: user.id,
-      });
-
-      // Reset form
+      setParts([...parts, data]);
       setPartName('');
       setPartNumber('');
       setQuantity(1);
       setUnitPrice(0);
-
-      alert('✅ Part added successfully!');
-      fetchJobCard();
       onUpdate?.();
-    } catch (error: any) {
-      console.error('Error adding part:', error);
-      alert(`Failed to add part: ${error.message}`);
+    } catch (error) {
+      console.error('Unexpected error:', error);
+      alert('Failed to add part');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
   async function deletePart(partId: string) {
     if (!confirm('Are you sure you want to delete this part?')) return;
 
+    setSaving(true);
     const supabase = createClient();
+
     try {
       const { error } = await supabase
         .from('job_card_parts')
         .delete()
         .eq('id', partId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error deleting part:', error);
+        alert('Failed to delete part: ' + error.message);
+        return;
+      }
 
-      alert('✅ Part deleted successfully!');
-      fetchJobCard();
+      setParts(parts.filter(p => p.id !== partId));
       onUpdate?.();
     } catch (error) {
-      console.error('Error deleting part:', error);
+      console.error('Unexpected error:', error);
       alert('Failed to delete part');
+    } finally {
+      setSaving(false);
     }
   }
 
-  const totalPartsCost = parts.reduce((sum, part) => sum + part.total_price, 0);
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <FileText className="h-5 w-5 text-gray-600" />
+          <h3 className="text-lg font-semibold">Job Card</h3>
+        </div>
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!jobCard) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <FileText className="h-5 w-5 text-gray-600" />
+          <h3 className="text-lg font-semibold">Job Card</h3>
+        </div>
+        <p className="text-gray-500">No job card found for this lead.</p>
+      </div>
+    );
+  }
+
+  const totalPartsCost = parts.reduce((sum, part) => sum + parseFloat(part.total_price.toString()), 0);
+  const totalCost = laborCharges + totalPartsCost;
 
   return (
-    <div className="card">
-      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-        <FileText className="w-5 h-5 text-brand-primary" />
-        Job Card & Parts
-      </h2>
-
-      {loading && !jobCard ? (
-        <div className="text-center py-8 text-gray-500">Loading...</div>
-      ) : !jobCard ? (
-        <div>
-          {!showCreateForm ? (
-            <div className="text-center py-8">
-              <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-              <p className="text-gray-500 mb-4">No job card created yet</p>
-              <button
-                onClick={() => setShowCreateForm(true)}
-                className="btn btn-primary"
-              >
-                <Plus className="w-4 h-4" />
-                Create Job Card
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-semibold">Create New Job Card</h3>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Labor Charges (₹) *
-                </label>
-                <input
-                  type="number"
-                  value={laborCharges}
-                  onChange={(e) => setLaborCharges(parseFloat(e.target.value) || 0)}
-                  min="0"
-                  step="100"
-                  placeholder="e.g., 2000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Additional Work (Optional)
-                </label>
-                <textarea
-                  value={additionalWork}
-                  onChange={(e) => setAdditionalWork(e.target.value)}
-                  rows={2}
-                  placeholder="Any additional work required..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Mechanic Notes (Optional)
-                </label>
-                <textarea
-                  value={mechanicNotes}
-                  onChange={(e) => setMechanicNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Add any initial notes or observations..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={createJobCard}
-                  disabled={loading}
-                  className="btn btn-primary"
-                >
-                  <Save className="w-4 h-4" />
-                  Create Job Card
-                </button>
-                <button
-                  onClick={() => setShowCreateForm(false)}
-                  className="btn btn-secondary"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+    <div className="bg-white rounded-lg shadow p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <FileText className="h-5 w-5 text-gray-600" />
+          <h3 className="text-lg font-semibold">Job Card</h3>
+          <span className="text-sm text-gray-500">#{jobCard.job_card_number}</span>
         </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Job Card Info */}
-          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-600">Job Card Number</p>
-                <p className="font-semibold">{jobCard.job_card_number}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Labor Charges</p>
-                <p className="font-semibold text-green-600">₹{jobCard.labor_charges?.toFixed(2) || '0.00'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Created</p>
-                <p className="font-semibold">{new Date(jobCard.created_at).toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Updated</p>
-                <p className="font-semibold">
-                  {jobCard.updated_at ? new Date(jobCard.updated_at).toLocaleString() : 'N/A'}
-                </p>
-              </div>
-            </div>
-            {jobCard.additional_work && (
-              <div className="mt-3 pt-3 border-t border-blue-200">
-                <p className="text-sm text-gray-600">Additional Work</p>
-                <p className="text-sm">{jobCard.additional_work}</p>
-              </div>
-            )}
-            {jobCard.mechanic_notes && (
-              <div className="mt-3 pt-3 border-t border-blue-200">
-                <p className="text-sm text-gray-600">Mechanic Notes</p>
-                <p className="text-sm">{jobCard.mechanic_notes}</p>
-              </div>
-            )}
+        {!editing && (
+          <button
+            onClick={() => setEditing(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Edit
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Labor Charges (₹)
+            </label>
+            <input
+              type="number"
+              value={laborCharges}
+              onChange={(e) => setLaborCharges(parseFloat(e.target.value) || 0)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
           </div>
 
-          {/* Add Part Form */}
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-semibold mb-3">Add Part</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Part Name *</label>
-                <input
-                  type="text"
-                  value={partName}
-                  onChange={(e) => setPartName(e.target.value)}
-                  placeholder="e.g., Brake Pad"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Part Number</label>
-                <input
-                  type="text"
-                  value={partNumber}
-                  onChange={(e) => setPartNumber(e.target.value)}
-                  placeholder="e.g., BP-123"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                <input
-                  type="number"
-                  value={quantity}
-                  onChange={(e) => setQuantity(parseInt(e.target.value))}
-                  min="1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Unit Price (₹) *</label>
-                <input
-                  type="number"
-                  value={unitPrice}
-                  onChange={(e) => setUnitPrice(parseFloat(e.target.value))}
-                  min="0"
-                  step="0.01"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Additional Work
+            </label>
+            <textarea
+              value={additionalWork}
+              onChange={(e) => setAdditionalWork(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Mechanic Notes
+            </label>
+            <textarea
+              value={mechanicNotes}
+              onChange={(e) => setMechanicNotes(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
+
+          <div className="flex gap-2">
             <button
-              onClick={addPart}
-              disabled={loading}
-              className="btn btn-primary mt-3"
+              onClick={saveJobCard}
+              disabled={saving}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
             >
-              <Plus className="w-4 h-4" />
-              Add Part
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={() => {
+                setEditing(false);
+                fetchJobCard();
+              }}
+              className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+            >
+              Cancel
             </button>
           </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-500">Labor Charges</p>
+              <p className="text-lg font-semibold">₹{laborCharges.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Parts Cost</p>
+              <p className="text-lg font-semibold">₹{totalPartsCost.toFixed(2)}</p>
+            </div>
+          </div>
 
-          {/* Parts List */}
-          <div>
-            <h3 className="font-semibold mb-3">Parts List ({parts.length})</h3>
-            {parts.length === 0 ? (
-              <p className="text-gray-500 text-center py-4">No parts added yet</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-4 py-2 text-left">Part Name</th>
-                      <th className="px-4 py-2 text-left">Part #</th>
-                      <th className="px-4 py-2 text-right">Qty</th>
-                      <th className="px-4 py-2 text-right">Unit Price</th>
-                      <th className="px-4 py-2 text-right">Total</th>
-                      <th className="px-4 py-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {parts.map((part) => (
-                      <tr key={part.id} className="border-t border-gray-200">
-                        <td className="px-4 py-2">{part.part_name}</td>
-                        <td className="px-4 py-2 text-gray-600">{part.part_number || '-'}</td>
-                        <td className="px-4 py-2 text-right">{part.quantity}</td>
-                        <td className="px-4 py-2 text-right">₹{part.unit_price.toFixed(2)}</td>
-                        <td className="px-4 py-2 text-right font-semibold">₹{part.total_price.toFixed(2)}</td>
-                        <td className="px-4 py-2">
-                          <button
-                            onClick={() => deletePart(part.id)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-gray-100 font-semibold">
-                    <tr>
-                      <td colSpan={4} className="px-4 py-2 text-right">Total Parts Cost:</td>
-                      <td className="px-4 py-2 text-right">₹{totalPartsCost.toFixed(2)}</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
+          {additionalWork && (
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Additional Work</p>
+              <p className="text-gray-700">{additionalWork}</p>
+            </div>
+          )}
+
+          {mechanicNotes && (
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Mechanic Notes</p>
+              <p className="text-gray-700">{mechanicNotes}</p>
+            </div>
+          )}
+
+          <div className="border-t pt-4">
+            <p className="text-sm text-gray-500">Total Cost</p>
+            <p className="text-2xl font-bold text-blue-600">₹{totalCost.toFixed(2)}</p>
           </div>
         </div>
       )}
+
+      {/* Parts Section */}
+      <div className="mt-6 border-t pt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-md font-semibold">Parts Used</h4>
+          {editing && (
+            <button
+              onClick={addPart}
+              className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Add Part
+            </button>
+          )}
+        </div>
+
+        {editing && (
+          <div className="mb-4 p-4 bg-gray-50 rounded-lg space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                placeholder="Part Name"
+                value={partName}
+                onChange={(e) => setPartName(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+              />
+              <input
+                type="text"
+                placeholder="Part Number"
+                value={partNumber}
+                onChange={(e) => setPartNumber(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                type="number"
+                placeholder="Quantity"
+                value={quantity}
+                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+              />
+              <input
+                type="number"
+                placeholder="Unit Price"
+                value={unitPrice}
+                onChange={(e) => setUnitPrice(parseFloat(e.target.value) || 0)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+              />
+              <button
+                onClick={addPart}
+                disabled={!partName || saving}
+                className="px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        )}
+
+        {parts.length === 0 ? (
+          <p className="text-gray-500 text-sm">No parts added yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {parts.map((part) => (
+              <div
+                key={part.id}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+              >
+                <div className="flex-1">
+                  <p className="font-medium">{part.part_name}</p>
+                  {part.part_number && (
+                    <p className="text-sm text-gray-500">Part #: {part.part_number}</p>
+                  )}
+                  <p className="text-sm text-gray-500">
+                    Qty: {part.quantity} × ₹{parseFloat(part.unit_price.toString()).toFixed(2)} = ₹{parseFloat(part.total_price.toString()).toFixed(2)}
+                  </p>
+                </div>
+                {editing && (
+                  <button
+                    onClick={() => deletePart(part.id)}
+                    className="p-2 text-red-600 hover:bg-red-50 rounded"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-

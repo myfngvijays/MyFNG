@@ -79,50 +79,75 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
 
   async function handleAssignment(type: 'mechanic' | 'pickup' | 'supervisor', userId: string) {
     setLoading(true);
-    const supabase = createClient();
 
     try {
-      const updateData: any = {
-        updated_at: new Date().toISOString(),
+      // Use the proper API endpoint for team assignment
+      // This ensures mechanic_jobs entry is created/updated
+      const requestBody: any = {
+        notes: `Assigned via Internal Assignment component`
       };
 
       if (type === 'mechanic') {
-        updateData.assigned_mechanic_id = userId || null;
-        updateData.mechanic_assigned_at = userId ? new Date().toISOString() : null;
+        if (!userId) {
+          alert('Please select a mechanic');
+          setLoading(false);
+          return;
+        }
+        requestBody.mechanic_id = userId;
+        // Keep existing supervisor/pickup if already assigned
+        if (lead.assigned_supervisor_id) {
+          requestBody.supervisor_id = lead.assigned_supervisor_id;
+        }
+        if (lead.assigned_pickup_boy_id) {
+          requestBody.pickup_boy_id = lead.assigned_pickup_boy_id;
+        }
       } else if (type === 'pickup') {
-        updateData.assigned_pickup_boy_id = userId || null;
-        updateData.pickup_assigned_at = userId ? new Date().toISOString() : null;
+        requestBody.pickup_boy_id = userId || null;
+        // Keep existing mechanic/supervisor if already assigned
+        if (lead.assigned_mechanic_id) {
+          requestBody.mechanic_id = lead.assigned_mechanic_id;
+        }
+        if (lead.assigned_supervisor_id) {
+          requestBody.supervisor_id = lead.assigned_supervisor_id;
+        }
       } else if (type === 'supervisor') {
-        updateData.assigned_supervisor_id = userId || null;
-        updateData.supervisor_assigned_at = userId ? new Date().toISOString() : null;
+        requestBody.supervisor_id = userId || null;
+        // Keep existing mechanic/pickup if already assigned
+        if (lead.assigned_mechanic_id) {
+          requestBody.mechanic_id = lead.assigned_mechanic_id;
+        }
+        if (lead.assigned_pickup_boy_id) {
+          requestBody.pickup_boy_id = lead.assigned_pickup_boy_id;
+        }
       }
 
-      const { error } = await supabase
-        .from('service_leads')
-        .update(updateData)
-        .eq('id', lead.id);
-
-      if (error) {
-        console.error('Error assigning:', error);
-        alert('Failed to assign');
+      // Mechanic assignment requires mechanic_id
+      if (type === 'mechanic' && !requestBody.mechanic_id) {
+        alert('Mechanic ID is required');
+        setLoading(false);
         return;
       }
 
-      // Create event
-      const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('lead_events').insert({
-        lead_id: lead.id,
-        event_type: `${type.toUpperCase()}_ASSIGNED`,
-        event_description: `${type} assigned`,
-        event_data: { [`${type}_id`]: userId },
-        created_by: user?.id,
+      const response = await fetch(`/api/workshop/leads/${lead.id}/assign-team`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
       });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Error assigning team:', data);
+        alert(`Failed to assign: ${data.error || 'Unknown error'}`);
+        setLoading(false);
+        return;
+      }
 
       alert('✅ Assignment successful!');
       onUpdate?.();
-    } catch (error) {
-      console.error('Error:', error);
-      alert('Failed to assign');
+    } catch (error: any) {
+      console.error('❌ [INTERNAL-ASSIGNMENT] Unexpected error:', error);
+      alert(`Failed to assign: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

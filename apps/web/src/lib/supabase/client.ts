@@ -5,9 +5,6 @@ export const createClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-  console.log('Supabase URL:', supabaseUrl ? 'Found' : 'Missing');
-  console.log('Supabase Key:', supabaseKey ? 'Found' : 'Missing');
-
   if (!supabaseUrl || !supabaseKey) {
     throw new Error(`Missing Supabase environment variables. Please check your .env.local file.
     URL: ${supabaseUrl ? '✓ Found' : '✗ Missing'}

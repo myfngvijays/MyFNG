@@ -36,8 +36,6 @@ export default function MechanicJobsPage() {
         return;
       }
 
-      console.log('Fetching jobs for mechanic:', userProfile.id);
-
       // Fetch from mechanic_jobs table directly with proper joins
       const { data: mechanicJobs, error: jobsError } = await supabase
         .from('mechanic_jobs')
@@ -51,7 +49,8 @@ export default function MechanicJobsPage() {
             vehicle_number,
             vehicle_make,
             vehicle_model,
-            service_types,
+            service_type,
+            service_type_ids,
             problem_description,
             status,
             pickup_required
@@ -67,22 +66,73 @@ export default function MechanicJobsPage() {
         return;
       }
 
-      // Transform data to match expected format
-      const jobsData = (mechanicJobs || []).map((mj: any) => {
-        // Parse service_types if it's a string
-        let serviceTypes = [];
-        if (mj.lead?.service_types) {
-          if (typeof mj.lead.service_types === 'string') {
+      // Fetch service names for all leads
+      const allServiceTypeIds = new Set<string>();
+      (mechanicJobs || []).forEach((mj: any) => {
+        if (mj.lead?.service_type_ids) {
+          let ids: string[] = [];
+          if (typeof mj.lead.service_type_ids === 'string') {
             try {
-              serviceTypes = JSON.parse(mj.lead.service_types);
-            } catch (e) {
-              console.error('Error parsing service_types:', e);
-              serviceTypes = [];
+              ids = JSON.parse(mj.lead.service_type_ids);
+            } catch {
+              try {
+                const unescaped = mj.lead.service_type_ids.replace(/\\"/g, '"').replace(/^"|"$/g, '');
+                ids = JSON.parse(unescaped);
+              } catch {
+                ids = [];
+              }
             }
           } else {
-            serviceTypes = mj.lead.service_types;
+            ids = mj.lead.service_type_ids;
           }
+          ids.forEach((id: string) => allServiceTypeIds.add(id));
+        } else if (mj.lead?.service_type) {
+          allServiceTypeIds.add(mj.lead.service_type);
         }
+      });
+
+      // Fetch service names
+      const serviceNamesMap = new Map<string, string>();
+      if (allServiceTypeIds.size > 0) {
+        const { data: serviceTypesData } = await supabase
+          .from('service_types')
+          .select('id, name')
+          .in('id', Array.from(allServiceTypeIds));
+
+        if (serviceTypesData) {
+          serviceTypesData.forEach((st: any) => {
+            serviceNamesMap.set(st.id, st.name);
+          });
+        }
+      }
+
+      // Transform data to match expected format
+      const jobsData = (mechanicJobs || []).map((mj: any) => {
+        // Parse service_type_ids (JSONB array) or use service_type (string)
+        let serviceTypeIds: string[] = [];
+        if (mj.lead?.service_type_ids) {
+          if (typeof mj.lead.service_type_ids === 'string') {
+            try {
+              serviceTypeIds = JSON.parse(mj.lead.service_type_ids);
+            } catch {
+              try {
+                const unescaped = mj.lead.service_type_ids.replace(/\\"/g, '"').replace(/^"|"$/g, '');
+                serviceTypeIds = JSON.parse(unescaped);
+              } catch {
+                serviceTypeIds = [];
+              }
+            }
+          } else {
+            serviceTypeIds = mj.lead.service_type_ids;
+          }
+        } else if (mj.lead?.service_type) {
+          serviceTypeIds = [mj.lead.service_type];
+        }
+
+        // Get service names
+        const serviceNames = serviceTypeIds
+          .map((id: string) => serviceNamesMap.get(id))
+          .filter((name): name is string => !!name);
 
         return {
           job_id: mj.id,
@@ -93,7 +143,8 @@ export default function MechanicJobsPage() {
           vehicle_number: mj.lead?.vehicle_number || 'N/A',
           vehicle_make: mj.lead?.vehicle_make || '',
           vehicle_model: mj.lead?.vehicle_model || '',
-          service_types: serviceTypes,
+          service_types: serviceTypeIds,
+          service_type_names: serviceNames,
           problem_description: mj.lead?.problem_description || '',
           mechanic_status: mj.mechanic_status,
           job_priority: mj.job_priority,
@@ -105,10 +156,6 @@ export default function MechanicJobsPage() {
           after_images_count: mj.after_images_count || 0,
         };
       });
-
-      console.log('Mechanic jobs raw:', mechanicJobs);
-      console.log('Jobs transformed:', jobsData);
-      console.log('Total jobs:', jobsData.length);
       
       setJobs(jobsData);
       setLoading(false);
@@ -195,7 +242,11 @@ export default function MechanicJobsPage() {
                   {job.problem_description && (
                     <p className="text-lg text-gray-700 mt-1">{job.problem_description}</p>
                   )}
-                  {job.service_types && Array.isArray(job.service_types) && job.service_types.length > 0 && (
+                  {job.service_type_names && job.service_type_names.length > 0 ? (
+                    <p className="text-sm text-gray-600 mt-1">
+                      Services: {job.service_type_names.join(', ')}
+                    </p>
+                  ) : job.service_types && Array.isArray(job.service_types) && job.service_types.length > 0 && (
                     <p className="text-sm text-gray-600 mt-1">
                       Services: {job.service_types.join(', ')}
                     </p>
