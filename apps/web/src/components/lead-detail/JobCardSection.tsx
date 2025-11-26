@@ -66,23 +66,53 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
         .eq('lead_id', lead.id)
         .single();
 
-      if (jobCardError && jobCardError.code !== 'PGRST116') {
-        throw jobCardError;
+      // Handle 406 (Not Acceptable) - RLS or permission issue
+      if (jobCardError) {
+        if (jobCardError.code === 'PGRST116') {
+          // No rows returned - job card doesn't exist yet, that's OK
+          setJobCard(null);
+          setParts([]);
+          setLoading(false);
+          return;
+        }
+        
+        if (jobCardError.status === 406 || jobCardError.message?.includes('406')) {
+          // RLS blocking access - log but don't throw, allow user to continue
+          console.warn('Job card access restricted by RLS:', jobCardError);
+          setJobCard(null);
+          setParts([]);
+          setLoading(false);
+          return;
+        }
+        
+        // Other errors - log but continue
+        console.error('Error fetching job card:', jobCardError);
+        setJobCard(null);
+        setParts([]);
+        setLoading(false);
+        return;
       }
 
       setJobCard(jobCardData);
 
       if (jobCardData) {
-        const { data: partsData } = await supabase
+        const { data: partsData, error: partsError } = await supabase
           .from('job_card_parts')
           .select('*')
           .eq('job_card_id', jobCardData.id)
           .order('created_at', { ascending: true });
 
+        if (partsError && partsError.status !== 406) {
+          console.error('Error fetching parts:', partsError);
+        }
+
         setParts(partsData || []);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Handle any unexpected errors gracefully
       console.error('Error fetching job card:', error);
+      setJobCard(null);
+      setParts([]);
     } finally {
       setLoading(false);
     }
