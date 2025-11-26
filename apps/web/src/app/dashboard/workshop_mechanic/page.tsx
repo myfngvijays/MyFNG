@@ -114,45 +114,16 @@ export default function WorkshopMechanicDashboard() {
     const supabase = createClient();
 
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
-        console.error('Auth error:', authError);
-        setLoading(false);
-        return;
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      console.log('Auth user:', user.id, user.email);
-
-      // Try to get user profile by email first, then by auth.id
-      let userProfile = null;
-      const { data: profileByEmail } = await supabase
+      const { data: userProfile } = await supabase
         .from('users_login')
-        .select('id, email, full_name')
+        .select('id')
         .eq('email', user.email)
         .single();
 
-      if (profileByEmail) {
-        userProfile = profileByEmail;
-      } else {
-        // Try by auth.id (if users_login.id matches auth.id)
-        const { data: profileById } = await supabase
-          .from('users_login')
-          .select('id, email, full_name')
-          .eq('id', user.id)
-          .single();
-        
-        if (profileById) {
-          userProfile = profileById;
-        }
-      }
-
-      if (!userProfile) {
-        console.error('User profile not found for:', user.email, user.id);
-        setLoading(false);
-        return;
-      }
-
-      console.log('User profile found:', userProfile.id, userProfile.email);
+      if (!userProfile) return;
 
       // Fetch jobs from mechanic_jobs table directly (more reliable than view)
       const { data: mechanicJobs, error: jobsError } = await supabase
@@ -169,39 +140,12 @@ export default function WorkshopMechanicDashboard() {
             service_types,
             problem_description,
             status,
-            pickup_required
-          ),
-          pickup:pickup_tracking(pickup_status)
+            pickup_required,
+            pickup_status
+          )
         `)
         .eq('mechanic_id', userProfile.id)
         .order('assigned_at', { ascending: false });
-
-      console.log('Mechanic jobs query result:', {
-        mechanic_id: userProfile.id,
-        jobs_count: mechanicJobs?.length || 0,
-        jobs: mechanicJobs,
-        error: jobsError
-      });
-
-      // DEBUG: Also check all mechanic_jobs to see if any exist
-      const { data: allJobs, error: allJobsError } = await supabase
-        .from('mechanic_jobs')
-        .select('id, mechanic_id, lead_id, mechanic_status, assigned_at')
-        .limit(10);
-      
-      console.log('All mechanic_jobs (first 10):', {
-        total_count: allJobs?.length || 0,
-        jobs: allJobs,
-        error: allJobsError
-      });
-
-      // DEBUG: Check if any jobs exist for this mechanic_id
-      const { count: jobCount } = await supabase
-        .from('mechanic_jobs')
-        .select('*', { count: 'exact', head: true })
-        .eq('mechanic_id', userProfile.id);
-      
-      console.log('Total jobs for this mechanic:', jobCount);
 
       if (jobsError) {
         console.error('Error fetching mechanic jobs:', jobsError);
@@ -231,7 +175,7 @@ export default function WorkshopMechanicDashboard() {
         before_images_count: mj.before_images_count || 0,
         progress_images_count: mj.progress_images_count || 0,
         after_images_count: mj.after_images_count || 0,
-        pickup_status: mj.pickup?.[0]?.pickup_status || 'NOT_REQUIRED',
+        pickup_status: mj.lead?.pickup_status || 'NOT_REQUIRED',
         pickup_required: mj.lead?.pickup_required || false,
         has_pending_extra_work: false, // Will be calculated separately
         has_parts_assigned: false, // Will be calculated separately
