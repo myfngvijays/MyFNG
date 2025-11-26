@@ -72,7 +72,10 @@ export default function PhotoUploadScreen({
         .eq('lead_id', leadId)
         .like('photo_type', `${photoCategory}_%`);
 
-      if (error) throw error;
+      if (error) {
+        // Error handled silently
+        return;
+      }
 
       if (data && data.length > 0) {
         setPhotos((prevPhotos) =>
@@ -86,7 +89,7 @@ export default function PhotoUploadScreen({
         );
       }
     } catch (error) {
-      console.error('Error fetching existing photos:', error);
+      // Error handled silently
     }
   };
 
@@ -108,7 +111,7 @@ export default function PhotoUploadScreen({
         longitude: location.coords.longitude,
       });
     } catch (error) {
-      console.error('Error getting location:', error);
+      // Error handled silently
     }
   };
 
@@ -128,7 +131,6 @@ export default function PhotoUploadScreen({
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to take photo');
-      console.error(error);
     }
   };
 

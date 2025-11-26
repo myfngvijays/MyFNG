@@ -54,6 +54,33 @@ export default function QCCheckScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchQCJobs();
+    
+    // Setup realtime subscription
+    const channel = supabase
+      .channel('qc-queue-updates')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'mechanic_jobs'
+      }, () => {
+        console.log('QC Queue: Real-time update received');
+        fetchQCJobs();
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'qc_checks'
+      }, () => {
+        console.log('QC Checks: Real-time update received');
+        fetchQCJobs();
+      })
+      .subscribe((status) => {
+        console.log('QC queue subscription status:', status);
+      });
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
@@ -74,52 +101,80 @@ export default function QCCheckScreen({ navigation }: any) {
       const workshopId = userProfile?.workshop_id;
       if (!workshopId) return;
 
-      // Fetch jobs ready for QC
-      const { data: mechanicJobs } = await supabase
-        .from('mechanic_jobs')
+      console.log('🔍 Fetching QC jobs for workshop:', workshopId);
+
+      // ✅ FIX: Use service_leads table like web app does
+      const { data: qcJobs, error } = await supabase
+        .from('service_leads')
         .select(`
-          *,
-          service_leads!inner (
-            id,
-            lead_number,
-            customer_name,
-            vehicle_number,
-            vehicle_make,
-            vehicle_model,
-            service_types,
-            workshop_id
-          ),
-          mechanic:mechanic_id (
-            full_name
-          ),
-          qc_checks (
-            qc_status,
-            supervisor_notes
-          )
+          id,
+          lead_number,
+          customer_name,
+          vehicle_number,
+          vehicle_make,
+          vehicle_model,
+          mechanic_completed_at,
+          notes,
+          status,
+          qc_status,
+          assigned_mechanic_id
         `)
-        .eq('service_leads.workshop_id', workshopId)
-        .eq('mechanic_status', 'COMPLETED')
-        .order('completed_at', { ascending: false });
+        .eq('workshop_id', workshopId)
+        .eq('status', 'COMPLETED')
+        .eq('qc_status', 'PENDING')
+        .order('mechanic_completed_at', { ascending: true });
 
-      const formattedJobs = mechanicJobs?.map((job: any) => ({
-        id: job.id,
-        lead_id: job.lead_id,
-        lead_number: job.service_leads.lead_number,
-        customer_name: job.service_leads.customer_name,
-        vehicle_number: job.service_leads.vehicle_number,
-        vehicle_make: job.service_leads.vehicle_make,
-        vehicle_model: job.service_leads.vehicle_model,
-        mechanic_name: job.mechanic?.full_name || 'Unknown',
-        service_types: job.service_leads.service_types || [],
-        mechanic_status: job.mechanic_status,
-        completed_at: job.completed_at,
-        checklist_completed: job.checklist_completed || false,
-        before_images_count: job.before_images_count || 0,
-        after_images_count: job.after_images_count || 0,
-        qc_status: job.qc_checks?.[0]?.qc_status,
-      })) || [];
+      if (error) {
+        console.error('❌ Error fetching QC queue:', error);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
 
-      setJobs(formattedJobs);
+      console.log('✅ Found', qcJobs?.length || 0, 'jobs pending QC');
+
+      // Fetch mechanic names and image counts from mechanic_media
+      const jobsWithDetails = await Promise.all((qcJobs || []).map(async (job) => {
+        // Get mechanic name
+        const { data: mechanic } = await supabase
+          .from('users_login')
+          .select('full_name')
+          .eq('id', job.assigned_mechanic_id)
+          .single();
+
+        // Get image counts from mechanic_media
+        const { count: beforeCount } = await supabase
+          .from('mechanic_media')
+          .select('*', { count: 'exact', head: true })
+          .eq('lead_id', job.id)
+          .eq('media_category', 'BEFORE');
+
+        const { count: afterCount } = await supabase
+          .from('mechanic_media')
+          .select('*', { count: 'exact', head: true })
+          .eq('lead_id', job.id)
+          .eq('media_category', 'AFTER');
+
+        return {
+          id: job.id,
+          lead_id: job.id,
+          lead_number: job.lead_number,
+          customer_name: job.customer_name,
+          vehicle_number: job.vehicle_number,
+          vehicle_make: job.vehicle_make || '',
+          vehicle_model: job.vehicle_model || '',
+          mechanic_name: mechanic?.full_name || 'Unknown',
+          service_types: [],
+          mechanic_status: 'COMPLETED',
+          completed_at: job.mechanic_completed_at,
+          checklist_completed: true,
+          before_images_count: beforeCount || 0,
+          after_images_count: afterCount || 0,
+          qc_status: job.qc_status,
+        };
+      }));
+
+      setJobs(jobsWithDetails);
       setLoading(false);
       setRefreshing(false);
     } catch (error) {

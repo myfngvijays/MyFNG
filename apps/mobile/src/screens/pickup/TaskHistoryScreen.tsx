@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export default function TaskHistoryScreen({ userId }) {
   const [tasks, setTasks] = useState([]);
@@ -20,29 +21,114 @@ export default function TaskHistoryScreen({ userId }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchHistory();
+    // ✅ FIX: Fetch userId if not provided
+    if (!userId) {
+      fetchUserId();
+    } else {
+      fetchHistory();
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    // ✅ FIX: Setup realtime subscription when userId is available
+    if (!userId) return;
+
+    let channel: RealtimeChannel;
+
+    const setupRealtimeSubscription = () => {
+      channel = supabase
+        .channel('pickup-boy-history')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'service_leads'
+          },
+            (payload) => {
+              fetchHistory();
+            }
+          )
+          .subscribe();
+    };
+
+    setupRealtimeSubscription();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [userId]);
 
   useEffect(() => {
     filterTasks();
   }, [filter, tasks]);
 
-  const fetchHistory = async () => {
-    if (!userId) return;
+  // ✅ FIX: Fetch user ID by email (like web)
+  const fetchUserId = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: userProfile } = await supabase
+        .from('users_login')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+
+      if (userProfile?.id) {
+        // Update userId state to trigger fetchHistory and realtime subscription
+        // Note: This component receives userId as prop, so we'll call fetchHistory directly
+        await fetchHistory(userProfile.id);
+      }
+    } catch (error) {
+      // Error handled silently
+    }
+  };
+
+  const fetchHistory = async (pickupBoyId?: string) => {
+    const idToUse = pickupBoyId || userId;
+    if (!idToUse) return;
 
     try {
+      setLoading(true);
+
+      // ✅ FIX: Fetch from service_leads table (like web)
       const { data, error } = await supabase
-        .from('pickup_delivery_tasks')
+        .from('service_leads')
         .select('*')
-        .eq('assigned_to_id', userId)
-        .in('status', ['COMPLETED', 'CANCELLED'])
-        .order('completed_at', { ascending: false })
+        .eq('assigned_pickup_boy_id', idToUse)
+        .eq('pickup_required', true)
+        .not('status', 'in', '(REJECTED)')
+        .order('created_at', { ascending: false })
         .limit(50);
 
-      if (error) throw error;
-      setTasks(data || []);
+      if (error) {
+        throw error;
+      }
+
+      // ✅ FIX: Format tasks for display
+      const formattedTasks = (data || []).map(item => ({
+        id: item.id,
+        lead_number: item.lead_number,
+        customer_name: item.customer_name,
+        customer_phone: item.customer_phone,
+        customer_address: item.customer_address || item.address,
+        vehicle_number: item.vehicle_number,
+        vehicle_make: item.vehicle_make,
+        vehicle_model: item.vehicle_model,
+        task_type: item.pickup_required ? 'PICKUP' : 'DELIVERY',
+        pickup_address: item.customer_address || item.address,
+        delivery_address: item.workshop_address,
+        status: item.pickup_status === 'PICKED_UP' || item.pickup_status === 'DELIVERED' ? 'COMPLETED' : 
+                item.status === 'CANCELLED' ? 'CANCELLED' : item.pickup_status || item.status,
+        completed_at: item.pickup_completed_at || item.updated_at,
+        created_at: item.created_at,
+      }));
+
+      setTasks(formattedTasks);
     } catch (error) {
-      console.error('Error fetching history:', error);
       Alert.alert('Error', 'Failed to load history');
     } finally {
       setLoading(false);
@@ -53,9 +139,16 @@ export default function TaskHistoryScreen({ userId }) {
     if (filter === 'all') {
       setFilteredTasks(tasks);
     } else if (filter === 'completed') {
-      setFilteredTasks(tasks.filter(t => t.status === 'COMPLETED'));
+      setFilteredTasks(tasks.filter(t => 
+        t.status === 'COMPLETED' || 
+        t.pickup_status === 'PICKED_UP' || 
+        t.pickup_status === 'DELIVERED'
+      ));
     } else if (filter === 'cancelled') {
-      setFilteredTasks(tasks.filter(t => t.status === 'CANCELLED'));
+      setFilteredTasks(tasks.filter(t => 
+        t.status === 'CANCELLED' || 
+        t.status === 'REJECTED'
+      ));
     }
   };
 
@@ -145,11 +238,22 @@ export default function TaskHistoryScreen({ userId }) {
           <Text style={styles.statLabel}>Total</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={styles.statValue}>{tasks.filter(t => t.status === 'COMPLETED').length}</Text>
+          <Text style={styles.statValue}>
+            {tasks.filter(t => 
+              t.status === 'COMPLETED' || 
+              t.pickup_status === 'PICKED_UP' || 
+              t.pickup_status === 'DELIVERED'
+            ).length}
+          </Text>
           <Text style={styles.statLabel}>Completed</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={styles.statValue}>{tasks.filter(t => t.status === 'CANCELLED').length}</Text>
+          <Text style={styles.statValue}>
+            {tasks.filter(t => 
+              t.status === 'CANCELLED' || 
+              t.status === 'REJECTED'
+            ).length}
+          </Text>
           <Text style={styles.statLabel}>Cancelled</Text>
         </View>
       </View>

@@ -14,6 +14,42 @@ import WorkshopSupervisorDashboard from '../screens/dashboard/WorkshopSupervisor
 import WorkshopMechanicDashboard from '../screens/dashboard/WorkshopMechanicDashboard';
 import WorkshopPickupBoyDashboard from '../screens/dashboard/WorkshopPickupBoyDashboard';
 
+// Workshop Supervisor screens
+import TeamOverviewScreen from '../screens/dashboard/workshop_supervisor/TeamOverviewScreen';
+import TeamPerformanceScreen from '../screens/dashboard/workshop_supervisor/TeamPerformanceScreen';
+import DayPlanningScreen from '../screens/dashboard/workshop_supervisor/DayPlanningScreen';
+import DailyReportScreen from '../screens/dashboard/workshop_supervisor/DailyReportScreen';
+import PickupDeliveryTrackingScreen from '../screens/dashboard/workshop_supervisor/PickupDeliveryTrackingScreen';
+import SupervisorProfileScreen from '../screens/dashboard/workshop_supervisor/SupervisorProfileScreen';
+import QCCheckScreen from '../screens/dashboard/workshop_supervisor/QCCheckScreen';
+import ExtraWorkApprovalScreen from '../screens/dashboard/workshop_supervisor/ExtraWorkApprovalScreen';
+import SupervisorAnalyticsScreen from '../screens/dashboard/workshop_supervisor/SupervisorAnalyticsScreen';
+import JobMonitoringScreen from '../screens/dashboard/workshop_supervisor/JobMonitoringScreen';
+import JobDetailScreen from '../screens/dashboard/workshop_supervisor/JobDetailScreen';
+import MechanicAssignmentScreen from '../screens/dashboard/workshop_supervisor/MechanicAssignmentScreen';
+import SupervisorMenuScreen from '../screens/dashboard/workshop_supervisor/SupervisorMenuScreen';
+
+// CSE screens
+import ComplaintsManagementScreen from '../screens/dashboard/cse/ComplaintsManagementScreen';
+import CSELeadDetailScreen from '../screens/dashboard/cse/CSELeadDetailScreen';
+import CSEFollowUpsScreen from '../screens/dashboard/cse/CSEFollowUpsScreen';
+import CloseComplaintScreen from '../screens/dashboard/cse/CloseComplaintScreen';
+
+// Auditor screens
+import AuditQueueScreen from '../screens/dashboard/auditor/AuditQueueScreen';
+import FraudDetectionScreenAuditor from '../screens/dashboard/auditor/FraudDetectionScreen';
+import LeadAuditDetailScreen from '../screens/dashboard/auditor/LeadAuditDetailScreen';
+
+// Telecaller screens
+import TeamManagerViewScreen from '../screens/dashboard/telecaller/TeamManagerViewScreen';
+import TelecallerLeadsScreen from '../screens/dashboard/telecaller/TelecallerLeadsScreen';
+import TelecallerCreateLeadScreen from '../screens/dashboard/telecaller/TelecallerCreateLeadScreen';
+import TelecallerEditLeadScreen from '../screens/dashboard/telecaller/TelecallerEditLeadScreen';
+import TelecallerLeadDetailScreen from '../screens/dashboard/telecaller/TelecallerLeadDetailScreen';
+import TelecallerFollowUpsScreen from '../screens/dashboard/telecaller/TelecallerFollowUpsScreen';
+import TelecallerProfileScreen from '../screens/dashboard/telecaller/TelecallerProfileScreen';
+import TelecallerScriptsScreen from '../screens/dashboard/telecaller/TelecallerScriptsScreen';
+
 // Workshop Admin screens
 import WorkshopAdminLeadsListScreen from '../screens/dashboard/workshop_admin/LeadsListScreen';
 import WorkshopAdminLeadDetailScreen from '../screens/dashboard/workshop_admin/LeadDetailScreen';
@@ -22,14 +58,6 @@ import WorkshopAdminJobAssignmentScreen from '../screens/dashboard/workshop_admi
 import WorkshopAdminPickupTrackingScreen from '../screens/dashboard/workshop_admin/PickupTrackingScreen';
 import WorkshopAdminReportsScreen from '../screens/dashboard/workshop_admin/ReportsScreen';
 import WorkshopAdminSettingsScreen from '../screens/dashboard/workshop_admin/SettingsScreen';
-
-// Telecaller screens
-import TelecallerLeadsScreen from '../screens/dashboard/telecaller/TelecallerLeadsScreen';
-import TelecallerCreateLeadScreen from '../screens/dashboard/telecaller/TelecallerCreateLeadScreen';
-import TelecallerEditLeadScreen from '../screens/dashboard/telecaller/TelecallerEditLeadScreen';
-import TelecallerLeadDetailScreen from '../screens/dashboard/telecaller/TelecallerLeadDetailScreen';
-import TelecallerFollowUpsScreen from '../screens/dashboard/telecaller/TelecallerFollowUpsScreen';
-import TelecallerScriptsScreen from '../screens/dashboard/telecaller/TelecallerScriptsScreen';
 
 // Lead Manager screens  
 import LeadManagerLeadsScreen from '../screens/dashboard/leadmanager/LeadManagerLeadsScreen';
@@ -58,10 +86,10 @@ interface DashboardNavigatorProps {
 }
 
 export default function DashboardNavigator({ userProfile, onLogout }: DashboardNavigatorProps) {
-  // Extract role code from various possible locations
+  // ✅ FIX: Extract role code from various possible locations
   const roleCode = 
-    userProfile?.role?.role_code ||  // From database join
-    userProfile?.role_code ||         // Direct field
+    userProfile?.role?.role_code ||  // From database join (roles!role_id)
+    userProfile?.role_code ||         // Direct field (if exists)
     (typeof userProfile?.role === 'string' ? userProfile?.role : null) ||
     'UNKNOWN';
   
@@ -70,9 +98,15 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     userProfile?.role_name || 
     'User';
 
-  console.log('🔍 DashboardNavigator - User Profile:', userProfile);
+  console.log('🔍 DashboardNavigator - User Profile:', JSON.stringify(userProfile, null, 2));
+  console.log('🔍 DashboardNavigator - Role Object:', userProfile?.role);
   console.log('🔍 DashboardNavigator - Role Code:', roleCode);
   console.log('🔍 DashboardNavigator - Role Name:', roleName);
+  
+  // ✅ DEBUG: Show which dashboard will be rendered
+  if (roleCode === 'UNKNOWN') {
+    console.error('❌ ROLE NOT FOUND! User profile structure:', userProfile);
+  }
 
   // Header right button component
   const LogoutButton = () => (
@@ -132,6 +166,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="TelecallerScripts" 
           component={TelecallerScriptsScreen}
           options={{ title: 'Call Scripts' }}
+        />
+        <Stack.Screen 
+          name="TeamManagerView" 
+          component={TeamManagerViewScreen}
+          options={{ title: 'Team Management' }}
         />
       </Stack.Navigator>
     );
@@ -194,6 +233,26 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={CSEDashboardScreen}
           options={{ title: 'CSE Dashboard' }}
         />
+        <Stack.Screen 
+          name="ComplaintsManagement" 
+          component={ComplaintsManagementScreen}
+          options={{ title: 'Complaints' }}
+        />
+        <Stack.Screen 
+          name="CSELeadDetail" 
+          component={CSELeadDetailScreen}
+          options={{ title: 'Lead Details' }}
+        />
+        <Stack.Screen 
+          name="CSEFollowUps" 
+          component={CSEFollowUpsScreen}
+          options={{ title: 'Follow-ups' }}
+        />
+        <Stack.Screen 
+          name="CloseComplaint" 
+          component={CloseComplaintScreen}
+          options={{ title: 'Close Complaint' }}
+        />
       </Stack.Navigator>
     );
   }
@@ -206,6 +265,21 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="AuditorDashboard" 
           component={AuditorDashboardScreen}
           options={{ title: 'Auditor Dashboard' }}
+        />
+        <Stack.Screen 
+          name="AuditQueue" 
+          component={AuditQueueScreen}
+          options={{ title: 'Audit Queue' }}
+        />
+        <Stack.Screen 
+          name="FraudDetection" 
+          component={FraudDetectionScreenAuditor}
+          options={{ title: 'Fraud Detection' }}
+        />
+        <Stack.Screen 
+          name="LeadAuditDetail" 
+          component={LeadAuditDetailScreen}
+          options={{ title: 'Audit Lead' }}
         />
       </Stack.Navigator>
     );
@@ -268,6 +342,71 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={WorkshopSupervisorDashboard}
           options={{ title: 'Supervisor Dashboard' }}
         />
+        <Stack.Screen 
+          name="SupervisorMenu" 
+          component={SupervisorMenuScreen}
+          options={{ title: 'All Features' }}
+        />
+        <Stack.Screen 
+          name="DayPlanning" 
+          component={DayPlanningScreen}
+          options={{ title: 'Day Planning' }}
+        />
+        <Stack.Screen 
+          name="JobMonitoring" 
+          component={JobMonitoringScreen}
+          options={{ title: 'Job Monitoring' }}
+        />
+        <Stack.Screen 
+          name="QCCheck" 
+          component={QCCheckScreen}
+          options={{ title: 'QC Queue' }}
+        />
+        <Stack.Screen 
+          name="ExtraWorkApproval" 
+          component={ExtraWorkApprovalScreen}
+          options={{ title: 'Extra Work Approvals' }}
+        />
+        <Stack.Screen 
+          name="TeamOverview" 
+          component={TeamOverviewScreen}
+          options={{ title: 'Team Overview' }}
+        />
+        <Stack.Screen 
+          name="TeamPerformance" 
+          component={TeamPerformanceScreen}
+          options={{ title: 'Team Performance' }}
+        />
+        <Stack.Screen 
+          name="DailyReport" 
+          component={DailyReportScreen}
+          options={{ title: 'Daily Report' }}
+        />
+        <Stack.Screen 
+          name="PickupDeliveryTracking" 
+          component={PickupDeliveryTrackingScreen}
+          options={{ title: 'Pickup & Delivery' }}
+        />
+        <Stack.Screen 
+          name="SupervisorAnalytics" 
+          component={SupervisorAnalyticsScreen}
+          options={{ title: 'Analytics' }}
+        />
+        <Stack.Screen 
+          name="SupervisorProfile" 
+          component={SupervisorProfileScreen}
+          options={{ title: 'My Profile' }}
+        />
+        <Stack.Screen 
+          name="JobDetail" 
+          component={JobDetailScreen}
+          options={{ title: 'Job Details' }}
+        />
+        <Stack.Screen 
+          name="MechanicAssignment" 
+          component={MechanicAssignmentScreen}
+          options={{ title: 'Assign Mechanic' }}
+        />
       </Stack.Navigator>
     );
   }
@@ -281,7 +420,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
-          name="Dashboard" 
+          name="MechanicDashboard" 
           component={WorkshopMechanicDashboard}
           options={{ title: 'Mechanic Dashboard' }}
         />
@@ -354,7 +493,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen 
-        name="Dashboard"
+        name="UnknownRoleDashboard"
         options={{ title: 'Dashboard' }}
       >
         {() => (

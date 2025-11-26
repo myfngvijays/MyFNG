@@ -1,29 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../context/AuthContext';
 import DashboardHeader from '../../components/DashboardHeader';
+import BottomNav from '../../components/BottomNav';
 import StatCard from '../../components/StatCard';
 import LeadCard from '../../components/LeadCard';
 import { COLORS, SPACING } from '../../constants/theme';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import MechanicJobsScreen from './workshop_mechanic/MechanicJobsScreen';
+import MechanicJobHistoryScreen from './workshop_mechanic/MechanicJobHistoryScreen';
+import MechanicProfileScreen from './workshop_mechanic/MechanicProfileScreen';
 
 export default function WorkshopMechanicDashboard({ navigation }: any) {
-  const [userProfile, setUserProfile] = React.useState(null);
-
-  React.useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single()
-          .then(({ data }) => {
-            if (data) setUserProfile(data);
-          });
-      }
-    });
-  }, []);
+  const [userProfile, setUserProfile] = React.useState<any>(null);
+  const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [stats, setStats] = useState({
     assignedJobs: 0,
     inProgress: 0,
@@ -32,52 +22,139 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
   const [myJobs, setMyJobs] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
+  // ✅ FIX: Fetch user profile from users_login table (like web)
+  React.useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: profileData, error } = await supabase
+          .from('users_login')
+          .select('id, full_name, email')
+          .eq('email', user.email)
+          .single();
+
+        if (error) {
+          return;
+        }
+
+        if (profileData) {
+          setUserProfile(profileData);
+        }
+      } catch (error) {
+        // Error handled silently
+      }
+    };
+
+    fetchUserProfile();
+  }, []);
+
   const fetchData = async () => {
     try {
-      if (!userProfile?.id) return;
+      // ✅ FIX: Get user profile if not set
+      let mechanicId = userProfile?.id;
+      
+      if (!mechanicId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-      // Fetch mechanic's jobs from mechanic_dashboard view
-      const { data: jobsData, error: jobsError } = await supabase
-        .from('mechanic_dashboard')
-        .select('*')
-        .eq('mechanic_id', userProfile.id)
-        .order('assigned_at', { ascending: false })
-        .limit(10);
+        const { data: profileData } = await supabase
+          .from('users_login')
+          .select('id')
+          .eq('email', user.email)
+          .single();
 
-      if (jobsError) {
-        console.error('Error fetching jobs:', jobsError);
+        if (!profileData) {
+          return;
+        }
+        mechanicId = profileData.id;
       }
 
-      // Get stats
-      const [assigned, inProgress, completed] = await Promise.all([
-        supabase
+      // ✅ FIX: Fetch jobs from mechanic_dashboard view (like web)
+      const { data: dashboardData, error: jobsError } = await supabase
+        .from('mechanic_dashboard')
+        .select('*')
+        .eq('mechanic_id', mechanicId)
+        .order('assigned_at', { ascending: false });
+
+      if (jobsError) {
+        // Fallback: try mechanic_jobs if view doesn't exist
+        const { data: fallbackData } = await supabase
           .from('mechanic_jobs')
-          .select('id', { count: 'exact', head: true })
-          .eq('mechanic_id', userProfile.id)
-          .eq('mechanic_status', 'ASSIGNED'),
-        supabase
-          .from('mechanic_jobs')
-          .select('id', { count: 'exact', head: true })
-          .eq('mechanic_id', userProfile.id)
-          .eq('mechanic_status', 'IN_PROGRESS'),
-        supabase
-          .from('mechanic_jobs')
-          .select('id', { count: 'exact', head: true })
-          .eq('mechanic_id', userProfile.id)
-          .eq('mechanic_status', 'COMPLETED')
-          .gte('completed_at', new Date().toISOString().split('T')[0]),
-      ]);
+          .select('*')
+          .eq('mechanic_id', mechanicId)
+          .order('assigned_at', { ascending: false });
+        
+        if (fallbackData) {
+          setMyJobs(fallbackData);
+          calculateStatsFromJobs(fallbackData);
+        }
+        return;
+      }
+
+      // ✅ FIX: Calculate stats from dashboard data (like web)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const assignedToday = dashboardData?.filter(job => {
+        if (!job.assigned_at) return false;
+        const assignedDate = new Date(job.assigned_at);
+        assignedDate.setHours(0, 0, 0, 0);
+        return assignedDate.getTime() === today.getTime();
+      }).length || 0;
+
+      const inProgress = dashboardData?.filter(job => 
+        job.mechanic_status === 'IN_PROGRESS'
+      ).length || 0;
+
+      const completedToday = dashboardData?.filter(job => {
+        if (!job.completed_at) return false;
+        const completedDate = new Date(job.completed_at);
+        completedDate.setHours(0, 0, 0, 0);
+        return completedDate.getTime() === today.getTime();
+      }).length || 0;
 
       setStats({
-        assignedJobs: assigned.count || 0,
-        inProgress: inProgress.count || 0,
-        completedToday: completed.count || 0,
+        assignedJobs: assignedToday,
+        inProgress: inProgress,
+        completedToday: completedToday,
       });
 
-      setMyJobs(jobsData || []);
+      setMyJobs(dashboardData || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      // Error handled silently
     }
+  };
+
+  // Helper function for fallback stats calculation
+  const calculateStatsFromJobs = (jobs: any[]) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const assignedToday = jobs.filter(job => {
+      if (!job.assigned_at) return false;
+      const assignedDate = new Date(job.assigned_at);
+      assignedDate.setHours(0, 0, 0, 0);
+      return assignedDate.getTime() === today.getTime();
+    }).length || 0;
+
+    const inProgress = jobs.filter(job => 
+      job.mechanic_status === 'IN_PROGRESS'
+    ).length || 0;
+
+    const completedToday = jobs.filter(job => {
+      if (!job.completed_at) return false;
+      const completedDate = new Date(job.completed_at);
+      completedDate.setHours(0, 0, 0, 0);
+      return completedDate.getTime() === today.getTime();
+    }).length || 0;
+
+    setStats({
+      assignedJobs: assignedToday,
+      inProgress: inProgress,
+      completedToday: completedToday,
+    });
   };
 
   const onRefresh = async () => {
@@ -87,13 +164,104 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (userProfile?.id) {
+      fetchData();
+
+      // ✅ FIX: Setup realtime subscription (like web)
+      let channel: RealtimeChannel;
+
+      const setupRealtimeSubscription = async () => {
+        if (!userProfile?.id) return;
+
+        channel = supabase
+          .channel('mechanic-jobs-changes')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'mechanic_jobs',
+              filter: `mechanic_id=eq.${userProfile.id}`
+            },
+            (payload) => {
+              fetchData();
+            }
+          )
+          .subscribe();
+      };
+
+      setupRealtimeSubscription();
+
+      return () => {
+        if (channel) {
+          supabase.removeChannel(channel);
+        }
+      };
+    }
+  }, [userProfile]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
 
+  const handleTabChange = (tab: string) => {
+    setCurrentScreen(tab);
+  };
+
+  const tabs = [
+    { id: 'dashboard', label: 'Home', icon: '🏠' },
+    { id: 'jobs', label: 'Jobs', icon: '🔧' },
+    { id: 'history', label: 'History', icon: '📋' },
+    { id: 'profile', label: 'Profile', icon: '👤' },
+  ];
+
+  // Render different screens based on currentScreen
+  if (currentScreen === 'jobs') {
+    return (
+      <View style={styles.container}>
+        <View style={{ flex: 1 }}>
+          <MechanicJobsScreen navigation={navigation} />
+        </View>
+        <BottomNav
+          activeTab={currentScreen}
+          onTabChange={handleTabChange}
+          tabs={tabs}
+        />
+      </View>
+    );
+  }
+
+  if (currentScreen === 'history') {
+    return (
+      <View style={styles.container}>
+        <View style={{ flex: 1 }}>
+          <MechanicJobHistoryScreen navigation={navigation} />
+        </View>
+        <BottomNav
+          activeTab={currentScreen}
+          onTabChange={handleTabChange}
+          tabs={tabs}
+        />
+      </View>
+    );
+  }
+
+  if (currentScreen === 'profile') {
+    return (
+      <View style={styles.container}>
+        <View style={{ flex: 1 }}>
+          <MechanicProfileScreen navigation={navigation} />
+        </View>
+        <BottomNav
+          activeTab={currentScreen}
+          onTabChange={handleTabChange}
+          tabs={tabs}
+        />
+      </View>
+    );
+  }
+
+  // Main Dashboard Screen
   return (
     <View style={styles.container}>
       <DashboardHeader
@@ -157,6 +325,12 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
           </View>
         )}
       </ScrollView>
+
+      <BottomNav
+        activeTab={currentScreen}
+        onTabChange={handleTabChange}
+        tabs={tabs}
+      />
     </View>
   );
 }
@@ -169,6 +343,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: SPACING.lg,
+    paddingBottom: 80, // Space for bottom nav
   },
   sectionTitle: {
     fontSize: 20,

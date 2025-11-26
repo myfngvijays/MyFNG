@@ -52,12 +52,11 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
       });
 
       if (!result.canceled && result.assets[0]) {
-        setPhotos([...photos, result.assets[0].uri]);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to take photo');
-      console.error(error);
+      setPhotos([...photos, result.assets[0].uri]);
     }
+  } catch (error) {
+    Alert.alert('Error', 'Failed to take photo');
+  }
   };
 
   const removePhoto = (index: number) => {

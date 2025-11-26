@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,8 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Alert
+  Alert,
+  BackHandler
 } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
@@ -55,6 +56,19 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   const updateField = (field: string, value: any) => {
     // Auto-uppercase vehicle number
@@ -572,6 +586,18 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
+      {/* Header with Back Button */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => navigation?.goBack()}
+        >
+          <Icon name="arrow-left" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Create New Lead</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
       {/* Progress Bar */}
       <View style={styles.progressContainer}>
         {[1, 2, 3].map(step => (
@@ -660,6 +686,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.primary,
+    paddingTop: 44,
+    paddingBottom: 12,
+    paddingHorizontal: SPACING.md,
+    elevation: 4,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 20,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
   progressContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -742,7 +791,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: COLORS.gray + '40',
+    borderColor: '#E5E7EB',
     borderRadius: 8,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -771,7 +820,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.gray + '40',
+    borderColor: '#E5E7EB',
     backgroundColor: '#fff',
   },
   radioButtonActive: {
@@ -808,7 +857,7 @@ const styles = StyleSheet.create({
   },
   sectionDivider: {
     height: 1,
-    backgroundColor: COLORS.gray + '30',
+    backgroundColor: '#D1D5DB',
     marginVertical: SPACING.lg,
   },
   locationButton: {
@@ -819,7 +868,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: COLORS.green + '40',
+    borderColor: '#10B981',
     marginBottom: SPACING.md,
   },
   locationButtonEmoji: {
@@ -846,7 +895,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: COLORS.gray + '40',
+    borderColor: '#E5E7EB',
     backgroundColor: '#fff',
     minWidth: '48%',
     alignItems: 'center',

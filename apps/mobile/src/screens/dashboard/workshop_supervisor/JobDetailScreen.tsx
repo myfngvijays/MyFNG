@@ -43,6 +43,35 @@ export default function JobDetailScreen() {
   useEffect(() => {
     if (jobId) {
       fetchJobDetail();
+      
+      // Setup realtime subscription
+      const channel = supabase
+        .channel(`job-detail-${jobId}`)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_jobs',
+          filter: `id=eq.${jobId}`
+        }, () => {
+          console.log('Job Detail: Real-time update received');
+          fetchJobDetail();
+        })
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_checklist_items',
+          filter: `job_id=eq.${jobId}`
+        }, () => {
+          console.log('Checklist: Real-time update received');
+          fetchJobDetail();
+        })
+        .subscribe((status) => {
+          console.log('Job detail subscription status:', status);
+        });
+      
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [jobId]);
 

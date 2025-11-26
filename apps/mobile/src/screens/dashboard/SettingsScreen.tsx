@@ -2,11 +2,11 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Bell, Shield, HelpCircle, LogOut, ChevronRight } from 'lucide-react-native';
 import { supabase } from '../../lib/supabase';
-import { useAuthStore } from '../../store/authStore';
+import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES } from '../../constants/theme';
 
 export default function SettingsScreen() {
-  const { logout } = useAuthStore();
+  const { logout } = useAuth();
 
   const handleLogout = () => {
     Alert.alert(

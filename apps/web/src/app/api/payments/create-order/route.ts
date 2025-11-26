@@ -44,37 +44,54 @@ export async function POST(request: Request) {
     const orderData = {
       amount: amountInPaise,
       currency: 'INR',
-      receipt: `INVOICE_${invoiceId}`,
+      receipt: `INV_${invoice.invoice_number || invoiceId.substring(0, 8)}`,
       notes: {
         invoice_id: invoiceId,
-        customer_email: customerEmail,
-        customer_phone: customerPhone,
+        invoice_number: invoice.invoice_number,
+        customer_email: customerEmail || invoice.lead?.customer_email,
+        customer_phone: customerPhone || invoice.lead?.customer_phone,
+        lead_id: invoice.lead_id,
       },
     };
 
-    // In production, use actual Razorpay API
-    // For now, simulate order creation
-    const orderId = `order_${crypto.randomBytes(16).toString('hex')}`;
+    // Create Razorpay order via API
+    const razorpayResponse = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64')}`,
+      },
+      body: JSON.stringify(orderData),
+    });
 
-    // Simulated Razorpay API call
-    // const response = await fetch('https://api.razorpay.com/v1/orders', {
-    //   method: 'POST',
-    //   headers: {
-    //     'Content-Type': 'application/json',
-    //     'Authorization': `Basic ${Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64')}`,
-    //   },
-    //   body: JSON.stringify(orderData),
-    // });
-    // const order = await response.json();
+    if (!razorpayResponse.ok) {
+      const errorData = await razorpayResponse.json();
+      console.error('Razorpay API Error:', errorData);
+      return NextResponse.json(
+        { error: errorData.error?.description || 'Failed to create Razorpay order' },
+        { status: razorpayResponse.status }
+      );
+    }
 
-    // Simulated order response
-    const order = {
-      id: orderId,
-      amount: amountInPaise,
-      currency: 'INR',
-      receipt: orderData.receipt,
-      status: 'created',
-    };
+    const order = await razorpayResponse.json();
+
+    // Create payment transaction record (PENDING status)
+    const transactionId = `TXN-${Date.now()}-${invoiceId.substring(0, 8)}`;
+    await supabase
+      .from('payment_transactions')
+      .insert({
+        transaction_id: transactionId,
+        invoice_id: invoiceId,
+        lead_id: invoice.lead_id,
+        amount: amount,
+        currency: 'INR',
+        payment_method: 'ONLINE',
+        payment_gateway: 'RAZORPAY',
+        gateway_order_id: order.id,
+        status: 'PENDING',
+        initiated_at: new Date().toISOString(),
+        created_by: user.id,
+      });
 
     return NextResponse.json({
       success: true,

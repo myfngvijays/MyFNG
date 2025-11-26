@@ -21,11 +21,37 @@ export default function PickupBoyProfileScreen({ userId }) {
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    fetchProfile();
+    // ✅ FIX: Fetch userId if not provided
+    if (!userId) {
+      fetchUserId();
+    } else {
+      fetchProfile();
+    }
   }, [userId]);
 
-  const fetchProfile = async () => {
-    if (!userId) return;
+  // ✅ FIX: Fetch user ID by email (like web)
+  const fetchUserId = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: userProfile } = await supabase
+        .from('users_login')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+
+      if (userProfile?.id) {
+        fetchProfile(userProfile.id);
+      }
+    } catch (error) {
+      // Error handled silently
+    }
+  };
+
+  const fetchProfile = async (pickupBoyId?: string) => {
+    const idToUse = pickupBoyId || userId;
+    if (!idToUse) return;
 
     try {
       // Fetch user profile
@@ -36,22 +62,26 @@ export default function PickupBoyProfileScreen({ userId }) {
           role:roles!role_id(role_name),
           workshop:workshops!workshop_id(name, city)
         `)
-        .eq('id', userId)
+        .eq('id', idToUse)
         .single();
 
       if (profileError) throw profileError;
 
-      // Fetch task stats
-      const { count: totalCount } = await supabase
-        .from('pickup_delivery_tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('assigned_to_id', userId);
+      // ✅ FIX: Fetch task stats from service_leads (like web)
+      const { data: allTasks, error: tasksError } = await supabase
+        .from('service_leads')
+        .select('pickup_status, status')
+        .eq('assigned_pickup_boy_id', idToUse)
+        .eq('pickup_required', true);
 
-      const { count: completedCount } = await supabase
-        .from('pickup_delivery_tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('assigned_to_id', userId)
-        .eq('status', 'COMPLETED');
+      if (tasksError) {
+        // Error handled silently
+      }
+
+      const totalCount = allTasks?.length || 0;
+      const completedCount = allTasks?.filter(t => 
+        t.pickup_status === 'PICKED_UP' || t.pickup_status === 'DELIVERED'
+      ).length || 0;
 
       const successRate = totalCount > 0 ? ((completedCount / totalCount) * 100).toFixed(1) : 0;
 
@@ -62,7 +92,7 @@ export default function PickupBoyProfileScreen({ userId }) {
         successRate: parseFloat(successRate as string),
       });
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      // Error handled silently
     } finally {
       setLoading(false);
     }

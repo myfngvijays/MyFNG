@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { User, Mail, Phone, Briefcase, Building2, Calendar } from 'lucide-react-native';
-import { useAuthStore } from '../../store/authStore';
+import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES, SHADOWS } from '../../constants/theme';
 
 export default function ProfileScreen() {
-  const { userProfile } = useAuthStore();
+  const { userProfile } = useAuth();
 
   const InfoRow = ({ icon, label, value }: any) => (
     <View style={styles.infoRow}>

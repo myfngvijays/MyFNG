@@ -209,11 +209,11 @@ export default function TelecallerDashboard() {
 
   // Render different screens based on currentScreen state
   if (currentScreen === 'leads') {
-    return <TelecallerLeadsScreen navigation={navigation} />;
+    return <TelecallerLeadsScreen navigation={navigation} route={{ params: {} }} />;
   }
 
   if (currentScreen === 'createLead') {
-    return <TelecallerCreateLeadScreen navigation={navigation} />;
+    return <TelecallerCreateLeadScreen navigation={navigation} route={{ params: {} }} />;
   }
 
   if (currentScreen === 'TelecallerLeadDetail' && selectedLeadId) {
@@ -221,11 +221,11 @@ export default function TelecallerDashboard() {
   }
 
   if (currentScreen === 'followups') {
-    return <TelecallerFollowUpsScreen navigation={navigation} />;
+    return <TelecallerFollowUpsScreen navigation={navigation} route={{ params: {} }} />;
   }
 
   if (currentScreen === 'scripts') {
-    return <TelecallerScriptsScreen />;
+    return <TelecallerScriptsScreen navigation={navigation} />;
   }
 
   // Main Dashboard Screen

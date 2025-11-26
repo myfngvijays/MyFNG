@@ -40,12 +40,12 @@ export default function LoginScreen({ onLoginSuccess }: any) {
         throw new Error('No user returned');
       }
 
-      // Fetch profile
+      // ✅ FIX: Fetch profile with correct role join (like web)
       const { data: profile, error: profileError } = await supabase
         .from('users_login')
         .select(`
           *,
-          role:roles(*)
+          role:roles!role_id(role_code, role_name)
         `)
         .eq('id', authData.user.id)
         .single();

@@ -22,13 +22,14 @@ interface ExtraWorkRequest {
   customer_name: string;
   vehicle_number: string;
   mechanic_name: string;
-  issue_description: string;
-  work_needed: string;
-  estimated_cost: number;
-  requested_at: string;
-  approval_status: string;
-  proof_images?: string[];
-  mechanic_notes?: string;
+  description: string;
+  reason: string;
+  amount: number;
+  category: string;
+  is_urgent: boolean;
+  created_at: string;
+  status: string;
+  image_url?: string;
 }
 
 export default function ExtraWorkApprovalScreen({ navigation }: any) {
@@ -44,6 +45,25 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchRequests();
+    
+    // Setup realtime subscription
+    const channel = supabase
+      .channel('extra-work-updates')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'lead_extra_charges'
+      }, () => {
+        console.log('Extra Work: Real-time update received');
+        fetchRequests();
+      })
+      .subscribe((status) => {
+        console.log('Extra work subscription status:', status);
+      });
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
@@ -64,41 +84,71 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
       const workshopId = userProfile?.workshop_id;
       if (!workshopId) return;
 
-      const { data: extraCharges } = await supabase
+      console.log('🔍 Fetching extra work requests for workshop:', workshopId);
+
+      // ✅ FIX: Match web app - correct column names
+      const { data: extraCharges, error } = await supabase
         .from('lead_extra_charges')
         .select(`
-          *,
-          service_leads!inner (
-            id,
+          id,
+          lead_id,
+          description,
+          reason,
+          amount,
+          category,
+          is_urgent,
+          created_at,
+          status,
+          requested_by,
+          image_url,
+          service_leads!inner(
             lead_number,
             customer_name,
             vehicle_number,
             workshop_id
-          ),
-          mechanic:requested_by (
-            full_name
           )
         `)
         .eq('service_leads.workshop_id', workshopId)
-        .order('requested_at', { ascending: false });
+        .eq('status', 'PENDING')
+        .order('is_urgent', { ascending: false })
+        .order('created_at', { ascending: true });
 
-      const formattedRequests = extraCharges?.map((req: any) => ({
-        id: req.id,
-        lead_id: req.lead_id,
-        lead_number: req.service_leads.lead_number,
-        customer_name: req.service_leads.customer_name,
-        vehicle_number: req.service_leads.vehicle_number,
-        mechanic_name: req.mechanic?.full_name || 'Unknown',
-        issue_description: req.issue_description,
-        work_needed: req.work_needed,
-        estimated_cost: req.estimated_cost,
-        requested_at: req.requested_at,
-        approval_status: req.approval_status,
-        proof_images: req.proof_images || [],
-        mechanic_notes: req.mechanic_notes,
-      })) || [];
+      if (error) {
+        console.error('❌ Error fetching extra work:', error);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
 
-      setRequests(formattedRequests);
+      console.log('✅ Found', extraCharges?.length || 0, 'extra work requests');
+
+      // Fetch mechanic names
+      const requestsWithMechanics = await Promise.all((extraCharges || []).map(async (req: any) => {
+        const { data: mechanic } = await supabase
+          .from('users_login')
+          .select('full_name')
+          .eq('id', req.requested_by)
+          .single();
+
+        return {
+          id: req.id,
+          lead_id: req.lead_id,
+          lead_number: req.service_leads.lead_number,
+          customer_name: req.service_leads.customer_name,
+          vehicle_number: req.service_leads.vehicle_number,
+          mechanic_name: mechanic?.full_name || 'Unknown',
+          description: req.description,
+          reason: req.reason,
+          amount: parseFloat(req.amount),
+          category: req.category || 'EXTRA_WORK',
+          is_urgent: req.is_urgent || false,
+          created_at: req.created_at,
+          status: req.status,
+          image_url: req.image_url,
+        };
+      }));
+
+      setRequests(requestsWithMechanics);
       setLoading(false);
       setRefreshing(false);
     } catch (error) {
@@ -110,11 +160,11 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
 
   function filterRequests() {
     if (filter === 'PENDING') {
-      setFilteredRequests(requests.filter((r) => r.approval_status === 'PENDING'));
+      setFilteredRequests(requests.filter((r) => r.status === 'PENDING'));
     } else if (filter === 'APPROVED') {
-      setFilteredRequests(requests.filter((r) => r.approval_status === 'APPROVED'));
+      setFilteredRequests(requests.filter((r) => r.status === 'APPROVED'));
     } else if (filter === 'REJECTED') {
-      setFilteredRequests(requests.filter((r) => r.approval_status === 'REJECTED'));
+      setFilteredRequests(requests.filter((r) => r.status === 'REJECTED'));
     } else {
       setFilteredRequests(requests);
     }
@@ -122,7 +172,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
 
   function openApprovalModal(request: ExtraWorkRequest) {
     setSelectedRequest(request);
-    setAdjustedCost(request.estimated_cost.toString());
+    setAdjustedCost(request.amount.toString());
     setShowApprovalModal(true);
   }
 
@@ -149,8 +199,8 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
       // Update extra charge request
       const { error: updateError } = await supabase
         .from('lead_extra_charges')
-        .update({
-          approval_status: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+        .update(        {
+          status: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
           approved_by: supervisorId,
           approved_at: new Date().toISOString(),
           final_cost: decision === 'APPROVE' ? parseFloat(adjustedCost) : null,
@@ -168,7 +218,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
           supervisor_id: supervisorId,
           lead_id: selectedRequest.lead_id,
           action_type: decision === 'APPROVE' ? 'EXTRA_WORK_APPROVED' : 'EXTRA_WORK_REJECTED',
-          action_description: `Extra work ${decision === 'APPROVE' ? 'approved' : 'rejected'}: ${selectedRequest.work_needed}`,
+          action_description: `Extra work ${decision === 'APPROVE' ? 'approved' : 'rejected'}: ${selectedRequest.description}`,
         });
 
       // If approved, update lead total cost
@@ -239,15 +289,15 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
             <View
               style={[
                 styles.statusBadge,
-                { backgroundColor: getStatusColor(item.approval_status) },
+                { backgroundColor: getStatusColor(item.status) },
               ]}
             >
-              <Text style={styles.statusText}>{item.approval_status}</Text>
+              <Text style={styles.statusText}>{item.status}</Text>
             </View>
           </View>
           <View style={styles.costContainer}>
             <Text style={styles.costLabel}>Cost</Text>
-            <Text style={styles.costValue}>₹{item.estimated_cost}</Text>
+            <Text style={styles.costValue}>₹{item.amount}</Text>
           </View>
         </View>
 
@@ -263,31 +313,25 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Requested:</Text>
             <Text style={styles.detailValue}>
-              {new Date(item.requested_at).toLocaleString()}
+              {new Date(item.created_at).toLocaleString()}
             </Text>
           </View>
         </View>
 
         <View style={styles.workDescription}>
-          <Text style={styles.workTitle}>Issue Found:</Text>
-          <Text style={styles.workText}>{item.issue_description}</Text>
-          <Text style={styles.workTitle}>Work Needed:</Text>
-          <Text style={styles.workText}>{item.work_needed}</Text>
-          {item.mechanic_notes && (
-            <>
-              <Text style={styles.workTitle}>Mechanic Notes:</Text>
-              <Text style={styles.workText}>{item.mechanic_notes}</Text>
-            </>
-          )}
+          <Text style={styles.workTitle}>Description:</Text>
+          <Text style={styles.workText}>{item.description}</Text>
+          <Text style={styles.workTitle}>Reason:</Text>
+          <Text style={styles.workText}>{item.reason}</Text>
         </View>
 
-        {item.proof_images && item.proof_images.length > 0 && (
+        {item.image_url && (
           <View style={styles.imagesContainer}>
-            <Text style={styles.imagesLabel}>📷 {item.proof_images.length} proof images</Text>
+            <Text style={styles.imagesLabel}>📷 Proof image attached</Text>
           </View>
         )}
 
-        {item.approval_status === 'PENDING' && (
+        {item.status === 'PENDING' && (
           <TouchableOpacity
             style={styles.reviewButton}
             onPress={() => openApprovalModal(item)}
@@ -311,12 +355,12 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
   }
 
   const stats = {
-    pending: requests.filter((r) => r.approval_status === 'PENDING').length,
-    approved: requests.filter((r) => r.approval_status === 'APPROVED').length,
-    rejected: requests.filter((r) => r.approval_status === 'REJECTED').length,
+    pending: requests.filter((r) => r.status === 'PENDING').length,
+    approved: requests.filter((r) => r.status === 'APPROVED').length,
+    rejected: requests.filter((r) => r.status === 'REJECTED').length,
     totalCost: requests
-      .filter((r) => r.approval_status === 'APPROVED')
-      .reduce((sum, r) => sum + r.estimated_cost, 0),
+      .filter((r) => r.status === 'APPROVED')
+      .reduce((sum, r) => sum + r.amount, 0),
   };
 
   return (
@@ -423,27 +467,18 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
 
                   {/* Work Details */}
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Issue Found</Text>
+                    <Text style={styles.sectionTitle}>Description</Text>
                     <Text style={styles.sectionContent}>
-                      {selectedRequest.issue_description}
+                      {selectedRequest.description}
                     </Text>
                   </View>
 
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Work Needed</Text>
+                    <Text style={styles.sectionTitle}>Reason</Text>
                     <Text style={styles.sectionContent}>
-                      {selectedRequest.work_needed}
+                      {selectedRequest.reason}
                     </Text>
                   </View>
-
-                  {selectedRequest.mechanic_notes && (
-                    <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>Mechanic Notes</Text>
-                      <Text style={styles.sectionContent}>
-                        {selectedRequest.mechanic_notes}
-                      </Text>
-                    </View>
-                  )}
 
                   {/* Cost Adjustment */}
                   <View style={styles.section}>
@@ -453,7 +488,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
                         Estimated by Mechanic:
                       </Text>
                       <Text style={styles.estimatedCostValue}>
-                        ₹{selectedRequest.estimated_cost}
+                        ₹{selectedRequest.amount}
                       </Text>
                     </View>
                     <TextInput
@@ -852,4 +887,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
 

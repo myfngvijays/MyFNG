@@ -273,13 +273,22 @@ export default function BillingDashboard() {
                       </button>
                     )}
                     {lead.status === 'INVOICE_GENERATED' && (
-                      <button
-                        onClick={() => router.push(`/dashboard/billing/invoices/${lead.invoice_id}`)}
-                        className="btn-secondary bg-blue-600 hover:bg-blue-700 text-white flex-1 flex items-center justify-center gap-2"
-                      >
-                        <Send className="w-4 h-4" />
-                        Send Invoice
-                      </button>
+                      <>
+                        <button
+                          onClick={() => router.push(`/dashboard/billing/invoices/${lead.invoice_id}/review`)}
+                          className="btn-secondary bg-purple-600 hover:bg-purple-700 text-white flex-1 flex items-center justify-center gap-2"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Review
+                        </button>
+                        <button
+                          onClick={() => router.push(`/dashboard/billing/invoices/${lead.invoice_id}`)}
+                          className="btn-secondary bg-blue-600 hover:bg-blue-700 text-white flex-1 flex items-center justify-center gap-2"
+                        >
+                          <Send className="w-4 h-4" />
+                          Send
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => router.push(`/dashboard/billing/leads/${lead.id}`)}

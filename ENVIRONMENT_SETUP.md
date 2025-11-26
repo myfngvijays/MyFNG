@@ -16,6 +16,11 @@ Environment variables store sensitive information like database credentials. The
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Razorpay Payment Gateway
+NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_live_Rgt6qLXXubyJqO
+RAZORPAY_KEY_SECRET=tyYNU0O5YumXdWH20imreikK
+RAZORPAY_WEBHOOK_SECRET=your_webhook_secret_from_razorpay_dashboard
 ```
 
 ### Where to Get Values:

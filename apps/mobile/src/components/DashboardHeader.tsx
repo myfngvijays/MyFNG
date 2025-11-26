@@ -1,24 +1,35 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
+import NotificationBell from './NotificationBell';
 
 interface DashboardHeaderProps {
   name: string;
   role: string;
   onLogout: () => void;
+  onNotificationPress?: () => void;
 }
 
-export default function DashboardHeader({ name, role, onLogout }: DashboardHeaderProps) {
+export default function DashboardHeader({ name, role, onLogout, onNotificationPress }: DashboardHeaderProps) {
   return (
     <View style={styles.header}>
-      <View>
+      <View style={styles.leftSection}>
         <Text style={styles.greeting}>Welcome back,</Text>
         <Text style={styles.name}>{name || 'User'}</Text>
         <Text style={styles.role}>{role}</Text>
       </View>
-      <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-        <Text style={styles.logoutText}>Logout</Text>
-      </TouchableOpacity>
+      <View style={styles.rightSection}>
+        {onNotificationPress && (
+          <NotificationBell 
+            onPress={onNotificationPress}
+            size={22}
+            color={COLORS.white}
+          />
+        )}
+        <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
+          <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -36,6 +47,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 6,
+  },
+  leftSection: {
+    flex: 1,
+  },
+  rightSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   greeting: {
     fontSize: FONT_SIZES.sm,

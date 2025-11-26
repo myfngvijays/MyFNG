@@ -247,7 +247,10 @@ export default function MechanicProfileScreen({ navigation }: any) {
       <DashboardHeader
         userName={profile.full_name}
         userRole="Workshop Mechanic"
-        onLogout={() => navigation.navigate('Login')}
+        onLogout={async () => {
+          await supabase.auth.signOut();
+          // Auth state change will automatically navigate to Login
+        }}
       />
 
       <ScrollView

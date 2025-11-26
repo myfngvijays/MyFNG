@@ -17,7 +17,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
-import { useAuthStore } from '../../store/authStore';
+import { useAuth } from '../../context/AuthContext';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { calculateSLA, getSLAStatusColor } from '../../services/slaService';
 
@@ -27,7 +27,7 @@ interface LeadDetailScreenProps {
 }
 
 export default function LeadDetailScreen({ leadId, onBack }: LeadDetailScreenProps) {
-  const { userProfile } = useAuthStore();
+  const { userProfile } = useAuth();
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export default function PickupTasksScreen({ userId }) {
   const [tasks, setTasks] = useState([]);
@@ -21,28 +22,103 @@ export default function PickupTasksScreen({ userId }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchTasks();
+    let channel: RealtimeChannel | null = null;
+
+    const setupDataAndRealtime = async () => {
+      await fetchTasks();
+
+      // ✅ FIX: Setup realtime subscription (like web)
+      const pickupBoyId = userId || await fetchUserId();
+      if (!pickupBoyId) return;
+
+      channel = supabase
+        .channel('pickup-tasks-screen')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'service_leads'
+          },
+            (payload) => {
+              fetchTasks();
+            }
+          )
+          .subscribe();
+    };
+
+    setupDataAndRealtime();
+    
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [userId]);
 
   useEffect(() => {
     filterTasks();
   }, [filter, tasks]);
 
-  const fetchTasks = async () => {
-    if (!userId) return;
+  // ✅ FIX: Fetch user ID by email if not provided
+  const fetchUserId = async () => {
+    if (userId) return userId;
 
     try {
-      const { data, error } = await supabase
-        .from('pickup_delivery_tasks')
-        .select('*')
-        .eq('assigned_to_id', userId)
-        .in('status', ['ASSIGNED', 'IN_TRANSIT'])
-        .order('scheduled_time', { ascending: true });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
 
-      if (error) throw error;
-      setTasks(data || []);
+      const { data: userProfile } = await supabase
+        .from('users_login')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+
+      return userProfile?.id || null;
     } catch (error) {
-      console.error('Error fetching tasks:', error);
+      return null;
+    }
+  };
+
+  const fetchTasks = async () => {
+    const pickupBoyId = userId || await fetchUserId();
+    if (!pickupBoyId) return;
+
+    try {
+      setLoading(true);
+
+      // ✅ FIX: Fetch from service_leads table (like web)
+      const { data, error } = await supabase
+        .from('service_leads')
+        .select('*')
+        .eq('assigned_pickup_boy_id', pickupBoyId)
+        .eq('pickup_required', true)
+        .not('status', 'in', '(REJECTED,CANCELLED)')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      // ✅ FIX: Format tasks for display
+      const formattedTasks = (data || []).map(item => ({
+        id: item.id,
+        lead_number: item.lead_number,
+        customer_name: item.customer_name,
+        customer_phone: item.customer_phone,
+        customer_address: item.customer_address || item.address,
+        vehicle_number: item.vehicle_number,
+        vehicle_make: item.vehicle_make,
+        vehicle_model: item.vehicle_model,
+        task_type: item.pickup_required ? 'PICKUP' : 'DELIVERY',
+        status: item.pickup_status || item.status,
+        scheduled_time: item.preferred_date || item.created_at,
+        pickup_status: item.pickup_status,
+        created_at: item.created_at,
+      }));
+
+      setTasks(formattedTasks);
+    } catch (error) {
       Alert.alert('Error', 'Failed to load tasks');
     } finally {
       setLoading(false);
@@ -71,28 +147,33 @@ export default function PickupTasksScreen({ userId }) {
 
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
     try {
+      // ✅ FIX: Update service_leads table (like web)
       const updates: any = {
-        status: newStatus,
         updated_at: new Date().toISOString()
       };
 
+      // Map status to pickup_status
       if (newStatus === 'IN_TRANSIT') {
-        updates.started_at = new Date().toISOString();
+        updates.pickup_status = 'IN_TRANSIT';
       } else if (newStatus === 'COMPLETED') {
-        updates.completed_at = new Date().toISOString();
+        updates.pickup_status = 'PICKED_UP';
+        updates.pickup_completed_at = new Date().toISOString();
+      } else {
+        updates.pickup_status = newStatus;
       }
 
       const { error } = await supabase
-        .from('pickup_delivery_tasks')
+        .from('service_leads')
         .update(updates)
         .eq('id', taskId);
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       Alert.alert('Success', `Task ${newStatus.toLowerCase()} successfully`);
       fetchTasks();
     } catch (error) {
-      console.error('Error updating task:', error);
       Alert.alert('Error', 'Failed to update task');
     }
   };

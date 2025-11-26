@@ -7,25 +7,27 @@ import LeadCard from '../../components/LeadCard';
 import BottomNav from '../../components/BottomNav';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 
-export default function WorkshopSupervisorDashboard() {
+export default function WorkshopSupervisorDashboard({ navigation }: any) {
   const [userProfile, setUserProfile] = React.useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [stats, setStats] = useState({
-    totalJobs: 0,
+    totalMechanics: 0,
     activeJobs: 0,
-    mechanics: 0,
-    pickupBoys: 0,
+    completedToday: 0,
+    pendingQc: 0,
+    overdueJobs: 0,
   });
   const [unassignedJobs, setUnassignedJobs] = useState<any[]>([]);
   const [activeJobs, setActiveJobs] = useState<any[]>([]);
+  const [recentJobs, setRecentJobs] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   React.useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         supabase
-          .from('user_profiles')
-          .select('*')
+          .from('users_login')
+          .select('*, role:role_id(role_code)')
           .eq('id', user.id)
           .single()
           .then(({ data }) => {
@@ -33,6 +35,29 @@ export default function WorkshopSupervisorDashboard() {
           });
       }
     });
+
+    // Setup realtime subscription
+    const channel = supabase
+      .channel('supervisor-dashboard-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_jobs'
+        },
+        (payload) => {
+          if (userProfile?.workshop_id) {
+            fetchDashboardData();
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchDashboardData = async () => {
@@ -41,80 +66,103 @@ export default function WorkshopSupervisorDashboard() {
 
       const workshopId = userProfile.workshop_id;
 
-      // Fetch total jobs for workshop
-      const { count: totalCount } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('workshop_id', workshopId)
-        .in('status', ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED']);
+      // Fetch mechanics in this workshop (filter by role)
+      const { data: mechanicsData, error: mechanicsError } = await supabase
+        .from('users_login')
+        .select('id, full_name, email, role:role_id(role_code)')
+        .eq('workshop_id', workshopId);
 
-      // Fetch active jobs
-      const { count: activeCount } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('workshop_id', workshopId)
-        .in('status', ['ACCEPTED', 'IN_PROGRESS']);
+      const onlyMechanics = (mechanicsData || []).filter((user: any) => 
+        user.role?.role_code === 'WORKSHOP_MECHANIC'
+      );
 
-      // Fetch unassigned jobs
-      const { data: unassigned } = await supabase
-        .from('service_leads')
-        .select('*')
-        .eq('workshop_id', workshopId)
-        .eq('status', 'ACCEPTED')
-        .is('assigned_to_id', null)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      // Fetch assigned jobs
-      const { data: assigned } = await supabase
+      // Fetch ALL jobs from service_leads for this workshop
+      const { data: leadsData, error: leadsError } = await supabase
         .from('service_leads')
         .select(`
-          *,
-          assigned_to:user_profiles!service_leads_assigned_to_id_fkey(full_name)
+          id,
+          lead_number,
+          customer_name,
+          vehicle_number,
+          vehicle_make,
+          vehicle_model,
+          service_type,
+          status,
+          assigned_mechanic_id,
+          created_at,
+          updated_at,
+          sla_expires_at
         `)
         .eq('workshop_id', workshopId)
-        .in('status', ['IN_PROGRESS'])
-        .not('assigned_to_id', 'is', null)
-        .order('updated_at', { ascending: false })
-        .limit(5);
+        .order('created_at', { ascending: false });
+      
+      if (leadsError) {
+        // Error handled silently
+      }
 
-      // Get mechanics count
-      const { data: mechanicRole } = await supabase
-        .from('roles')
-        .select('id')
-        .eq('role_code', 'WORKSHOP_MECHANIC')
-        .single();
+      // Fetch mechanic jobs for more details
+      const { data: mechanicJobsData, error: jobsError } = await supabase
+        .from('mechanic_jobs')
+        .select(`
+          *,
+          service_leads:lead_id(lead_number, customer_name, vehicle_number, service_type, workshop_id),
+          mechanic:mechanic_id(full_name, workshop_id)
+        `)
+        .order('assigned_at', { ascending: false })
+        .limit(50);
 
-      const { count: mechanicsCount } = await supabase
-        .from('user_profiles')
-        .select('*', { count: 'exact', head: true })
-        .eq('workshop_id', workshopId)
-        .eq('role_id', mechanicRole?.id);
+      // Filter jobs by workshop
+      const workshopJobs = mechanicJobsData?.filter(job => 
+        job.service_leads?.workshop_id === workshopId
+      ) || [];
 
-      // Get pickup boys count
-      const { data: pickupRole } = await supabase
-        .from('roles')
-        .select('id')
-        .eq('role_code', 'WORKSHOP_PICKUP_BOY')
-        .single();
+      // Calculate stats
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-      const { count: pickupCount } = await supabase
-        .from('user_profiles')
-        .select('*', { count: 'exact', head: true })
-        .eq('workshop_id', workshopId)
-        .eq('role_id', pickupRole?.id);
+      // ✅ FIX: Get active jobs from mechanic_jobs (with mechanic info)
+      const activeJobsList = workshopJobs.filter(job => 
+        ['ASSIGNED', 'IN_PROGRESS'].includes(job.mechanic_status)
+      ) || [];
+
+      // Get unassigned jobs from service_leads
+      const unassignedJobsList = leadsData?.filter(lead => 
+        lead.status === 'ACCEPTED' && !lead.assigned_mechanic_id
+      ) || [];
+
+      // Completed today from mechanic_jobs
+      const completedToday = workshopJobs.filter(job => {
+        if (job.completed_at) {
+          const completedDate = new Date(job.completed_at);
+          completedDate.setHours(0, 0, 0, 0);
+          return completedDate.getTime() === today.getTime();
+        }
+        return false;
+      }).length || 0;
+
+      // QC pending (jobs with status COMPLETED but not QC'd)
+      const pendingQc = workshopJobs.filter(job => 
+        job.mechanic_status === 'COMPLETED' && !job.qc_status
+      ).length || 0;
+
+      // Overdue jobs (SLA expired)
+      const overdueJobs = workshopJobs.filter(job => 
+        job.sla_remaining_minutes !== null && job.sla_remaining_minutes < 0
+      ).length || 0;
 
       setStats({
-        totalJobs: totalCount || 0,
-        activeJobs: activeCount || 0,
-        mechanics: mechanicsCount || 0,
-        pickupBoys: pickupCount || 0,
+        totalMechanics: onlyMechanics.length || 0,
+        activeJobs: activeJobsList.length || 0,
+        completedToday: completedToday,
+        pendingQc: pendingQc,
+        overdueJobs: overdueJobs
       });
 
-      setUnassignedJobs(unassigned || []);
-      setActiveJobs(assigned || []);
+      setUnassignedJobs(unassignedJobsList.slice(0, 5));
+      setActiveJobs(activeJobsList.slice(0, 5)); // ✅ Now has mechanic info
+      setRecentJobs(workshopJobs.slice(0, 10));
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      // Error handled silently
     }
   };
 
@@ -125,7 +173,7 @@ export default function WorkshopSupervisorDashboard() {
   };
 
   useEffect(() => {
-    if (userProfile) {
+    if (userProfile?.workshop_id) {
       fetchDashboardData();
     }
   }, [userProfile]);
@@ -140,7 +188,7 @@ export default function WorkshopSupervisorDashboard() {
       `Assign ${job.lead_number} to a mechanic`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Assign', onPress: () => console.log('Assign job:', job.id) },
+        { text: 'Assign', onPress: () => {} },
       ]
     );
   };
@@ -149,14 +197,18 @@ export default function WorkshopSupervisorDashboard() {
     { id: 'dashboard', label: 'Home', icon: '🏠' },
     { id: 'jobs', label: 'Jobs', icon: '🔧' },
     { id: 'team', label: 'Team', icon: '👥' },
-    { id: 'more', label: 'More', icon: '⚙️' },
+    { id: 'menu', label: 'Menu', icon: '☰' },
   ];
 
   const handleTabChange = (tab: string) => {
-    if (tab === 'jobs' || tab === 'team' || tab === 'more') {
-      Alert.alert('Coming Soon', 'This feature will be available soon!');
-    } else {
-      setCurrentScreen(tab);
+    setCurrentScreen(tab);
+    
+    if (tab === 'jobs') {
+      navigation.navigate('DayPlanning');
+    } else if (tab === 'team') {
+      navigation.navigate('TeamOverview');
+    } else if (tab === 'menu') {
+      navigation.navigate('SupervisorMenu');
     }
   };
 
@@ -180,33 +232,34 @@ export default function WorkshopSupervisorDashboard() {
       {/* Stats Grid */}
       <Text style={styles.sectionTitle}>Overview</Text>
       
-      <StatCard
-        title="Total Jobs"
-        value={stats.totalJobs}
-        subtitle="All workshop jobs"
-        color={COLORS.primary}
-      />
+      <View style={styles.statsGrid}>
+        <View style={[styles.statCard, { backgroundColor: '#EFF6FF' }]}>
+          <Text style={styles.statValue}>{stats.totalMechanics}</Text>
+          <Text style={styles.statLabel}>👨‍🔧 Total Mechanics</Text>
+        </View>
+        
+        <View style={[styles.statCard, { backgroundColor: '#FEF3C7' }]}>
+          <Text style={styles.statValue}>{stats.activeJobs}</Text>
+          <Text style={styles.statLabel}>🔧 Active Jobs</Text>
+        </View>
+      </View>
       
-      <StatCard
-        title="Active Jobs"
-        value={stats.activeJobs}
-        subtitle="In progress"
-        color={COLORS.secondary}
-      />
+      <View style={styles.statsGrid}>
+        <View style={[styles.statCard, { backgroundColor: '#D1FAE5' }]}>
+          <Text style={styles.statValue}>{stats.completedToday}</Text>
+          <Text style={styles.statLabel}>✅ Completed Today</Text>
+        </View>
+        
+        <View style={[styles.statCard, { backgroundColor: '#E9D5FF' }]}>
+          <Text style={styles.statValue}>{stats.pendingQc}</Text>
+          <Text style={styles.statLabel}>⏰ Pending QC</Text>
+        </View>
+      </View>
       
-      <StatCard
-        title="Mechanics"
-        value={stats.mechanics}
-        subtitle="Workshop mechanics"
-        color={COLORS.accent}
-      />
-      
-      <StatCard
-        title="Pickup Team"
-        value={stats.pickupBoys}
-        subtitle="Pickup & delivery"
-        color={COLORS.warning}
-      />
+      <View style={[styles.statCard, styles.fullWidthCard, { backgroundColor: '#FEE2E2' }]}>
+        <Text style={[styles.statValue, { color: '#DC2626' }]}>{stats.overdueJobs}</Text>
+        <Text style={styles.statLabel}>⚠️ Overdue Jobs</Text>
+      </View>
 
       {/* Unassigned Jobs */}
       {unassignedJobs.length > 0 && (
@@ -244,17 +297,21 @@ export default function WorkshopSupervisorDashboard() {
           activeJobs.map((job) => (
             <View key={job.id} style={styles.jobItem}>
               <View style={styles.jobHeader}>
-                <Text style={styles.jobNumber}>{job.lead_number}</Text>
-                <View style={styles.activeBadge}>
-                  <Text style={styles.activeText}>IN PROGRESS</Text>
+                <Text style={styles.jobNumber}>{job.service_leads?.lead_number}</Text>
+                <View style={[styles.activeBadge, 
+                  job.mechanic_status === 'IN_PROGRESS' ? { backgroundColor: COLORS.primary } :
+                  job.mechanic_status === 'ASSIGNED' ? { backgroundColor: COLORS.success } :
+                  { backgroundColor: COLORS.warning }
+                ]}>
+                  <Text style={styles.activeText}>{job.mechanic_status}</Text>
                 </View>
               </View>
-              <Text style={styles.jobService}>{job.service_type}</Text>
+              <Text style={styles.jobService}>{job.service_leads?.service_type}</Text>
               <Text style={styles.jobCustomer}>
-                {job.customer_name} • {job.vehicle_number}
+                {job.service_leads?.customer_name} • {job.service_leads?.vehicle_number}
               </Text>
               <Text style={styles.assignedTo}>
-                Assigned to: {job.assigned_to?.full_name || 'Unknown'}
+                Assigned to: {job.mechanic?.full_name || 'Unknown'}
               </Text>
             </View>
           ))
@@ -322,6 +379,37 @@ const styles = StyleSheet.create({
     color: COLORS.heading,
     marginBottom: SPACING.md,
     marginTop: SPACING.lg,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  statCard: {
+    flex: 1,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    alignItems: 'center',
+  },
+  fullWidthCard: {
+    width: '100%',
+    marginBottom: SPACING.md,
+  },
+  statValue: {
+    fontSize: FONT_SIZES.xxxl || 32,
+    fontWeight: 'bold',
+    color: COLORS.heading,
+    marginBottom: SPACING.xs,
+  },
+  statLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.bodyText,
+    textAlign: 'center',
   },
   card: {
     backgroundColor: COLORS.white,

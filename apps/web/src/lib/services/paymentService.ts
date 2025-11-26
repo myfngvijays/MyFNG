@@ -12,8 +12,14 @@
 import { createClient } from '@/lib/supabase/client';
 
 // Razorpay configuration
-const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
+// Note: Key ID is public and can be used in frontend
+// Key Secret should NEVER be exposed in frontend code
+const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+// Key Secret is only used in server-side APIs, not in this client-side service
+
+if (!RAZORPAY_KEY_ID) {
+  console.error('RAZORPAY_KEY_ID not found. Please add it to .env.local file.');
+}
 
 export interface PaymentOrder {
   orderId: string;

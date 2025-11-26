@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   RefreshControl,
   ScrollView,
+  Modal,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
@@ -22,7 +24,7 @@ interface JobMonitor {
   job_priority: string;
   assigned_at: string;
   started_at?: string;
-  sla_deadline: string;
+  sla_expires_at: string;
   sla_remaining_minutes: number;
   checklist_progress: number;
   images_uploaded: boolean;
@@ -37,14 +39,38 @@ export default function JobMonitoringScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [selectedJob, setSelectedJob] = useState<JobMonitor | null>(null);
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [mechanics, setMechanics] = useState<any[]>([]);
 
   useEffect(() => {
     fetchJobs();
+    
+    // Setup realtime subscription
+    const channel = supabase
+      .channel('job-monitoring-updates')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'mechanic_jobs'
+      }, () => {
+        console.log('Job monitoring: Real-time update received');
+        fetchJobs();
+      })
+      .subscribe((status) => {
+        console.log('Job monitoring subscription status:', status);
+      });
+    
     // Update time every minute for SLA countdown
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 60000);
-    return () => clearInterval(timer);
+    
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -65,58 +91,151 @@ export default function JobMonitoringScreen({ navigation }: any) {
       const workshopId = userProfile?.workshop_id;
       if (!workshopId) return;
 
-      const { data: mechanicJobs } = await supabase
-        .from('mechanic_jobs')
+      console.log('🔍 Fetching jobs for workshop:', workshopId);
+
+      // ✅ FIX: Use service_leads like web app (show ALL jobs, not just assigned)
+      const { data: leads, error } = await supabase
+        .from('service_leads')
         .select(`
-          *,
-          service_leads!inner (
             id,
             lead_number,
             customer_name,
             vehicle_number,
-            workshop_id,
-            sla_deadline
-          ),
-          mechanic:mechanic_id (
+          status,
+          priority,
+          assigned_mechanic_id,
+          created_at,
+          updated_at,
+          sla_expires_at,
+          mechanic:assigned_mechanic_id(
+            id,
             full_name
           )
         `)
-        .eq('service_leads.workshop_id', workshopId)
-        .in('mechanic_status', ['ASSIGNED', 'IN_PROGRESS', 'HOLD'])
-        .order('assigned_at', { ascending: false });
+        .eq('workshop_id', workshopId)
+        .not('status', 'in', '(REJECTED,CANCELLED,CLOSED)')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching jobs:', error);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      console.log('✅ Found', leads?.length || 0, 'jobs');
 
       const now = new Date();
-      const formattedJobs = mechanicJobs?.map((job: any) => {
-        const slaDeadline = new Date(job.service_leads.sla_deadline || job.assigned_at);
+      const formattedJobs = leads?.map((lead: any) => {
+        const slaDeadline = lead.sla_expires_at ? new Date(lead.sla_expires_at) : new Date(lead.created_at);
         const slaRemaining = Math.floor((slaDeadline.getTime() - now.getTime()) / (1000 * 60));
         
+        // Determine mechanic_status from lead status
+        let mechanicStatus = 'UNASSIGNED';
+        if (lead.assigned_mechanic_id) {
+          if (lead.status === 'IN_PROGRESS') mechanicStatus = 'IN_PROGRESS';
+          else if (lead.status === 'COMPLETED') mechanicStatus = 'COMPLETED';
+          else if (lead.status === 'ACCEPTED') mechanicStatus = 'ASSIGNED';
+        }
+        
         return {
-          id: job.id,
-          lead_id: job.lead_id,
-          lead_number: job.service_leads.lead_number,
-          customer_name: job.service_leads.customer_name,
-          vehicle_number: job.service_leads.vehicle_number,
-          mechanic_name: job.mechanic?.full_name || 'Unknown',
-          mechanic_status: job.mechanic_status,
-          job_priority: job.job_priority || 'NORMAL',
-          assigned_at: job.assigned_at,
-          started_at: job.started_at,
-          sla_deadline: job.service_leads.sla_deadline,
+          id: lead.id,
+          lead_id: lead.id,
+          lead_number: lead.lead_number,
+          customer_name: lead.customer_name,
+          vehicle_number: lead.vehicle_number,
+          mechanic_name: lead.mechanic?.full_name || 'Unassigned',
+          mechanic_status: mechanicStatus,
+          job_priority: lead.priority || 'NORMAL',
+          assigned_at: lead.created_at,
+          started_at: lead.updated_at,
+          sla_expires_at: lead.sla_expires_at,
           sla_remaining_minutes: slaRemaining,
-          checklist_progress: job.checklist_progress || 0,
-          images_uploaded: (job.before_images_count || 0) > 0 && (job.after_images_count || 0) > 0,
-          parts_assigned: job.has_parts_assigned || false,
-          has_issues: job.mechanic_status === 'HOLD' || slaRemaining < 60,
+          checklist_progress: 0,
+          images_uploaded: false,
+          parts_assigned: false,
+          has_issues: slaRemaining < 60,
         };
       }) || [];
 
+      console.log('📊 Formatted jobs:', formattedJobs.length);
       setJobs(formattedJobs);
+      
+      // Fetch mechanics for reassignment
+      const { data: mechanicsData } = await supabase
+        .from('users_login')
+        .select('id, full_name, role:role_id(role_code)')
+        .eq('workshop_id', workshopId)
+        .eq('is_active', true);
+      
+      const onlyMechanics = (mechanicsData || []).filter((user: any) => 
+        user.role?.role_code === 'WORKSHOP_MECHANIC'
+      );
+      
+      console.log('👨‍🔧 Found', onlyMechanics.length, 'mechanics');
+      setMechanics(onlyMechanics || []);
       setLoading(false);
       setRefreshing(false);
     } catch (error) {
       console.error('Error fetching jobs:', error);
       setLoading(false);
       setRefreshing(false);
+    }
+  }
+
+  async function reassignJob(jobId: string, mechanicId: string, mechanicName: string) {
+    try {
+      const { error } = await supabase
+        .from('mechanic_jobs')
+        .update({
+          mechanic_id: mechanicId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', jobId);
+
+      if (error) throw error;
+
+      Alert.alert('Success', `Job reassigned to ${mechanicName}`, [
+        {
+          text: 'OK',
+          onPress: () => {
+            setShowReassignModal(false);
+            setSelectedJob(null);
+            fetchJobs();
+          },
+        },
+      ]);
+    } catch (error) {
+      console.error('Error reassigning job:', error);
+      Alert.alert('Error', 'Failed to reassign job');
+    }
+  }
+
+  async function updateJobStatus(jobId: string, newStatus: string) {
+    try {
+      const { error } = await supabase
+        .from('mechanic_jobs')
+        .update({
+          mechanic_status: newStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', jobId);
+
+      if (error) throw error;
+
+      Alert.alert('Success', `Job status updated to ${newStatus}`, [
+        {
+          text: 'OK',
+          onPress: () => {
+            setShowStatusModal(false);
+            setSelectedJob(null);
+            fetchJobs();
+          },
+        },
+      ]);
+    } catch (error) {
+      console.error('Error updating status:', error);
+      Alert.alert('Error', 'Failed to update status');
     }
   }
 

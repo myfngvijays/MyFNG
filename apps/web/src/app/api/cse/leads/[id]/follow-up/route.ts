@@ -37,13 +37,19 @@ export async function POST(
       customer_response, 
       satisfaction_score, 
       service_quality_rating,
-      issues_reported, 
+      workshop_rating,
+      pickup_rating,
+      price_rating,
+      issues_reported,
+      issue_category,
       resolution_provided,
+      resolution_status,
       would_recommend,
       feedback_text,
       call_duration,
       escalated,
-      escalation_reason 
+      escalation_reason,
+      notes
     } = body;
 
     if (!followup_type || !['POST_SERVICE', 'PAYMENT_REMINDER', 'ISSUE_RESOLUTION', 'SATISFACTION_CHECK'].includes(followup_type)) {
@@ -76,13 +82,18 @@ export async function POST(
         customer_response: customer_response,
         satisfaction_score: satisfaction_score || null,
         service_quality_rating: service_quality_rating || null,
+        workshop_rating: workshop_rating || null,
+        pickup_rating: pickup_rating || null,
+        price_rating: price_rating || null,
         issues_reported: issues_reported || null,
+        issue_category: issue_category || null,
         resolution_provided: resolution_provided || null,
-        resolution_status: issues_reported ? 'PENDING' : 'RESOLVED',
+        resolution_status: resolution_status || (issues_reported ? 'PENDING' : 'NO_ACTION_NEEDED'),
         escalated: escalated || false,
         escalation_reason: escalation_reason || null,
         would_recommend: would_recommend || null,
         feedback_text: feedback_text || null,
+        notes: notes || null,
         call_duration: call_duration || null,
         created_at: now
       })

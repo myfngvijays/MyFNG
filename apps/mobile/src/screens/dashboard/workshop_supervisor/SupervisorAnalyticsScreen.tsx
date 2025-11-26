@@ -63,6 +63,25 @@ export default function SupervisorAnalyticsScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchAnalytics();
+    
+    // Setup realtime subscription
+    const channel = supabase
+      .channel('analytics-updates')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'mechanic_jobs'
+      }, () => {
+        console.log('Analytics: Real-time update received');
+        fetchAnalytics();
+      })
+      .subscribe((status) => {
+        console.log('Analytics subscription status:', status);
+      });
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [period]);
 
   async function fetchAnalytics() {
@@ -79,6 +98,9 @@ export default function SupervisorAnalyticsScreen({ navigation }: any) {
       const workshopId = userProfile?.workshop_id;
       if (!workshopId) return;
 
+      console.log('🔍 Analytics - Workshop ID:', workshopId);
+      console.log('📅 Period:', period);
+
       // Calculate date range based on period
       const now = new Date();
       let startDate = new Date();
@@ -91,38 +113,89 @@ export default function SupervisorAnalyticsScreen({ navigation }: any) {
         startDate.setDate(now.getDate() - 30);
       }
 
-      // Fetch mechanic jobs for analytics
-      const { data: jobs } = await supabase
+      console.log('📆 Date range:', startDate.toISOString(), 'to', now.toISOString());
+
+      // ✅ FIX: Fetch mechanic jobs - remove qc_checks join (no direct relationship)
+      const { data: jobs, error: jobsError } = await supabase
         .from('mechanic_jobs')
         .select(`
           *,
-          service_leads!inner (workshop_id),
-          qc_checks (qc_status),
-          mechanic:mechanic_id (id, full_name)
+          service_leads!inner (workshop_id)
         `)
         .eq('service_leads.workshop_id', workshopId)
         .gte('assigned_at', startDate.toISOString());
 
-      if (!jobs) {
+      if (jobsError) {
+        console.error('❌ Error fetching jobs:', jobsError);
         setLoading(false);
         setRefreshing(false);
         return;
       }
 
+      console.log('📊 Found', jobs?.length || 0, 'jobs in period');
+
+      // ✅ FIX: Determine which jobs to use first
+      let jobsToUse = jobs || [];
+      
+      if (!jobs || jobs.length === 0) {
+        console.log('⚠️ No jobs found in this period - trying ALL jobs...');
+        
+        // Fetch ALL jobs if no jobs in period
+        const { data: allJobs, error: allJobsError } = await supabase
+          .from('mechanic_jobs')
+          .select(`
+            *,
+            service_leads!inner (workshop_id)
+          `)
+          .eq('service_leads.workshop_id', workshopId);
+        
+        if (allJobsError) {
+          console.error('❌ Error fetching all jobs:', allJobsError);
+        }
+        
+        console.log('📊 Total jobs (all time):', allJobs?.length || 0);
+        
+        if (!allJobs || allJobs.length === 0) {
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+        
+        jobsToUse = allJobs;
+      }
+
+      // ✅ FIX: Fetch QC checks separately using lead_id from jobsToUse
+      const leadIds = jobsToUse.map(j => j.lead_id) || [];
+      let qcChecksMap: Record<string, any> = {};
+      
+      if (leadIds.length > 0) {
+        const { data: qcChecks } = await supabase
+          .from('qc_checks')
+          .select('lead_id, qc_status')
+          .in('lead_id', leadIds);
+        
+        // Create map for quick lookup
+        qcChecks?.forEach(qc => {
+          qcChecksMap[qc.lead_id] = qc;
+        });
+        
+        console.log('✅ Found', qcChecks?.length || 0, 'QC checks');
+      }
+
       // Calculate analytics
-      const totalJobs = jobs.length;
-      const completedJobs = jobs.filter((j) => j.mechanic_status === 'COMPLETED').length;
-      const activeJobs = jobs.filter((j) =>
+      const totalJobs = jobsToUse.length;
+      const completedJobs = jobsToUse.filter((j) => j.mechanic_status === 'COMPLETED').length;
+      const activeJobs = jobsToUse.filter((j) =>
         ['ASSIGNED', 'IN_PROGRESS'].includes(j.mechanic_status)
       ).length;
       
-      const overdueJobs = jobs.filter((j) => {
-        const deadline = new Date(j.sla_deadline || j.assigned_at);
+      const overdueJobs = jobsToUse.filter((j) => {
+        const deadline = new Date(j.sla_expires_at || j.assigned_at);
         return deadline < now && j.mechanic_status !== 'COMPLETED';
       }).length;
 
       // Calculate average completion time
-      const completedWithTime = jobs.filter(
+      const completedWithTime = jobsToUse.filter(
         (j) => j.mechanic_status === 'COMPLETED' && j.started_at && j.completed_at
       );
       const avgCompletionTime = completedWithTime.length > 0
@@ -133,19 +206,19 @@ export default function SupervisorAnalyticsScreen({ navigation }: any) {
           }, 0) / completedWithTime.length
         : 0;
 
-      // QC metrics
-      const qcChecks = jobs.flatMap((j) => j.qc_checks || []);
-      const qcPassRate = qcChecks.length > 0
-        ? (qcChecks.filter((qc) => qc.qc_status === 'PASSED').length / qcChecks.length) * 100
+      // ✅ FIX: QC metrics using qcChecksMap
+      const qcChecksArray = Object.values(qcChecksMap);
+      const qcPassRate = qcChecksArray.length > 0
+        ? (qcChecksArray.filter((qc: any) => qc.qc_status === 'PASSED').length / qcChecksArray.length) * 100
         : 0;
-      const reworkRate = qcChecks.length > 0
-        ? (qcChecks.filter((qc) => qc.qc_status === 'REWORK_REQUIRED').length / qcChecks.length) * 100
+      const reworkRate = qcChecksArray.length > 0
+        ? (qcChecksArray.filter((qc: any) => qc.qc_status === 'REWORK_REQUIRED').length / qcChecksArray.length) * 100
         : 0;
 
       // Team efficiency (completed on time / total completed)
-      const completedOnTime = jobs.filter((j) => {
+      const completedOnTime = jobsToUse.filter((j) => {
         if (j.mechanic_status !== 'COMPLETED') return false;
-        const deadline = new Date(j.sla_deadline || j.assigned_at);
+        const deadline = new Date(j.sla_expires_at || j.assigned_at);
         const completed = new Date(j.completed_at);
         return completed <= deadline;
       }).length;
@@ -161,10 +234,10 @@ export default function SupervisorAnalyticsScreen({ navigation }: any) {
           service_leads!inner (workshop_id)
         `)
         .eq('service_leads.workshop_id', workshopId)
-        .gte('requested_at', startDate.toISOString());
+        .gte('created_at', startDate.toISOString());
 
       const extraWorkApprovalRate = extraWork && extraWork.length > 0
-        ? (extraWork.filter((e) => e.approval_status === 'APPROVED').length / extraWork.length) * 100
+        ? (extraWork.filter((e) => e.status === 'APPROVED').length / extraWork.length) * 100
         : 0;
 
       // SLA compliance

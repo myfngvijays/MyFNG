@@ -83,17 +83,82 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
   }
 
-  function printInvoice() {
-    window.print();
+  async function printInvoice() {
+    if (!invoice) {
+      alert('Invoice not found');
+      return;
+    }
+
+    try {
+      const { printInvoice } = await import('@/lib/services/pdfService');
+      printInvoice(invoice.id);
+    } catch (error: any) {
+      console.error('Error printing invoice:', error);
+      // Fallback to window.print()
+      window.print();
+    }
   }
 
-  function downloadInvoice() {
-    // In a real implementation, this would generate a PDF
-    alert('PDF download feature will be implemented');
+  async function downloadInvoice() {
+    if (!invoice) {
+      alert('Invoice not found');
+      return;
+    }
+
+    try {
+      const { downloadInvoicePDF } = await import('@/lib/services/pdfService');
+      await downloadInvoicePDF(invoice.id, invoice.invoice_number);
+      alert('✅ Invoice download started!');
+    } catch (error: any) {
+      console.error('Error downloading invoice:', error);
+      alert(`Failed to download invoice: ${error.message}`);
+    }
   }
 
-  function sendInvoice() {
-    alert('Email/WhatsApp invoice feature will be implemented');
+  async function sendInvoice() {
+    if (!invoice) {
+      alert('Invoice not found');
+      return;
+    }
+
+    try {
+      const methods = [];
+      const hasEmail = lead.customer_email;
+      const hasPhone = lead.customer_phone;
+
+      if (hasEmail) methods.push('EMAIL');
+      if (hasPhone) methods.push('SMS');
+      if (hasPhone) methods.push('WHATSAPP');
+      methods.push('IN_APP');
+
+      const response = await fetch(`/api/billing/invoices/${invoice.id}/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ methods }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send invoice');
+      }
+
+      const successMethods = Object.entries(data.results || {})
+        .filter(([_, result]: [string, any]) => result.success)
+        .map(([method]) => method);
+
+      if (successMethods.length > 0) {
+        alert(`✅ Invoice sent successfully via: ${successMethods.join(', ')}`);
+        onUpdate?.();
+      } else {
+        alert('⚠️ Failed to send invoice. Please check customer contact details.');
+      }
+    } catch (error: any) {
+      console.error('Error sending invoice:', error);
+      alert(`Failed to send invoice: ${error.message}`);
+    }
   }
 
   const canGenerateInvoice = ['READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status);

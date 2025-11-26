@@ -12,6 +12,7 @@ import {
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
 import type { PickupTracking, ServiceLead } from '../../../../../shared/types';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface Props {
   leadId: string;
@@ -42,6 +43,36 @@ export default function PickupJobDetailScreen({
   useEffect(() => {
     fetchLeadDetails();
     fetchPhotoCount();
+
+    // ✅ FIX: Setup realtime subscription
+    let channel: RealtimeChannel;
+
+    const setupRealtimeSubscription = () => {
+      channel = supabase
+        .channel('pickup-job-detail')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'service_leads',
+            filter: `id=eq.${leadId}`
+          },
+            (payload) => {
+              fetchLeadDetails();
+              fetchPhotoCount();
+            }
+          )
+          .subscribe();
+    };
+
+    setupRealtimeSubscription();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [leadId]);
 
   const fetchLeadDetails = async () => {
@@ -67,7 +98,6 @@ export default function PickupJobDetailScreen({
       setTracking(trackingData);
     } catch (error: any) {
       Alert.alert('Error', 'Failed to fetch lead details');
-      console.error(error);
     }
   };
 

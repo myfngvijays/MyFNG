@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface PickupTask {
   id: string;
@@ -50,6 +51,36 @@ export default function TasksListScreen() {
   useEffect(() => {
     if (userId) {
       fetchTasks();
+
+      // ✅ FIX: Setup realtime subscription (like web)
+      let channel: RealtimeChannel;
+
+      const setupRealtimeSubscription = () => {
+        if (!userId) return;
+
+        channel = supabase
+          .channel('pickup-boy-tasks')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'service_leads'
+            },
+            (payload) => {
+              fetchTasks();
+            }
+          )
+          .subscribe();
+      };
+
+      setupRealtimeSubscription();
+
+      return () => {
+        if (channel) {
+          supabase.removeChannel(channel);
+        }
+      };
     }
   }, [userId]);
 
@@ -72,7 +103,7 @@ export default function TasksListScreen() {
         setUserId(userProfile.id);
       }
     } catch (error) {
-      console.error('Error fetching user ID:', error);
+      // Error handled silently
     }
   };
 
@@ -82,14 +113,18 @@ export default function TasksListScreen() {
 
       if (!userId) return;
 
+      // ✅ FIX: Use assigned_pickup_boy_id (like web)
       const { data, error } = await supabase
         .from('service_leads')
         .select('*')
-        .eq('pickup_boy_id', userId)
+        .eq('assigned_pickup_boy_id', userId)
         .eq('pickup_required', true)
-        .order('pickup_scheduled_time', { ascending: true });
+        .not('status', 'in', '(REJECTED,CANCELLED)')
+        .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       const formattedTasks = (data || []).map(item => ({
         id: item.id,
@@ -113,7 +148,7 @@ export default function TasksListScreen() {
 
       setStats({ pending, inTransit, completed, failed });
     } catch (error) {
-      console.error('Error fetching tasks:', error);
+      // Error handled silently
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -73,6 +73,17 @@ export const FONT_SIZES = {
   xxxl: 32,
 };
 
+// Alias for SIZES (used in newer screens)
+export const SIZES = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 18,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+};
+
 export const BORDER_RADIUS = {
   sm: 4,
   md: 8,

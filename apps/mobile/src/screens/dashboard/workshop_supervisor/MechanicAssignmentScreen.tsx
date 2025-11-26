@@ -48,6 +48,25 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchData();
+    
+    // Setup realtime subscription
+    const channel = supabase
+      .channel('mechanic-assignment-updates')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'service_leads'
+      }, () => {
+        console.log('Mechanic Assignment: Real-time update received');
+        fetchData();
+      })
+      .subscribe((status) => {
+        console.log('Mechanic assignment subscription status:', status);
+      });
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   async function fetchData() {

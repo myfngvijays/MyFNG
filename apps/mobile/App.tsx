@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardNavigator from './src/navigation/DashboardNavigator';
 import { AuthProvider } from './src/context/AuthContext';
+import { NotificationProvider } from './src/context/NotificationContext';
 import { supabase } from './src/lib/supabase';
 
 const Stack = createNativeStackNavigator();
@@ -51,16 +52,20 @@ function AppContent() {
 
   const fetchUserProfile = async (userId: string) => {
     try {
+      // ✅ FIX: Fetch profile with correct role join (like web)
       const { data, error } = await supabase
         .from('users_login')
         .select(`
           *,
-          role:roles(*)
+          role:roles!role_id(role_code, role_name)
         `)
         .eq('id', userId)
         .single();
 
       if (error) throw error;
+      
+      console.log('✅ User profile fetched:', data);
+      console.log('✅ Role code:', data?.role?.role_code);
       
       setUserProfile(data);
       setUser({ id: userId });
@@ -121,7 +126,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <NotificationProvider>
+        <AppContent />
+      </NotificationProvider>
     </AuthProvider>
   );
 }

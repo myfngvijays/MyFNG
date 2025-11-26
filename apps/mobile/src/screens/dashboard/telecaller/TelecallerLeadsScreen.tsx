@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   TextInput,
   Linking,
-  Modal
+  Modal,
+  BackHandler
 } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
@@ -31,6 +32,19 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
   useEffect(() => {
     fetchLeads();
   }, [activeFilter]);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true; // Prevent default behavior
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   const fetchLeads = async () => {
     try {
@@ -245,6 +259,18 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
+      {/* Header with Back Button */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => navigation?.goBack()}
+        >
+          <Icon name="arrow-left" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Leads Queue</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <Icon name="magnify" size={20} color={COLORS.textSecondary} />
@@ -358,6 +384,29 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.primary,
+    paddingTop: 44,
+    paddingBottom: 12,
+    paddingHorizontal: SPACING.md,
+    elevation: 4,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 20,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   loadingContainer: {
     flex: 1,

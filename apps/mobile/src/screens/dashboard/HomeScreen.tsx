@@ -1,13 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Activity, FileText, CheckCircle, Clock } from 'lucide-react-native';
-import { useAuthStore } from '../../store/authStore';
+import { useAuth } from '../../context/AuthContext';
 import StatCard from '../../components/StatCard';
 import LeadCard from '../../components/LeadCard';
 import { COLORS, SIZES } from '../../constants/theme';
 
 export default function HomeScreen() {
-  const { userProfile } = useAuthStore();
+  const { userProfile } = useAuth();
   const role = userProfile?.role?.role_code || '';
 
   const renderRoleSpecificContent = () => {

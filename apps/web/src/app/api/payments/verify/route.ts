@@ -18,7 +18,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { orderId, paymentId, signature } = await request.json();
+    const { orderId, paymentId, signature, invoiceId } = await request.json();
+
+    if (!orderId || !paymentId || !signature) {
+      return NextResponse.json({ 
+        verified: false, 
+        error: 'Missing required fields' 
+      }, { status: 400 });
+    }
 
     // Verify signature
     const text = `${orderId}|${paymentId}`;
@@ -29,18 +36,162 @@ export async function POST(request: Request) {
 
     const isValid = expectedSignature === signature;
 
-    if (isValid) {
-      // Payment verified successfully
-      return NextResponse.json({
-        verified: true,
-        message: 'Payment verified successfully',
-      });
-    } else {
+    if (!isValid) {
       return NextResponse.json({
         verified: false,
         message: 'Invalid signature',
       }, { status: 400 });
     }
+
+    // Fetch payment details from Razorpay
+    const razorpayResponse = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`${process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64')}`,
+      },
+    });
+
+    if (!razorpayResponse.ok) {
+      return NextResponse.json({
+        verified: false,
+        message: 'Failed to fetch payment details from Razorpay',
+      }, { status: 500 });
+    }
+
+    const paymentDetails = await razorpayResponse.json();
+
+    // If payment is not captured, return error
+    if (paymentDetails.status !== 'captured' && paymentDetails.status !== 'authorized') {
+      return NextResponse.json({
+        verified: false,
+        message: `Payment status: ${paymentDetails.status}`,
+      }, { status: 400 });
+    }
+
+    // Get invoice if invoiceId provided
+    if (invoiceId) {
+      const { data: invoice } = await supabase
+        .from('invoices')
+        .select('*, lead:service_leads!lead_id(*)')
+        .eq('id', invoiceId)
+        .single();
+
+      if (invoice) {
+        const amount = parseFloat(paymentDetails.amount) / 100; // Convert paise to rupees
+        const now = new Date().toISOString();
+        const transactionId = `TXN-${Date.now()}-${invoiceId.substring(0, 8)}`;
+
+        // Update or create payment transaction
+        const { data: existingTransaction } = await supabase
+          .from('payment_transactions')
+          .select('id')
+          .eq('gateway_order_id', orderId)
+          .single();
+
+        if (existingTransaction) {
+          // Update existing transaction
+          await supabase
+            .from('payment_transactions')
+            .update({
+              gateway_payment_id: paymentId,
+              gateway_signature: signature,
+              status: 'SUCCESS',
+              amount: amount,
+              payment_method: paymentDetails.method || 'ONLINE',
+              upi_id: paymentDetails.vpa || null,
+              upi_txn_id: paymentDetails.id || null,
+              card_last4: paymentDetails.card?.last4 || null,
+              card_brand: paymentDetails.card?.network || null,
+              card_type: paymentDetails.card?.type || null,
+              completed_at: now,
+              webhook_data: paymentDetails,
+              updated_at: now,
+            })
+            .eq('id', existingTransaction.id);
+        } else {
+          // Create new transaction
+          await supabase
+            .from('payment_transactions')
+            .insert({
+              transaction_id: transactionId,
+              invoice_id: invoiceId,
+              lead_id: invoice.lead_id,
+              amount: amount,
+              currency: 'INR',
+              payment_method: paymentDetails.method || 'ONLINE',
+              payment_gateway: 'RAZORPAY',
+              gateway_order_id: orderId,
+              gateway_payment_id: paymentId,
+              gateway_signature: signature,
+              status: 'SUCCESS',
+              upi_id: paymentDetails.vpa || null,
+              upi_txn_id: paymentDetails.id || null,
+              card_last4: paymentDetails.card?.last4 || null,
+              card_brand: paymentDetails.card?.network || null,
+              card_type: paymentDetails.card?.type || null,
+              completed_at: now,
+              webhook_data: paymentDetails,
+              created_by: user.id,
+            });
+        }
+
+        // Update invoice
+        const isFullPayment = amount >= parseFloat(invoice.final_amount || '0');
+        await supabase
+          .from('invoices')
+          .update({
+            payment_status: isFullPayment ? 'PAID' : 'PARTIAL',
+            paid_amount: amount,
+            payment_mode: paymentDetails.method || 'ONLINE',
+            payment_txn_id: transactionId,
+            paid_at: now,
+            status: isFullPayment ? 'PAID' : 'PARTIAL',
+            updated_at: now,
+          })
+          .eq('id', invoiceId);
+
+        // Update lead status
+        if (invoice.lead_id) {
+          // After full payment, mark vehicle as ready for delivery
+          const newLeadStatus = isFullPayment ? 'READY_FOR_DELIVERY' : 'PARTIAL_PAYMENT';
+          await supabase
+            .from('service_leads')
+            .update({
+              payment_status: isFullPayment ? 'PAID' : 'PARTIAL',
+              payment_mode: paymentDetails.method || 'ONLINE',
+              payment_txn_id: transactionId,
+              payment_collected_at: now,
+              status: newLeadStatus,
+              ready_for_delivery_at: isFullPayment ? now : null,
+              updated_at: now,
+            })
+            .eq('id', invoice.lead_id);
+
+          // Log status change
+          await supabase
+            .from('lead_status_history')
+            .insert({
+              lead_id: invoice.lead_id,
+              old_status: invoice.lead?.status || 'AWAITING_PAYMENT',
+              new_status: newLeadStatus,
+              changed_by: user.id,
+              changed_at: now,
+              reason: 'Payment received via Razorpay',
+              notes: `Payment ID: ${paymentId}, Amount: ₹${amount.toFixed(2)}`,
+            });
+        }
+      }
+    }
+
+    // Payment verified successfully
+    return NextResponse.json({
+      verified: true,
+      message: 'Payment verified successfully',
+      payment_id: paymentId,
+      order_id: orderId,
+      amount: paymentDetails.amount ? parseFloat(paymentDetails.amount) / 100 : null,
+      status: paymentDetails.status,
+    });
 
   } catch (error: any) {
     console.error('Error verifying payment:', error);
