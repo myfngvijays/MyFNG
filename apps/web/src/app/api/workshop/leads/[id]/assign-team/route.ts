@@ -196,22 +196,57 @@ export async function POST(
         assignment_notes: notes
       });
 
-    // CRITICAL: Create mechanic_jobs entry so mechanic can see the job
-    const { error: mechanicJobError } = await supabase
+    // CRITICAL: Create or update mechanic_jobs entry so mechanic can see the job
+    // Check if mechanic_jobs record already exists
+    const { data: existingJob, error: checkError } = await supabase
       .from('mechanic_jobs')
-      .insert({
-        lead_id: leadId,
-        mechanic_id: mechanic_id,
-        assigned_by: userProfile.id,
-        mechanic_status: 'ASSIGNED',
-        job_priority: lead.lead_priority || 'NORMAL',
-        assigned_at: now,
-        work_notes: notes || null
-      });
+      .select('id')
+      .eq('lead_id', leadId)
+      .single();
 
-    if (mechanicJobError) {
-      console.error('Error creating mechanic job:', mechanicJobError);
-      // Continue even if this fails - mechanic_assignments is the primary record
+    if (existingJob) {
+      // Update existing record
+      const { error: updateJobError } = await supabase
+        .from('mechanic_jobs')
+        .update({
+          mechanic_id: mechanic_id,
+          assigned_by: userProfile.id,
+          mechanic_status: 'ASSIGNED',
+          job_priority: lead.lead_priority || 'NORMAL',
+          assigned_at: now,
+          updated_at: now,
+          work_notes: notes || null
+        })
+        .eq('id', existingJob.id);
+
+      if (updateJobError) {
+        console.error('Error updating mechanic job:', updateJobError);
+        return NextResponse.json({ 
+          error: 'Failed to update mechanic job',
+          details: updateJobError.message 
+        }, { status: 500 });
+      }
+    } else {
+      // Create new record
+      const { error: mechanicJobError } = await supabase
+        .from('mechanic_jobs')
+        .insert({
+          lead_id: leadId,
+          mechanic_id: mechanic_id,
+          assigned_by: userProfile.id,
+          mechanic_status: 'ASSIGNED',
+          job_priority: lead.lead_priority || 'NORMAL',
+          assigned_at: now,
+          work_notes: notes || null
+        });
+
+      if (mechanicJobError) {
+        console.error('Error creating mechanic job:', mechanicJobError);
+        return NextResponse.json({ 
+          error: 'Failed to create mechanic job',
+          details: mechanicJobError.message 
+        }, { status: 500 });
+      }
     }
 
     // TODO: Send notifications to mechanic, supervisor, pickup boy
