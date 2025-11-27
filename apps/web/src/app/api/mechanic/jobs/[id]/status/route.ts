@@ -75,6 +75,48 @@ export async function POST(
     // Set timestamps based on status
     switch (status) {
       case 'IN_PROGRESS':
+        // Validate before inspection is complete
+        if (!currentJob.before_inspection_complete) {
+          // Check validation using RPC function
+          const { data: validationResult, error: validationError } = await supabase.rpc(
+            'validate_before_inspection',
+            { job_id_param: currentJob.id }
+          );
+
+          if (validationError || !validationResult?.is_valid) {
+            const missingPhotos = validationResult?.missing_photos || [];
+            const photoCount = validationResult?.photo_count || 0;
+            const minRequired = validationResult?.min_required || 6;
+            
+            let errorMessage = 'Cannot start repair: Before inspection incomplete. ';
+            
+            if (photoCount < minRequired) {
+              errorMessage += `Required ${minRequired} photos, but only ${photoCount} uploaded. `;
+            }
+            
+            if (missingPhotos && missingPhotos.length > 0) {
+              const photoNames = missingPhotos.map((type: string) => 
+                type.replace('BEFORE_', '').replace('_', ' ')
+              ).join(', ');
+              errorMessage += `Missing required photos: ${photoNames}. `;
+            }
+            
+            errorMessage += 'Please upload all required photos with correct types (Front, Rear, Left, Right, Dashboard, Engine Bay).';
+            
+            return NextResponse.json({ 
+              error: errorMessage,
+              details: {
+                message: 'Please complete before inspection with all required photos',
+                photo_count: photoCount,
+                min_required: minRequired,
+                missing_photos: missingPhotos
+              }
+            }, { status: 400 });
+          }
+          
+          // Mark before inspection as complete if validation passes
+          updates.before_inspection_complete = true;
+        }
         if (!currentJob.started_at) {
           updates.started_at = now;
         }
@@ -83,24 +125,24 @@ export async function POST(
         updates.paused_at = now;
         break;
       case 'COMPLETED':
-        // Validate before allowing completion
-        if (currentJob.before_images_count < currentJob.min_before_images) {
+        // Validate before allowing completion using RPC function
+        const { data: validationResult, error: validationError } = await supabase.rpc(
+          'validate_after_service_completion',
+          { job_id_param: currentJob.id }
+        );
+
+        if (validationError || !validationResult?.is_valid) {
           return NextResponse.json({ 
-            error: 'Cannot complete job: Insufficient before images',
-            required: currentJob.min_before_images,
-            current: currentJob.before_images_count
-          }, { status: 400 });
-        }
-        if (currentJob.after_images_count < currentJob.min_after_images) {
-          return NextResponse.json({ 
-            error: 'Cannot complete job: Insufficient after images',
-            required: currentJob.min_after_images,
-            current: currentJob.after_images_count
-          }, { status: 400 });
-        }
-        if (!currentJob.checklist_completed) {
-          return NextResponse.json({ 
-            error: 'Cannot complete job: Checklist not completed'
+            error: 'Cannot complete job: Requirements not met',
+            details: {
+              message: 'Please complete all requirements before marking job as complete',
+              photo_count: validationResult?.photo_count || 0,
+              min_required: validationResult?.min_required || 6,
+              missing_photos: validationResult?.missing_photos || [],
+              checklist_completed: validationResult?.checklist_completed || false,
+              parts_recorded: validationResult?.parts_recorded || false,
+              notes_entered: validationResult?.notes_entered || false
+            }
           }, { status: 400 });
         }
         updates.completed_at = now;

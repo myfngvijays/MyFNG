@@ -78,7 +78,7 @@ export async function PUT(
 
     // Get request body
     const body = await request.json();
-    const { item_id, status, notes } = body;
+    const { item_id, status, notes, remark } = body;
 
     // Validate status
     const validStatuses = ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'SKIPPED', 'NOT_APPLICABLE'];
@@ -101,7 +101,8 @@ export async function PUT(
     }
 
     // Update the specific item in the JSONB array
-    const checklistItems = currentChecklist.checklist_items || [];
+    // Create a new array to avoid mutation issues
+    const checklistItems = JSON.parse(JSON.stringify(currentChecklist.checklist_items || []));
     const itemIndex = checklistItems.findIndex((item: any) => item.id === item_id);
 
     if (itemIndex === -1) {
@@ -109,13 +110,18 @@ export async function PUT(
     }
 
     const now = new Date().toISOString();
+    const currentItem = checklistItems[itemIndex];
 
-    // Update item
+    // Update item - preserve all existing fields and update only what's provided
     checklistItems[itemIndex] = {
-      ...checklistItems[itemIndex],
-      status,
-      notes: notes || checklistItems[itemIndex].notes,
-      completed_at: status === 'COMPLETED' ? now : checklistItems[itemIndex].completed_at
+      id: currentItem.id,
+      name: currentItem.name,
+      status: status,
+      mandatory: currentItem.mandatory !== undefined ? currentItem.mandatory : true,
+      category: currentItem.category || null,
+      notes: notes !== undefined ? notes : (currentItem.notes || ''),
+      remark: remark !== undefined ? remark : (currentItem.remark || ''),
+      completed_at: status === 'COMPLETED' ? now : (currentItem.completed_at || null)
     };
 
     // Calculate completion stats
@@ -143,7 +149,20 @@ export async function PUT(
 
     if (updateError) {
       console.error('Error updating checklist:', updateError);
-      return NextResponse.json({ error: 'Failed to update checklist' }, { status: 500 });
+      console.error('Update details:', {
+        leadId,
+        checklistItems: JSON.stringify(checklistItems),
+        totalItems,
+        completedItems,
+        completionPercentage,
+        allMandatoryCompleted
+      });
+      return NextResponse.json({ 
+        error: 'Failed to update checklist', 
+        details: updateError.message,
+        code: updateError.code,
+        hint: updateError.hint
+      }, { status: 500 });
     }
 
     // Update mechanic_jobs checklist_completed flag

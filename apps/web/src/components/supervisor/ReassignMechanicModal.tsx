@@ -117,7 +117,14 @@ export default function ReassignMechanicModal({
     }
   }
 
-  async function handleReassign() {
+  async function handleReassign(e?: React.MouseEvent) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    console.log('Reassign button clicked', { selectedMechanicId, reason, customReason });
+
     const finalReason = reason === 'Other' ? customReason : reason;
 
     if (!selectedMechanicId) {
@@ -125,8 +132,13 @@ export default function ReassignMechanicModal({
       return;
     }
 
+    if (!reason) {
+      setError('Please select a reason for reassignment');
+      return;
+    }
+
     if (!finalReason || finalReason.trim() === '') {
-      setError('Please provide a reason for reassignment');
+      setError('Please provide a reason for reassignment' + (reason === 'Other' ? ' in the text field' : ''));
       return;
     }
 
@@ -164,8 +176,18 @@ export default function ReassignMechanicModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div 
+        className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div>
@@ -230,13 +252,21 @@ export default function ReassignMechanicModal({
                   ))}
                 </div>
                 {reason === 'Other' && (
-                  <input
-                    type="text"
-                    value={customReason}
-                    onChange={(e) => setCustomReason(e.target.value)}
-                    placeholder="Please specify reason..."
-                    className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-                  />
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      value={customReason}
+                      onChange={(e) => setCustomReason(e.target.value)}
+                      placeholder="Please specify reason..."
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
+                        reason === 'Other' && !customReason.trim() ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      required
+                    />
+                    {reason === 'Other' && !customReason.trim() && (
+                      <p className="text-xs text-red-500 mt-1">Please enter a reason to enable the reassign button</p>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -321,9 +351,15 @@ export default function ReassignMechanicModal({
             Cancel
           </button>
           <button
-            onClick={handleReassign}
-            disabled={loading || !selectedMechanicId || !reason || (reason === 'Other' && !customReason) || fetchingMechanics}
-            className="btn bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2"
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleReassign(e);
+            }}
+            disabled={loading || !selectedMechanicId || !reason || (reason === 'Other' && !customReason.trim()) || fetchingMechanics}
+            className="btn bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            style={{ pointerEvents: loading || !selectedMechanicId || !reason || (reason === 'Other' && !customReason.trim()) || fetchingMechanics ? 'none' : 'auto' }}
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             Reassign Mechanic

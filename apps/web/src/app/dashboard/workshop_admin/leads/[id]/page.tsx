@@ -61,6 +61,15 @@ export default function LeadDetailPage() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectNotes, setRejectNotes] = useState('');
+  const [mechanicParts, setMechanicParts] = useState<any[]>([]);
+  const [showAddPartModal, setShowAddPartModal] = useState(false);
+  const [editingPart, setEditingPart] = useState<any>(null);
+  const [partForm, setPartForm] = useState({
+    part_name: '',
+    part_code: '',
+    quantity_issued: 1,
+    part_notes: ''
+  });
 
   useEffect(() => {
     if (leadId) {
@@ -105,6 +114,75 @@ export default function LeadDetailPage() {
     return () => clearInterval(interval);
   }, [lead]);
 
+  async function saveMechanicPart() {
+    try {
+      const supabase = createClient();
+      
+      if (!lead.assigned_mechanic_id) {
+        alert('Mechanic not assigned to this lead');
+        return;
+      }
+
+      if (editingPart) {
+        // Update existing part
+        const { error } = await supabase
+          .from('mechanic_parts_usage')
+          .update({
+            part_name: partForm.part_name,
+            part_code: partForm.part_code || null,
+            quantity: partForm.quantity_issued,
+            notes: partForm.part_notes || null
+          })
+          .eq('id', editingPart.id);
+
+        if (error) throw error;
+        alert('Part updated successfully');
+      } else {
+        // Add new part
+        const { error } = await supabase
+          .from('mechanic_parts_usage')
+          .insert({
+            lead_id: lead.id,
+            mechanic_id: lead.assigned_mechanic_id,
+            part_name: partForm.part_name,
+            part_code: partForm.part_code || null,
+            quantity: partForm.quantity_issued,
+            notes: partForm.part_notes || null
+          });
+
+        if (error) throw error;
+        alert('Part assigned successfully');
+      }
+
+      setShowAddPartModal(false);
+      setEditingPart(null);
+      setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
+      fetchLeadDetails();
+    } catch (error: any) {
+      console.error('Error saving part:', error);
+      alert(`Failed to save part: ${error.message}`);
+    }
+  }
+
+  async function deleteMechanicPart(partId: string) {
+    if (!confirm('Are you sure you want to delete this part?')) return;
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('mechanic_parts_usage')
+        .delete()
+        .eq('id', partId);
+
+      if (error) throw error;
+      alert('Part deleted successfully');
+      fetchLeadDetails();
+    } catch (error: any) {
+      console.error('Error deleting part:', error);
+      alert(`Failed to delete part: ${error.message}`);
+    }
+  }
+
   async function fetchLeadDetails() {
     const supabase = createClient();
 
@@ -146,6 +224,21 @@ export default function LeadDetailPage() {
         }
 
         setLead(data);
+        
+        // Fetch mechanic parts if mechanic is assigned
+        if (data.assigned_mechanic_id) {
+          const { data: partsData, error: partsError } = await supabase
+            .from('mechanic_parts_usage')
+            .select('*')
+            .eq('lead_id', leadId)
+            .order('created_at', { ascending: false });
+
+          if (!partsError && partsData) {
+            setMechanicParts(partsData || []);
+          }
+        } else {
+          setMechanicParts([]);
+        }
       }
     } catch (error) {
       console.error('Error:', error);
@@ -607,6 +700,80 @@ export default function LeadDetailPage() {
           <JobCardSection lead={lead} onUpdate={fetchLeadDetails} />
         )}
 
+        {/* Section 8.5: Mechanic Parts Assignment */}
+        {lead.status !== 'NEW' && lead.status !== 'REJECTED' && lead.assigned_mechanic_id && (
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                Mechanic Parts Assignment ({mechanicParts.length})
+              </h3>
+              <button
+                onClick={() => {
+                  setEditingPart(null);
+                  setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
+                  setShowAddPartModal(true);
+                }}
+                className="btn btn-primary flex items-center gap-2"
+              >
+                <Package className="w-4 h-4" />
+                Assign Part
+              </button>
+            </div>
+
+            {mechanicParts.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Package className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                <p>No parts assigned to mechanic yet</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {mechanicParts.map((part) => (
+                  <div key={part.id} className="p-4 border rounded-lg bg-gray-50">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <p className="font-semibold text-lg">{part.part_name}</p>
+                        {part.part_code && (
+                          <p className="text-sm text-gray-600">Code: {part.part_code}</p>
+                        )}
+                        <p className="text-sm text-gray-600 mt-1">
+                          Quantity: {part.quantity || 0}
+                        </p>
+                        {part.notes && (
+                          <p className="text-sm text-gray-600 mt-1">{part.notes}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingPart(part);
+                            setPartForm({
+                              part_name: part.part_name,
+                              part_code: part.part_code || '',
+                              quantity_issued: part.quantity || 1,
+                              part_notes: part.notes || ''
+                            });
+                            setShowAddPartModal(true);
+                          }}
+                          className="btn btn-outline text-sm"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => deleteMechanicPart(part.id)}
+                          className="btn bg-red-500 hover:bg-red-600 text-white text-sm"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Section 9: Media Section */}
         <MediaSection lead={lead} onUpdate={fetchLeadDetails} />
 
@@ -631,6 +798,101 @@ export default function LeadDetailPage() {
         {/* Section 14: Service History */}
         <ServiceHistory lead={lead} />
       </div>
+
+      {/* Add/Edit Mechanic Part Modal */}
+      {showAddPartModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">
+                {editingPart ? 'Edit Part' : 'Assign Part to Mechanic'}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowAddPartModal(false);
+                  setEditingPart(null);
+                  setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
+                }}
+                className="btn btn-outline"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Part Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={partForm.part_name}
+                  onChange={(e) => setPartForm({ ...partForm, part_name: e.target.value })}
+                  className="input w-full"
+                  placeholder="e.g., Oil Filter, Brake Pads"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Part Code</label>
+                <input
+                  type="text"
+                  value={partForm.part_code}
+                  onChange={(e) => setPartForm({ ...partForm, part_code: e.target.value })}
+                  className="input w-full"
+                  placeholder="e.g., OF-12345"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Quantity Issued <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={partForm.quantity_issued}
+                  onChange={(e) => setPartForm({ ...partForm, quantity_issued: parseInt(e.target.value) || 1 })}
+                  className="input w-full"
+                  min="1"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Notes</label>
+                <textarea
+                  value={partForm.part_notes}
+                  onChange={(e) => setPartForm({ ...partForm, part_notes: e.target.value })}
+                  className="input w-full"
+                  rows={3}
+                  placeholder="Additional notes about this part..."
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowAddPartModal(false);
+                    setEditingPart(null);
+                    setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
+                  }}
+                  className="btn btn-outline flex-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveMechanicPart}
+                  disabled={!partForm.part_name || partForm.quantity_issued < 1}
+                  className="btn btn-primary flex-1"
+                >
+                  {editingPart ? 'Update' : 'Assign'} Part
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reject Modal */}
       {showRejectModal && (

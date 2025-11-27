@@ -417,6 +417,8 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     const MechanicJobHistoryScreen = require('../screens/dashboard/workshop_mechanic/MechanicJobHistoryScreen').default;
     const MechanicProfileScreen = require('../screens/dashboard/workshop_mechanic/MechanicProfileScreen').default;
     const MechanicLeadDetailScreen = require('../screens/dashboard/workshop_mechanic/MechanicLeadDetailScreen').default;
+    const MechanicJobDetailScreen = require('../screens/dashboard/workshop_mechanic/MechanicJobDetailScreen').default;
+    const BeforeInspectionScreen = require('../screens/dashboard/workshop_mechanic/BeforeInspectionScreen').default;
     
     return (
       <Stack.Navigator screenOptions={screenOptions}>
@@ -429,6 +431,21 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="LeadDetail" 
           component={MechanicLeadDetailScreen}
           options={{ title: 'Lead Details' }}
+        />
+        <Stack.Screen 
+          name="JobDetail" 
+          component={MechanicJobDetailScreen}
+          options={{ title: 'Job Details' }}
+        />
+        <Stack.Screen 
+          name="BeforeInspection" 
+          component={BeforeInspectionScreen}
+          options={{ title: 'Before Inspection' }}
+        />
+        <Stack.Screen 
+          name="AfterServicePhotos" 
+          component={require('../screens/dashboard/workshop_mechanic/AfterServicePhotoScreen').default}
+          options={{ title: 'After Service Photos' }}
         />
         <Stack.Screen 
           name="JobHistory" 

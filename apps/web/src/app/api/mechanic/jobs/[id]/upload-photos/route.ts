@@ -1,0 +1,399 @@
+import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+/**
+ * POST /api/mechanic/jobs/[id]/upload-photos
+ * Upload mechanic job photos with EXIF data extraction
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+
+    const leadId = params.id;
+    const formData = await request.formData();
+    const photoType = formData.get('photoType') || formData.get('photo_type') as string;
+    const photoCategory = formData.get('photoCategory') || formData.get('photo_category') as string;
+    const file = formData.get('file') as File;
+    const partId = formData.get('partId') as string | null;
+    const latitude = formData.get('latitude') as string | null;
+    const longitude = formData.get('longitude') as string | null;
+    const odometerReading = formData.get('odometer_reading') as string | null;
+    const annotations = formData.get('annotations') as string | null;
+    const notes = formData.get('notes') as string | null;
+    const exifData = formData.get('exif_data') as string | null;
+
+    if (!photoType || !photoCategory || !file) {
+      return NextResponse.json({ 
+        error: 'Photo type, category, and file are required' 
+      }, { status: 400 });
+    }
+
+    // Validate photo type
+    const validPhotoTypes = [
+      'BEFORE_FRONT', 'BEFORE_REAR', 'BEFORE_LEFT', 'BEFORE_RIGHT',
+      'BEFORE_DASHBOARD', 'BEFORE_ENGINE_BAY', 'BEFORE_DAMAGE', 'BEFORE_TYRE',
+      'DURING_OIL_DRAIN', 'DURING_OIL_POUR', 'DURING_FILTER_OLD', 'DURING_FILTER_NEW',
+      'DURING_BRAKE_BEFORE', 'DURING_BRAKE_AFTER', 'DURING_AC_BEFORE', 'DURING_AC_AFTER',
+      'DURING_PART_REMOVAL', 'DURING_PART_INSTALL',
+      'AFTER_FRONT', 'AFTER_REAR', 'AFTER_LEFT', 'AFTER_RIGHT',
+      'AFTER_ENGINE_BAY', 'AFTER_OLD_PARTS', 'AFTER_NEW_PARTS', 'AFTER_ODOMETER'
+    ];
+
+    if (!validPhotoTypes.includes(photoType as string)) {
+      return NextResponse.json({ 
+        error: 'Invalid photo type' 
+      }, { status: 400 });
+    }
+
+    // Get job_id from lead_id
+    const { data: jobData, error: jobError } = await supabase
+      .from('mechanic_jobs')
+      .select('id, mechanic_id')
+      .eq('lead_id', leadId)
+      .single();
+
+    if (jobError || !jobData) {
+      return NextResponse.json({ 
+        error: 'Job not found',
+        details: jobError?.message 
+      }, { status: 404 });
+    }
+
+    // Verify mechanic is assigned to this job
+    if (jobData.mechanic_id !== user.id) {
+      return NextResponse.json({ 
+        error: 'You are not assigned to this job' 
+      }, { status: 403 });
+    }
+
+    // Upload file to Supabase Storage
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${leadId}/${photoCategory}/${photoType}_${Date.now()}.${fileExt}`;
+    const filePath = `mechanic-job-photos/${fileName}`;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('service-media')
+      .upload(filePath, buffer, {
+        contentType: file.type,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error('Storage upload error:', uploadError);
+      return NextResponse.json({ 
+        error: 'Failed to upload photo', 
+        details: uploadError.message 
+      }, { status: 500 });
+    }
+
+    // Get public URL
+    const { data: publicUrlData } = supabase.storage
+      .from('service-media')
+      .getPublicUrl(filePath);
+
+    const photoUrl = publicUrlData.publicUrl;
+
+    // Parse EXIF data if provided
+    let exifDataParsed = null;
+    if (exifData) {
+      try {
+        exifDataParsed = JSON.parse(exifData);
+      } catch (e) {
+        // Invalid JSON, ignore
+      }
+    }
+
+    // Parse annotations if provided
+    let annotationsParsed = null;
+    if (annotations) {
+      try {
+        annotationsParsed = JSON.parse(annotations);
+      } catch (e) {
+        // Invalid JSON, ignore
+      }
+    }
+
+    // Save photo record to database
+    const photoRecordData: any = {
+      job_id: jobData.id,
+      lead_id: leadId,
+      photo_type: photoType,
+      photo_category: photoCategory,
+      photo_url: photoUrl,
+      uploaded_by: user.id,
+      latitude: latitude ? parseFloat(latitude) : null,
+      longitude: longitude ? parseFloat(longitude) : null,
+      odometer_reading: odometerReading ? parseFloat(odometerReading) : null,
+      exif_data: exifDataParsed,
+      ...(partId && { part_id: partId }), // Add part_id if provided
+      annotations: annotationsParsed,
+      notes: notes || null,
+    };
+
+    const { data: photoRecord, error: photoError } = await supabase
+      .from('mechanic_job_photos')
+      .insert(photoRecordData)
+      .select()
+      .single();
+
+    if (photoError) {
+      console.error('Database insert error:', photoError);
+      // Try to delete uploaded file if database insert fails
+      try {
+        await supabase.storage.from('service-media').remove([filePath]);
+      } catch (cleanupError) {
+        console.error('Failed to cleanup uploaded file:', cleanupError);
+      }
+      return NextResponse.json({ 
+        error: 'Failed to save photo record', 
+        details: photoError.message 
+      }, { status: 500 });
+    }
+
+    // Update odometer reading in mechanic_jobs if it's a dashboard photo
+    if (photoCategory === 'before' && photoType === 'BEFORE_DASHBOARD' && odometerReading) {
+      await supabase
+        .from('mechanic_jobs')
+        .update({ initial_odometer_reading: parseFloat(odometerReading) })
+        .eq('id', jobData.id);
+    }
+
+    if (photoCategory === 'after' && photoType === 'AFTER_ODOMETER' && odometerReading) {
+      await supabase
+        .from('mechanic_jobs')
+        .update({ final_odometer_reading: parseFloat(odometerReading) })
+        .eq('id', jobData.id);
+    }
+
+    // Create activity log
+    await supabase.from('lead_activities').insert({
+      lead_id: leadId,
+      user_id: user.id,
+      activity_type: 'PHOTO_UPLOADED',
+      description: `Mechanic photo uploaded: ${photoType} (${photoCategory})`,
+      metadata: { 
+        photo_type: photoType, 
+        photo_category: photoCategory,
+        photo_url: photoUrl 
+      },
+    });
+
+    // Validate before inspection if it's a before photo
+    if (photoCategory === 'before') {
+      const { data: validationResult } = await supabase.rpc('validate_before_inspection', {
+        job_id_param: jobData.id
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: photoRecord,
+        validation: validationResult,
+        message: 'Photo uploaded successfully',
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: photoRecord,
+      message: 'Photo uploaded successfully',
+    });
+  } catch (error: any) {
+    console.error('Error uploading photo:', error);
+    return NextResponse.json(
+      { 
+        error: 'Internal server error', 
+        details: error.message 
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET /api/mechanic/jobs/[id]/upload-photos
+ * Get all photos for a job
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const leadId = params.id;
+    const category = request.nextUrl.searchParams.get('category'); // before, during, after
+
+    // Get job_id from lead_id
+    const { data: jobData, error: jobError } = await supabase
+      .from('mechanic_jobs')
+      .select('id')
+      .eq('lead_id', leadId)
+      .single();
+
+    if (jobError || !jobData) {
+      return NextResponse.json({ 
+        error: 'Job not found' 
+      }, { status: 404 });
+    }
+
+    // Build query
+    let query = supabase
+      .from('mechanic_job_photos')
+      .select('*')
+      .eq('job_id', jobData.id)
+      .order('created_at', { ascending: false });
+
+    if (category) {
+      query = query.eq('photo_category', category);
+    }
+
+    const { data: photos, error: photosError } = await query;
+
+    if (photosError) {
+      return NextResponse.json({ 
+        error: 'Failed to fetch photos', 
+        details: photosError.message 
+      }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: photos || [],
+    });
+  } catch (error: any) {
+    console.error('Error fetching photos:', error);
+    return NextResponse.json(
+      { error: 'Internal server error', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/mechanic/jobs/[id]/upload-photos
+ * Delete a photo
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const leadId = params.id;
+    const photoId = request.nextUrl.searchParams.get('photo_id');
+
+    if (!photoId) {
+      return NextResponse.json({ 
+        error: 'Photo ID is required' 
+      }, { status: 400 });
+    }
+
+    // Get photo record
+    const { data: photo, error: photoError } = await supabase
+      .from('mechanic_job_photos')
+      .select('*, mechanic_jobs!inner(id, mechanic_id, mechanic_status)')
+      .eq('id', photoId)
+      .single();
+
+    if (photoError || !photo) {
+      return NextResponse.json({ 
+        error: 'Photo not found' 
+      }, { status: 404 });
+    }
+
+    // Verify mechanic is assigned and job is not completed
+    if (photo.mechanic_jobs.mechanic_id !== user.id) {
+      return NextResponse.json({ 
+        error: 'You are not authorized to delete this photo' 
+      }, { status: 403 });
+    }
+
+    if (photo.mechanic_jobs.mechanic_status === 'COMPLETED') {
+      return NextResponse.json({ 
+        error: 'Cannot delete photos from completed jobs' 
+      }, { status: 403 });
+    }
+
+    // Delete from storage
+    const filePath = photo.photo_url.split('/').slice(-2).join('/');
+    await supabase.storage
+      .from('service-media')
+      .remove([`mechanic-job-photos/${filePath}`]);
+
+    // Delete from database
+    const { error: deleteError } = await supabase
+      .from('mechanic_job_photos')
+      .delete()
+      .eq('id', photoId);
+
+    if (deleteError) {
+      return NextResponse.json({ 
+        error: 'Failed to delete photo', 
+        details: deleteError.message 
+      }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Photo deleted successfully',
+    });
+  } catch (error: any) {
+    console.error('Error deleting photo:', error);
+    return NextResponse.json(
+      { error: 'Internal server error', details: error.message },
+      { status: 500 }
+    );
+  }
+}

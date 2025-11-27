@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import BeforeInspectionUpload from '@/components/mechanic/BeforeInspectionUpload';
+import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
 
 export default function ManageJobPage() {
   const router = useRouter();
@@ -16,9 +18,11 @@ export default function ManageJobPage() {
   const jobId = params.id as string;
 
   const [lead, setLead] = useState<any>(null);
+  const [job, setJob] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [beforeImages, setBeforeImages] = useState<any[]>([]);
   const [afterImages, setAfterImages] = useState<any[]>([]);
+  const [beforeInspectionComplete, setBeforeInspectionComplete] = useState(false);
   
   // Action states
   const [showStartModal, setShowStartModal] = useState(false);
@@ -63,21 +67,34 @@ export default function ManageJobPage() {
 
       setLead(leadData);
 
-      // Fetch images
-      const { data: beforeImgs } = await supabase
-        .from('lead_media')
+      // Fetch mechanic job
+      const { data: jobData } = await supabase
+        .from('mechanic_jobs')
         .select('*')
         .eq('lead_id', jobId)
-        .eq('category', 'BEFORE');
+        .single();
+
+      if (jobData) {
+        setJob(jobData);
+        setBeforeInspectionComplete(jobData.before_inspection_complete || false);
+
+        const { data: beforeImgs } = await supabase
+          .from('mechanic_job_photos')
+          .select('*')
+          .eq('job_id', jobData.id)
+          .eq('photo_category', 'before')
+          .order('created_at', { ascending: false });
 
       const { data: afterImgs } = await supabase
-        .from('lead_media')
+          .from('mechanic_job_photos')
         .select('*')
-        .eq('lead_id', jobId)
-        .eq('category', 'AFTER');
+          .eq('job_id', jobData.id)
+          .eq('photo_category', 'after')
+          .order('created_at', { ascending: false });
 
       setBeforeImages(beforeImgs || []);
       setAfterImages(afterImgs || []);
+      }
 
     } catch (error) {
       console.error('Error:', error);
@@ -348,7 +365,49 @@ export default function ManageJobPage() {
           </div>
         )}
 
-        {/* Images */}
+        {/* After Service Photos - Show when job is in progress */}
+        {canComplete && job && (
+          <div className="card shadow-lg border-2 border-green-200">
+            <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white p-4 rounded-t-lg -m-6 mb-4">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <CheckCircle className="w-6 h-6" />
+                After Service Completion (Mandatory)
+              </h3>
+              <p className="text-sm text-green-100 mt-1">
+                Complete all requirements before marking job as complete
+              </p>
+            </div>
+            
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-yellow-800 mb-1">
+                    ⚠️ Completion Requirements:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-yellow-700 space-y-1">
+                    <li>Minimum 6 after service photos (Front, Rear, Left, Right, Engine Bay, Old Parts)</li>
+                    <li>Final odometer reading must be captured</li>
+                    <li>All checklist items must be completed</li>
+                    <li>Parts used must be recorded in system</li>
+                    <li>Work notes must be entered</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            
+            <AfterServiceUpload
+              leadId={jobId}
+              jobId={job.id}
+              onUploadComplete={() => {
+                fetchJobDetails();
+              }}
+            />
+          </div>
+        )}
+
+        {/* Images Gallery - Show when job is completed */}
+        {lead.status === 'COMPLETED' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Before Images */}
           <div className="card">
@@ -363,13 +422,16 @@ export default function ManageJobPage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {beforeImages.map((img) => (
-                  <div key={img.id} className="relative aspect-square">
+                  {beforeImages.map((img: any) => (
+                    <div key={img.id} className="relative aspect-square group">
                     <img
-                      src={img.file_url}
-                      alt="Before"
-                      className="w-full h-full object-cover rounded"
+                        src={img.photo_url}
+                        alt={img.photo_type || 'Before'}
+                        className="w-full h-full object-cover rounded cursor-pointer hover:opacity-80 transition"
                     />
+                      <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 rounded-b">
+                        {img.photo_type?.replace('BEFORE_', '') || 'Photo'}
+                      </div>
                   </div>
                 ))}
               </div>
@@ -385,29 +447,80 @@ export default function ManageJobPage() {
             {afterImages.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <Camera className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Upload after images when job is complete</p>
+                  <p className="text-sm">No after images uploaded yet</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {afterImages.map((img) => (
-                  <div key={img.id} className="relative aspect-square">
+                  {afterImages.map((img: any) => (
+                    <div key={img.id} className="relative aspect-square group">
                     <img
-                      src={img.file_url}
-                      alt="After"
-                      className="w-full h-full object-cover rounded"
+                        src={img.photo_url}
+                        alt={img.photo_type || 'After'}
+                        className="w-full h-full object-cover rounded cursor-pointer hover:opacity-80 transition"
                     />
+                      <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 rounded-b">
+                        {img.photo_type?.replace('AFTER_', '') || 'Photo'}
+                      </div>
                   </div>
                 ))}
               </div>
             )}
+            </div>
+          </div>
+        )}
+
+        {/* Before Inspection Section - Show if job not started */}
+        {canStart && job && (
+          <div className="card shadow-lg border-2 border-blue-200">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-t-lg -m-6 mb-4">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <Camera className="w-6 h-6" />
+                Before Inspection (Mandatory)
+              </h3>
+              <p className="text-sm text-blue-100 mt-1">
+                Complete all required photos before starting repair work
+              </p>
+            </div>
+            
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-yellow-800 mb-1">
+                    ⚠️ Mandatory Requirements:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-yellow-700 space-y-1">
+                    <li>Minimum 6 photos required (Front, Rear, Left, Right, Dashboard, Engine Bay)</li>
+                    <li>Odometer reading must be clearly visible in dashboard photo</li>
+                    <li>GPS location recommended for verification</li>
+                    <li>All photos must be uploaded before "Start Job" button is enabled</li>
+                  </ul>
+                </div>
           </div>
         </div>
+            
+            <BeforeInspectionUpload
+              leadId={jobId}
+              jobId={job.id}
+              onUploadComplete={() => {
+                fetchJobDetails();
+              }}
+            />
+          </div>
+        )}
 
         {/* Start Job Modal */}
         {showStartModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-md w-full p-6">
               <h3 className="text-xl font-bold mb-4 text-blue-600">Start Job</h3>
+              {beforeImages.filter((img: any) => img.photo_category === 'before').length < 6 && (
+                <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
+                  <p className="text-sm text-red-700">
+                    ⚠️ Before inspection incomplete. Please upload all required photos first.
+                  </p>
+                </div>
+              )}
               <p className="text-gray-700 mb-4">
                 You are about to start working on lead <strong>{lead.lead_number}</strong>.
               </p>
@@ -426,8 +539,8 @@ export default function ManageJobPage() {
               <div className="flex gap-3">
                 <button
                   onClick={handleStartJob}
-                  disabled={processing}
-                  className="btn-primary flex-1"
+                  disabled={processing || beforeImages.filter((img: any) => img.photo_category === 'before').length < 6}
+                  className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {processing ? 'Starting...' : 'Start Job'}
                 </button>
@@ -450,14 +563,14 @@ export default function ManageJobPage() {
               <h3 className="text-xl font-bold mb-4 text-green-600">Complete Job</h3>
               
               {/* Validation warnings */}
-              {beforeImages.length === 0 && (
+              {beforeImages.filter((img: any) => img.photo_category === 'before').length < 6 && (
                 <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
-                  <p className="text-sm text-red-700">⚠️ Before images are required</p>
+                  <p className="text-sm text-red-700">⚠️ Before inspection incomplete (minimum 6 photos required)</p>
                 </div>
               )}
-              {afterImages.length === 0 && (
+              {afterImages.filter((img: any) => img.photo_category === 'after').length < 6 && (
                 <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
-                  <p className="text-sm text-red-700">⚠️ After images are required</p>
+                  <p className="text-sm text-red-700">⚠️ After service photos incomplete (minimum 6 photos required)</p>
                 </div>
               )}
 
@@ -492,8 +605,13 @@ export default function ManageJobPage() {
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={handleCompleteJob}
-                  disabled={processing || beforeImages.length === 0 || afterImages.length === 0}
-                  className="btn-primary bg-green-600 hover:bg-green-700 flex-1"
+                  disabled={
+                    processing || 
+                    beforeImages.filter((img: any) => img.photo_category === 'before').length < 6 ||
+                    afterImages.filter((img: any) => img.photo_category === 'after').length < 6 ||
+                    !workSummary.trim()
+                  }
+                  className="btn-primary bg-green-600 hover:bg-green-700 flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {processing ? 'Completing...' : 'Complete Job'}
                 </button>

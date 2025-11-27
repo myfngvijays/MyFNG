@@ -33,6 +33,15 @@ export default function SupervisorJobDetailPage() {
   const [showSendBack, setShowSendBack] = useState(false);
   const [internalNotes, setInternalNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [parts, setParts] = useState<any[]>([]);
+  const [showAddPartModal, setShowAddPartModal] = useState(false);
+  const [editingPart, setEditingPart] = useState<any>(null);
+  const [partForm, setPartForm] = useState({
+    part_name: '',
+    part_code: '',
+    quantity_issued: 1,
+    part_notes: ''
+  });
 
   useEffect(() => {
     if (jobId) {
@@ -110,6 +119,26 @@ export default function SupervisorJobDetailPage() {
       
       setLead(data);
       setInternalNotes(data.notes_internal || '');
+
+      // Fetch mechanic_jobs to get mechanic_id
+      const { data: mechanicJob } = await supabase
+        .from('mechanic_jobs')
+        .select('mechanic_id')
+        .eq('lead_id', jobId)
+        .single();
+
+      // Fetch parts if mechanic is assigned
+      if (mechanicJob?.mechanic_id) {
+        const { data: partsData, error: partsError } = await supabase
+          .from('mechanic_parts_usage')
+          .select('*')
+          .eq('lead_id', jobId)
+          .order('created_at', { ascending: false });
+
+        if (!partsError && partsData) {
+          setParts(partsData || []);
+        }
+      }
     } catch (err: any) {
       console.error('Error fetching job details:', err);
       setError(err.message);
@@ -190,6 +219,184 @@ export default function SupervisorJobDetailPage() {
     } catch (error: any) {
       console.error('Error changing status:', error);
       alert(`Failed to change status: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  async function savePart() {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get mechanic_id from mechanic_jobs
+      const { data: mechanicJob } = await supabase
+        .from('mechanic_jobs')
+        .select('mechanic_id')
+        .eq('lead_id', jobId)
+        .single();
+
+      if (!mechanicJob?.mechanic_id) {
+        alert('Mechanic not assigned to this job');
+        return;
+      }
+
+      if (editingPart) {
+        // Update existing part in mechanic_parts_usage
+        const { error } = await supabase
+          .from('mechanic_parts_usage')
+          .update({
+            part_name: partForm.part_name,
+            part_code: partForm.part_code || null,
+            quantity: partForm.quantity_issued,
+            notes: partForm.part_notes || null
+          })
+          .eq('id', editingPart.id);
+
+        if (error) throw error;
+
+        // Also update in job_card_parts if it exists
+        const { data: jobCard } = await supabase
+          .from('job_cards')
+          .select('id')
+          .eq('lead_id', jobId)
+          .maybeSingle();
+
+        if (jobCard) {
+          // Find matching part in job_card_parts by part_name
+          const { data: jobCardPart } = await supabase
+            .from('job_card_parts')
+            .select('id')
+            .eq('job_card_id', jobCard.id)
+            .eq('part_name', editingPart.part_name)
+            .maybeSingle();
+
+          if (jobCardPart) {
+            // Get existing unit_price to recalculate total_price
+            const { data: existingPart } = await supabase
+              .from('job_card_parts')
+              .select('unit_price')
+              .eq('id', jobCardPart.id)
+              .single();
+
+            const unitPrice = existingPart?.unit_price || 0;
+            const totalPrice = unitPrice * partForm.quantity_issued;
+
+            // Update job_card_parts
+            await supabase
+              .from('job_card_parts')
+              .update({
+                part_name: partForm.part_name,
+                part_number: partForm.part_code || null,
+                quantity: partForm.quantity_issued,
+                total_price: totalPrice
+              })
+              .eq('id', jobCardPart.id);
+          }
+        }
+
+        alert('Part updated successfully');
+      } else {
+        // Add new part to mechanic_parts_usage
+        const { error } = await supabase
+          .from('mechanic_parts_usage')
+          .insert({
+            lead_id: jobId,
+            mechanic_id: mechanicJob.mechanic_id,
+            part_name: partForm.part_name,
+            part_code: partForm.part_code || null,
+            quantity: partForm.quantity_issued,
+            notes: partForm.part_notes || null
+          });
+
+        if (error) throw error;
+
+        // Also add to job_card_parts automatically (for billing)
+        const { data: jobCard } = await supabase
+          .from('job_cards')
+          .select('id')
+          .eq('lead_id', jobId)
+          .maybeSingle();
+
+        if (jobCard) {
+          // Check if part already exists in job_card_parts
+          const { data: existingPart } = await supabase
+            .from('job_card_parts')
+            .select('id')
+            .eq('job_card_id', jobCard.id)
+            .eq('part_name', partForm.part_name)
+            .maybeSingle();
+
+          if (!existingPart) {
+            // Add to job_card_parts with default unit_price (can be updated later)
+            await supabase
+              .from('job_card_parts')
+              .insert({
+                job_card_id: jobCard.id,
+                part_name: partForm.part_name,
+                part_number: partForm.part_code || null,
+                quantity: partForm.quantity_issued,
+                unit_price: 0, // Default, can be updated later
+                total_price: 0 // Will be calculated when unit_price is set
+              });
+          }
+        }
+
+        alert('Part assigned successfully');
+      }
+
+      setShowAddPartModal(false);
+      setEditingPart(null);
+      setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
+      fetchJobDetails();
+    } catch (error: any) {
+      console.error('Error saving part:', error);
+      alert(`Failed to save part: ${error.message}`);
+    }
+  }
+
+  async function deletePart(partId: string) {
+    if (!confirm('Are you sure you want to delete this part?')) return;
+
+    try {
+      const supabase = createClient();
+      
+      // Get part details before deleting
+      const { data: partToDelete } = await supabase
+        .from('mechanic_parts_usage')
+        .select('part_name')
+        .eq('id', partId)
+        .single();
+
+      // Delete from mechanic_parts_usage
+      const { error } = await supabase
+        .from('mechanic_parts_usage')
+        .delete()
+        .eq('id', partId);
+
+      if (error) throw error;
+
+      // Also delete from job_card_parts if it exists
+      if (partToDelete) {
+        const { data: jobCard } = await supabase
+          .from('job_cards')
+          .select('id')
+          .eq('lead_id', jobId)
+          .maybeSingle();
+
+        if (jobCard) {
+          await supabase
+            .from('job_card_parts')
+            .delete()
+            .eq('job_card_id', jobCard.id)
+            .eq('part_name', partToDelete.part_name);
+        }
+      }
+
+      alert('Part deleted successfully');
+      fetchJobDetails();
+    } catch (error: any) {
+      console.error('Error deleting part:', error);
+      alert(`Failed to delete part: ${error.message}`);
     }
   }
 
@@ -464,7 +671,81 @@ export default function SupervisorJobDetailPage() {
           </div>
         )}
 
-        {/* Section 7: Internal Notes */}
+        {/* Section 7: Parts Management */}
+        {lead.mechanic && (
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                Parts Management ({parts.length})
+              </h3>
+              <button
+                onClick={() => {
+                  setEditingPart(null);
+                  setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
+                  setShowAddPartModal(true);
+                }}
+                className="btn btn-primary flex items-center gap-2"
+              >
+                <Package className="w-4 h-4" />
+                Add Part
+              </button>
+            </div>
+
+            {parts.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Package className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                <p>No parts assigned yet</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {parts.map((part) => (
+                  <div key={part.id} className="p-4 border rounded-lg bg-gray-50">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <p className="font-semibold text-lg">{part.part_name}</p>
+                        {part.part_code && (
+                          <p className="text-sm text-gray-600">Code: {part.part_code}</p>
+                        )}
+                        <p className="text-sm text-gray-600 mt-1">
+                          Quantity: {part.quantity || 0}
+                        </p>
+                        {part.notes && (
+                          <p className="text-sm text-gray-600 mt-1">{part.notes}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingPart(part);
+                            setPartForm({
+                              part_name: part.part_name,
+                              part_code: part.part_code || '',
+                              quantity_issued: part.quantity || 1,
+                              part_notes: part.notes || ''
+                            });
+                            setShowAddPartModal(true);
+                          }}
+                          className="btn btn-outline text-sm"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => deletePart(part.id)}
+                          className="btn bg-red-500 hover:bg-red-600 text-white text-sm"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Section 8: Internal Notes */}
         <div className="card bg-blue-50 border-blue-200">
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
             <MessageSquare className="w-5 h-5 text-blue-600" />
@@ -675,6 +956,101 @@ export default function SupervisorJobDetailPage() {
             fetchJobDetails();
           }}
         />
+      )}
+
+      {/* Add/Edit Part Modal */}
+      {showAddPartModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">
+                {editingPart ? 'Edit Part' : 'Add Part'}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowAddPartModal(false);
+                  setEditingPart(null);
+                  setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
+                }}
+                className="btn btn-outline"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Part Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={partForm.part_name}
+                  onChange={(e) => setPartForm({ ...partForm, part_name: e.target.value })}
+                  className="input w-full"
+                  placeholder="e.g., Oil Filter, Brake Pads"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Part Code</label>
+                <input
+                  type="text"
+                  value={partForm.part_code}
+                  onChange={(e) => setPartForm({ ...partForm, part_code: e.target.value })}
+                  className="input w-full"
+                  placeholder="e.g., OF-12345"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Quantity Issued <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={partForm.quantity_issued}
+                  onChange={(e) => setPartForm({ ...partForm, quantity_issued: parseInt(e.target.value) || 1 })}
+                  className="input w-full"
+                  min="1"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Notes</label>
+                <textarea
+                  value={partForm.part_notes}
+                  onChange={(e) => setPartForm({ ...partForm, part_notes: e.target.value })}
+                  className="input w-full"
+                  rows={3}
+                  placeholder="Additional notes about this part..."
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowAddPartModal(false);
+                    setEditingPart(null);
+                    setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
+                  }}
+                  className="btn btn-outline flex-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={savePart}
+                  disabled={!partForm.part_name || partForm.quantity_issued < 1}
+                  className="btn btn-primary flex-1"
+                >
+                  {editingPart ? 'Update' : 'Add'} Part
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </DashboardLayout>
   );

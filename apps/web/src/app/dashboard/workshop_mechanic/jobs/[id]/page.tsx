@@ -9,6 +9,10 @@ import {
   Upload, X, Save, Send, Plus, Minus
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import BeforeInspectionUpload from '@/components/mechanic/BeforeInspectionUpload';
+import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
+import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
+import PartsUsedUpload from '@/components/mechanic/PartsUsedUpload';
 
 interface JobDetail {
   id: string;
@@ -45,6 +49,8 @@ interface ChecklistItem {
   name: string;
   status: string;
   notes: string;
+  remark?: string;
+  category?: string;
   mandatory: boolean;
   completed_at: string;
 }
@@ -64,10 +70,13 @@ interface MediaItem {
 interface PartsItem {
   id: string;
   part_name: string;
-  quantity_issued: number;
-  quantity_used: number;
-  usage_status: string;
-  part_notes: string;
+  part_code: string | null;
+  quantity: number;
+  notes: string | null;
+  unit: string | null;
+  unit_price: number | null;
+  total_price: number | null;
+  supplier: string | null;
 }
 
 export default function MechanicJobDetailPage() {
@@ -88,6 +97,7 @@ export default function MechanicJobDetailPage() {
   const [workNotes, setWorkNotes] = useState('');
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('BEFORE');
+  const [selectedPhotoType, setSelectedPhotoType] = useState<string>('');
   const [showExtraWorkForm, setShowExtraWorkForm] = useState(false);
   const [extraWorkForm, setExtraWorkForm] = useState({
     issue_description: '',
@@ -95,6 +105,9 @@ export default function MechanicJobDetailPage() {
     estimated_cost: ''
   });
   const [zoomedMedia, setZoomedMedia] = useState<MediaItem | null>(null);
+  const [beforePhotoTypes, setBeforePhotoTypes] = useState<string[]>([]);
+  const [missingBeforePhotos, setMissingBeforePhotos] = useState<string[]>([]);
+  const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
 
   useEffect(() => {
     if (leadId) {
@@ -238,6 +251,11 @@ export default function MechanicJobDetailPage() {
         };
         setJob(jobDetail);
         setWorkNotes(jobDetail.work_notes);
+        
+        // Fetch service type names from database
+        if (jobDetail.service_types && jobDetail.service_types.length > 0) {
+          await fetchServiceTypeNames(jobDetail.service_types);
+        }
       }
 
       // Get checklist
@@ -267,6 +285,23 @@ export default function MechanicJobDetailPage() {
       }
 
       setMedia(mediaData || []);
+
+      // Check before inspection photo types
+      if (jobData && jobData.id) {
+        const { data: beforePhotos } = await supabase
+          .from('mechanic_job_photos')
+          .select('photo_type')
+          .eq('job_id', jobData.id)
+          .eq('photo_category', 'before');
+
+        const uploadedTypes = (beforePhotos || []).map((p: any) => p.photo_type);
+        setBeforePhotoTypes(uploadedTypes);
+
+        // Check for missing required types
+        const requiredTypes = ['BEFORE_FRONT', 'BEFORE_REAR', 'BEFORE_LEFT', 'BEFORE_RIGHT', 'BEFORE_DASHBOARD', 'BEFORE_ENGINE_BAY'];
+        const missing = requiredTypes.filter(type => !uploadedTypes.includes(type));
+        setMissingBeforePhotos(missing);
+      }
 
       // Get parts
       const { data: partsData, error: partsError } = await supabase
@@ -324,7 +359,30 @@ export default function MechanicJobDetailPage() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Error updating status:', errorData);
-        alert(`Failed to update status: ${errorData.error}`);
+        
+        let errorMessage = errorData.error || 'Failed to update status';
+        
+        // Show detailed error if available
+        if (errorData.details) {
+          if (errorData.details.missing_photos && errorData.details.missing_photos.length > 0) {
+            const missingPhotoNames = errorData.details.missing_photos.map((type: string) => 
+              type.replace('BEFORE_', '').replace('AFTER_', '').replace('_', ' ')
+            ).join(', ');
+            errorMessage += `\n\nMissing required photos: ${missingPhotoNames}`;
+            errorMessage += `\n\nPlease go to "Manage" tab and upload these specific photos with correct types.`;
+          }
+          if (errorData.details.photo_count !== undefined) {
+            errorMessage += `\n\nCurrent: ${errorData.details.photo_count} photos uploaded`;
+            errorMessage += `\nRequired: ${errorData.details.min_required} photos`;
+          }
+        }
+        
+        alert(errorMessage);
+        
+        // Navigate to manage page if photos are missing
+        if (errorData.details?.missing_photos && errorData.details.missing_photos.length > 0) {
+          router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
+        }
         return;
       }
 
@@ -340,7 +398,7 @@ export default function MechanicJobDetailPage() {
     }
   }
 
-  async function updateChecklistItem(itemId: string, status: string, notes: string = '') {
+  async function updateChecklistItem(itemId: string, status: string, notes: string = '', remark: string = '') {
     try {
       // Call API to update checklist item (it will handle completion calculation)
       const response = await fetch(`/api/mechanic/jobs/${leadId}/checklist`, {
@@ -351,7 +409,8 @@ export default function MechanicJobDetailPage() {
         body: JSON.stringify({
           item_id: itemId,
           status,
-          notes
+          notes,
+          remark
         }),
       });
 
@@ -368,7 +427,7 @@ export default function MechanicJobDetailPage() {
       // Update local state
     const updatedChecklist = checklist.map(item =>
       item.id === itemId
-        ? { ...item, status, notes, completed_at: status === 'COMPLETED' ? new Date().toISOString() : item.completed_at }
+        ? { ...item, status, notes, remark: remark !== undefined ? remark : item.remark, completed_at: status === 'COMPLETED' ? new Date().toISOString() : item.completed_at }
         : item
     );
       setChecklist(updatedChecklist);
@@ -614,15 +673,30 @@ export default function MechanicJobDetailPage() {
     }
   };
 
-  function getServiceTypeName(serviceTypeId: string): string {
-    const serviceTypeMap: { [key: string]: string } = {
-      'd0000001-0001-0001-0001-000000000001': 'General Service',
-      'd0000001-0001-0001-0001-000000000002': 'AC Service',
-      'd0000001-0001-0001-0001-000000000006': 'Car Wash',
-      'e0000001-0001-0001-0001-000000000002': 'Filter Replacement',
-      'e0000001-0001-0001-0001-000000000007': 'Brake Pad Replacement',
-    };
-    return serviceTypeMap[serviceTypeId] || 'Service';
+  // Fetch service type names from database
+  async function fetchServiceTypeNames(serviceTypeIds: string[]) {
+    if (!serviceTypeIds || serviceTypeIds.length === 0) {
+      setServiceTypeNames([]);
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+      const { data: serviceTypesData, error } = await supabase
+        .from('service_types')
+        .select('id, name')
+        .in('id', serviceTypeIds);
+
+      if (error) {
+        console.error('Error fetching service types:', error);
+        setServiceTypeNames([]);
+      } else if (serviceTypesData) {
+        setServiceTypeNames(serviceTypesData.map(st => st.name));
+      }
+    } catch (e) {
+      console.error('Error fetching service types:', e);
+      setServiceTypeNames([]);
+    }
   }
 
   function calculateExpectedCompletion(assignedAt: string | null, priority: string): string | null {
@@ -642,7 +716,7 @@ export default function MechanicJobDetailPage() {
   const canStartJob = job.mechanic_status === 'ASSIGNED';
   const canCompleteJob = job.mechanic_status === 'IN_PROGRESS' && 
                          job.checklist_completed && 
-                         job.before_images_count >= job.min_before_images &&
+                         job.before_images_count >= 6 &&
                          job.after_images_count >= job.min_after_images;
 
   return (
@@ -712,7 +786,10 @@ export default function MechanicJobDetailPage() {
         <div className="flex flex-wrap gap-3">
           {canStartJob && (
             <button 
-              onClick={() => updateJobStatus('IN_PROGRESS')}
+              onClick={async () => {
+                // Always call updateJobStatus - it will validate and show proper error
+                await updateJobStatus('IN_PROGRESS');
+              }}
               className="btn bg-blue-500 hover:bg-blue-600 text-white"
             >
               <PlayCircle className="w-5 h-5" />
@@ -732,11 +809,30 @@ export default function MechanicJobDetailPage() {
 
               {canCompleteJob && (
                 <button 
-                  onClick={() => updateJobStatus('COMPLETED')}
-                  className="btn bg-green-500 hover:bg-green-600 text-white"
+                  onClick={() => {
+                    if (!job.checklist_completed) {
+                      alert('Please complete all checklist items before marking job as complete.');
+                      setActiveTab('checklist');
+                    } else if (job.after_images_count < job.min_after_images) {
+                      alert(`Please upload all required after service photos (${job.min_after_images} required, ${job.after_images_count} uploaded). Go to Manage tab to upload photos.`);
+                      router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
+                    } else {
+                      updateJobStatus('COMPLETED');
+                    }
+                  }}
+                  className={`btn text-white ${
+                    job.checklist_completed && job.after_images_count >= job.min_after_images
+                      ? 'bg-green-500 hover:bg-green-600'
+                      : 'bg-gray-400 hover:bg-gray-500 cursor-not-allowed'
+                  }`}
+                  disabled={!job.checklist_completed || job.after_images_count < job.min_after_images}
                 >
                   <CheckCircle className="w-5 h-5" />
-                  Mark Completed
+                  {!job.checklist_completed 
+                    ? 'Complete Checklist First'
+                    : job.after_images_count < job.min_after_images
+                    ? `Complete (${job.after_images_count}/${job.min_after_images} photos)`
+                    : 'Mark Completed'}
                 </button>
               )}
             </>
@@ -800,10 +896,10 @@ export default function MechanicJobDetailPage() {
                 <div>
                   <p className="text-sm text-gray-600">Service Types</p>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {job.service_types && job.service_types.length > 0 ? (
-                      job.service_types.map((type, idx) => (
+                    {serviceTypeNames.length > 0 ? (
+                      serviceTypeNames.map((name, idx) => (
                         <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                          {getServiceTypeName(type)}
+                          {name}
                         </span>
                       ))
                     ) : (
@@ -846,36 +942,202 @@ export default function MechanicJobDetailPage() {
             {/* Progress Status */}
             <div className="card col-span-full">
               <h2 className="text-xl font-bold mb-4">Progress Status</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className={`text-center p-4 rounded-lg border-2 ${
+                  job.before_images_count >= 6 
+                    ? 'bg-green-50 border-green-300' 
+                    : 'bg-blue-50 border-blue-300'
+                }`}>
                   <Camera className="w-8 h-8 mx-auto mb-2 text-blue-600" />
                   <p className="text-sm text-gray-600">Before Images</p>
-                  <p className="text-2xl font-bold">
-                    {job.before_images_count} / {job.min_before_images}
+                  <p className={`text-2xl font-bold ${
+                    job.before_images_count >= 6 ? 'text-green-700' : 'text-blue-700'
+                  }`}>
+                    {job.before_images_count} / 6
                   </p>
+                  {job.before_images_count < 6 && (
+                    <p className="text-xs text-red-600 mt-1 font-semibold">
+                      {6 - job.before_images_count} more needed
+                    </p>
+                  )}
                 </div>
-                <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                <div className="text-center p-4 bg-yellow-50 rounded-lg border-2 border-yellow-300">
                   <Camera className="w-8 h-8 mx-auto mb-2 text-yellow-600" />
                   <p className="text-sm text-gray-600">Progress Images</p>
-                  <p className="text-2xl font-bold">
+                  <p className="text-2xl font-bold text-yellow-700">
                     {job.progress_images_count} / {job.min_progress_images}
                   </p>
                 </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
+                <div className={`text-center p-4 rounded-lg border-2 ${
+                  job.after_images_count >= job.min_after_images 
+                    ? 'bg-green-50 border-green-300' 
+                    : 'bg-green-50 border-green-300'
+                }`}>
                   <Camera className="w-8 h-8 mx-auto mb-2 text-green-600" />
                   <p className="text-sm text-gray-600">After Images</p>
-                  <p className="text-2xl font-bold">
+                  <p className={`text-2xl font-bold ${
+                    job.after_images_count >= job.min_after_images ? 'text-green-700' : 'text-green-700'
+                  }`}>
                     {job.after_images_count} / {job.min_after_images}
                   </p>
+                  {job.after_images_count < job.min_after_images && (
+                    <p className="text-xs text-red-600 mt-1 font-semibold">
+                      {job.min_after_images - job.after_images_count} more needed
+                    </p>
+                  )}
                 </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                <div className={`text-center p-4 rounded-lg border-2 ${
+                  job.checklist_completed 
+                    ? 'bg-green-50 border-green-300' 
+                    : 'bg-purple-50 border-purple-300'
+                }`}>
                   <CheckCircle className="w-8 h-8 mx-auto mb-2 text-purple-600" />
                   <p className="text-sm text-gray-600">Checklist</p>
-                  <p className="text-2xl font-bold">
+                  <p className={`text-2xl font-bold ${
+                    job.checklist_completed ? 'text-green-700' : 'text-red-700'
+                  }`}>
                     {job.checklist_completed ? '✓' : '✗'}
                   </p>
                 </div>
               </div>
+
+              {/* Detailed Requirements Section */}
+              {canStartJob && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 border-2 border-blue-300">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <AlertTriangle className="w-6 h-6 text-orange-600" />
+                    Before Starting Job - Required Actions
+                  </h3>
+                  <div className="space-y-3">
+                    <div className={`p-3 rounded-lg border-2 ${
+                      job.before_images_count >= 6
+                        ? 'bg-green-50 border-green-300'
+                        : 'bg-orange-50 border-orange-300'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {job.before_images_count >= 6 ? (
+                            <CheckCircle className="w-6 h-6 text-green-600" />
+                          ) : (
+                            <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-sm">1</span>
+                          )}
+                          <div className="flex-1">
+                            <p className="font-semibold text-gray-800">Upload Before Inspection Photos</p>
+                            <p className="text-sm text-gray-600 mt-1">
+                              Required: 6 photos (Front, Rear, Left, Right, Dashboard, Engine Bay)
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Current: {job.before_images_count} / 6 uploaded
+                            </p>
+                            {missingBeforePhotos.length > 0 && (
+                              <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                                <p className="text-xs font-semibold text-red-800 mb-1">⚠️ Missing Required Photo Types:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {missingBeforePhotos.map((type) => (
+                                    <span key={type} className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded">
+                                      {type.replace('BEFORE_', '').replace('_', ' ')}
+                                    </span>
+                                  ))}
+                                </div>
+                                <p className="text-xs text-red-600 mt-1">
+                                  Please upload these specific photos with correct types in the "Manage" tab.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {(job.before_images_count < 6 || missingBeforePhotos.length > 0) && (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
+                            }}
+                            className="btn btn-primary text-sm px-4 py-2 flex-shrink-0 cursor-pointer"
+                          >
+                            Upload Photos
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {job.mechanic_status === 'IN_PROGRESS' && (
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-5 border-2 border-green-300 mt-4">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <CheckCircle className="w-6 h-6 text-green-600" />
+                    Before Completing Job - Required Actions
+                  </h3>
+                  <div className="space-y-3">
+                    <div className={`p-3 rounded-lg border-2 ${
+                      job.checklist_completed
+                        ? 'bg-green-50 border-green-300'
+                        : 'bg-orange-50 border-orange-300'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {job.checklist_completed ? (
+                            <CheckCircle className="w-6 h-6 text-green-600" />
+                          ) : (
+                            <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-sm">1</span>
+                          )}
+                          <div>
+                            <p className="font-semibold text-gray-800">Complete Service Checklist</p>
+                            <p className="text-sm text-gray-600 mt-1">
+                              All checklist items must be marked as completed
+                            </p>
+                          </div>
+                        </div>
+                        {!job.checklist_completed && (
+                          <button
+                            onClick={() => setActiveTab('checklist')}
+                            className="btn-primary text-sm px-4 py-2"
+                          >
+                            View Checklist
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className={`p-3 rounded-lg border-2 ${
+                      job.after_images_count >= job.min_after_images
+                        ? 'bg-green-50 border-green-300'
+                        : 'bg-orange-50 border-orange-300'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {job.after_images_count >= job.min_after_images ? (
+                            <CheckCircle className="w-6 h-6 text-green-600" />
+                          ) : (
+                            <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-sm">2</span>
+                          )}
+                          <div>
+                            <p className="font-semibold text-gray-800">Upload After Service Photos</p>
+                            <p className="text-sm text-gray-600 mt-1">
+                              Required: {job.min_after_images} photos (Front, Rear, Left, Right, Engine Bay, Old Parts)
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Current: {job.after_images_count} / {job.min_after_images} uploaded
+                            </p>
+                          </div>
+                        </div>
+                        {job.after_images_count < job.min_after_images && (
+                          <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
+                      }}
+                      className="btn btn-primary text-sm px-4 py-2 cursor-pointer"
+                          >
+                            Upload Photos
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -883,84 +1145,396 @@ export default function MechanicJobDetailPage() {
         {activeTab === 'checklist' && (
           <div className="card">
             <h2 className="text-xl font-bold mb-4">Service Checklist</h2>
-            <div className="space-y-3">
-              {checklist.map((item) => (
-                <div key={item.id} className="p-4 border rounded-lg">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={item.status === 'COMPLETED'}
-                          onChange={(e) => updateChecklistItem(item.id, e.target.checked ? 'COMPLETED' : 'PENDING')}
-                          className="w-5 h-5"
-                        />
-                        <span className={`font-medium ${item.status === 'COMPLETED' ? 'text-green-600 line-through' : ''}`}>
-                          {item.name}
-                        </span>
-                        {item.mandatory && (
-                          <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs rounded">Required</span>
+            
+            {/* Group by category if categories exist */}
+            {checklist.some(item => item.category) ? (
+              <div className="space-y-6">
+                {Array.from(new Set(checklist.map(item => item.category).filter(Boolean))).map((category) => {
+                  const categoryItems = checklist.filter(item => item.category === category);
+                  if (categoryItems.length === 0) return null;
+                  
+                  return (
+                    <div key={category} className="space-y-3">
+                      <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">
+                        {category} ({categoryItems.length})
+                      </h3>
+                      {categoryItems.map((item) => (
+                        <div key={item.id} className="p-4 border rounded-lg hover:shadow-md transition">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <input
+                                  type="checkbox"
+                                  checked={item.status === 'COMPLETED'}
+                                  onChange={(e) => updateChecklistItem(item.id, e.target.checked ? 'COMPLETED' : 'PENDING', item.notes || '', item.remark || '')}
+                                  className="w-5 h-5"
+                                />
+                                <span className={`font-medium ${item.status === 'COMPLETED' ? 'text-green-600 line-through' : 'text-gray-800'}`}>
+                                  {item.name}
+                                </span>
+                                {item.mandatory && (
+                                  <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs rounded">Required</span>
+                                )}
+                              </div>
+                              
+                              {/* Remark input */}
+                              <div className="ml-7 mt-2">
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Remark:</label>
+                                <input
+                                  type="text"
+                                  value={item.remark || ''}
+                                  onChange={(e) => {
+                                    const updatedChecklist = checklist.map(i =>
+                                      i.id === item.id ? { ...i, remark: e.target.value } : i
+                                    );
+                                    setChecklist(updatedChecklist);
+                                  }}
+                                  onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
+                                  placeholder="Enter remark..."
+                                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+                              
+                              {item.notes && (
+                                <p className="text-sm text-gray-600 mt-2 ml-7">{item.notes}</p>
+                              )}
+                            </div>
+                            <span className={`px-3 py-1 rounded text-sm whitespace-nowrap ${
+                              item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                              item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {item.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Fallback: No categories - show simple list */
+              <div className="space-y-3">
+                {checklist.map((item) => (
+                  <div key={item.id} className="p-4 border rounded-lg">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={item.status === 'COMPLETED'}
+                            onChange={(e) => updateChecklistItem(item.id, e.target.checked ? 'COMPLETED' : 'PENDING', item.notes || '', item.remark || '')}
+                            className="w-5 h-5"
+                          />
+                          <span className={`font-medium ${item.status === 'COMPLETED' ? 'text-green-600 line-through' : ''}`}>
+                            {item.name}
+                          </span>
+                          {item.mandatory && (
+                            <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs rounded">Required</span>
+                          )}
+                        </div>
+                        {item.remark !== undefined && (
+                          <div className="ml-7 mt-2">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Remark:</label>
+                            <input
+                              type="text"
+                              value={item.remark || ''}
+                              onChange={(e) => {
+                                const updatedChecklist = checklist.map(i =>
+                                  i.id === item.id ? { ...i, remark: e.target.value } : i
+                                );
+                                setChecklist(updatedChecklist);
+                              }}
+                              onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
+                              placeholder="Enter remark..."
+                              className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        )}
+                        {item.notes && (
+                          <p className="text-sm text-gray-600 mt-2 ml-7">{item.notes}</p>
                         )}
                       </div>
-                      {item.notes && (
-                        <p className="text-sm text-gray-600 mt-2 ml-7">{item.notes}</p>
-                      )}
+                      <span className={`px-3 py-1 rounded text-sm ${
+                        item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                        item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {item.status}
+                      </span>
                     </div>
-                    <span className={`px-3 py-1 rounded text-sm ${
-                      item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                      item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {item.status}
-                    </span>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 'media' && (
           <div className="space-y-6">
-            {/* Upload Section */}
+            {/* Category Dropdown */}
             <div className="card">
               <h2 className="text-xl font-bold mb-4">Upload Media</h2>
-              <div className="flex gap-4 items-end">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium mb-2">Category</label>
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="input w-full"
-                  >
-                    <option value="BEFORE">Before Work</option>
-                    <option value="PROGRESS">Work in Progress</option>
-                    <option value="AFTER">After Work</option>
-                    <option value="EXTRA_WORK_PROOF">Extra Work Proof</option>
-                    <option value="DAMAGE_FOUND">Damage Found</option>
-                    <option value="PARTS_USED">Parts Used</option>
-                  </select>
+              <div className="space-y-4">
+                <div className="flex gap-4 items-end">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium mb-2">Category</label>
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => {
+                        setSelectedCategory(e.target.value);
+                        setSelectedPhotoType('');
+                      }}
+                      className="input w-full"
+                    >
+                      <option value="BEFORE">Before Work</option>
+                      <option value="PROGRESS">Work in Progress</option>
+                      <option value="AFTER">After Work</option>
+                      <option value="PARTS_USED">Parts Used</option>
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="btn btn-primary cursor-pointer">
-                    <Upload className="w-5 h-5" />
-                    {uploadingMedia ? 'Uploading...' : 'Upload Photos/Videos'}
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*,video/*"
-                      onChange={handleMediaUpload}
-                      disabled={uploadingMedia}
-                      className="hidden"
+
+                {/* BEFORE Category - Show BeforeInspectionUpload component */}
+                {selectedCategory === 'BEFORE' && job && job.id && (
+                  <div className="card border-2 border-blue-300">
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Camera className="w-6 h-6 text-blue-600" />
+                      Before Inspection Photos (Required)
+                    </h2>
+                    {missingBeforePhotos.length > 0 && (
+                      <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-3 mb-4">
+                        <p className="text-sm font-semibold text-yellow-800 mb-2">
+                          ⚠️ Missing Required Photo Types: {missingBeforePhotos.map(t => t.replace('BEFORE_', '').replace('_', ' ')).join(', ')}
+                        </p>
+                        <p className="text-xs text-yellow-700">
+                          Please upload all required photos before starting the job.
+                        </p>
+                      </div>
+                    )}
+                    {missingBeforePhotos.length === 0 && beforePhotoTypes.length < 6 && (
+                      <div className="bg-blue-50 border-l-4 border-blue-400 rounded-lg p-3 mb-4">
+                        <p className="text-sm font-semibold text-blue-800 mb-2">
+                          📸 Upload {6 - beforePhotoTypes.length} more required photos
+                        </p>
+                        <p className="text-xs text-blue-700">
+                          Current: {beforePhotoTypes.length} / 6 photos uploaded
+                        </p>
+                      </div>
+                    )}
+                    <BeforeInspectionUpload
+                      leadId={leadId}
+                      jobId={job.id}
+                      onUploadComplete={() => {
+                        fetchJobDetails();
+                      }}
                     />
-                  </label>
-                </div>
+                  </div>
+                )}
+
+                {/* AFTER Category - Show AfterServiceUpload component */}
+                {selectedCategory === 'AFTER' && job && job.id && (
+                  <div className="card border-2 border-green-300">
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Camera className="w-6 h-6 text-green-600" />
+                      After Service Photos (Required)
+                    </h2>
+                    <AfterServiceUpload
+                      leadId={leadId}
+                      jobId={job.id}
+                      onUploadComplete={() => {
+                        fetchJobDetails();
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* PROGRESS Category - During Service Upload */}
+                {selectedCategory === 'PROGRESS' && job && job.id && (
+                  <div className="card border-2 border-orange-300">
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Camera className="w-6 h-6 text-orange-600" />
+                      Work in Progress Photos
+                    </h2>
+                    <DuringServiceUpload
+                      leadId={leadId}
+                      jobId={job.id}
+                      onUploadComplete={() => {
+                        fetchJobDetails();
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* EXTRA_WORK_PROOF Category */}
+                {selectedCategory === 'EXTRA_WORK_PROOF' && (
+                  <div className="card border-2 border-purple-300">
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Camera className="w-6 h-6 text-purple-600" />
+                      Extra Work Proof
+                    </h2>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Upload photos as proof of extra work performed (e.g., additional repairs, part replacements).
+                    </p>
+                    <div>
+                      <label className="btn btn-primary cursor-pointer">
+                        <Upload className="w-5 h-5" />
+                        {uploadingMedia ? 'Uploading...' : 'Upload Proof Photos'}
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,video/*"
+                          onChange={handleMediaUpload}
+                          disabled={uploadingMedia}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* DAMAGE_FOUND Category */}
+                {selectedCategory === 'DAMAGE_FOUND' && (
+                  <div className="card border-2 border-red-300">
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Camera className="w-6 h-6 text-red-600" />
+                      Damage Found
+                    </h2>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Upload photos of any damages or issues found during inspection or service.
+                    </p>
+                    <div>
+                      <label className="btn btn-primary cursor-pointer">
+                        <Upload className="w-5 h-5" />
+                        {uploadingMedia ? 'Uploading...' : 'Upload Damage Photos'}
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,video/*"
+                          onChange={handleMediaUpload}
+                          disabled={uploadingMedia}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* PARTS_USED Category */}
+                {selectedCategory === 'PARTS_USED' && job && job.id && (
+                  <div className="card border-2 border-indigo-300">
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Camera className="w-6 h-6 text-indigo-600" />
+                      Parts Used Photos
+                    </h2>
+                    <PartsUsedUpload
+                      leadId={leadId}
+                      jobId={job.id}
+                      onUploadComplete={() => {
+                        fetchJobDetails();
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
+            {/* Before Inspection Photos from mechanic_job_photos */}
+            {(canStartJob || job.mechanic_status === 'IN_PROGRESS') && (
+              <div className="card border-2 border-blue-300">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <Camera className="w-6 h-6 text-blue-600" />
+                  Before Inspection Photos (Required)
+                </h2>
+                {beforePhotoTypes.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Camera className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm mb-3">No before inspection photos uploaded yet</p>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
+                      }}
+                      className="btn btn-primary cursor-pointer"
+                    >
+                      Upload Before Inspection Photos
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
+                      {['BEFORE_FRONT', 'BEFORE_REAR', 'BEFORE_LEFT', 'BEFORE_RIGHT', 'BEFORE_DASHBOARD', 'BEFORE_ENGINE_BAY'].map((type) => {
+                        const isUploaded = beforePhotoTypes.includes(type);
+                        return (
+                          <div
+                            key={type}
+                            className={`flex items-center gap-2 p-3 rounded-lg border-2 ${
+                              isUploaded
+                                ? 'bg-green-50 border-green-300'
+                                : 'bg-red-50 border-red-300'
+                            }`}
+                          >
+                            {isUploaded ? (
+                              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                            ) : (
+                              <X className="w-5 h-5 text-red-600 flex-shrink-0" />
+                            )}
+                            <span className={`text-sm font-semibold ${
+                              isUploaded ? 'text-green-800' : 'text-red-800'
+                            }`}>
+                              {type.replace('BEFORE_', '').replace('_', ' ')}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {missingBeforePhotos.length > 0 ? (
+                      <div className="bg-red-50 border-l-4 border-red-400 rounded-lg p-3">
+                        <p className="text-sm font-semibold text-red-800 mb-2">
+                          ⚠️ Missing: {missingBeforePhotos.map(t => t.replace('BEFORE_', '').replace('_', ' ')).join(', ')}
+                        </p>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
+                          }}
+                          className="btn btn-primary text-sm px-4 py-2 cursor-pointer z-10 relative"
+                          type="button"
+                        >
+                          Upload Missing Photos
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="bg-blue-50 border-l-4 border-blue-400 rounded-lg p-3">
+                        <p className="text-sm font-semibold text-blue-800 mb-2">
+                          ✅ All required photo types uploaded
+                        </p>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
+                          }}
+                          className="btn btn-outline text-sm px-4 py-2 cursor-pointer z-10 relative"
+                          type="button"
+                        >
+                          View/Manage Photos
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Media Grid */}
             <div className="card">
-              <h2 className="text-xl font-bold mb-4">Uploaded Media ({media.length})</h2>
+              <h2 className="text-xl font-bold mb-4">Other Media ({media.length})</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                General media uploads (not used for before/after inspection validation)
+              </p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {media.map((item) => (
                   <div key={item.id} className="border rounded-lg overflow-hidden group relative">
@@ -1027,51 +1601,48 @@ export default function MechanicJobDetailPage() {
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <p className="font-semibold text-lg">{part.part_name}</p>
-                      <p className="text-sm text-gray-600">Issued: {part.quantity_issued}</p>
-                    </div>
-                    <span className={`px-3 py-1 rounded text-sm ${
-                      part.usage_status === 'USED' ? 'bg-green-100 text-green-800' :
-                      part.usage_status === 'NOT_NEEDED' ? 'bg-gray-100 text-gray-800' :
-                      'bg-blue-100 text-blue-800'
-                    }`}>
-                      {part.usage_status.replace('_', ' ')}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Quantity Used</label>
-                      <input
-                        type="number"
-                        value={part.quantity_used}
-                        onChange={(e) => updatePartUsage(part.id, 'quantity_used', parseInt(e.target.value))}
-                        className="input w-full"
-                        min="0"
-                        max={part.quantity_issued}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Status</label>
-                      <select
-                        value={part.usage_status}
-                        onChange={(e) => updatePartUsage(part.id, 'usage_status', e.target.value)}
-                        className="input w-full"
-                      >
-                        <option value="ISSUED">Issued</option>
-                        <option value="USED">Used</option>
-                        <option value="NOT_NEEDED">Not Needed</option>
-                        <option value="ADDITIONAL_REQUIRED">Additional Required</option>
-                      </select>
+                      {part.part_code && (
+                        <p className="text-sm text-gray-600">Code: {part.part_code}</p>
+                      )}
+                      <p className="text-sm text-gray-600 mt-1">
+                        Quantity Assigned: {part.quantity || 0} {part.unit || 'piece'}
+                      </p>
+                      {part.unit_price && (
+                        <p className="text-sm text-gray-600">
+                          Unit Price: ₹{part.unit_price.toFixed(2)}
+                          {part.total_price && ` | Total: ₹${part.total_price.toFixed(2)}`}
+                        </p>
+                      )}
+                      {part.supplier && (
+                        <p className="text-sm text-gray-600">Supplier: {part.supplier}</p>
+                      )}
                     </div>
                   </div>
-                  {part.part_notes && (
+                  {part.notes && (
                     <div className="mt-3 pt-3 border-t">
-                      <p className="text-sm text-gray-600">{part.part_notes}</p>
+                      <p className="text-sm text-gray-600">
+                        <strong>Notes:</strong> {part.notes}
+                      </p>
                     </div>
                   )}
                 </div>
               ))}
               {parts.length === 0 && (
-                <p className="text-center text-gray-500 py-8">No parts assigned for this job</p>
+                <div className="text-center py-8">
+                  <Package className="w-16 h-16 mx-auto mb-3 text-gray-400" />
+                  <p className="text-gray-500 font-medium mb-2">No parts assigned for this job</p>
+                  <p className="text-sm text-gray-400 mb-4">
+                    Parts are assigned by Admin/Supervisor. Contact them to request parts for this job.
+                  </p>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
+                    <p className="text-sm text-blue-800 font-semibold mb-1">💡 How to request parts:</p>
+                    <ul className="text-xs text-blue-700 text-left space-y-1 list-disc list-inside">
+                      <li>Contact your Supervisor or Admin</li>
+                      <li>Use "Request Extra Work" button if additional parts are needed</li>
+                      <li>Parts will appear here once assigned</li>
+                    </ul>
+                  </div>
+                </div>
               )}
             </div>
           </div>

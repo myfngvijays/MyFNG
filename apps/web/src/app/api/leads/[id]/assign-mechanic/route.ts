@@ -51,7 +51,7 @@ export async function POST(
     // Fetch the lead
     const { data: lead, error: leadError } = await supabase
       .from('service_leads')
-      .select('id, workshop_id, status, assigned_mechanic_id')
+      .select('id, workshop_id, status, assigned_mechanic_id, priority')
       .eq('id', leadId)
       .single();
 
@@ -112,6 +112,65 @@ export async function POST(
     if (assignmentError) {
       console.error('Error creating assignment record:', assignmentError);
       // Continue anyway, main update succeeded
+    }
+
+    // CRITICAL: Create or update mechanic_jobs entry so mechanic can see the job
+    const now = new Date().toISOString();
+    
+    // Check if mechanic_jobs record already exists
+    const { data: existingJob, error: checkError } = await supabase
+      .from('mechanic_jobs')
+      .select('id, mechanic_id, mechanic_status')
+      .eq('lead_id', leadId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking existing job:', checkError);
+    }
+
+    if (existingJob) {
+      // Update existing record with new mechanic
+      const { error: updateJobError } = await supabase
+        .from('mechanic_jobs')
+        .update({
+          mechanic_id: mechanic_id,
+          assigned_by: user.id,
+          mechanic_status: 'ASSIGNED',
+          job_priority: lead.priority || 'NORMAL',
+          assigned_at: now,
+          updated_at: now,
+          work_notes: notes || null
+        })
+        .eq('id', existingJob.id);
+
+      if (updateJobError) {
+        console.error('Error updating mechanic job:', updateJobError);
+        return NextResponse.json({ 
+          error: 'Failed to update mechanic job',
+          details: updateJobError.message 
+        }, { status: 500 });
+      }
+    } else {
+      // Create new record
+      const { error: mechanicJobError } = await supabase
+        .from('mechanic_jobs')
+        .insert({
+          lead_id: leadId,
+          mechanic_id: mechanic_id,
+          assigned_by: user.id,
+          mechanic_status: 'ASSIGNED',
+          job_priority: lead.priority || 'NORMAL',
+          assigned_at: now,
+          work_notes: notes || null
+        });
+
+      if (mechanicJobError) {
+        console.error('Error creating mechanic job:', mechanicJobError);
+        return NextResponse.json({ 
+          error: 'Failed to create mechanic job',
+          details: mechanicJobError.message 
+        }, { status: 500 });
+      }
     }
 
     // Log activity

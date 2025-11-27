@@ -265,9 +265,15 @@ export default function MechanicJobDetailScreen({ route, navigation }: any) {
         {canStartJob && (
           <TouchableOpacity
             style={[styles.button, styles.startButton]}
-            onPress={() => updateJobStatus('IN_PROGRESS')}
+            onPress={() => {
+              // Navigate to before inspection screen first
+              navigation.navigate('BeforeInspection', { 
+                jobId: job.id, 
+                leadId: job.lead_id 
+              });
+            }}
           >
-            <Text style={styles.buttonText}>▶️ Start Job</Text>
+            <Text style={styles.buttonText}>📸 Before Inspection</Text>
           </TouchableOpacity>
         )}
 
@@ -275,19 +281,13 @@ export default function MechanicJobDetailScreen({ route, navigation }: any) {
           <>
             <TouchableOpacity
               style={[styles.button, styles.uploadButton]}
-              onPress={() => navigation.navigate('MechanicPhotoUpload', { jobId: job.lead_id })}
+              onPress={() => navigation.navigate('AfterServicePhotos', { 
+                jobId: job.id, 
+                leadId: job.lead_id 
+              })}
             >
-              <Text style={styles.buttonText}>📷 Upload Photos</Text>
+              <Text style={styles.buttonText}>📸 After Service Photos</Text>
             </TouchableOpacity>
-
-            {canCompleteJob && (
-              <TouchableOpacity
-                style={[styles.button, styles.completeButton]}
-                onPress={() => updateJobStatus('COMPLETED')}
-              >
-                <Text style={styles.buttonText}>✓ Mark Complete</Text>
-              </TouchableOpacity>
-            )}
           </>
         )}
 

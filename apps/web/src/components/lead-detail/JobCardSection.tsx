@@ -175,6 +175,7 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
     const supabase = createClient();
 
     try {
+      // Add part to job_card_parts (for billing)
       const { data, error } = await supabase
         .from('job_card_parts')
         .insert({
@@ -192,6 +193,25 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
         console.error('Error adding part:', error);
         alert('Failed to add part: ' + error.message);
         return;
+      }
+
+      // Also assign part to mechanic automatically (if mechanic is assigned)
+      if (lead.assigned_mechanic_id) {
+        const { error: assignError } = await supabase
+          .from('mechanic_parts_usage')
+          .insert({
+            lead_id: lead.id,
+            mechanic_id: lead.assigned_mechanic_id,
+            part_name: partName,
+            part_code: partNumber || null,
+            quantity: quantity,
+            notes: `Auto-assigned from job card`
+          });
+
+        if (assignError) {
+          console.error('Error assigning part to mechanic:', assignError);
+          // Don't fail the whole operation, just log the error
+        }
       }
 
       setParts([...parts, data]);
@@ -215,6 +235,10 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
     const supabase = createClient();
 
     try {
+      // Get part details before deleting
+      const partToDelete = parts.find(p => p.id === partId);
+      
+      // Delete from job_card_parts
       const { error } = await supabase
         .from('job_card_parts')
         .delete()
@@ -224,6 +248,17 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
         console.error('Error deleting part:', error);
         alert('Failed to delete part: ' + error.message);
         return;
+      }
+
+      // Also remove from mechanic_parts_usage if it exists (matching by part_name and lead_id)
+      if (partToDelete && lead.assigned_mechanic_id) {
+        await supabase
+          .from('mechanic_parts_usage')
+          .delete()
+          .eq('lead_id', lead.id)
+          .eq('mechanic_id', lead.assigned_mechanic_id)
+          .eq('part_name', partToDelete.part_name);
+        // Don't fail if this errors, just log
       }
 
       setParts(parts.filter(p => p.id !== partId));
@@ -248,14 +283,67 @@ export default function JobCardSection({ lead, onUpdate }: JobCardSectionProps) 
     );
   }
 
+  async function createJobCard() {
+    setSaving(true);
+    const supabase = createClient();
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert('Please login to create job card');
+        return;
+      }
+
+      const response = await fetch(`/api/leads/${lead.id}/job-card`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          labor_charges: 0,
+          additional_work: null,
+          mechanic_notes: null
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create job card');
+      }
+
+      // Refresh job card data
+      await fetchJobCard();
+      onUpdate?.();
+    } catch (error: any) {
+      console.error('Error creating job card:', error);
+      alert('Failed to create job card: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (!jobCard) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <FileText className="h-5 w-5 text-gray-600" />
-          <h3 className="text-lg font-semibold">Job Card</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-gray-600" />
+            <h3 className="text-lg font-semibold">Job Card</h3>
+          </div>
+          <button
+            onClick={createJobCard}
+            disabled={saving}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            {saving ? 'Creating...' : 'Create Job Card'}
+          </button>
         </div>
-        <p className="text-gray-500">No job card found for this lead.</p>
+        <div className="text-center py-8">
+          <FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+          <p className="text-gray-500 mb-2">No job card found for this lead.</p>
+          <p className="text-sm text-gray-400">Click "Create Job Card" to start tracking work and parts.</p>
+        </div>
       </div>
     );
   }
