@@ -49,6 +49,17 @@ USING (
     AND ul.id = auth.uid()
     AND ul.workshop_id IS NOT NULL
   )
+  OR
+  -- Allow access if user is workshop admin and lead belongs to their workshop
+  EXISTS (
+    SELECT 1 FROM public.service_leads sl
+    JOIN public.users_login ul ON sl.workshop_id = ul.workshop_id
+    JOIN public.roles r ON ul.role_id = r.id
+    WHERE sl.id = job_cards.lead_id
+    AND ul.id = auth.uid()
+    AND r.role_code = 'WORKSHOP_ADMIN'
+    AND ul.workshop_id IS NOT NULL
+  )
 );
 
 -- ============================================

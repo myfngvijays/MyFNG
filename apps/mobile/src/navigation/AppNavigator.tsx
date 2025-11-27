@@ -8,6 +8,7 @@ import WorkshopMechanicDashboard from '../screens/dashboard/WorkshopMechanicDash
 import WorkshopPickupBoyDashboard from '../screens/dashboard/WorkshopPickupBoyDashboard';
 import CustomerDashboard from '../screens/dashboard/CustomerDashboard';
 import LeadManagerDashboard from '../screens/dashboard/LeadManagerDashboard';
+import RSAManagerDashboard from '../screens/dashboard/RSAManagerDashboard';
 import DefaultDashboard from '../screens/dashboard/DefaultDashboard';
 import { useAuth } from '../context/AuthContext';
 
@@ -27,6 +28,8 @@ const getDashboardForRole = (role: string | null) => {
       return CustomerDashboard;
     case 'LEAD_MANAGER':
       return LeadManagerDashboard;
+    case 'RSA_MANAGER':
+      return RSAManagerDashboard;
     case 'WORKSHOP_SUPERVISOR':
       return WorkshopAdminDashboard; // Using Workshop Admin for now
     default:

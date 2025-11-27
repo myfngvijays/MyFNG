@@ -145,6 +145,11 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
         { href: '/dashboard/lead_manager/reports', icon: <TrendingUp className="w-5 h-5" />, label: 'Reports' },
       ],
+      'RSA_MANAGER': [
+        { href: '/dashboard/rsa_manager', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/rsa_manager/leads', icon: <FileText className="w-5 h-5" />, label: 'RSA Leads' },
+        { href: '/dashboard/rsa_manager/mechanics', icon: <Wrench className="w-5 h-5" />, label: 'Mechanics' },
+      ],
       'CUSTOMER': [
         { href: '/dashboard/customer', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/customer/bookings', icon: <Car className="w-5 h-5" />, label: 'My Bookings' },

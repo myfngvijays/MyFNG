@@ -6,6 +6,7 @@ import { COLORS } from '../constants/theme';
 // Import all dashboard screens
 import TelecallerDashboard from '../screens/dashboard/TelecallerDashboard';
 import LeadManagerDashboard from '../screens/dashboard/LeadManagerDashboard';
+import RSAManagerDashboard from '../screens/dashboard/RSAManagerDashboard';
 import SuperAdminDashboard from '../screens/dashboard/SuperAdminDashboard';
 import CSEDashboardScreen from '../screens/dashboard/cse/CSEDashboardScreen';
 import AuditorDashboardScreen from '../screens/dashboard/auditor/AuditorDashboardScreen';
@@ -451,6 +452,19 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="WorkshopPickupBoyDashboard" 
           component={WorkshopPickupBoyDashboard}
           options={{ title: 'Pickup Dashboard' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // RSA Manager Navigation
+  if (roleCode === 'RSA_MANAGER') {
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen 
+          name="RSAManagerDashboard" 
+          component={RSAManagerDashboard}
+          options={{ title: 'RSA Manager Dashboard' }}
         />
       </Stack.Navigator>
     );

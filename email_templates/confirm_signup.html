@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirm Your Signup - MyFNG</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #F5F7FA;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #F5F7FA; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <!-- Main Container -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #FFFFFF; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                    
+                    <!-- Header with Brand Colors -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #023D95 0%, #0088E8 100%); padding: 40px 30px; text-align: center;">
+                            <h1 style="margin: 0; color: #FFFFFF; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                MyFNG Service
+                            </h1>
+                            <p style="margin: 8px 0 0 0; color: #FFFFFF; font-size: 14px; opacity: 0.95;">
+                                Roadside Assistance & Vehicle Services
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <!-- Welcome Message -->
+                            <h2 style="margin: 0 0 20px 0; color: #023D95; font-size: 24px; font-weight: 700; line-height: 1.3;">
+                                Confirm Your Signup
+                            </h2>
+                            
+                            <p style="margin: 0 0 20px 0; color: #3A3F45; font-size: 16px; line-height: 1.6;">
+                                Welcome to MyFNG! We're excited to have you on board.
+                            </p>
+                            
+                            <p style="margin: 0 0 30px 0; color: #3A3F45; font-size: 16px; line-height: 1.6;">
+                                To complete your registration and start using our services, please confirm your email address by clicking the button below:
+                            </p>
+                            
+                            <!-- CTA Button -->
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                    <td align="center" style="padding: 0 0 30px 0;">
+                                        <a href="{{ .ConfirmationURL }}" style="display: inline-block; padding: 16px 40px; background-color: #0088E8; color: #FFFFFF; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(0, 136, 232, 0.3); transition: background-color 0.3s;">
+                                            Confirm Your Email
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Alternative Link -->
+                            <p style="margin: 0 0 30px 0; color: #6B7280; font-size: 14px; line-height: 1.6;">
+                                If the button doesn't work, you can also copy and paste this link into your browser:
+                            </p>
+                            
+                            <p style="margin: 0 0 30px 0; padding: 12px; background-color: #F3F4F6; border-radius: 6px; word-break: break-all;">
+                                <a href="{{ .ConfirmationURL }}" style="color: #0088E8; text-decoration: none; font-size: 14px;">
+                                    {{ .ConfirmationURL }}
+                                </a>
+                            </p>
+                            
+                            <!-- Security Note -->
+                            <div style="padding: 20px; background-color: #FEF3C7; border-left: 4px solid #F59E0B; border-radius: 6px; margin: 30px 0;">
+                                <p style="margin: 0; color: #92400E; font-size: 14px; line-height: 1.6;">
+                                    <strong>Security Note:</strong> This confirmation link will expire in 24 hours. If you didn't create an account with MyFNG, please ignore this email.
+                                </p>
+                            </div>
+                            
+                            <!-- Additional Info -->
+                            <p style="margin: 30px 0 0 0; color: #6B7280; font-size: 14px; line-height: 1.6;">
+                                Once confirmed, you'll be able to access all our services including:
+                            </p>
+                            
+                            <ul style="margin: 15px 0 0 0; padding-left: 20px; color: #3A3F45; font-size: 14px; line-height: 1.8;">
+                                <li>Roadside Assistance (RSA)</li>
+                                <li>Vehicle Service Booking</li>
+                                <li>Real-time Service Tracking</li>
+                                <li>Service History & Reports</li>
+                            </ul>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 30px; background-color: #F9FAFB; border-top: 1px solid #E5E7EB;">
+                            <p style="margin: 0 0 15px 0; color: #6B7280; font-size: 14px; text-align: center; line-height: 1.6;">
+                                Need help? Contact our support team at 
+                                <a href="mailto:support@myfng.com" style="color: #0088E8; text-decoration: none;">support@myfng.com</a>
+                            </p>
+                            
+                            <p style="margin: 0 0 15px 0; color: #6B7280; font-size: 12px; text-align: center;">
+                                © 2025 MyFNG Service. All rights reserved.
+                            </p>
+                            
+                            <p style="margin: 0; color: #9CA3AF; font-size: 12px; text-align: center; line-height: 1.5;">
+                                This is an automated email. Please do not reply to this message.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+                
+                <!-- Bottom Spacing -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                    <tr>
+                        <td style="padding: 20px 0; text-align: center;">
+                            <p style="margin: 0; color: #9CA3AF; font-size: 12px;">
+                                MyFNG Service - Your Trusted Roadside Partner
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+

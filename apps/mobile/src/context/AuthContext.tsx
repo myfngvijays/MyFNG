@@ -6,7 +6,10 @@ interface UserProfile {
   id: string;
   email: string;
   full_name?: string;
-  role?: string;
+  role?: {
+    role_code: string;
+    role_name: string;
+  };
   phone?: string;
 }
 
@@ -27,7 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const role = userProfile?.role || null;
+  const role = userProfile?.role?.role_code || null;
 
   useEffect(() => {
     // Check for existing session
@@ -35,13 +38,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         setUser(session.user);
         
-        // Fetch user profile
+        // Fetch user profile with role
         supabase
-          .from('user_profiles')
-          .select('*')
+          .from('users_login')
+          .select(`
+            *,
+            role:roles!role_id(role_code, role_name)
+          `)
           .eq('id', session.user.id)
           .single()
-          .then(({ data }) => {
+          .then(({ data, error }) => {
+            if (error) {
+              console.error('Error fetching user profile:', error);
+              setIsLoading(false);
+              return;
+            }
             if (data) {
               setUserProfile(data);
             }
@@ -57,13 +68,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         setUser(session.user);
         
-        // Fetch user profile
+        // Fetch user profile with role
         supabase
-          .from('user_profiles')
-          .select('*')
+          .from('users_login')
+          .select(`
+            *,
+            role:roles!role_id(role_code, role_name)
+          `)
           .eq('id', session.user.id)
           .single()
-          .then(({ data }) => {
+          .then(({ data, error }) => {
+            if (error) {
+              console.error('Error fetching user profile:', error);
+              return;
+            }
             if (data) {
               setUserProfile(data);
             }
