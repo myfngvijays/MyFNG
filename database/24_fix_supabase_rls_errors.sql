@@ -174,11 +174,11 @@ SELECT
   w.name as workshop_name,
   w.city as workshop_city,
   w.state as workshop_state,
-  ul.full_name as assigned_manager_name,
-  ul.email as assigned_manager_email
+  lm.full_name as lead_manager_name,
+  lm.email as lead_manager_email
 FROM service_leads sl
 LEFT JOIN workshops w ON sl.workshop_id = w.id
-LEFT JOIN users_login ul ON sl.assigned_manager_id = ul.id;
+LEFT JOIN users_login lm ON sl.lead_manager_assigned_id = lm.id;
 
 -- auditor_dashboard view
 DROP VIEW IF EXISTS public.auditor_dashboard CASCADE;
