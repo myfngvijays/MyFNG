@@ -24,6 +24,7 @@ interface JobDetail {
   vehicle_variant: string;
   problem_description: string;
   service_types: string[];
+  service_type_ids?: string[];
   mechanic_status: string;
   job_priority: string;
   sla_remaining_minutes: number;
@@ -38,13 +39,26 @@ interface JobDetail {
   min_after_images: number;
 }
 
+interface ChecklistItem {
+  id: string;
+  name: string;
+  status: string;
+  notes?: string;
+  remark?: string;
+  category?: string;
+  mandatory: boolean;
+  completed_at?: string;
+}
+
 export default function MechanicJobDetailScreen({ route, navigation }: any) {
   const { jobId } = route.params;
   const [job, setJob] = useState<JobDetail | null>(null);
-  const [checklist, setChecklist] = useState<any[]>([]);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [workNotes, setWorkNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [editingRemark, setEditingRemark] = useState<{ itemId: string; value: string } | null>(null);
+  const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -66,7 +80,8 @@ export default function MechanicJobDetailScreen({ route, navigation }: any) {
             vehicle_model,
             vehicle_variant,
             problem_description,
-            service_types
+            service_types,
+            service_type_ids
           )
         `)
         .eq('lead_id', jobId)
@@ -86,6 +101,7 @@ export default function MechanicJobDetailScreen({ route, navigation }: any) {
           vehicle_variant: jobData.service_leads?.vehicle_variant || '',
           problem_description: jobData.service_leads?.problem_description || '',
           service_types: jobData.service_leads?.service_types || [],
+          service_type_ids: jobData.service_leads?.service_type_ids || [],
           mechanic_status: jobData.mechanic_status,
           job_priority: jobData.job_priority,
           sla_remaining_minutes: jobData.sla_remaining_minutes,
@@ -101,6 +117,35 @@ export default function MechanicJobDetailScreen({ route, navigation }: any) {
         };
         setJob(detail);
         setWorkNotes(jobData.work_notes || '');
+
+        // Fetch service type names if service_type_ids exists
+        if (jobData.service_leads?.service_type_ids) {
+          try {
+            const serviceIds = Array.isArray(jobData.service_leads.service_type_ids) 
+              ? jobData.service_leads.service_type_ids 
+              : JSON.parse(jobData.service_leads.service_type_ids || '[]');
+            
+            if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+              const { data: serviceTypesData } = await supabase
+                .from('service_types')
+                .select('id, name')
+                .in('id', serviceIds);
+              
+              if (serviceTypesData) {
+                setServiceTypeNames(serviceTypesData.map(st => st.name));
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing service_type_ids:', e);
+            // Fallback to service_types if available
+            if (jobData.service_leads?.service_types) {
+              setServiceTypeNames(jobData.service_leads.service_types);
+            }
+          }
+        } else if (jobData.service_leads?.service_types) {
+          // Fallback: use service_types directly if service_type_ids not available
+          setServiceTypeNames(jobData.service_leads.service_types);
+        }
       }
 
       // Fetch checklist
@@ -152,28 +197,59 @@ export default function MechanicJobDetailScreen({ route, navigation }: any) {
     }
   }
 
-  async function updateChecklistItem(itemId: string, status: string) {
+  async function updateChecklistItem(itemId: string, status: string, remark?: string) {
     try {
+      // Get current item
+      const currentItem = checklist.find(item => item.id === itemId);
+      if (!currentItem) return;
+
+      // Update local state first
       const updatedChecklist = checklist.map(item =>
         item.id === itemId
-          ? { ...item, status, completed_at: status === 'COMPLETED' ? new Date().toISOString() : item.completed_at }
+          ? { 
+              ...item, 
+              status, 
+              remark: remark !== undefined ? remark : item.remark,
+              completed_at: status === 'COMPLETED' ? new Date().toISOString() : item.completed_at 
+            }
           : item
       );
-
-      const { error } = await supabase
-        .from('service_checklists')
-        .update({
-          checklist_items: updatedChecklist,
-          updated_at: new Date().toISOString()
-        })
-        .eq('lead_id', jobId);
-
-      if (error) throw error;
-
       setChecklist(updatedChecklist);
-    } catch (error) {
+
+      // Call API to update checklist
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        Alert.alert('Error', 'Not authenticated');
+        return;
+      }
+
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://myfng.astric.ai';
+      const response = await fetch(`${apiUrl}/api/mechanic/jobs/${jobId}/checklist`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          item_id: itemId,
+          status,
+          notes: currentItem.notes || '',
+          remark: remark !== undefined ? remark : currentItem.remark || ''
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update checklist');
+      }
+
+      // Refresh job details to get updated completion status
+      await fetchJobDetail();
+    } catch (error: any) {
       console.error('Error updating checklist:', error);
-      Alert.alert('Error', 'Failed to update checklist');
+      Alert.alert('Error', error.message || 'Failed to update checklist');
+      // Revert local state on error
+      fetchJobDetail();
     }
   }
 
@@ -328,7 +404,7 @@ export default function MechanicJobDetailScreen({ route, navigation }: any) {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Service Types</Text>
               <View style={styles.tagsContainer}>
-                {job.service_types.map((type, idx) => (
+                {(serviceTypeNames.length > 0 ? serviceTypeNames : job.service_types).map((type, idx) => (
                   <View key={idx} style={styles.tag}>
                     <Text style={styles.tagText}>{type}</Text>
                   </View>
@@ -372,33 +448,137 @@ export default function MechanicJobDetailScreen({ route, navigation }: any) {
         {activeTab === 'checklist' && (
           <View>
             <Text style={styles.sectionTitle}>Service Checklist</Text>
-            {checklist.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.checklistItem}
-                onPress={() => updateChecklistItem(
-                  item.id,
-                  item.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED'
-                )}
-              >
-                <View style={styles.checkbox}>
-                  {item.status === 'COMPLETED' && <Text style={styles.checkmark}>✓</Text>}
-                </View>
-                <View style={styles.checklistContent}>
-                  <Text style={[
-                    styles.checklistText,
-                    item.status === 'COMPLETED' && styles.checklistTextCompleted
-                  ]}>
-                    {item.name}
-                  </Text>
-                  {item.mandatory && (
-                    <View style={styles.requiredBadge}>
-                      <Text style={styles.requiredText}>Required</Text>
+            
+            {/* Group by category if categories exist */}
+            {checklist.some(item => item.category) ? (
+              <View>
+                {Array.from(new Set(checklist.map(item => item.category).filter(Boolean))).map((category) => {
+                  const categoryItems = checklist.filter(item => item.category === category);
+                  if (categoryItems.length === 0) return null;
+                  
+                  return (
+                    <View key={category} style={styles.categorySection}>
+                      <Text style={styles.categoryTitle}>
+                        {category} ({categoryItems.length})
+                      </Text>
+                      {categoryItems.map((item) => (
+                        <View key={item.id} style={styles.checklistItem}>
+                          <TouchableOpacity
+                            style={styles.checklistItemHeader}
+                            onPress={() => updateChecklistItem(
+                              item.id,
+                              item.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED',
+                              item.remark
+                            )}
+                          >
+                            <View style={styles.checkbox}>
+                              {item.status === 'COMPLETED' && <Text style={styles.checkmark}>✓</Text>}
+                            </View>
+                            <View style={styles.checklistContent}>
+                              <Text style={[
+                                styles.checklistText,
+                                item.status === 'COMPLETED' && styles.checklistTextCompleted
+                              ]}>
+                                {item.name}
+                              </Text>
+                              {item.mandatory && (
+                                <View style={styles.requiredBadge}>
+                                  <Text style={styles.requiredText}>Required</Text>
+                                </View>
+                              )}
+                            </View>
+                          </TouchableOpacity>
+                          
+                          {/* Remark input */}
+                          <View style={styles.remarkContainer}>
+                            <Text style={styles.remarkLabel}>Remark:</Text>
+                            <TextInput
+                              style={styles.remarkInput}
+                              value={editingRemark?.itemId === item.id ? editingRemark.value : (item.remark || '')}
+                              onChangeText={(text) => {
+                                setEditingRemark({ itemId: item.id, value: text });
+                                // Update local state
+                                const updatedChecklist = checklist.map(i =>
+                                  i.id === item.id ? { ...i, remark: text } : i
+                                );
+                                setChecklist(updatedChecklist);
+                              }}
+                              onBlur={() => {
+                                if (editingRemark?.itemId === item.id) {
+                                  updateChecklistItem(item.id, item.status, editingRemark.value);
+                                  setEditingRemark(null);
+                                }
+                              }}
+                              placeholder="Enter remark..."
+                              multiline
+                            />
+                          </View>
+                        </View>
+                      ))}
                     </View>
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
+                  );
+                })}
+              </View>
+            ) : (
+              /* Fallback: No categories - show simple list */
+              <View>
+                {checklist.map((item) => (
+                  <View key={item.id} style={styles.checklistItem}>
+                    <TouchableOpacity
+                      style={styles.checklistItemHeader}
+                      onPress={() => updateChecklistItem(
+                        item.id,
+                        item.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED',
+                        item.remark
+                      )}
+                    >
+                      <View style={styles.checkbox}>
+                        {item.status === 'COMPLETED' && <Text style={styles.checkmark}>✓</Text>}
+                      </View>
+                      <View style={styles.checklistContent}>
+                        <Text style={[
+                          styles.checklistText,
+                          item.status === 'COMPLETED' && styles.checklistTextCompleted
+                        ]}>
+                          {item.name}
+                        </Text>
+                        {item.mandatory && (
+                          <View style={styles.requiredBadge}>
+                            <Text style={styles.requiredText}>Required</Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                    
+                    {/* Remark input if remark field exists */}
+                    {item.remark !== undefined && (
+                      <View style={styles.remarkContainer}>
+                        <Text style={styles.remarkLabel}>Remark:</Text>
+                        <TextInput
+                          style={styles.remarkInput}
+                          value={editingRemark?.itemId === item.id ? editingRemark.value : (item.remark || '')}
+                          onChangeText={(text) => {
+                            setEditingRemark({ itemId: item.id, value: text });
+                            const updatedChecklist = checklist.map(i =>
+                              i.id === item.id ? { ...i, remark: text } : i
+                            );
+                            setChecklist(updatedChecklist);
+                          }}
+                          onBlur={() => {
+                            if (editingRemark?.itemId === item.id) {
+                              updateChecklistItem(item.id, item.status, editingRemark.value);
+                              setEditingRemark(null);
+                            }
+                          }}
+                          placeholder="Enter remark..."
+                          multiline
+                        />
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         )}
 
@@ -623,7 +803,6 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   checklistTextCompleted: {
-    textDecorationLine: 'line-through',
     color: '#6b7280',
   },
   requiredBadge: {
@@ -638,6 +817,43 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#991b1b',
     fontWeight: '600',
+  },
+  categorySection: {
+    marginBottom: 24,
+  },
+  categoryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e5e7eb',
+  },
+  checklistItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  remarkContainer: {
+    marginTop: 12,
+    marginLeft: 36,
+  },
+  remarkLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  remarkInput: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: '#111827',
+    minHeight: 40,
+    textAlignVertical: 'top',
   },
   textArea: {
     backgroundColor: '#fff',

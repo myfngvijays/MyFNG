@@ -1169,7 +1169,7 @@ export default function MechanicJobDetailPage() {
                                   onChange={(e) => updateChecklistItem(item.id, e.target.checked ? 'COMPLETED' : 'PENDING', item.notes || '', item.remark || '')}
                                   className="w-5 h-5"
                                 />
-                                <span className={`font-medium ${item.status === 'COMPLETED' ? 'text-green-600 line-through' : 'text-gray-800'}`}>
+                                <span className={`font-medium ${item.status === 'COMPLETED' ? 'text-green-600' : 'text-gray-800'}`}>
                                   {item.name}
                                 </span>
                                 {item.mandatory && (
@@ -1227,7 +1227,7 @@ export default function MechanicJobDetailPage() {
                             onChange={(e) => updateChecklistItem(item.id, e.target.checked ? 'COMPLETED' : 'PENDING', item.notes || '', item.remark || '')}
                             className="w-5 h-5"
                           />
-                          <span className={`font-medium ${item.status === 'COMPLETED' ? 'text-green-600 line-through' : ''}`}>
+                          <span className={`font-medium ${item.status === 'COMPLETED' ? 'text-green-600' : ''}`}>
                             {item.name}
                           </span>
                           {item.mandatory && (
