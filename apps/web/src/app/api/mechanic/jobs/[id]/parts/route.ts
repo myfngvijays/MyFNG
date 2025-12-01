@@ -1,15 +1,13 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
-// GET - Get parts for a job
+// GET - Get parts for a job (Merged from Billing & Tracking)
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const supabase = await createClient();
-    
-    // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -17,178 +15,39 @@ export async function GET(
 
     const leadId = params.id;
 
-    // Get parts
-    const { data: parts, error: partsError } = await supabase
-      .from('mechanic_parts_usage')
-      .select('*')
+    // 1. Fetch Billing Parts (Job Card Parts)
+    // We need to find the job_card_id first
+    const { data: jobCard } = await supabase
+      .from('job_cards')
+      .select('id')
       .eq('lead_id', leadId)
-      .order('issued_at', { ascending: false });
+      .single();
 
-    if (partsError) {
-      console.error('Error fetching parts:', partsError);
-      return NextResponse.json({ error: 'Failed to fetch parts' }, { status: 500 });
+    let billingParts: any[] = [];
+    if (jobCard) {
+      const { data } = await supabase
+        .from('job_card_parts')
+        .select(`
+          *,
+          master_products ( name, unit, hsn_sac_code )
+        `)
+        .eq('job_card_id', jobCard.id)
+        .order('created_at', { ascending: false });
+      billingParts = data || [];
     }
-
-    // Calculate summary
-    const summary = {
-      total_issued: parts?.length || 0,
-      total_used: parts?.filter(p => p.usage_status === 'USED').length || 0,
-      total_not_needed: parts?.filter(p => p.usage_status === 'NOT_NEEDED').length || 0,
-      additional_required: parts?.filter(p => p.usage_status === 'ADDITIONAL_REQUIRED').length || 0
-    };
 
     return NextResponse.json({
       success: true,
-      parts: parts || [],
-      summary
+      parts: billingParts
     }, { status: 200 });
 
   } catch (error) {
     console.error('Error in get parts API:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// PUT - Update part usage
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const supabase = await createClient();
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Get user profile
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, roles!inner(role_code)')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || !userProfile) {
-      console.error('Profile error:', profileError);
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
-    }
-
-    // Verify user is mechanic
-    const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'WORKSHOP_MECHANIC') {
-      return NextResponse.json({ error: 'Forbidden: Mechanic only' }, { status: 403 });
-    }
-
-    const leadId = params.id;
-
-    // Get request body
-    const body = await request.json();
-    const { 
-      part_id, 
-      quantity_used, 
-      usage_status, 
-      part_notes, 
-      additional_quantity_requested 
-    } = body;
-
-    if (!part_id) {
-      return NextResponse.json({ error: 'Part ID is required' }, { status: 400 });
-    }
-
-    // Validate usage status
-    const validStatuses = ['ISSUED', 'USED', 'NOT_NEEDED', 'ADDITIONAL_REQUIRED', 'DAMAGED', 'RETURNED'];
-    if (usage_status && !validStatuses.includes(usage_status)) {
-      return NextResponse.json({ 
-        error: 'Invalid usage status',
-        valid_statuses: validStatuses
-      }, { status: 400 });
-    }
-
-    // Get current part
-    const { data: currentPart, error: partError } = await supabase
-      .from('mechanic_parts_usage')
-      .select('*')
-      .eq('id', part_id)
-      .eq('lead_id', leadId)
-      .single();
-
-    if (partError || !currentPart) {
-      return NextResponse.json({ error: 'Part not found' }, { status: 404 });
-    }
-
-    const now = new Date().toISOString();
-    const updates: any = {
-      updated_at: now
-    };
-
-    // Add fields to update
-    if (quantity_used !== undefined) {
-      updates.quantity_used = quantity_used;
-    }
-    if (usage_status) {
-      updates.usage_status = usage_status;
-      if (usage_status === 'USED') {
-        updates.used_at = now;
-      }
-    }
-    if (part_notes) {
-      updates.part_notes = part_notes;
-    }
-    if (additional_quantity_requested !== undefined) {
-      updates.additional_quantity_requested = additional_quantity_requested;
-    }
-
-    // Update part
-    const { data: updatedPart, error: updateError } = await supabase
-      .from('mechanic_parts_usage')
-      .update(updates)
-      .eq('id', part_id)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error('Error updating part:', updateError);
-      return NextResponse.json({ error: 'Failed to update part' }, { status: 500 });
-    }
-
-    // Create activity log
-    await supabase
-      .from('mechanic_actions_log')
-      .insert({
-        lead_id: leadId,
-        mechanic_id: userProfile.id,
-        action_type: 'PARTS_UPDATED',
-        action_description: `Updated part usage: ${currentPart.part_name}`,
-        metadata: {
-          part_id,
-          part_name: currentPart.part_name,
-          old_status: currentPart.usage_status,
-          new_status: usage_status || currentPart.usage_status,
-          quantity_used: quantity_used || currentPart.quantity_used
-        }
-      });
-
-    return NextResponse.json({
-      success: true,
-      message: 'Part updated successfully',
-      part: updatedPart
-    }, { status: 200 });
-
-  } catch (error) {
-    console.error('Error in update part API:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-// POST - Add a new part to the job
+// POST - Add a new part to the job (With Tax Calculation & Class Pricing)
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -196,86 +55,189 @@ export async function POST(
   try {
     const supabase = await createClient();
     
-    // Get authenticated user
+    // Auth
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, role')
-      .eq('email', user.email)
-      .single();
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
-    }
-
     const leadId = params.id;
-
-    // Get request body
     const body = await request.json();
     const { 
-      part_name, 
-      part_code, 
-      quantity_issued, 
-      part_notes 
+      product_id, // Optional: Link to Master Product
+      part_name, // Manual override or Custom
+      quantity = 1,
+      unit_price, // Manual override
+      is_custom = false
     } = body;
 
-    if (!part_name) {
-      return NextResponse.json({ error: 'Part name is required' }, { status: 400 });
+    // 1. Get Job Card ID & Workshop ID
+    let { data: jobCard } = await supabase
+      .from('job_cards')
+      .select('id, workshop_id, lead_id') 
+      .eq('lead_id', leadId)
+      .single();
+
+    // If no job card exists, create one (Auto-create logic)
+    if (!jobCard) {
+       // Fetch lead to get basic info if needed, or just create a basic job card
+       const { data: lead } = await supabase.from('service_leads').select('lead_number, workshop_id').eq('id', leadId).single();
+       const { data: newJobCard, error: createJCError } = await supabase
+         .from('job_cards')
+         .insert({
+            lead_id: leadId,
+            job_card_number: `JC-${lead?.lead_number || Date.now()}`,
+            created_by: user.id,
+            workshop_id: lead?.workshop_id // Ensure workshop_id is linked
+         })
+         .select()
+         .single();
+       
+       if (createJCError) throw createJCError;
+       jobCard = newJobCard;
     }
 
-    // Create part record
-    const { data: newPart, error: createError } = await supabase
-      .from('mechanic_parts_usage')
+    if (!jobCard) {
+        return NextResponse.json({ error: 'Failed to retrieve or create Job Card' }, { status: 500 });
+    }
+
+    // 2. Determine Vehicle Class
+    // Fetch lead -> vehicle info -> car_models -> class
+    let vehicleClass = null;
+    const { data: leadInfo } = await supabase
+      .from('service_leads')
+      .select('vehicle_model')
+      .eq('id', leadId)
+      .single();
+    
+    if (leadInfo?.vehicle_model) {
+        // Try to find class from car_models table
+        // Assuming vehicle_model in lead matches model_name in car_models
+        const { data: carModel } = await supabase
+            .from('car_models')
+            .select('class')
+            .eq('model_name', leadInfo.vehicle_model)
+            .maybeSingle();
+        
+        if (carModel) {
+            vehicleClass = carModel.class;
+        }
+    }
+
+    let finalPartName = part_name;
+    let finalPrice = parseFloat(unit_price) || 0;
+    let hsnCode = '';
+    let taxRate = 18.00; // Default GST
+    let productIdToSave = product_id;
+
+    // 3. Fetch Pricing Logic (Priority: Manual > Class Specific > Workshop Default > Master)
+    if (product_id && !unit_price) { // Only fetch if price not manually overridden
+      // A. Fetch Master Product Details
+      const { data: product } = await supabase
+        .from('master_products')
+        .select('*')
+        .eq('id', product_id)
+        .single();
+
+      if (product) {
+        finalPartName = finalPartName || product.name;
+        hsnCode = product.hsn_sac_code;
+        taxRate = product.tax_rate || 18.00;
+        
+        // Start with Master Price
+        finalPrice = product.default_price;
+
+        // B. Check Workshop Pricing Overrides
+        if (jobCard?.workshop_id) {
+            const { data: workshopPrices } = await supabase
+                .from('workshop_product_pricing')
+                .select('selling_price, class')
+                .eq('workshop_id', jobCard.workshop_id)
+                .eq('product_id', product_id);
+
+            if (workshopPrices && workshopPrices.length > 0) {
+                // Look for Class Specific Match
+                const classSpecificPrice = workshopPrices.find(p => p.class === vehicleClass);
+                
+                // Look for Default Workshop Price (class is NULL)
+                const defaultWorkshopPrice = workshopPrices.find(p => p.class === null);
+
+                if (classSpecificPrice) {
+                    finalPrice = classSpecificPrice.selling_price;
+                } else if (defaultWorkshopPrice) {
+                    finalPrice = defaultWorkshopPrice.selling_price;
+                }
+            }
+        }
+      }
+    } else if (unit_price) {
+        // If manual price provided, assume standard Tax if product linked, else default
+        if (product_id) {
+             const { data: product } = await supabase
+                .from('master_products')
+                .select('hsn_sac_code, tax_rate')
+                .eq('id', product_id)
+                .single();
+             if (product) {
+                 hsnCode = product.hsn_sac_code;
+                 taxRate = product.tax_rate;
+             }
+        }
+    }
+
+    // 4. Calculate Taxes
+    const qty = parseInt(quantity) || 1;
+    const taxableAmount = finalPrice * qty;
+    const gstAmount = taxableAmount * (taxRate / 100);
+    
+    // Split Logic (Assuming Intra-State by default for now)
+    const cgstRate = taxRate / 2;
+    const sgstRate = taxRate / 2;
+    const cgstAmount = gstAmount / 2;
+    const sgstAmount = gstAmount / 2;
+    const totalAmount = taxableAmount + gstAmount;
+
+    // 5. Insert into Job Card Parts (Billing Table)
+    const { data: newPart, error: insertError } = await supabase
+      .from('job_card_parts')
       .insert({
-        lead_id: leadId,
-        mechanic_id: userProfile.id,
-        part_name,
-        part_code,
-        quantity_issued: quantity_issued || 1,
-        quantity_used: 0,
-        usage_status: 'ISSUED',
-        part_notes
+        job_card_id: jobCard.id,
+        product_id: productIdToSave,
+        part_name: finalPartName,
+        quantity: qty,
+        unit_price: finalPrice,
+        
+        // Tax Columns
+        hsn_sac_code: hsnCode,
+        tax_rate: taxRate,
+        taxable_amount: taxableAmount,
+        cgst_rate: cgstRate,
+        cgst_amount: cgstAmount,
+        sgst_rate: sgstRate,
+        sgst_amount: sgstAmount,
+        total_price: totalAmount // Grand Total for this line item
       })
       .select()
       .single();
 
-    if (createError) {
-      console.error('Error creating part:', createError);
-      return NextResponse.json({ error: 'Failed to create part record' }, { status: 500 });
+    if (insertError) {
+      console.error('Error adding billing part:', insertError);
+      return NextResponse.json({ error: 'Failed to add part' }, { status: 500 });
     }
-
-    // Create activity log
-    await supabase
-      .from('mechanic_actions_log')
-      .insert({
-        lead_id: leadId,
-        mechanic_id: userProfile.id,
-        action_type: 'PART_ADDED',
-        action_description: `Added new part: ${part_name}`,
-        metadata: {
-          part_id: newPart.id,
-          part_name,
-          quantity_issued: quantity_issued || 1
-        }
-      });
 
     return NextResponse.json({
       success: true,
-      message: 'Part added successfully',
-      part: newPart
+      message: 'Part added to billing',
+      part: newPart,
+      pricing_debug: { // Helpful for debugging
+          vehicle_class: vehicleClass,
+          final_price: finalPrice,
+          source: productIdToSave ? 'Auto' : 'Manual'
+      }
     }, { status: 201 });
 
   } catch (error) {
     console.error('Error in add part API:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-

@@ -15,7 +15,10 @@ import {
   Menu,
   X,
   ChevronRight,
-  FileText
+  FileText,
+  Package,
+  Tags,
+  MapPin
 } from 'lucide-react';
 
 const navigationItems = [
@@ -30,6 +33,24 @@ const navigationItems = [
     href: '/dashboard/super_admin/workshops',
     icon: Store,
     description: 'Workshop Management'
+  },
+  {
+    name: 'Products & Inventory',
+    href: '/dashboard/super_admin/inventory/products',
+    icon: Package,
+    description: 'Manage Master Products'
+  },
+  {
+    name: 'Workshop Pricing',
+    href: '/dashboard/super_admin/inventory/pricing',
+    icon: Tags,
+    description: 'Manage Prices'
+  },
+  {
+    name: 'Zones',
+    href: '/dashboard/super_admin/inventory/zones',
+    icon: MapPin,
+    description: 'Manage Zones'
   },
   {
     name: 'Users',

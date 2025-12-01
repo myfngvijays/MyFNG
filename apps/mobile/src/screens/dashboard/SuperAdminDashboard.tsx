@@ -14,6 +14,17 @@ import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';
 import { COLORS, FONTS } from '../../constants/theme';
 
+// Import Super Admin screens
+import WorkshopManagementScreen from './superadmin/WorkshopManagementScreen';
+import WorkshopRatesScreen from './superadmin/WorkshopRatesScreen';
+import UserRoleManagementScreen from './superadmin/UserRoleManagementScreen';
+import LeadsManagementScreen from './superadmin/LeadsManagementScreen';
+import ReportsAnalyticsScreen from './superadmin/ReportsAnalyticsScreen';
+import SystemSettingsScreen from './superadmin/SystemSettingsScreen';
+import FinancePayoutScreen from './superadmin/FinancePayoutScreen';
+import FraudDetectionScreen from './superadmin/FraudDetectionScreen';
+import AuditLogsScreen from './superadmin/AuditLogsScreen';
+
 export default function SuperAdminDashboard() {
   const navigation = useNavigation();
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -356,6 +367,9 @@ export default function SuperAdminDashboard() {
     await supabase.auth.signOut();
   };
 
+  const [currentScreen, setCurrentScreen] = useState('dashboard');
+  const [screenParams, setScreenParams] = useState<any>({});
+
   const handleNavigation = (screen: string) => {
     const screenMap: { [key: string]: string } = {
       'workshops': 'WorkshopManagement',
@@ -363,13 +377,61 @@ export default function SuperAdminDashboard() {
       'reports': 'ReportsAnalytics',
       'settings': 'SystemSettings',
       'finance': 'FinancePayout',
+      'leads': 'LeadsManagement',
+      'fraud': 'FraudDetection',
+      'audit': 'AuditLogs',
     };
     
     const screenName = screenMap[screen];
     if (screenName) {
-      navigation.navigate(screenName as never);
+      setCurrentScreen(screenName);
     }
   };
+
+  const navigationObj = {
+    navigate: (screen: string, params?: any) => {
+      setCurrentScreen(screen);
+      if (params) setScreenParams(params);
+    },
+    goBack: () => setCurrentScreen('dashboard'),
+  };
+
+  // Render different screens based on currentScreen
+  if (currentScreen === 'WorkshopManagement') {
+    return <WorkshopManagementScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'WorkshopRates') {
+    return <WorkshopRatesScreen navigation={navigationObj} route={{ params: screenParams }} />;
+  }
+
+  if (currentScreen === 'UserRoleManagement') {
+    return <UserRoleManagementScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'LeadsManagement') {
+    return <LeadsManagementScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'ReportsAnalytics') {
+    return <ReportsAnalyticsScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'SystemSettings') {
+    return <SystemSettingsScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'FinancePayout') {
+    return <FinancePayoutScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'FraudDetection') {
+    return <FraudDetectionScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'AuditLogs') {
+    return <AuditLogsScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
 
   if (loading) {
     return (

@@ -302,6 +302,14 @@ export default function WorkshopManagementScreen({ navigation }: any) {
           )}
 
           <TouchableOpacity
+            style={[styles.quickActionBtn, { backgroundColor: COLORS.purple + '20' }]}
+            onPress={() => navigation.navigate('WorkshopRates', { workshopId: item.id, workshopName: item.name })}
+          >
+            <Icon name="currency-usd" size={18} color={COLORS.purple} />
+            <Text style={[styles.quickActionText, { color: COLORS.purple }]}>Manage Rate</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.quickActionBtn, { backgroundColor: COLORS.blue + '20' }]}
             onPress={() => {
               setSelectedWorkshop(item);
