@@ -1,12 +1,32 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { CheckCircle, XCircle, Clock, Users, Wrench } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Users, Wrench, User, Phone, Car, MapPin } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
+interface PendingLead {
+  id: string;
+  lead_number: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email?: string;
+  vehicle_number: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  pickup_address?: string;
+  city?: string;
+  service_type?: string;
+  service_type_name?: string;
+  estimated_amount?: number;
+  created_at: string;
+  pickup_required?: boolean;
+}
+
 export default function WorkshopAdminDashboard() {
-  const [pendingLeads, setPendingLeads] = useState<any[]>([]);
+  const router = useRouter();
+  const [pendingLeads, setPendingLeads] = useState<PendingLead[]>([]);
   const [activeJobs, setActiveJobs] = useState<any[]>([]);
   const [stats, setStats] = useState({
     pending: 0,
@@ -41,14 +61,39 @@ export default function WorkshopAdminDashboard() {
         return;
       }
 
-      // Fetch pending leads for this workshop
-      const { data: pending } = await supabase
+      // Fetch pending leads for this workshop with service type details
+      const { data: pending, error: pendingError } = await supabase
         .from('service_leads')
-        .select('*')
+        .select(`
+          id,
+          lead_number,
+          customer_name,
+          customer_phone,
+          customer_email,
+          vehicle_number,
+          vehicle_make,
+          vehicle_model,
+          pickup_address,
+          city,
+          service_type,
+          estimated_amount,
+          created_at,
+          pickup_required
+        `)
         .eq('workshop_id', workshopId)
-        .eq('status', 'ASSIGNED')
+        .in('status', ['ASSIGNED_TO_WORKSHOP', 'PENDING', 'ASSIGNED'])
         .order('created_at', { ascending: false })
         .limit(5);
+
+      if (pendingError) {
+        console.error('Error fetching pending leads:', pendingError);
+      }
+
+      // Transform pending leads to include service type name
+      const transformedPending = (pending || []).map((lead: any) => ({
+        ...lead,
+        service_type_name: lead.service_type || 'General Service'
+      }));
 
       // Fetch active/in-progress jobs
       const { data: active } = await supabase
@@ -64,7 +109,7 @@ export default function WorkshopAdminDashboard() {
         .from('service_leads')
         .select('*', { count: 'exact', head: true })
         .eq('workshop_id', workshopId)
-        .eq('status', 'ASSIGNED');
+        .in('status', ['ASSIGNED_TO_WORKSHOP', 'PENDING', 'ASSIGNED']);
 
       const { count: acceptedCount } = await supabase
         .from('service_leads')
@@ -84,7 +129,7 @@ export default function WorkshopAdminDashboard() {
         .eq('workshop_id', workshopId)
         .eq('is_active', true);
 
-      setPendingLeads(pending || []);
+      setPendingLeads(transformedPending);
       setActiveJobs(active || []);
       setStats({
         pending: pendingCount || 0,
@@ -128,7 +173,7 @@ export default function WorkshopAdminDashboard() {
               Pending Lead Approvals
             </h2>
             <span className="bg-yellow-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
-              {stats.pending} New
+              {stats.pending} {stats.pending === 1 ? 'New' : 'New'}
             </span>
           </div>
           
@@ -137,11 +182,7 @@ export default function WorkshopAdminDashboard() {
               pendingLeads.map((lead) => (
                 <LeadApprovalCard
                   key={lead.id}
-                  leadNumber={lead.lead_number}
-                  customerName={lead.customer_name}
-                  vehicleNumber={lead.vehicle_number}
-                  serviceType={lead.service_type}
-                  estimatedAmount={lead.estimated_amount}
+                  lead={lead}
                 />
               ))
             ) : (
@@ -150,8 +191,11 @@ export default function WorkshopAdminDashboard() {
           </div>
 
           {pendingLeads.length > 0 && (
-            <button className="btn btn-primary w-full mt-4">
-              View All Pending Leads
+            <button 
+              onClick={() => router.push('/dashboard/workshop_admin/leads/pending')}
+              className="btn btn-primary w-full mt-4"
+            >
+              View All Pending Leads ({stats.pending})
             </button>
           )}
         </div>
@@ -189,27 +233,112 @@ export default function WorkshopAdminDashboard() {
   );
 }
 
-function LeadApprovalCard({ leadNumber, customerName, vehicleNumber, serviceType, estimatedAmount }: any) {
+function LeadApprovalCard({ lead }: { lead: PendingLead }) {
+  const router = useRouter();
+  
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) {
+      return `${diffMins} min ago`;
+    } else if (diffHours < 24) {
+      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    } else {
+      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    }
+  };
+
   return (
-    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
+         onClick={() => router.push(`/dashboard/workshop_admin/leads/${lead.id}`)}>
+      {/* Header with Lead Number and Time */}
       <div className="flex justify-between items-start mb-3">
-        <div>
-          <p className="font-semibold text-lg">{leadNumber}</p>
-          <p className="text-sm text-gray-600">{customerName}</p>
-          <p className="text-sm text-gray-600">{vehicleNumber}</p>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <p className="font-semibold text-lg text-text-heading">{lead.lead_number || 'N/A'}</p>
+            <span className="text-xs text-gray-500">{formatDate(lead.created_at)}</span>
+          </div>
+          
+          {/* Customer Info */}
+          <div className="flex items-center gap-2 mb-1">
+            <User className="w-4 h-4 text-gray-400" />
+            <p className="text-sm font-medium text-text-heading">{lead.customer_name || 'N/A'}</p>
+          </div>
+          
+          {/* Phone */}
+          {lead.customer_phone && (
+            <div className="flex items-center gap-2 mb-1">
+              <Phone className="w-4 h-4 text-gray-400" />
+              <p className="text-sm text-gray-600">{lead.customer_phone}</p>
+            </div>
+          )}
+          
+          {/* Vehicle Info */}
+          <div className="flex items-center gap-2 mb-1">
+            <Car className="w-4 h-4 text-gray-400" />
+            <p className="text-sm text-gray-600">
+              {lead.vehicle_make && lead.vehicle_model 
+                ? `${lead.vehicle_make} ${lead.vehicle_model}` 
+                : lead.vehicle_number || 'N/A'}
+            </p>
+            {lead.vehicle_number && lead.vehicle_make && (
+              <span className="text-xs text-gray-500">({lead.vehicle_number})</span>
+            )}
+          </div>
+          
+          {/* Location */}
+          {lead.city && (
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-gray-400" />
+              <p className="text-sm text-gray-600">{lead.city}</p>
+              {lead.pickup_required && (
+                <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded">Pickup Required</span>
+              )}
+            </div>
+          )}
         </div>
-        <div className="text-right">
-          <p className="text-sm text-gray-600">{serviceType}</p>
-          <p className="font-bold text-brand-primary">₹{estimatedAmount}</p>
+        
+        {/* Right Side - Service & Amount */}
+        <div className="text-right ml-4">
+          <div className="mb-2">
+            <p className="text-xs text-gray-500 mb-1">Service</p>
+            <p className="text-sm font-semibold text-brand-primary">
+              {lead.service_type_name || lead.service_type || 'General Service'}
+            </p>
+          </div>
+          {lead.estimated_amount && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Estimated</p>
+              <p className="text-lg font-bold text-brand-primary">₹{lead.estimated_amount.toLocaleString('en-IN')}</p>
+            </div>
+          )}
         </div>
       </div>
       
-      <div className="flex gap-2">
-        <button className="flex-1 btn bg-green-500 hover:bg-green-600 text-white text-sm py-2">
+      {/* Action Buttons */}
+      <div className="flex gap-2 mt-3 pt-3 border-t border-gray-200">
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            router.push(`/dashboard/workshop_admin/leads/${lead.id}`);
+          }}
+          className="flex-1 btn bg-green-500 hover:bg-green-600 text-white text-sm py-2 flex items-center justify-center gap-2"
+        >
           <CheckCircle className="w-4 h-4" />
           Accept
         </button>
-        <button className="flex-1 btn bg-red-500 hover:bg-red-600 text-white text-sm py-2">
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            router.push(`/dashboard/workshop_admin/leads/${lead.id}`);
+          }}
+          className="flex-1 btn bg-red-500 hover:bg-red-600 text-white text-sm py-2 flex items-center justify-center gap-2"
+        >
           <XCircle className="w-4 h-4" />
           Reject
         </button>
