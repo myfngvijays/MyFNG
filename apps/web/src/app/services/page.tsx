@@ -58,7 +58,7 @@ export default function ServicesPage() {
               </div>
               <div className="md:w-1/2">
                 <img 
-                  src="https://images.unsplash.com/photo-1632823471565-1ec299db97eb?auto=format&fit=crop&q=80&w=1000" 
+                  src="https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000" 
                   alt="Periodic Service" 
                   className="rounded-2xl shadow-xl w-full object-cover h-[400px]"
                 />
@@ -100,7 +100,7 @@ export default function ServicesPage() {
               </div>
               <div className="md:w-1/2">
                 <img 
-                  src="https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000" 
+                  src="https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&q=80&w=1000" 
                   alt="Denting Painting" 
                   className="rounded-2xl shadow-xl w-full object-cover h-[400px]"
                 />
@@ -142,7 +142,7 @@ export default function ServicesPage() {
               </div>
               <div className="md:w-1/2">
                 <img 
-                  src="https://images.unsplash.com/photo-1609526359432-a748819d5671?auto=format&fit=crop&q=80&w=1000" 
+                  src="https://images.unsplash.com/photo-1527247043581-9a9099575e8b?auto=format&fit=crop&q=80&w=1000" 
                   alt="AC Service" 
                   className="rounded-2xl shadow-xl w-full object-cover h-[400px]"
                 />
@@ -156,4 +156,3 @@ export default function ServicesPage() {
     </div>
   );
 }
-
