@@ -95,32 +95,50 @@ export async function POST(
        
        if (createJCError) throw createJCError;
        jobCard = newJobCard;
-    }
+      }
 
     if (!jobCard) {
         return NextResponse.json({ error: 'Failed to retrieve or create Job Card' }, { status: 500 });
     }
 
-    // 2. Determine Vehicle Class
+    // 2. Determine Vehicle Class and Zone
     // Fetch lead -> vehicle info -> car_models -> class
+    // Fetch workshop -> zone_id
     let vehicleClass = null;
-    const { data: leadInfo } = await supabase
+    let zoneId = null;
+    
+    const { data: leadDetails } = await supabase
       .from('service_leads')
-      .select('vehicle_model')
+      .select(`
+        vehicle_model,
+        workshop_id
+      `)
       .eq('id', leadId)
       .single();
-    
-    if (leadInfo?.vehicle_model) {
+
+    if (leadDetails?.vehicle_model) {
         // Try to find class from car_models table
-        // Assuming vehicle_model in lead matches model_name in car_models
         const { data: carModel } = await supabase
             .from('car_models')
             .select('class')
-            .eq('model_name', leadInfo.vehicle_model)
+            .eq('model_name', leadDetails.vehicle_model)
             .maybeSingle();
         
         if (carModel) {
             vehicleClass = carModel.class;
+        }
+    }
+
+    // Get zone_id from workshop
+    if (leadDetails?.workshop_id) {
+        const { data: workshop } = await supabase
+            .from('workshops')
+            .select('zone_id')
+            .eq('id', leadDetails.workshop_id)
+            .single();
+        
+        if (workshop?.zone_id) {
+            zoneId = workshop.zone_id;
         }
     }
 
@@ -147,25 +165,69 @@ export async function POST(
         // Start with Master Price
         finalPrice = product.default_price;
 
-        // B. Check Workshop Pricing Overrides
+        // B. Check Workshop Pricing Overrides (Priority: Class+Zone > Class > Zone > Default)
         if (jobCard?.workshop_id) {
-            const { data: workshopPrices } = await supabase
-                .from('workshop_product_pricing')
-                .select('selling_price, class')
-                .eq('workshop_id', jobCard.workshop_id)
-                .eq('product_id', product_id);
-
-            if (workshopPrices && workshopPrices.length > 0) {
-                // Look for Class Specific Match
-                const classSpecificPrice = workshopPrices.find(p => p.class === vehicleClass);
+            // Priority 1: Class + Zone
+            if (vehicleClass && zoneId) {
+                const { data: classZonePrice } = await supabase
+                    .from('workshop_product_pricing')
+                    .select('selling_price')
+                    .eq('workshop_id', jobCard.workshop_id)
+                    .eq('product_id', product_id)
+                    .eq('class', vehicleClass)
+                    .eq('zone_id', zoneId)
+                    .single();
                 
-                // Look for Default Workshop Price (class is NULL)
-                const defaultWorkshopPrice = workshopPrices.find(p => p.class === null);
+                if (classZonePrice?.selling_price) {
+                    finalPrice = classZonePrice.selling_price;
+                }
+            }
+            
+            // Priority 2: Class only (if not found above)
+            if (finalPrice === product.default_price && vehicleClass) {
+                const { data: classPrice } = await supabase
+                    .from('workshop_product_pricing')
+                    .select('selling_price')
+                    .eq('workshop_id', jobCard.workshop_id)
+                    .eq('product_id', product_id)
+                    .eq('class', vehicleClass)
+                    .is('zone_id', null)
+                    .single();
+                
+                if (classPrice?.selling_price) {
+                    finalPrice = classPrice.selling_price;
+                }
+    }
 
-                if (classSpecificPrice) {
-                    finalPrice = classSpecificPrice.selling_price;
-                } else if (defaultWorkshopPrice) {
-                    finalPrice = defaultWorkshopPrice.selling_price;
+            // Priority 3: Zone only (if not found above)
+            if (finalPrice === product.default_price && zoneId) {
+                const { data: zonePrice } = await supabase
+                    .from('workshop_product_pricing')
+                    .select('selling_price')
+                    .eq('workshop_id', jobCard.workshop_id)
+                    .eq('product_id', product_id)
+                    .is('class', null)
+                    .eq('zone_id', zoneId)
+      .single();
+
+                if (zonePrice?.selling_price) {
+                    finalPrice = zonePrice.selling_price;
+                }
+            }
+            
+            // Priority 4: Workshop Default (both NULL)
+            if (finalPrice === product.default_price) {
+                const { data: defaultPrice } = await supabase
+                    .from('workshop_product_pricing')
+                    .select('selling_price')
+                    .eq('workshop_id', jobCard.workshop_id)
+                    .eq('product_id', product_id)
+                    .is('class', null)
+                    .is('zone_id', null)
+                    .single();
+                
+                if (defaultPrice?.selling_price) {
+                    finalPrice = defaultPrice.selling_price;
                 }
             }
         }

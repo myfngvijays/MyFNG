@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
+    
     let query = supabase
       .from('master_products')
       .select('*')

@@ -61,7 +61,7 @@ export default function WorkshopManagementPage() {
     e.preventDefault();
     if (!editingWorkshop) return;
     setSaving(true);
-
+    
     try {
       const { error } = await supabase
         .from('workshops')
@@ -93,7 +93,7 @@ export default function WorkshopManagementPage() {
       
       alert('Workshop updated successfully!');
       setShowEditModal(false);
-      fetchWorkshops();
+        fetchWorkshops();
     } catch (error: any) {
       alert('Error updating workshop: ' + error.message);
     } finally {
@@ -161,15 +161,15 @@ export default function WorkshopManagementPage() {
         <div className="bg-white rounded-lg shadow p-4 flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search by name, city, or phone..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+                <input
+                  type="text"
+                  placeholder="Search by name, city, or phone..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border rounded-lg"
-            />
-          </div>
-          <div className="flex gap-2">
+                />
+              </div>
+            <div className="flex gap-2">
             {['all', 'active', 'inactive', 'pending'].map(status => (
               <button
                 key={status}
@@ -198,12 +198,12 @@ export default function WorkshopManagementPage() {
               {filteredWorkshops.map((workshop) => (
                 <tr key={workshop.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
-                    <div className="font-medium text-gray-900">{workshop.name}</div>
-                    <div className="text-sm text-gray-500">{workshop.contact_person || 'N/A'}</div>
+                      <div className="font-medium text-gray-900">{workshop.name}</div>
+                      <div className="text-sm text-gray-500">{workshop.contact_person || 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4 text-sm">
-                    <div className="text-gray-900">{workshop.phone}</div>
-                    <div className="text-gray-500">{workshop.email}</div>
+                      <div className="text-gray-900">{workshop.phone}</div>
+                      <div className="text-gray-500">{workshop.email}</div>
                   </td>
                   <td className="px-6 py-4 text-sm">
                     <div className="text-gray-900">{workshop.city}, {workshop.state}</div>
@@ -223,7 +223,7 @@ export default function WorkshopManagementPage() {
                   <td className="px-6 py-4 text-right text-sm font-medium space-x-2">
                     <button onClick={() => handleEditClick(workshop)} className="text-blue-600 hover:text-blue-900">
                       Edit
-                    </button>
+                      </button>
                     {workshop.is_verified ? (
                       <button onClick={() => handleDisable(workshop.id)} className="text-red-600 hover:text-red-900">Disable</button>
                     ) : (

@@ -41,10 +41,22 @@ const navigationItems = [
     description: 'Manage Master Products'
   },
   {
+    name: 'Service Packages',
+    href: '/dashboard/super_admin/inventory/packages',
+    icon: Package,
+    description: 'Manage Service Packages'
+  },
+  {
     name: 'Workshop Pricing',
     href: '/dashboard/super_admin/inventory/pricing',
     icon: Tags,
-    description: 'Manage Prices'
+    description: 'Manage Product Prices'
+  },
+  {
+    name: 'Service Pricing',
+    href: '/dashboard/super_admin/inventory/service-pricing',
+    icon: Tags,
+    description: 'Manage Service Type Prices'
   },
   {
     name: 'Zones',

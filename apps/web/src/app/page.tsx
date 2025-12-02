@@ -43,11 +43,11 @@ export default function HomePage() {
               <h1 className="text-5xl lg:text-6xl font-bold mb-6 text-brand-secondary leading-tight">
                 Smart Car Service <br />
                 <span className="text-brand-primary">& Instant RSA</span>
-              </h1>
+            </h1>
               <p className="text-xl text-text-body mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed">
                 Book service instantly via our AI Chatbot. No calls, no waiting, just seamless car care. 
                 Experience 100% transparency with live photo updates and tracking.
-              </p>
+            </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
                 <Link href="/customer/register" className="btn btn-primary text-lg px-8 py-4 shadow-brand-primary/30 flex items-center justify-center gap-2">
                   <MessageSquare className="w-5 h-5" />
@@ -56,7 +56,7 @@ export default function HomePage() {
                 <Link href="/roadside-assistance" className="btn btn-secondary text-lg px-8 py-4 shadow-brand-secondary/30 flex items-center justify-center gap-2">
                   <Phone className="w-5 h-5" />
                   Emergency RSA
-                </Link>
+              </Link>
               </div>
             </div>
             <div className="lg:w-1/2 relative">
@@ -108,17 +108,17 @@ export default function HomePage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
-            <FeatureCard 
+            <FeatureCard
               icon={<MessageSquare className="w-10 h-10 text-brand-primary" />}
               title="Chatbot Booking"
               description="Skip the calls. Book your service, RSA, or consultation directly through our intelligent AI chatbot in seconds."
             />
-            <FeatureCard 
+            <FeatureCard
               icon={<Eye className="w-10 h-10 text-brand-primary" />}
               title="100% Transparency"
               description="See exactly what's happening. Get live photos, videos, and part usage updates directly on your phone."
             />
-            <FeatureCard 
+            <FeatureCard
               icon={<Smartphone className="w-10 h-10 text-brand-primary" />}
               title="No Employee Hassle"
               description="Our automated systems handle scheduling, updates, and billing, ensuring zero miscommunication."
@@ -189,15 +189,15 @@ export default function HomePage() {
               <h2 className="text-4xl lg:text-5xl font-bold mb-6 text-white">Stuck on the Road? <br/> We've Got Your Back.</h2>
               <p className="text-xl text-blue-100 mb-8 leading-relaxed">
                 Our AI-dispatched RSA network ensures the nearest help reaches you in record time. Track your recovery vehicle live.
-              </p>
-              
+            </p>
+            
               <div className="grid grid-cols-2 gap-6 mb-8">
                 <RSAFeature icon={<Truck />} title="Towing Service" />
                 <RSAFeature icon={<Battery />} title="Battery Jumpstart" />
                 <RSAFeature icon={<Key />} title="Key Lockout" />
                 <RSAFeature icon={<Settings />} title="Flat Tyre Support" />
               </div>
-
+              
               <button className="bg-red-600 hover:bg-red-700 text-white text-lg font-bold py-4 px-8 rounded-lg shadow-lg transition transform hover:-translate-y-1 flex items-center gap-3">
                 <Phone className="w-6 h-6" />
                 Call RSA Now: 1800-MY-FNG
@@ -247,8 +247,8 @@ export default function HomePage() {
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-4 text-brand-secondary">How It Works</h2>
             <p className="text-xl text-text-body">Automated convenience at your fingertips</p>
-          </div>
-
+            </div>
+            
           <div className="grid md:grid-cols-4 gap-8 relative">
             {/* Connecting Line (Hidden on Mobile) */}
             <div className="hidden md:block absolute top-12 left-[10%] right-[10%] h-0.5 bg-gray-300 -z-0"></div>
@@ -274,7 +274,7 @@ export default function HomePage() {
               description="Pay online and get your car delivered fresh & clean."
             />
           </div>
-        </div>
+            </div>
       </section>
 
       {/* CTA Section */}

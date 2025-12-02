@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-// GET: List all packages with items
+// GET: List all Service Types (treated as Packages)
 export async function GET(request: Request) {
   try {
     const supabase = createRouteHandlerClient({ cookies });
@@ -14,73 +14,91 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetch Packages
+    // Debug: Check user role
+    const { data: userData, error: roleError } = await supabase
+      .from('users_login')
+      .select(`
+        id,
+        roles:role_id (role_code)
+      `)
+      .eq('id', session.user.id)
+      .single();
+
+    // @ts-ignore
+    const roleCode = userData?.roles?.role_code;
+    
+    // Allow SUPER_ADMIN and other relevant roles to view packages
+    if (!roleCode) {
+       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Fetch Service Types (Packages)
+    // We treat service_types as "Packages" now
     const { data: packages, error: pkgError } = await supabase
-      .from('service_packages')
+      .from('service_types')
       .select('*')
-      .order('created_at', { ascending: false });
+      .eq('is_active', true)
+      .order('name', { ascending: true });
 
-    if (pkgError) throw pkgError;
+    if (pkgError) {
+      console.error('Error fetching service types:', pkgError);
+      return NextResponse.json({ error: pkgError.message }, { status: 500 });
+    }
 
-    // For MVP, we are just returning the packages list. 
-    // Items can be fetched via a separate call or a join if needed later.
-
-    return NextResponse.json(packages);
+    // Map to match expected UI structure if needed, or just return as is
+    // The UI expects: id, name, description, is_active. 
+    // service_types has these columns.
+    
+    return NextResponse.json(packages || []);
   } catch (error: any) {
     console.error('Error fetching packages:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// POST: Create a new package with items
+// POST: Create a new Service Type (Package)
 export async function POST(request: Request) {
   try {
     const supabase = createRouteHandlerClient({ cookies });
-    
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Check Super Admin role
+    const { data: userData } = await supabase
+      .from('users_login')
+      .select('roles:role_id (role_code)')
+      .eq('id', session.user.id)
+      .single();
+
+    // @ts-ignore
+    if (userData?.roles?.role_code !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const body = await request.json();
     const { 
-      name, description, total_price, tax_rate, 
-      hsn_sac_code, is_active, items 
+      name, description, hsn_sac_code, default_tax_rate, is_active
     } = body;
 
-    if (!name || !total_price) {
-      return NextResponse.json({ error: 'Name and Price are required' }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
 
-    // 1. Create Package Header
+    // Insert into service_types
     const { data: pkg, error: pkgError } = await supabase
-      .from('service_packages')
+      .from('service_types')
       .insert([{
-        name, description, total_price, tax_rate, hsn_sac_code, is_active
+        name, 
+        description, 
+        hsn_sac_code, 
+        default_tax_rate: default_tax_rate || 18.00,
+        is_active: is_active !== undefined ? is_active : true
       }])
       .select()
       .single();
 
     if (pkgError) throw pkgError;
-
-    // 2. Create Package Items (if any)
-    if (items && Array.isArray(items) && items.length > 0) {
-      const packageItems = items.map((item: any) => ({
-        package_id: pkg.id,
-        product_id: item.product_id || null,
-        service_type_id: item.service_type_id || null,
-        quantity: item.quantity || 1
-      }));
-
-      const { error: itemsError } = await supabase
-        .from('service_package_items')
-        .insert(packageItems);
-
-      if (itemsError) {
-        // Rollback mechanism would be ideal here, but for now we just log error
-        console.error('Error adding package items:', itemsError);
-      }
-    }
 
     return NextResponse.json(pkg);
   } catch (error: any) {

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Save, Search, Store, Loader2, Car, MapPin, Copy } from 'lucide-react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
-export default function WorkshopPricingPage() {
+export default function ServiceTypePricingPage() {
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [filteredWorkshops, setFilteredWorkshops] = useState<any[]>([]);
   const [selectedWorkshop, setSelectedWorkshop] = useState<string>('');
@@ -13,9 +13,9 @@ export default function WorkshopPricingPage() {
   // Car Class State
   const [selectedClass, setSelectedClass] = useState<string>('DEFAULT');
   const [selectedZone, setSelectedZone] = useState<string>('');
-  const [availableClasses] = useState<string[]>(['DEFAULT', 'Hatchback', 'Sedan', 'SUV', 'Luxury', 'MUV']); 
+  const [availableClasses] = useState<string[]>(['DEFAULT', 'Hatchback', 'Sedan', 'SUV', 'Luxury', 'MUV']);
 
-  const [products, setProducts] = useState<any[]>([]);
+  const [serviceTypes, setServiceTypes] = useState<any[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -34,28 +34,39 @@ export default function WorkshopPricingPage() {
     if (selectedZone) {
       const filtered = workshops.filter(w => w.zone_id === selectedZone);
       setFilteredWorkshops(filtered);
-      // Reset workshop selection when zone changes
+      // Reset workshop and class selection when zone changes
       setSelectedWorkshop('');
-      setProducts([]);
+      setSelectedClass('DEFAULT');
+      setServiceTypes([]);
       setPrices({});
     } else {
       setFilteredWorkshops([]);
       setSelectedWorkshop('');
-      setProducts([]);
+      setSelectedClass('DEFAULT');
+      setServiceTypes([]);
       setPrices({});
     }
   }, [selectedZone, workshops]);
 
+  // Reset workshop when class changes
+  useEffect(() => {
+    if (selectedZone && selectedClass) {
+      setSelectedWorkshop('');
+      setServiceTypes([]);
+      setPrices({});
+    }
+  }, [selectedClass]);
+
   // Fetch pricing when workshop, class, or zone changes
   useEffect(() => {
-    if (selectedWorkshop && selectedWorkshop !== 'ALL') {
+    if (selectedWorkshop && selectedWorkshop !== 'ALL' && selectedZone && selectedClass) {
       // Individual workshop mode - fetch pricing data
       fetchPricingData(selectedWorkshop, selectedClass, selectedZone);
-    } else if (selectedWorkshop === 'ALL' && selectedZone) {
-      // Bulk mode - just fetch products without pricing (user will set prices)
-      fetchProductsForBulkMode();
+    } else if (selectedWorkshop === 'ALL' && selectedZone && selectedClass) {
+      // Bulk mode - just fetch service types without pricing (user will set prices)
+      fetchServiceTypesForBulkMode();
     } else {
-      setProducts([]);
+      setServiceTypes([]);
       setPrices({});
     }
   }, [selectedWorkshop, selectedClass, selectedZone]);
@@ -79,19 +90,20 @@ export default function WorkshopPricingPage() {
     }
   };
 
-  const fetchProductsForBulkMode = async () => {
+  const fetchServiceTypesForBulkMode = async () => {
     setLoading(true);
     try {
-      // Just fetch all products for bulk mode (no existing prices)
-      const { data: masterProducts } = await supabase
-        .from('master_products')
+      // Just fetch all service types for bulk mode (no existing prices)
+      const { data: allServiceTypes } = await supabase
+        .from('service_types')
         .select('*')
+        .eq('is_active', true)
         .order('name');
 
-      setProducts(masterProducts || []);
+      setServiceTypes(allServiceTypes || []);
       setPrices({}); // Start with empty prices in bulk mode
     } catch (error) {
-      console.error('Error fetching products:', error);
+      console.error('Error fetching service types:', error);
     } finally {
       setLoading(false);
     }
@@ -100,16 +112,17 @@ export default function WorkshopPricingPage() {
   const fetchPricingData = async (workshopId: string, vehicleClass: string, zoneId: string) => {
     setLoading(true);
     try {
-      // 1. Fetch All Master Products
-      const { data: masterProducts } = await supabase
-        .from('master_products')
+      // 1. Fetch All Service Types
+      const { data: allServiceTypes } = await supabase
+        .from('service_types')
         .select('*')
+        .eq('is_active', true)
         .order('name');
 
       // 2. Fetch Existing Overrides for this Workshop, Class, and Zone
       let query = supabase
-        .from('workshop_product_pricing')
-        .select('product_id, selling_price')
+        .from('workshop_service_pricing')
+        .select('service_type_id, custom_price')
         .eq('workshop_id', workshopId);
 
       if (vehicleClass === 'DEFAULT') {
@@ -129,10 +142,10 @@ export default function WorkshopPricingPage() {
       // 3. Merge Data
       const priceMap: Record<string, number> = {};
       existingPrices?.forEach((p: any) => {
-        priceMap[p.product_id] = p.selling_price;
+        priceMap[p.service_type_id] = p.custom_price;
       });
 
-      setProducts(masterProducts || []);
+      setServiceTypes(allServiceTypes || []);
       setPrices(priceMap);
     } catch (error) {
       console.error('Error fetching pricing:', error);
@@ -141,10 +154,10 @@ export default function WorkshopPricingPage() {
     }
   };
 
-  const handlePriceChange = (productId: string, price: string) => {
+  const handlePriceChange = (serviceTypeId: string, price: string) => {
     setPrices(prev => ({
       ...prev,
-      [productId]: parseFloat(price)
+      [serviceTypeId]: parseFloat(price)
     }));
   };
 
@@ -152,10 +165,10 @@ export default function WorkshopPricingPage() {
     if (!selectedWorkshop || selectedWorkshop === 'ALL') return;
     setSaving(true);
     try {
-      const upsertData = Object.entries(prices).map(([productId, price]) => ({
+      const upsertData = Object.entries(prices).map(([serviceTypeId, price]) => ({
         workshop_id: selectedWorkshop,
-        product_id: productId,
-        selling_price: price,
+        service_type_id: serviceTypeId,
+        custom_price: price,
         class: selectedClass === 'DEFAULT' ? null : selectedClass,
         zone_id: selectedZone || null
       }));
@@ -167,11 +180,11 @@ export default function WorkshopPricingPage() {
       }
 
       // Delete existing for this scope
-      const productIds = upsertData.map(d => d.product_id);
-      let delQuery = supabase.from('workshop_product_pricing')
+      const serviceTypeIds = upsertData.map(d => d.service_type_id);
+      let delQuery = supabase.from('workshop_service_pricing')
         .delete()
         .eq('workshop_id', selectedWorkshop)
-        .in('product_id', productIds);
+        .in('service_type_id', serviceTypeIds);
       
       if (selectedClass === 'DEFAULT') {
         delQuery = delQuery.is('class', null);
@@ -188,7 +201,10 @@ export default function WorkshopPricingPage() {
       await delQuery;
       
       // Insert new
-      const { error: insertError } = await supabase.from('workshop_product_pricing').insert(upsertData);
+      const { error: insertError } = await supabase
+        .from('workshop_service_pricing')
+        .insert(upsertData);
+      
       if (insertError) throw insertError;
 
       alert('Pricing updated successfully!');
@@ -207,23 +223,23 @@ export default function WorkshopPricingPage() {
     }
 
     const confirmed = confirm(
-      `Are you sure you want to apply these prices to ALL ${filteredWorkshops.length} workshops in this zone?`
+      `Are you sure you want to apply these service prices to ALL ${filteredWorkshops.length} workshops in this zone?`
     );
     if (!confirmed) return;
 
     setBulkSaving(true);
     try {
       const workshopIds = filteredWorkshops.map(w => w.id);
-      const productIds = Object.keys(prices);
+      const serviceTypeIds = Object.keys(prices);
 
       // Prepare bulk upsert data for all workshops
       const bulkData: any[] = [];
       workshopIds.forEach(workshopId => {
-        productIds.forEach(productId => {
+        serviceTypeIds.forEach(serviceTypeId => {
           bulkData.push({
             workshop_id: workshopId,
-            product_id: productId,
-            selling_price: prices[productId],
+            service_type_id: serviceTypeId,
+            custom_price: prices[serviceTypeId],
             class: selectedClass === 'DEFAULT' ? null : selectedClass,
             zone_id: selectedZone
           });
@@ -232,10 +248,10 @@ export default function WorkshopPricingPage() {
 
       // Delete existing entries for all workshops in this zone
       for (const workshopId of workshopIds) {
-        let delQuery = supabase.from('workshop_product_pricing')
+        let delQuery = supabase.from('workshop_service_pricing')
           .delete()
           .eq('workshop_id', workshopId)
-          .in('product_id', productIds);
+          .in('service_type_id', serviceTypeIds);
         
         if (selectedClass === 'DEFAULT') {
           delQuery = delQuery.is('class', null);
@@ -251,11 +267,11 @@ export default function WorkshopPricingPage() {
       const batchSize = 100;
       for (let i = 0; i < bulkData.length; i += batchSize) {
         const batch = bulkData.slice(i, i + batchSize);
-        const { error } = await supabase.from('workshop_product_pricing').insert(batch);
+        const { error } = await supabase.from('workshop_service_pricing').insert(batch);
         if (error) throw error;
       }
 
-      alert(`Pricing applied successfully to ${workshopIds.length} workshops!`);
+      alert(`Service pricing applied successfully to ${workshopIds.length} workshops!`);
       // Reset to show first workshop
       if (filteredWorkshops.length > 0) {
         setSelectedWorkshop(filteredWorkshops[0].id);
@@ -267,8 +283,8 @@ export default function WorkshopPricingPage() {
     }
   };
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredServiceTypes = serviceTypes.filter(st => 
+    st.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const isBulkMode = selectedWorkshop === 'ALL' && selectedZone;
@@ -277,8 +293,8 @@ export default function WorkshopPricingPage() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Workshop Pricing</h1>
-          <p className="text-gray-500">Override prices by Zone, Workshop & Car Class</p>
+          <h1 className="text-2xl font-bold text-gray-900">Service Type Pricing</h1>
+          <p className="text-gray-500">Override service prices by Zone, Workshop & Car Class</p>
         </div>
         <div className="flex gap-2">
           {isBulkMode && (
@@ -302,7 +318,7 @@ export default function WorkshopPricingPage() {
         </div>
       </div>
 
-      {/* Controls: Zone First, then Workshop & Class */}
+      {/* Controls: Zone → Class → Workshop */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         {/* Zone Selector - FIRST */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
@@ -322,19 +338,38 @@ export default function WorkshopPricingPage() {
           </div>
         </div>
 
-        {/* Workshop Selector - Shows workshops in selected zone */}
+        {/* Class Selector - SECOND */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-2">2. Select Workshop</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">2. Select Car Class *</label>
+          <div className="relative">
+            <Car className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <select 
+              className="w-full pl-10 p-3 border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              disabled={!selectedZone}
+            >
+              <option value="DEFAULT">Default (Base Price)</option>
+              {availableClasses.filter(c => c !== 'DEFAULT').map(cls => (
+                <option key={cls} value={cls}>{cls}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Workshop Selector - THIRD */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <label className="block text-sm font-medium text-gray-700 mb-2">3. Select Workshop</label>
           <div className="relative">
             <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             <select 
               className="w-full pl-10 p-3 border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
               value={selectedWorkshop}
               onChange={(e) => setSelectedWorkshop(e.target.value)}
-              disabled={!selectedZone}
+              disabled={!selectedZone || !selectedClass}
             >
               <option value="">-- Select Workshop --</option>
-              {selectedZone && (
+              {selectedZone && selectedClass && (
                 <>
                   <option value="ALL" className="font-semibold bg-blue-50">
                     📋 All Workshops in Zone ({filteredWorkshops.length})
@@ -347,42 +382,27 @@ export default function WorkshopPricingPage() {
             </select>
           </div>
         </div>
-
-        {/* Class Selector */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-2">3. Select Car Class</label>
-          <div className="relative">
-            <Car className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <select 
-              className="w-full pl-10 p-3 border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
-              disabled={!selectedWorkshop}
-            >
-              <option value="DEFAULT">Default (Base Price)</option>
-              {availableClasses.filter(c => c !== 'DEFAULT').map(cls => (
-                <option key={cls} value={cls}>{cls}</option>
-              ))}
-            </select>
-          </div>
-        </div>
       </div>
 
       {/* Info Banner for Bulk Mode */}
       {isBulkMode && (
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-sm text-blue-800">
-            <strong>Bulk Mode:</strong> Set prices below and click "Apply to All Workshops" to update all {filteredWorkshops.length} workshops in this zone at once.
+            <strong>Bulk Mode:</strong> Set prices below and click "Apply to All Workshops" to update all {filteredWorkshops.length} workshops in this zone for {selectedClass === 'DEFAULT' ? 'all classes' : selectedClass} at once.
             Or select a specific workshop to update individual pricing.
           </p>
         </div>
       )}
 
       {/* Pricing Table */}
-      {!selectedWorkshop ? (
+      {!selectedZone || !selectedClass || !selectedWorkshop ? (
         <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
           <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">Please select a zone first, then choose a workshop</p>
+          <p className="text-gray-500">
+            {!selectedZone && "Please select a zone first"}
+            {selectedZone && !selectedClass && "Please select a car class"}
+            {selectedZone && selectedClass && !selectedWorkshop && "Please select a workshop"}
+          </p>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100">
@@ -391,7 +411,7 @@ export default function WorkshopPricingPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input 
                 type="text" 
-                placeholder="Filter products..." 
+                placeholder="Filter services..." 
                 className="w-full pl-10 p-2 border rounded-lg text-sm"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -399,10 +419,12 @@ export default function WorkshopPricingPage() {
             </div>
             <div className="text-sm text-gray-500">
               Editing rates for: <span className="font-bold text-brand-primary">
-                {isBulkMode ? `All Workshops in ${zones.find(z => z.id === selectedZone)?.name || 'Zone'}` : 
-                 workshops.find(w => w.id === selectedWorkshop)?.name || 'Workshop'} 
+                {zones.find(z => z.id === selectedZone)?.name || 'Zone'} 
                 {' / '}
                 {selectedClass === 'DEFAULT' ? 'All Classes' : selectedClass}
+                {' / '}
+                {isBulkMode ? `All Workshops (${filteredWorkshops.length})` : 
+                 workshops.find(w => w.id === selectedWorkshop)?.name || 'Workshop'}
               </span>
             </div>
           </div>
@@ -411,37 +433,35 @@ export default function WorkshopPricingPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th className="p-4 font-medium text-gray-600">Product Name</th>
-                  <th className="p-4 font-medium text-gray-600">Type</th>
-                  <th className="p-4 font-medium text-gray-600 text-right">Global Default</th>
+                  <th className="p-4 font-medium text-gray-600">Service Name</th>
+                  <th className="p-4 font-medium text-gray-600">HSN Code</th>
                   <th className="p-4 font-medium text-gray-600 text-right">
-                    {isBulkMode ? 'Bulk Price (All Workshops)' : 'Workshop Price'}
+                    {isBulkMode ? 'Bulk Price (All Workshops)' : 'Custom Price'}
                   </th>
                   <th className="p-4 font-medium text-gray-600 text-center">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
-                  <tr><td colSpan={5} className="p-8 text-center">Loading...</td></tr>
+                  <tr><td colSpan={4} className="p-8 text-center">Loading...</td></tr>
                 ) : (
-                  filteredProducts.map((product) => {
-                    const currentPrice = prices[product.id];
+                  filteredServiceTypes.map((serviceType) => {
+                    const currentPrice = prices[serviceType.id];
                     const hasOverride = currentPrice !== undefined;
                     
                     return (
-                      <tr key={product.id} className={hasOverride ? 'bg-blue-50/30' : ''}>
-                        <td className="p-4 font-medium">{product.name}</td>
-                        <td className="p-4 text-xs text-gray-500">{product.type}</td>
-                        <td className="p-4 text-right text-gray-500">₹{product.default_price}</td>
+                      <tr key={serviceType.id} className={hasOverride ? 'bg-blue-50/30' : ''}>
+                        <td className="p-4 font-medium">{serviceType.name}</td>
+                        <td className="p-4 text-xs text-gray-500">{serviceType.hsn_sac_code || '-'}</td>
                         <td className="p-4 text-right">
                           <div className="relative inline-block w-32">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
                             <input 
                               type="number" 
                               className={`w-full pl-6 p-1.5 border rounded text-right font-medium focus:ring-2 focus:ring-brand-primary/20 outline-none ${hasOverride ? 'border-blue-300 text-blue-700' : 'border-gray-200'}`}
-                              placeholder={product.default_price.toString()}
+                              placeholder="0"
                               value={currentPrice ?? ''}
-                              onChange={(e) => handlePriceChange(product.id, e.target.value)}
+                              onChange={(e) => handlePriceChange(serviceType.id, e.target.value)}
                             />
                           </div>
                         </td>
