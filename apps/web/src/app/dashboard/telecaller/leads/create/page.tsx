@@ -84,28 +84,39 @@ export default function CreateLeadPage() {
     const supabase = createClient();
     
     try {
-      // Fetch cities from database
-      const { data: citiesData, error: citiesError } = await supabase
-        .from('cities')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-      
-      if (citiesError) {
-        console.error('Error fetching cities:', citiesError);
-        // Fallback to mock data with UUIDs
-        setCities([
-          { id: '11111111-1111-1111-1111-111111111111', name: 'Mumbai' },
-          { id: '22222222-2222-2222-2222-222222222222', name: 'Navi Mumbai' },
-          { id: '33333333-3333-3333-3333-333333333333', name: 'Thane' },
-          { id: '44444444-4444-4444-4444-444444444444', name: 'Pune' },
-          { id: '55555555-5555-5555-5555-555555555555', name: 'Delhi' },
-          { id: '66666666-6666-6666-6666-666666666666', name: 'Bangalore' },
-          { id: '77777777-7777-7777-7777-777777777777', name: 'Hyderabad' },
-          { id: '88888888-8888-8888-8888-888888888888', name: 'Chennai' },
-        ]);
-      } else {
-        setCities(citiesData || []);
+      // Fetch cities from API (more reliable than direct Supabase query)
+      try {
+        const citiesResponse = await fetch('/api/cities');
+        if (citiesResponse.ok) {
+          const citiesResult = await citiesResponse.json();
+          setCities(citiesResult.cities || []);
+        } else {
+          throw new Error('API failed');
+        }
+      } catch (apiError) {
+        // Fallback: Try direct Supabase query
+        const { data: citiesData, error: citiesError } = await supabase
+          .from('cities')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name');
+        
+        if (citiesError) {
+          console.error('Error fetching cities:', citiesError);
+          // Fallback to mock data with UUIDs
+          setCities([
+            { id: '11111111-1111-1111-1111-111111111111', name: 'Mumbai' },
+            { id: '22222222-2222-2222-2222-222222222222', name: 'Navi Mumbai' },
+            { id: '33333333-3333-3333-3333-333333333333', name: 'Thane' },
+            { id: '44444444-4444-4444-4444-444444444444', name: 'Pune' },
+            { id: '55555555-5555-5555-5555-555555555555', name: 'Delhi' },
+            { id: '66666666-6666-6666-6666-666666666666', name: 'Bangalore' },
+            { id: '77777777-7777-7777-7777-777777777777', name: 'Hyderabad' },
+            { id: '88888888-8888-8888-8888-888888888888', name: 'Chennai' },
+          ]);
+        } else {
+          setCities(citiesData || []);
+        }
       }
       
       // Vehicle makes - get distinct makes from car_models
