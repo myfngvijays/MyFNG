@@ -1,6 +1,7 @@
 /**
  * Audit Logger Utility
  * Automatic logging functions for all user actions
+ * Enhanced for tech audit compliance
  */
 
 import { createClient } from '@/lib/supabase/server';
@@ -10,23 +11,175 @@ import {
   CreateLeadEventInput,
   CreateLeadStatusHistoryInput,
 } from '@/shared/types/audit';
+import { createHash } from 'crypto';
+
+/**
+ * Calculate SHA-256 hash of data for integrity verification
+ */
+function calculateDataHash(oldData: any, newData: any): string {
+  const dataString = JSON.stringify(oldData || {}) + JSON.stringify(newData || {});
+  return createHash('sha256').update(dataString).digest('hex');
+}
+
+/**
+ * Determine action category based on action type
+ */
+function getActionCategory(action: string, tableName?: string | null): string {
+  const actionUpper = action.toUpperCase();
+  
+  if (actionUpper.includes('LOGIN') || actionUpper.includes('LOGOUT') || actionUpper.includes('AUTH')) {
+    return 'SECURITY';
+  }
+  if (actionUpper.includes('CREATE') || actionUpper.includes('UPDATE') || actionUpper.includes('DELETE')) {
+    if (tableName === 'system_settings' || tableName === 'workshops' || actionUpper.includes('CONFIG')) {
+      return 'CONFIG';
+    }
+    return 'DATA';
+  }
+  if (actionUpper.includes('EXPORT') || actionUpper.includes('IMPORT') || actionUpper.includes('REPORT')) {
+    return 'DATA';
+  }
+  if (actionUpper.includes('ERROR') || actionUpper.includes('FAIL')) {
+    return 'ERROR';
+  }
+  return 'API';
+}
+
+/**
+ * Determine severity based on action and context
+ */
+function getSeverity(
+  action: string,
+  actionCategory: string,
+  errorMessage?: string | null
+): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
+  if (errorMessage) {
+    return 'HIGH';
+  }
+  
+  const actionUpper = action.toUpperCase();
+  
+  if (actionCategory === 'SECURITY') {
+    if (actionUpper.includes('LOGIN') || actionUpper.includes('AUTH')) {
+      return 'MEDIUM';
+    }
+    return 'HIGH';
+  }
+  
+  if (actionCategory === 'CONFIG') {
+    return 'HIGH';
+  }
+  
+  if (actionUpper.includes('DELETE')) {
+    return 'HIGH';
+  }
+  
+  if (actionUpper.includes('CREATE') || actionUpper.includes('UPDATE')) {
+    return 'MEDIUM';
+  }
+  
+  return 'LOW';
+}
+
+/**
+ * Sanitize data to remove sensitive information before logging
+ */
+function sanitizeData(data: any): any {
+  if (!data || typeof data !== 'object') {
+    return data;
+  }
+  
+  const sensitiveFields = ['password', 'token', 'secret', 'key', 'api_key', 'access_token', 'refresh_token'];
+  const sanitized = { ...data };
+  
+  for (const key in sanitized) {
+    const lowerKey = key.toLowerCase();
+    if (sensitiveFields.some(field => lowerKey.includes(field))) {
+      sanitized[key] = '[REDACTED]';
+    } else if (typeof sanitized[key] === 'object' && sanitized[key] !== null) {
+      sanitized[key] = sanitizeData(sanitized[key]);
+    }
+  }
+  
+  return sanitized;
+}
+
+/**
+ * Set compliance flags based on action and context
+ */
+function getComplianceFlags(
+  action: string,
+  actionCategory: string,
+  tableName?: string | null
+): Record<string, any> {
+  const flags: Record<string, any> = {};
+  
+  // GDPR flags
+  if (tableName === 'users_login' || tableName === 'user_consents' || tableName === 'data_deletion_requests') {
+    flags.gdpr_relevant = true;
+  }
+  
+  // SOC2 flags
+  if (actionCategory === 'SECURITY' || actionCategory === 'CONFIG') {
+    flags.soc2_relevant = true;
+  }
+  
+  // ISO27001 flags
+  if (actionCategory === 'SECURITY' || actionCategory === 'DATA') {
+    flags.iso27001_relevant = true;
+  }
+  
+  return flags;
+}
 
 /**
  * Log an audit action (system-wide logging)
+ * Enhanced with new fields for tech audit compliance
  */
 export async function logAudit(input: CreateAuditLogInput) {
   try {
     const supabase = await createClient();
+
+    // Calculate data hash if not provided
+    const dataHash = input.data_hash || calculateDataHash(input.old_data, input.new_data);
+    
+    // Determine action category if not provided
+    const actionCategory = input.action_category || getActionCategory(input.action, input.table_name);
+    
+    // Determine severity if not provided
+    const severity = input.severity || getSeverity(input.action, actionCategory, input.error_message);
+    
+    // Sanitize sensitive data
+    const sanitizedOldData = input.old_data ? sanitizeData(input.old_data) : null;
+    const sanitizedNewData = input.new_data ? sanitizeData(input.new_data) : null;
+    
+    // Get compliance flags
+    const complianceFlags = input.compliance_flags || getComplianceFlags(input.action, actionCategory, input.table_name);
 
     const { error } = await supabase.from('audit_logs').insert({
       user_id: input.user_id || null,
       action: input.action,
       table_name: input.table_name || null,
       record_id: input.record_id || null,
-      old_data: input.old_data || null,
-      new_data: input.new_data || null,
+      old_data: sanitizedOldData,
+      new_data: sanitizedNewData,
       ip_address: input.ip_address || null,
       user_agent: input.user_agent || null,
+      // Enhanced fields
+      action_category: actionCategory,
+      severity: severity,
+      session_id: input.session_id || null,
+      api_endpoint: input.api_endpoint || null,
+      http_method: input.http_method || null,
+      response_status: input.response_status || null,
+      execution_time_ms: input.execution_time_ms || null,
+      error_message: input.error_message || null,
+      error_stack: input.error_stack || null,
+      request_id: input.request_id || null,
+      compliance_flags: complianceFlags,
+      data_hash: dataHash,
+      is_tamper_proof: input.is_tamper_proof !== undefined ? input.is_tamper_proof : true,
+      retention_until: input.retention_until || null,
     });
 
     if (error) {

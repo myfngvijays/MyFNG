@@ -18,7 +18,10 @@ import {
   FileText,
   Package,
   Tags,
-  MapPin
+  MapPin,
+  AlertTriangle,
+  History,
+  FileCheck
 } from 'lucide-react';
 
 const navigationItems = [
@@ -75,6 +78,24 @@ const navigationItems = [
     href: '/dashboard/super_admin/audit-logs',
     icon: FileText,
     description: 'System Activity Tracking'
+  },
+  {
+    name: 'Security Events',
+    href: '/dashboard/super_admin/security-events',
+    icon: AlertTriangle,
+    description: 'Security Incidents & Events'
+  },
+  {
+    name: 'Config Changes',
+    href: '/dashboard/super_admin/config-changes',
+    icon: History,
+    description: 'System Configuration History'
+  },
+  {
+    name: 'Compliance Reports',
+    href: '/dashboard/super_admin/compliance-reports',
+    icon: FileCheck,
+    description: 'GDPR, SOC2, ISO27001 Reports'
   },
   {
     name: 'Finance',

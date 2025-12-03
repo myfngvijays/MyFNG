@@ -21,6 +21,10 @@ export default function AuditLogsPage() {
     user_id: '',
     start_date: '',
     end_date: '',
+    action_category: '',
+    severity: '',
+    api_endpoint: '',
+    has_error: '',
   });
 
   const [showFilters, setShowFilters] = useState(false);
@@ -43,20 +47,32 @@ export default function AuditLogsPage() {
       if (filters.user_id) params.append('user_id', filters.user_id);
       if (filters.start_date) params.append('start_date', filters.start_date);
       if (filters.end_date) params.append('end_date', filters.end_date);
+      if (filters.action_category) params.append('action_category', filters.action_category);
+      if (filters.severity) params.append('severity', filters.severity);
+      if (filters.api_endpoint) params.append('api_endpoint', filters.api_endpoint);
+      if (filters.has_error) params.append('has_error', filters.has_error);
 
       const response = await fetch(`/api/audit/logs?${params.toString()}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        toast.error(errorData.error || 'Failed to fetch audit logs');
+        setLogs([]);
+        setTotal(0);
+        setTotalPages(0);
+        return;
+      }
+
       const data: AuditLogsResponse = await response.json();
 
-      if (response.ok) {
-        setLogs(data.logs);
-        setTotal(data.total);
-        setTotalPages(data.totalPages);
-      } else {
-        toast.error('Failed to fetch audit logs');
-      }
+      setLogs(data.logs || []);
+      setTotal(data.total || 0);
+      setTotalPages(data.totalPages || 0);
     } catch (error) {
-      console.error('Error fetching audit logs:', error);
-      toast.error('An error occurred');
+      toast.error('An error occurred while fetching audit logs');
+      setLogs([]);
+      setTotal(0);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
@@ -74,20 +90,31 @@ export default function AuditLogsPage() {
       user_id: '',
       start_date: '',
       end_date: '',
+      action_category: '',
+      severity: '',
+      api_endpoint: '',
+      has_error: '',
     });
     setPage(1);
   };
 
   const exportLogs = () => {
     const csv = [
-      ['ID', 'User ID', 'Action', 'Table', 'Record ID', 'IP Address', 'Created At'].join(','),
+      ['ID', 'User ID', 'Action', 'Action Category', 'Severity', 'Table', 'Record ID', 'API Endpoint', 'HTTP Method', 'Response Status', 'Execution Time (ms)', 'Error Message', 'IP Address', 'Created At'].join(','),
       ...logs.map((log) =>
         [
           log.id,
           log.user_id || 'N/A',
           log.action,
+          log.action_category || 'N/A',
+          log.severity || 'N/A',
           log.table_name || 'N/A',
           log.record_id || 'N/A',
+          log.api_endpoint || 'N/A',
+          log.http_method || 'N/A',
+          log.response_status || 'N/A',
+          log.execution_time_ms || 'N/A',
+          log.error_message ? `"${log.error_message.replace(/"/g, '""')}"` : 'N/A',
           log.ip_address || 'N/A',
           new Date(log.created_at).toLocaleString(),
         ].join(',')
@@ -147,7 +174,7 @@ export default function AuditLogsPage() {
         </div>
 
         {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-200">
             <div>
               <label className="block text-sm font-medium text-text-body mb-1">Action</label>
               <input
@@ -159,6 +186,47 @@ export default function AuditLogsPage() {
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-text-body mb-1">Action Category</label>
+              <select
+                className="form-select w-full"
+                value={filters.action_category}
+                onChange={(e) => handleFilterChange('action_category', e.target.value)}
+              >
+                <option value="">All Categories</option>
+                <option value="SECURITY">Security</option>
+                <option value="DATA">Data</option>
+                <option value="CONFIG">Config</option>
+                <option value="API">API</option>
+                <option value="ERROR">Error</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-body mb-1">Severity</label>
+              <select
+                className="form-select w-full"
+                value={filters.severity}
+                onChange={(e) => handleFilterChange('severity', e.target.value)}
+              >
+                <option value="">All Severities</option>
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="CRITICAL">Critical</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-body mb-1">Has Error</label>
+              <select
+                className="form-select w-full"
+                value={filters.has_error}
+                onChange={(e) => handleFilterChange('has_error', e.target.value)}
+              >
+                <option value="">All</option>
+                <option value="true">With Errors</option>
+                <option value="false">No Errors</option>
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-text-body mb-1">Table Name</label>
               <input
                 type="text"
@@ -166,6 +234,16 @@ export default function AuditLogsPage() {
                 placeholder="e.g. service_leads"
                 value={filters.table_name}
                 onChange={(e) => handleFilterChange('table_name', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-body mb-1">API Endpoint</label>
+              <input
+                type="text"
+                className="form-input w-full"
+                placeholder="e.g. /api/leads"
+                value={filters.api_endpoint}
+                onChange={(e) => handleFilterChange('api_endpoint', e.target.value)}
               />
             </div>
             <div>
@@ -227,13 +305,19 @@ export default function AuditLogsPage() {
                     Action
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Category
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Severity
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Table
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Record ID
+                    API Endpoint
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    IP Address
+                    Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -270,14 +354,66 @@ export default function AuditLogsPage() {
                         {log.action}
                       </span>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-body">
+                      {log.action_category ? (
+                        <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded">
+                          {log.action_category}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {log.severity ? (
+                        <span
+                          className={`px-2 py-1 text-xs font-semibold rounded ${
+                            log.severity === 'CRITICAL'
+                              ? 'bg-red-100 text-red-800'
+                              : log.severity === 'HIGH'
+                              ? 'bg-orange-100 text-orange-800'
+                              : log.severity === 'MEDIUM'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-green-100 text-green-800'
+                          }`}
+                        >
+                          {log.severity}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-body font-mono">
                       {log.table_name || 'N/A'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-body font-mono">
-                      {log.record_id ? `${log.record_id.slice(0, 8)}...` : 'N/A'}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-body">
+                      {log.api_endpoint ? (
+                        <span className="font-mono text-xs" title={log.api_endpoint}>
+                          {log.api_endpoint.length > 30 ? `${log.api_endpoint.substring(0, 30)}...` : log.api_endpoint}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-body">
-                      {log.ip_address || 'N/A'}
+                      {log.error_message ? (
+                        <span className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded" title={log.error_message}>
+                          Error
+                        </span>
+                      ) : log.response_status ? (
+                        <span
+                          className={`px-2 py-1 text-xs rounded ${
+                            log.response_status >= 200 && log.response_status < 300
+                              ? 'bg-green-100 text-green-800'
+                              : log.response_status >= 400
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}
+                        >
+                          {log.response_status}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <button
@@ -371,6 +507,70 @@ export default function AuditLogsPage() {
                     {selectedLog.user_agent || 'N/A'}
                   </p>
                 </div>
+                {selectedLog.action_category && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Action Category</p>
+                    <p className="text-sm text-text-body">{selectedLog.action_category}</p>
+                  </div>
+                )}
+                {selectedLog.severity && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Severity</p>
+                    <p className="text-sm text-text-body">{selectedLog.severity}</p>
+                  </div>
+                )}
+                {selectedLog.api_endpoint && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">API Endpoint</p>
+                    <p className="text-sm text-text-body font-mono">{selectedLog.api_endpoint}</p>
+                  </div>
+                )}
+                {selectedLog.http_method && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">HTTP Method</p>
+                    <p className="text-sm text-text-body">{selectedLog.http_method}</p>
+                  </div>
+                )}
+                {selectedLog.response_status && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Response Status</p>
+                    <p className="text-sm text-text-body">{selectedLog.response_status}</p>
+                  </div>
+                )}
+                {selectedLog.execution_time_ms && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Execution Time</p>
+                    <p className="text-sm text-text-body">{selectedLog.execution_time_ms} ms</p>
+                  </div>
+                )}
+                {selectedLog.error_message && (
+                  <div className="col-span-2">
+                    <p className="text-sm font-medium text-gray-500">Error Message</p>
+                    <p className="text-sm text-red-600">{selectedLog.error_message}</p>
+                  </div>
+                )}
+                {selectedLog.error_stack && (
+                  <div className="col-span-2">
+                    <p className="text-sm font-medium text-gray-500">Error Stack</p>
+                    <pre className="bg-red-50 p-4 rounded text-xs overflow-x-auto text-red-800">
+                      {selectedLog.error_stack}
+                    </pre>
+                  </div>
+                )}
+                {selectedLog.data_hash && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Data Hash</p>
+                    <p className="text-sm text-text-body font-mono text-xs">{selectedLog.data_hash}</p>
+                  </div>
+                )}
+                {selectedLog.compliance_flags && Object.keys(selectedLog.compliance_flags).length > 0 && (
+                  <div className="col-span-2">
+                    <p className="text-sm font-medium text-gray-500">Compliance Flags</p>
+                    <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
+                      {JSON.stringify(selectedLog.compliance_flags, null, 2)}
+                    </pre>
+                  </div>
+                )}
               </div>
 
               {selectedLog.old_data && (

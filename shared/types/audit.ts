@@ -18,6 +18,21 @@ export interface AuditLog {
   ip_address: string | null;
   user_agent: string | null;
   created_at: string; // timestamp with time zone
+  // Enhanced fields for tech audit
+  action_category?: string | null; // SECURITY, DATA, CONFIG, API, ERROR, etc.
+  severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | null;
+  session_id?: string | null;
+  api_endpoint?: string | null;
+  http_method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' | null;
+  response_status?: number | null;
+  execution_time_ms?: number | null;
+  error_message?: string | null;
+  error_stack?: string | null;
+  request_id?: string | null;
+  compliance_flags?: Record<string, any> | null; // jsonb
+  data_hash?: string | null;
+  is_tamper_proof?: boolean | null;
+  retention_until?: string | null;
 }
 
 export interface CreateAuditLogInput {
@@ -29,6 +44,21 @@ export interface CreateAuditLogInput {
   new_data?: Record<string, any> | null;
   ip_address?: string | null;
   user_agent?: string | null;
+  // Enhanced fields
+  action_category?: string | null;
+  severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | null;
+  session_id?: string | null;
+  api_endpoint?: string | null;
+  http_method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' | null;
+  response_status?: number | null;
+  execution_time_ms?: number | null;
+  error_message?: string | null;
+  error_stack?: string | null;
+  request_id?: string | null;
+  compliance_flags?: Record<string, any> | null;
+  data_hash?: string | null;
+  is_tamper_proof?: boolean | null;
+  retention_until?: string | null;
 }
 
 // ============================================
@@ -198,6 +228,110 @@ export interface AuditLogsResponse {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+// ============================================
+// SECURITY EVENTS TYPES
+// ============================================
+
+export interface SecurityEvent {
+  id: string;
+  event_type: SecurityEventType;
+  user_id: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  event_details: Record<string, any>; // jsonb
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  resolved: boolean;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  created_at: string;
+}
+
+export interface CreateSecurityEventInput {
+  event_type: SecurityEventType;
+  user_id?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  event_details?: Record<string, any>;
+  severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+}
+
+export type SecurityEventType =
+  | 'FAILED_LOGIN'
+  | 'PERMISSION_DENIED'
+  | 'RLS_VIOLATION'
+  | 'SUSPICIOUS_ACTIVITY'
+  | 'UNAUTHORIZED_ACCESS'
+  | 'BRUTE_FORCE_ATTEMPT'
+  | 'SQL_INJECTION_ATTEMPT'
+  | 'XSS_ATTEMPT'
+  | 'CSRF_ATTEMPT'
+  | 'RATE_LIMIT_EXCEEDED'
+  | 'INVALID_TOKEN'
+  | 'SESSION_HIJACK'
+  | 'DATA_BREACH_ATTEMPT'
+  | 'CONFIGURATION_CHANGE'
+  | 'PRIVILEGE_ESCALATION';
+
+// ============================================
+// API REQUEST LOGS TYPES
+// ============================================
+
+export interface ApiRequestLog {
+  id: string;
+  request_id: string;
+  user_id: string | null;
+  api_endpoint: string;
+  http_method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
+  request_body: Record<string, any> | null; // jsonb
+  response_status: number | null;
+  response_body: Record<string, any> | null; // jsonb
+  execution_time_ms: number | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  session_id: string | null;
+  created_at: string;
+}
+
+export interface CreateApiRequestLogInput {
+  request_id?: string;
+  user_id?: string | null;
+  api_endpoint: string;
+  http_method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
+  request_body?: Record<string, any> | null;
+  response_status?: number | null;
+  response_body?: Record<string, any> | null;
+  execution_time_ms?: number | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  session_id?: string | null;
+}
+
+// ============================================
+// SYSTEM CONFIG CHANGES TYPES
+// ============================================
+
+export interface SystemConfigChange {
+  id: string;
+  config_key: string;
+  old_value: string | null;
+  new_value: string | null;
+  changed_by: string | null;
+  change_reason: string | null;
+  approved_by: string | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
+export interface CreateSystemConfigChangeInput {
+  config_key: string;
+  old_value?: string | null;
+  new_value?: string | null;
+  changed_by?: string | null;
+  change_reason?: string | null;
+  approved_by?: string | null;
+  ip_address?: string | null;
 }
 
 /**
