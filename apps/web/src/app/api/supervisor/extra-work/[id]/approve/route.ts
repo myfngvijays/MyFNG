@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -14,11 +16,11 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
+    // Get user profile with role
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, role, workshop_id')
-      .eq('email', user.email)
+      .select('id, workshop_id, roles!inner(role_code)')
+      .eq('id', user.id)
       .single();
 
     if (profileError || !userProfile) {
@@ -26,7 +28,8 @@ export async function POST(
     }
 
     // Verify user is supervisor
-    if (userProfile.role !== 'workshop_supervisor') {
+    const roleCode = (userProfile.roles as any)?.role_code;
+    if (roleCode !== 'WORKSHOP_SUPERVISOR') {
       return NextResponse.json({ error: 'Forbidden: Supervisor only' }, { status: 403 });
     }
 

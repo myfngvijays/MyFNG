@@ -62,10 +62,10 @@ export default function QCQueuePage() {
         {
           event: '*',
           schema: 'public',
-          table: 'mechanic_media'
+          table: 'mechanic_job_photos'
         },
         (payload) => {
-          console.log('Media updated:', payload);
+          console.log('Photos updated:', payload);
           fetchQCQueue();
         }
       )
@@ -98,8 +98,13 @@ export default function QCQueuePage() {
         return;
       }
 
-      // Fetch jobs pending QC - WORK_COMPLETED or QC_PENDING status means ready for QC
-      const { data: qcJobs, error } = await supabase
+      // Fetch jobs pending QC - jobs where mechanic has completed work
+      // Check both service_leads.mechanic_completed_at AND mechanic_jobs.completed_at
+      // AND qc_status is NULL/PENDING (not yet QC'd)
+      // AND status is not final states
+      
+      // First: Get jobs from service_leads with mechanic_completed_at set
+      const { data: qcJobsFromLeads, error: leadsError } = await supabase
         .from('service_leads')
         .select(`
           id,
@@ -115,37 +120,140 @@ export default function QCQueuePage() {
           assigned_mechanic_id
         `)
         .eq('workshop_id', userProfile.workshop_id)
-        .in('status', ['WORK_COMPLETED', 'QC_PENDING', 'COMPLETED'])
-        .in('qc_status', ['PENDING', null])
-        .order('mechanic_completed_at', { ascending: true });
+        .not('mechanic_completed_at', 'is', null)
+        .or('qc_status.is.null,qc_status.eq.PENDING')
+        .not('status', 'eq', 'REJECTED')
+        .not('status', 'eq', 'CANCELLED')
+        .not('status', 'eq', 'COMPLETED')
+        .not('status', 'eq', 'CLOSED')
+        .order('mechanic_completed_at', { ascending: true, nullsFirst: false });
 
-      if (error) {
-        console.error('Error fetching QC queue:', error);
-        toast.error('Failed to fetch QC queue');
-        return;
+      // Second: Get jobs from mechanic_jobs table where completed_at is set
+      // Then fetch the corresponding service_leads
+      const { data: completedMechanicJobs, error: mjError } = await supabase
+        .from('mechanic_jobs')
+        .select('lead_id, completed_at')
+        .not('completed_at', 'is', null);
+
+      let qcJobsFromMechanicJobs: any[] = [];
+      
+      if (completedMechanicJobs && completedMechanicJobs.length > 0) {
+        const leadIds = completedMechanicJobs.map(job => job.lead_id);
+        console.log('Found mechanic jobs with completed_at, lead_ids:', leadIds);
+        
+        // Fetch the corresponding service_leads - first get all, then filter client-side
+        const { data: leadsFromJobs, error: leadsFromJobsError } = await supabase
+          .from('service_leads')
+          .select(`
+            id,
+            lead_number,
+            customer_name,
+            vehicle_number,
+            vehicle_make,
+            vehicle_model,
+            mechanic_completed_at,
+            notes,
+            status,
+            qc_status,
+            assigned_mechanic_id
+          `)
+          .eq('workshop_id', userProfile.workshop_id)
+          .in('id', leadIds);
+
+        console.log('Leads from mechanic_jobs:', leadsFromJobs);
+
+        if (leadsFromJobs) {
+          // Filter client-side: only include if qc_status is null/pending and status is not final
+          qcJobsFromMechanicJobs = leadsFromJobs
+            .filter(lead => {
+              const qcOk = !lead.qc_status || lead.qc_status === 'PENDING';
+              const statusOk = !['REJECTED', 'CANCELLED', 'COMPLETED', 'CLOSED'].includes(lead.status);
+              return qcOk && statusOk;
+            })
+            .map(lead => {
+              const mechanicJob = completedMechanicJobs.find(mj => mj.lead_id === lead.id);
+              return {
+                ...lead,
+                mechanic_completed_at: lead.mechanic_completed_at || mechanicJob?.completed_at
+              };
+            });
+          
+          console.log('Filtered QC jobs from mechanic_jobs:', qcJobsFromMechanicJobs.length);
+        }
       }
 
-      // Fetch mechanic names and image counts from mechanic_media
+      // Combine and deduplicate results
+      const allJobs = [...(qcJobsFromLeads || []), ...qcJobsFromMechanicJobs];
+      const uniqueJobs = allJobs.filter((job, index, self) => 
+        index === self.findIndex((j) => j.id === job.id)
+      );
+
+      const qcJobs = uniqueJobs.sort((a, b) => {
+        const dateA = a.mechanic_completed_at ? new Date(a.mechanic_completed_at).getTime() : 0;
+        const dateB = b.mechanic_completed_at ? new Date(b.mechanic_completed_at).getTime() : 0;
+        return dateA - dateB;
+      });
+
+      if (leadsError) {
+        console.error('Error fetching QC queue from leads:', leadsError);
+      }
+      if (mjError) {
+        console.error('Error fetching mechanic jobs:', mjError);
+      }
+
+      console.log('QC Jobs found:', qcJobs?.length || 0, qcJobs);
+      
+      // Debug: Check if there are any leads with mechanic_completed_at at all
+      if (!qcJobs || qcJobs.length === 0) {
+        console.log('No QC jobs found. Checking all leads...');
+        
+        // Check all leads in workshop
+        const { data: allLeads, error: debugError } = await supabase
+          .from('service_leads')
+          .select('id, lead_number, mechanic_completed_at, qc_status, status, assigned_mechanic_id, assigned_supervisor_id')
+          .eq('workshop_id', userProfile.workshop_id)
+          .limit(20);
+        console.log('Sample leads in workshop:', allLeads);
+        
+        // Check mechanic_jobs table separately
+        const { data: mechanicJobs, error: mjError } = await supabase
+          .from('mechanic_jobs')
+          .select('lead_id, completed_at, mechanic_status')
+          .not('completed_at', 'is', null)
+          .limit(10);
+        console.log('Mechanic jobs with completed_at:', mechanicJobs);
+        
+        // Check if there are any IN_PROGRESS leads that might be ready for QC
+        const { data: inProgressLeads, error: ipError } = await supabase
+          .from('service_leads')
+          .select('id, lead_number, status, assigned_mechanic_id, mechanic_completed_at')
+          .eq('workshop_id', userProfile.workshop_id)
+          .eq('status', 'IN_PROGRESS')
+          .limit(10);
+        console.log('IN_PROGRESS leads:', inProgressLeads);
+      }
+
+      // Fetch mechanic names and image counts from mechanic_job_photos
       const jobsWithDetails = await Promise.all((qcJobs || []).map(async (job) => {
         // Get mechanic name
         const { data: mechanic } = await supabase
           .from('users_login')
           .select('full_name')
           .eq('id', job.assigned_mechanic_id)
-          .single();
+          .maybeSingle();
 
-        // Get image counts from mechanic_media
+        // Get image counts from mechanic_job_photos table
         const { count: beforeCount } = await supabase
-          .from('mechanic_media')
+          .from('mechanic_job_photos')
           .select('*', { count: 'exact', head: true })
           .eq('lead_id', job.id)
-          .eq('media_category', 'BEFORE');
+          .eq('photo_category', 'before');
 
         const { count: afterCount } = await supabase
-          .from('mechanic_media')
+          .from('mechanic_job_photos')
           .select('*', { count: 'exact', head: true })
           .eq('lead_id', job.id)
-          .eq('media_category', 'AFTER');
+          .eq('photo_category', 'after');
 
         return {
           ...job,

@@ -197,8 +197,12 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
   const handleFileSelect = (photoKey: string, file: File | null) => {
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please select an image file');
+    // Accept both images and videos, with fallback to file extension check for PNG
+    const isImage = file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
+    const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|ogg|mov|avi)$/i.test(file.name);
+
+    if (!isImage && !isVideo) {
+      toast.error('Please select an image or video file');
       return;
     }
 
@@ -499,11 +503,20 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
 
               {photo.preview ? (
                 <div className="relative">
-                  <img
-                    src={photo.preview}
-                    alt={photo.label}
-                    className="w-full h-32 object-cover rounded-lg mb-2"
-                  />
+                  {photo.file?.type.startsWith('video/') || /\.(mp4|webm|ogg|mov|avi)$/i.test(photo.file?.name || '') ? (
+                    <video
+                      src={photo.preview}
+                      className="w-full h-32 object-cover rounded-lg mb-2"
+                      controls
+                      preload="metadata"
+                    />
+                  ) : (
+                    <img
+                      src={photo.preview}
+                      alt={photo.label}
+                      className="w-full h-32 object-cover rounded-lg mb-2"
+                    />
+                  )}
                   {photo.uploading && (
                     <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
@@ -534,7 +547,7 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
                   <input
                     ref={(el) => { fileInputRefs.current[photoKey] = el; }}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,video/*"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];

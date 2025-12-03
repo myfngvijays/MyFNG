@@ -123,8 +123,11 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
   };
 
   const handleFileSelect = (index: number, file: File) => {
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please select an image file');
+    // Accept images with fallback to file extension check for PNG compatibility
+    const isImage = file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
+    
+    if (!isImage) {
+      toast.error('Please select an image file (PNG, JPG, GIF, WebP)');
       return;
     }
 
@@ -408,7 +411,7 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
                 <input
                   ref={(el) => { fileInputRefs.current[index] = el; }}
                   type="file"
-                  accept="image/*"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/*"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];

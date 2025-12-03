@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -14,11 +16,11 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
+    // Get user profile with role
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, role, workshop_id, name')
-      .eq('email', user.email)
+      .select('id, workshop_id, full_name, roles!inner(role_code)')
+      .eq('id', user.id)
       .single();
 
     if (profileError || !userProfile) {
@@ -26,7 +28,8 @@ export async function POST(
     }
 
     // Verify user is pickup boy
-    if (userProfile.role !== 'workshop_pickup_boy') {
+    const roleCode = (userProfile.roles as any)?.role_code;
+    if (roleCode !== 'WORKSHOP_PICKUP_BOY') {
       return NextResponse.json({ error: 'Forbidden: Pickup Boy only' }, { status: 403 });
     }
 
@@ -126,7 +129,7 @@ export async function POST(
         changed_by: userProfile.id,
         changed_at: now,
         reason: 'Pickup boy started vehicle pickup',
-        notes: `Started by ${userProfile.name}`
+        notes: `Started by ${userProfile.full_name}`
       });
 
     // Create activity log
@@ -141,7 +144,7 @@ export async function POST(
         new_status: 'IN_TRANSIT',
         metadata: {
           pickup_boy_id: userProfile.id,
-          pickup_boy_name: userProfile.name,
+          pickup_boy_name: userProfile.full_name,
           started_at: now,
           otp_generated: true
         }

@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -14,11 +16,11 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
+    // Get user profile with role
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, role, workshop_id')
-      .eq('email', user.email)
+      .select('id, workshop_id, roles!inner(role_code)')
+      .eq('id', user.id)
       .single();
 
     if (profileError || !userProfile) {
@@ -26,7 +28,8 @@ export async function POST(
     }
 
     // Verify user is supervisor
-    if (userProfile.role !== 'workshop_supervisor') {
+    const roleCode = (userProfile.roles as any)?.role_code;
+    if (roleCode !== 'WORKSHOP_SUPERVISOR') {
       return NextResponse.json({ error: 'Forbidden: Supervisor only' }, { status: 403 });
     }
 
@@ -52,13 +55,18 @@ export async function POST(
       return NextResponse.json({ error: 'Job not in your workshop' }, { status: 403 });
     }
 
-    // Verify lead is in QC_PENDING, WORK_COMPLETED, or COMPLETED status
-    const validStatuses = ['QC_PENDING', 'WORK_COMPLETED', 'COMPLETED'];
-    if (!validStatuses.includes(lead.status)) {
+    // Verify lead is ready for QC (mechanic has completed work)
+    // Check if mechanic_completed_at is set OR status indicates work is done
+    const isReadyForQC = lead.mechanic_completed_at || 
+                        ['IN_PROGRESS', 'WORK_COMPLETED', 'COMPLETED', 'QC_PENDING'].includes(lead.status) ||
+                        (!lead.qc_status || lead.qc_status === 'PENDING');
+    
+    if (!isReadyForQC) {
       return NextResponse.json({ 
-        error: 'Job must be in QC_PENDING, WORK_COMPLETED, or COMPLETED status',
+        error: 'Job is not ready for QC approval',
         current_status: lead.status,
-        valid_statuses: validStatuses
+        mechanic_completed_at: lead.mechanic_completed_at,
+        qc_status: lead.qc_status
       }, { status: 400 });
     }
 
