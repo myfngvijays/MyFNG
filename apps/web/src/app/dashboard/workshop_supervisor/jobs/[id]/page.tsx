@@ -121,9 +121,6 @@ export default function SupervisorJobDetailPage() {
         }
       }
       
-      setLead(data);
-      setInternalNotes(data.notes_internal || '');
-
       // Fetch mechanic_jobs to get mechanic_id and job id
       const { data: mechanicJob } = await supabase
         .from('mechanic_jobs')
@@ -133,8 +130,11 @@ export default function SupervisorJobDetailPage() {
       
       // Store mechanic job id for BeforeInspectionUpload component
       if (mechanicJob) {
-        (lead as any).mechanic_job_id = mechanicJob.id;
+        (data as any).mechanic_job_id = mechanicJob.id;
       }
+
+      setLead(data);
+      setInternalNotes(data.notes_internal || '');
 
       // Fetch parts if mechanic is assigned
       if (mechanicJob?.mechanic_id) {
