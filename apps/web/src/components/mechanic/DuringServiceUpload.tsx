@@ -159,6 +159,14 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
     );
 
     try {
+      // Get session token for authorization
+      const supabase = createClient();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session?.access_token) {
+        throw new Error('Authentication failed. Please login again.');
+      }
+
       const formData = new FormData();
       formData.append('file', photo.file);
       formData.append('photoType', photo.type);
@@ -170,13 +178,30 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
 
       const response = await fetch(`/api/mechanic/jobs/${leadId}/upload-photos`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: formData,
       });
 
+      // Check if response is ok before parsing JSON
+      if (!response.ok) {
+        let errorMessage = 'Upload failed';
+        try {
+          const errorResult = await response.json();
+          errorMessage = errorResult.error || errorResult.details || errorMessage;
+        } catch (e) {
+          // If JSON parsing fails, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
       const result = await response.json();
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Upload failed');
+      // Double check for error in response body
+      if (result.error) {
+        throw new Error(result.error || result.details || 'Upload failed');
       }
 
       setPhotos((prev) =>

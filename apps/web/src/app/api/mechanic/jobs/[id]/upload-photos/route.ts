@@ -65,6 +65,21 @@ export async function POST(
       }, { status: 400 });
     }
 
+    // Get user profile to check role
+    const { data: userProfile, error: profileError } = await supabase
+      .from('users_login')
+      .select('id, role_id, roles!role_id(role_code)')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !userProfile) {
+      return NextResponse.json({ 
+        error: 'User profile not found' 
+      }, { status: 404 });
+    }
+
+    const roleCode = (userProfile.roles as any)?.role_code;
+
     // Get job_id from lead_id
     const { data: jobData, error: jobError } = await supabase
       .from('mechanic_jobs')
@@ -79,11 +94,65 @@ export async function POST(
       }, { status: 404 });
     }
 
-    // Verify mechanic is assigned to this job
-    if (jobData.mechanic_id !== user.id) {
+    // Get lead to check supervisor assignment
+    const { data: leadData, error: leadError } = await supabase
+      .from('service_leads')
+      .select('assigned_supervisor_id, assigned_mechanic_id')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !leadData) {
+      return NextResponse.json({ 
+        error: 'Lead not found' 
+      }, { status: 404 });
+    }
+
+    // Verify user is either:
+    // 1. Assigned mechanic for this job, OR
+    // 2. Assigned supervisor for this lead
+    const isAssignedMechanic = jobData.mechanic_id === user.id;
+    const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === user.id;
+    const isSuperAdmin = roleCode === 'SUPER_ADMIN';
+
+    if (!isAssignedMechanic && !isAssignedSupervisor && !isSuperAdmin) {
       return NextResponse.json({ 
         error: 'You are not assigned to this job' 
       }, { status: 403 });
+    }
+
+    // Restrict mechanics to only upload "during" (work in progress) and parts-related photos
+    // Supervisors and Super Admins can upload all types (before, during, after)
+    if (isAssignedMechanic && !isSuperAdmin && roleCode !== 'WORKSHOP_SUPERVISOR') {
+      // Mechanics can only upload:
+      // 1. "during" category photos (work in progress)
+      // 2. Photos with part_id (parts used) - any category allowed if partId is present
+      
+      const allowedCategoriesForMechanic = ['during'];
+      const allowedPhotoTypesForMechanic = [
+        'DURING_OIL_DRAIN', 'DURING_OIL_POUR', 'DURING_FILTER_OLD', 'DURING_FILTER_NEW',
+        'DURING_BRAKE_BEFORE', 'DURING_BRAKE_AFTER', 'DURING_AC_BEFORE', 'DURING_AC_AFTER',
+        'DURING_PART_REMOVAL', 'DURING_PART_INSTALL'
+      ];
+
+      // If partId is provided, allow any category (parts used photos)
+      if (!partId) {
+        // No partId - must be "during" category only
+        if (!allowedCategoriesForMechanic.includes(photoCategory as string)) {
+          return NextResponse.json({ 
+            error: 'Mechanics can only upload work in progress photos. Please contact supervisor for before/after photos.',
+            allowed_categories: allowedCategoriesForMechanic
+          }, { status: 403 });
+        }
+
+        // Check if photo type is allowed (additional validation)
+        if (!allowedPhotoTypesForMechanic.includes(photoType as string)) {
+          return NextResponse.json({ 
+            error: 'Invalid photo type for mechanic. Only work in progress photos are allowed.',
+            allowed_types: allowedPhotoTypesForMechanic
+          }, { status: 403 });
+        }
+      }
+      // If partId is present, allow the upload (parts used photos can be any category)
     }
 
     // Upload file to Supabase Storage
@@ -260,10 +329,25 @@ export async function GET(
     const leadId = params.id;
     const category = request.nextUrl.searchParams.get('category'); // before, during, after
 
+    // Get user profile to check role
+    const { data: userProfile, error: profileError } = await supabase
+      .from('users_login')
+      .select('id, role_id, roles!role_id(role_code)')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !userProfile) {
+      return NextResponse.json({ 
+        error: 'User profile not found' 
+      }, { status: 404 });
+    }
+
+    const roleCode = (userProfile.roles as any)?.role_code;
+
     // Get job_id from lead_id
     const { data: jobData, error: jobError } = await supabase
       .from('mechanic_jobs')
-      .select('id')
+      .select('id, mechanic_id')
       .eq('lead_id', leadId)
       .single();
 
@@ -271,6 +355,33 @@ export async function GET(
       return NextResponse.json({ 
         error: 'Job not found' 
       }, { status: 404 });
+    }
+
+    // Get lead to check supervisor assignment
+    const { data: leadData, error: leadError } = await supabase
+      .from('service_leads')
+      .select('assigned_supervisor_id, assigned_mechanic_id')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !leadData) {
+      return NextResponse.json({ 
+        error: 'Lead not found' 
+      }, { status: 404 });
+    }
+
+    // Verify user is either:
+    // 1. Assigned mechanic for this job, OR
+    // 2. Assigned supervisor for this lead, OR
+    // 3. Super Admin
+    const isAssignedMechanic = jobData.mechanic_id === user.id;
+    const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === user.id;
+    const isSuperAdmin = roleCode === 'SUPER_ADMIN';
+
+    if (!isAssignedMechanic && !isAssignedSupervisor && !isSuperAdmin) {
+      return NextResponse.json({ 
+        error: 'You are not authorized to view photos for this job' 
+      }, { status: 403 });
     }
 
     // Build query
@@ -340,10 +451,25 @@ export async function DELETE(
       }, { status: 400 });
     }
 
+    // Get user profile to check role
+    const { data: userProfile, error: profileError } = await supabase
+      .from('users_login')
+      .select('id, role_id, roles!role_id(role_code)')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !userProfile) {
+      return NextResponse.json({ 
+        error: 'User profile not found' 
+      }, { status: 404 });
+    }
+
+    const roleCode = (userProfile.roles as any)?.role_code;
+
     // Get photo record
     const { data: photo, error: photoError } = await supabase
       .from('mechanic_job_photos')
-      .select('*, mechanic_jobs!inner(id, mechanic_id, mechanic_status)')
+      .select('*, mechanic_jobs!inner(id, mechanic_id, mechanic_status, lead_id)')
       .eq('id', photoId)
       .single();
 
@@ -353,8 +479,28 @@ export async function DELETE(
       }, { status: 404 });
     }
 
-    // Verify mechanic is assigned and job is not completed
-    if (photo.mechanic_jobs.mechanic_id !== user.id) {
+    // Get lead to check supervisor assignment
+    const { data: leadData, error: leadError } = await supabase
+      .from('service_leads')
+      .select('assigned_supervisor_id')
+      .eq('id', photo.mechanic_jobs.lead_id)
+      .single();
+
+    if (leadError || !leadData) {
+      return NextResponse.json({ 
+        error: 'Lead not found' 
+      }, { status: 404 });
+    }
+
+    // Verify user is authorized:
+    // 1. Assigned mechanic for this job, OR
+    // 2. Assigned supervisor for this lead, OR
+    // 3. Super Admin
+    const isAssignedMechanic = photo.mechanic_jobs.mechanic_id === user.id;
+    const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === user.id;
+    const isSuperAdmin = roleCode === 'SUPER_ADMIN';
+
+    if (!isAssignedMechanic && !isAssignedSupervisor && !isSuperAdmin) {
       return NextResponse.json({ 
         error: 'You are not authorized to delete this photo' 
       }, { status: 403 });

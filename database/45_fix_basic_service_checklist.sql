@@ -100,7 +100,42 @@ BEGIN
         {"id": "49", "name": "Wash", "status": "PENDING", "mandatory": true, "category": "Others", "remark": ""},
         {"id": "50", "name": "Comprehensive Report", "status": "PENDING", "mandatory": true, "category": "Others", "remark": ""}
       ]'::jsonb;
-    WHEN 'FULL_SERVICE' THEN
+    WHEN UPPER(p_service_type) LIKE '%GENERAL SERVICE%30 POINTS%' OR
+         UPPER(p_service_type) LIKE '%GENERAL SERVICE%' AND UPPER(p_service_type) LIKE '%30%' OR
+         p_service_type = 'General Service (30 Points)' THEN
+      v_checklist_items := '[
+        {"id": "1", "name": "Clean Air Filter", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "2", "name": "Spark Plugs Servicing", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "3", "name": "Top up Brake Oil", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "4", "name": "Top up Gear Oil", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "5", "name": "Top up Power Steering Oil & Clutch Oil (If applicable)", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "6", "name": "Top up Coolant", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "7", "name": "Top up Battery Water", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "8", "name": "Top up Wiper Water Tank", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "9", "name": "Replace Oil Filter", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "10", "name": "Replace Engine Oil", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "11", "name": "Clean Cabin AC Filter", "status": "PENDING", "mandatory": true, "category": "Cabin", "remark": ""},
+        {"id": "12", "name": "Interior Vacuuming", "status": "PENDING", "mandatory": true, "category": "Cabin", "remark": ""},
+        {"id": "13", "name": "Grease Door Hinges", "status": "PENDING", "mandatory": true, "category": "Cabin", "remark": ""},
+        {"id": "14", "name": "Inspect & Top up Tyre Pressure", "status": "PENDING", "mandatory": true, "category": "Others", "remark": ""},
+        {"id": "15", "name": "Body Wash", "status": "PENDING", "mandatory": true, "category": "Others", "remark": ""},
+        {"id": "16", "name": "Check Brake Pads", "status": "PENDING", "mandatory": true, "category": "Wheel & Brakes", "remark": ""},
+        {"id": "17", "name": "Check Brake Fluid", "status": "PENDING", "mandatory": true, "category": "Wheel & Brakes", "remark": ""},
+        {"id": "18", "name": "Check Suspension", "status": "PENDING", "mandatory": true, "category": "Wheel & Brakes", "remark": ""},
+        {"id": "19", "name": "Check Tyre Condition", "status": "PENDING", "mandatory": true, "category": "Wheel & Brakes", "remark": ""},
+        {"id": "20", "name": "Wheel Alignment Check", "status": "PENDING", "mandatory": true, "category": "Wheel & Brakes", "remark": ""},
+        {"id": "21", "name": "Battery Terminal Cleaning", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "22", "name": "Check Alternator Belt", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "23", "name": "Check Radiator Cap", "status": "PENDING", "mandatory": true, "category": "Engine Compartment", "remark": ""},
+        {"id": "24", "name": "Check Windshield Wipers", "status": "PENDING", "mandatory": true, "category": "Cabin", "remark": ""},
+        {"id": "25", "name": "Check Horn", "status": "PENDING", "mandatory": true, "category": "Cabin", "remark": ""},
+        {"id": "26", "name": "Check All Lights", "status": "PENDING", "mandatory": true, "category": "Cabin", "remark": ""},
+        {"id": "27", "name": "Check AC Performance", "status": "PENDING", "mandatory": true, "category": "Cabin", "remark": ""},
+        {"id": "28", "name": "Check Steering System", "status": "PENDING", "mandatory": true, "category": "Wheel & Brakes", "remark": ""},
+        {"id": "29", "name": "Test Drive", "status": "PENDING", "mandatory": true, "category": "Others", "remark": ""},
+        {"id": "30", "name": "Final Inspection", "status": "PENDING", "mandatory": true, "category": "Others", "remark": ""}
+      ]'::jsonb;
+    WHEN 'FULL_SERVICE' OR UPPER(p_service_type) LIKE '%FULL SERVICE%' THEN
       v_checklist_items := '[
         {"id": "1", "name": "Engine oil drained", "status": "PENDING", "mandatory": true},
         {"id": "2", "name": "Oil filter replaced", "status": "PENDING", "mandatory": true},
@@ -113,7 +148,10 @@ BEGIN
         {"id": "9", "name": "Suspension inspected", "status": "PENDING", "mandatory": true},
         {"id": "10", "name": "Test drive completed", "status": "PENDING", "mandatory": true}
       ]'::jsonb;
-    WHEN 'AC_SERVICE' THEN
+    WHEN 'AC_SERVICE' OR 
+         UPPER(p_service_type) LIKE '%AC SERVICE%' OR
+         UPPER(p_service_type) LIKE '%AC PERFORMANCE%' OR
+         UPPER(p_service_type) LIKE '%HIGH PERFORMANCE AC%' THEN
       v_checklist_items := '[
         {"id": "1", "name": "AC filter cleaned/replaced", "status": "PENDING", "mandatory": true},
         {"id": "2", "name": "AC gas level checked", "status": "PENDING", "mandatory": true},
@@ -121,7 +159,9 @@ BEGIN
         {"id": "4", "name": "Condenser cleaned", "status": "PENDING", "mandatory": true},
         {"id": "5", "name": "Blower motor checked", "status": "PENDING", "mandatory": true}
       ]'::jsonb;
-    WHEN 'BRAKE_SERVICE' THEN
+    WHEN 'BRAKE_SERVICE' OR 
+         UPPER(p_service_type) LIKE '%BRAKE SERVICE%' OR
+         UPPER(p_service_type) LIKE '%BRAKE%' AND UPPER(p_service_type) LIKE '%SERVICE%' THEN
       v_checklist_items := '[
         {"id": "1", "name": "Brake pads inspected", "status": "PENDING", "mandatory": true},
         {"id": "2", "name": "Brake fluid checked", "status": "PENDING", "mandatory": true},

@@ -19,6 +19,7 @@ export default function LeadReviewPage() {
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
   
   // Validation state
   const [showValidation, setShowValidation] = useState(false);
@@ -88,6 +89,32 @@ export default function LeadReviewPage() {
         if (!stError && serviceTypes && serviceTypes.length > 0) {
           data.service_type_names = serviceTypes.map(st => st.name).join(', ');
         }
+      }
+      
+      // Fetch subservice/addon names if subservice_ids exists
+      let subserviceIds = data.subservice_ids;
+      if (typeof subserviceIds === 'string') {
+        try {
+          subserviceIds = JSON.parse(subserviceIds);
+        } catch (e) {
+          console.error('Failed to parse subservice_ids:', e);
+          subserviceIds = [];
+        }
+      }
+      
+      if (subserviceIds && Array.isArray(subserviceIds) && subserviceIds.length > 0) {
+        const { data: subservices, error: saError } = await supabase
+          .from('service_addons')
+          .select('id, name')
+          .in('id', subserviceIds);
+        
+        if (!saError && subservices && subservices.length > 0) {
+          setSubserviceNames(subservices.map(sa => sa.name));
+        } else {
+          setSubserviceNames([]);
+        }
+      } else {
+        setSubserviceNames([]);
       }
       
       setLead(data);
@@ -380,6 +407,24 @@ export default function LeadReviewPage() {
                   <label className="text-sm text-gray-600">Service Type</label>
                   <p className="font-medium">{lead.service_type_names || lead.service_type || 'Not specified'}</p>
                 </div>
+                
+                {/* Service Addons / Sub-services */}
+                {subserviceNames.length > 0 && (
+                  <div>
+                    <label className="text-sm text-gray-600 mb-2 block">Add-ons / Sub-services:</label>
+                    <div className="flex flex-wrap gap-2">
+                      {subserviceNames.map((name, idx) => (
+                        <span 
+                          key={idx}
+                          className="inline-block px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium"
+                        >
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 {lead.description && (
                   <div>
                     <label className="text-sm text-gray-600">Description</label>

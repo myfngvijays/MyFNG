@@ -4,6 +4,8 @@
  * POST /api/audit/logs - Create a new audit log entry
  */
 
+export const dynamic = 'force-dynamic';
+
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { CreateAuditLogInput } from '@/shared/types/audit';

@@ -37,11 +37,11 @@ export async function POST(
       }, { status: 404 });
     }
 
-    // Verify user is workshop admin - check role_code from joined roles table
+    // Verify user is workshop admin or supervisor - check role_code from joined roles table
     const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'WORKSHOP_ADMIN') {
+    if (roleCode !== 'WORKSHOP_ADMIN' && roleCode !== 'WORKSHOP_SUPERVISOR') {
       return NextResponse.json({ 
-        error: 'Forbidden: Workshop Admin only',
+        error: 'Forbidden: Workshop Admin or Supervisor only',
         current_role: roleCode
       }, { status: 403 });
     }
@@ -180,7 +180,7 @@ export async function POST(
       supervisor_assigned_at: supervisor_id ? now : null,
       assigned_pickup_boy_id: pickup_boy_id || null,
       pickup_assigned_at: pickup_boy_id ? now : null,
-      assigned_by_workshop_admin_id: userProfile.id,
+      assigned_by_workshop_admin_id: roleCode === 'WORKSHOP_ADMIN' ? userProfile.id : null,
       status: nextStatus,
       pickup_status: pickup_boy_id ? 'ASSIGNED' : (lead.pickup_required ? 'PENDING' : 'NOT_REQUIRED'),
       internal_notes: notes || null,
@@ -213,7 +213,9 @@ export async function POST(
         new_status: nextStatus,
         changed_by: userProfile.id,
         changed_at: now,
-        reason: 'Team members assigned by workshop admin',
+        reason: roleCode === 'WORKSHOP_ADMIN' 
+          ? 'Team members assigned by workshop admin'
+          : 'Team members assigned by workshop supervisor',
         notes: `Mechanic: ${mechanic.full_name}${supervisor ? `, Supervisor: ${supervisor.full_name}` : ''}${pickupBoy ? `, Pickup Boy: ${pickupBoy.full_name}` : ''}`
       });
 

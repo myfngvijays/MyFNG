@@ -107,6 +107,7 @@ export default function MechanicJobDetailPage() {
   const [beforePhotoTypes, setBeforePhotoTypes] = useState<string[]>([]);
   const [missingBeforePhotos, setMissingBeforePhotos] = useState<string[]>([]);
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
+  const [serviceAddonNames, setServiceAddonNames] = useState<string[]>([]);
 
   useEffect(() => {
     if (leadId) {
@@ -255,30 +256,63 @@ export default function MechanicJobDetailPage() {
         if (jobDetail.service_types && jobDetail.service_types.length > 0) {
           await fetchServiceTypeNames(jobDetail.service_types);
         }
-      }
 
-      // Get checklist
-      const { data: checklistData, error: checklistError } = await supabase
-        .from('service_checklists')
-        .select('*')
-        .eq('lead_id', leadId)
-        .maybeSingle();
-
-      if (checklistError) {
-        console.error('Checklist error:', checklistError);
-      }
-
-      if (checklistData && checklistData.checklist_items) {
-        setChecklist(checklistData.checklist_items);
+        // Fetch service addons (subservices) from database
+        const subserviceIds = jobData.service_leads?.subservice_ids || [];
+        let parsedSubserviceIds = subserviceIds;
+        if (typeof subserviceIds === 'string') {
+          try {
+            parsedSubserviceIds = JSON.parse(subserviceIds);
+          } catch (e) {
+            console.error('Failed to parse subservice_ids:', e);
+            parsedSubserviceIds = [];
+          }
+        }
         
-        // Auto-set active category to first incomplete category
-        const categories = Array.from(new Set(checklistData.checklist_items.map((item: ChecklistItem) => item.category).filter(Boolean))) as string[];
-        const firstIncompleteCategory = categories.find((cat: string) => {
-          const items = checklistData.checklist_items.filter((item: ChecklistItem) => item.category === cat);
-          return items.some((item: ChecklistItem) => item.status !== 'COMPLETED');
-        });
-        if (firstIncompleteCategory && !activeCategory) {
-          setActiveCategory(firstIncompleteCategory);
+        if (parsedSubserviceIds && Array.isArray(parsedSubserviceIds) && parsedSubserviceIds.length > 0) {
+          await fetchServiceAddonNames(parsedSubserviceIds);
+        }
+      }
+
+      // Get checklist - fetch by lead_id and mechanic_id
+      if (jobData && jobData.mechanic_id) {
+        const { data: checklistData, error: checklistError } = await supabase
+          .from('service_checklists')
+          .select('*')
+          .eq('lead_id', leadId)
+          .eq('mechanic_id', jobData.mechanic_id)
+          .maybeSingle();
+
+        if (checklistError) {
+          console.error('Checklist error:', checklistError);
+        }
+
+        if (checklistData && checklistData.checklist_items) {
+          // Parse checklist_items if it's a string (JSONB)
+          let items = checklistData.checklist_items;
+          if (typeof items === 'string') {
+            try {
+              items = JSON.parse(items);
+            } catch (e) {
+              console.error('Failed to parse checklist_items:', e);
+              items = [];
+            }
+          }
+          
+          setChecklist(items);
+          
+          // Auto-set active category to first incomplete category
+          const categories = Array.from(new Set(items.map((item: ChecklistItem) => item.category).filter(Boolean))) as string[];
+          const firstIncompleteCategory = categories.find((cat: string) => {
+            const categoryItems = items.filter((item: ChecklistItem) => item.category === cat);
+            return categoryItems.some((item: ChecklistItem) => item.status !== 'COMPLETED');
+          });
+          if (firstIncompleteCategory && !activeCategory) {
+            setActiveCategory(firstIncompleteCategory);
+          }
+        } else {
+          console.log('No checklist found for lead_id:', leadId, 'mechanic_id:', jobData.mechanic_id);
+          setChecklist([]);
         }
       }
 
@@ -295,8 +329,9 @@ export default function MechanicJobDetailPage() {
 
       setMedia(mediaData || []);
 
-      // Check before inspection photo types
+      // Fetch image counts from mechanic_job_photos table
       if (jobData && jobData.id) {
+        // Get before photos
         const { data: beforePhotos } = await supabase
           .from('mechanic_job_photos')
           .select('photo_type')
@@ -310,6 +345,31 @@ export default function MechanicJobDetailPage() {
         const requiredTypes = ['BEFORE_FRONT', 'BEFORE_REAR', 'BEFORE_LEFT', 'BEFORE_RIGHT', 'BEFORE_DASHBOARD', 'BEFORE_ENGINE_BAY'];
         const missing = requiredTypes.filter(type => !uploadedTypes.includes(type));
         setMissingBeforePhotos(missing);
+
+        // Get progress photos count
+        const { count: progressCount } = await supabase
+          .from('mechanic_job_photos')
+          .select('*', { count: 'exact', head: true })
+          .eq('job_id', jobData.id)
+          .eq('photo_category', 'during');
+
+        // Get after photos count
+        const { count: afterCount } = await supabase
+          .from('mechanic_job_photos')
+          .select('*', { count: 'exact', head: true })
+          .eq('job_id', jobData.id)
+          .eq('photo_category', 'after');
+
+        // Update job state with actual counts
+        setJob((prevJob) => {
+          if (!prevJob) return prevJob;
+          return {
+            ...prevJob,
+            before_images_count: beforePhotos?.length || 0,
+            progress_images_count: progressCount || 0,
+            after_images_count: afterCount || 0,
+          };
+        });
       }
 
       // Get parts
@@ -683,6 +743,34 @@ export default function MechanicJobDetailPage() {
   };
 
   // Fetch service type names from database
+  async function fetchServiceAddonNames(addonIds: string[]) {
+    if (!addonIds || addonIds.length === 0) {
+      setServiceAddonNames([]);
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+      const { data: addonsData, error } = await supabase
+        .from('service_addons')
+        .select('id, name')
+        .in('id', addonIds)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('Error fetching service addons:', error);
+        setServiceAddonNames([]);
+        return;
+      }
+
+      const names = (addonsData || []).map((addon: any) => addon.name);
+      setServiceAddonNames(names);
+    } catch (error) {
+      console.error('Error fetching service addon names:', error);
+      setServiceAddonNames([]);
+    }
+  }
+
   async function fetchServiceTypeNames(serviceTypeIds: string[]) {
     if (!serviceTypeIds || serviceTypeIds.length === 0) {
       setServiceTypeNames([]);
@@ -911,10 +999,22 @@ export default function MechanicJobDetailPage() {
                         </span>
                       ))
                     ) : (
-                      <span className="text-sm text-gray-500">No service type specified</span>
+                      <span className="text-gray-400 text-sm">No service types</span>
                     )}
                   </div>
                 </div>
+                {serviceAddonNames.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-sm font-semibold text-gray-700 mb-2">Service Addons</p>
+                    <div className="flex flex-wrap gap-2">
+                      {serviceAddonNames.map((name, idx) => (
+                        <span key={idx} className="px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-sm font-medium border border-green-200">
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

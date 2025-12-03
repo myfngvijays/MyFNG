@@ -23,6 +23,7 @@ interface JobCardData {
   vehicle_model: string;
   service_types: string[];
   service_type_names: string[];
+  service_addon_names: string[];
   mechanic_status: string;
   job_priority: string;
   sla_remaining_minutes: number;
@@ -139,6 +140,7 @@ export default function WorkshopMechanicDashboard() {
             vehicle_model,
             service_type,
             service_type_ids,
+            subservice_ids,
             problem_description,
             status,
             pickup_required,
@@ -194,6 +196,45 @@ export default function WorkshopMechanicDashboard() {
         }
       }
 
+      // Fetch service addon IDs from all leads
+      const allAddonIds = new Set<string>();
+      (mechanicJobs || []).forEach((mj: any) => {
+        if (mj.lead?.subservice_ids) {
+          let ids: string[] = [];
+          if (typeof mj.lead.subservice_ids === 'string') {
+            try {
+              ids = JSON.parse(mj.lead.subservice_ids);
+            } catch {
+              try {
+                const unescaped = mj.lead.subservice_ids.replace(/\\"/g, '"').replace(/^"|"$/g, '');
+                ids = JSON.parse(unescaped);
+              } catch {
+                ids = [];
+              }
+            }
+          } else {
+            ids = mj.lead.subservice_ids;
+          }
+          ids.forEach((id: string) => allAddonIds.add(id));
+        }
+      });
+
+      // Fetch service addon names
+      const addonNamesMap = new Map<string, string>();
+      if (allAddonIds.size > 0) {
+        const { data: addonsData } = await supabase
+          .from('service_addons')
+          .select('id, name')
+          .in('id', Array.from(allAddonIds))
+          .eq('is_active', true);
+
+        if (addonsData) {
+          addonsData.forEach((addon: any) => {
+            addonNamesMap.set(addon.id, addon.name);
+          });
+        }
+      }
+
       // Transform data to match dashboard format
       const dashboardData = (mechanicJobs || []).map((mj: any) => {
         // Parse service_type_ids
@@ -223,6 +264,29 @@ export default function WorkshopMechanicDashboard() {
           .map((id: string) => serviceNamesMap.get(id))
           .filter((name): name is string => !!name);
 
+        // Parse and get service addon names
+        let addonIds: string[] = [];
+        if (mj.lead?.subservice_ids) {
+          if (typeof mj.lead.subservice_ids === 'string') {
+            try {
+              addonIds = JSON.parse(mj.lead.subservice_ids);
+            } catch {
+              try {
+                const unescaped = mj.lead.subservice_ids.replace(/\\"/g, '"').replace(/^"|"$/g, '');
+                addonIds = JSON.parse(unescaped);
+              } catch {
+                addonIds = [];
+              }
+            }
+          } else {
+            addonIds = mj.lead.subservice_ids;
+          }
+        }
+        
+        const addonNames = addonIds
+          .map((id: string) => addonNamesMap.get(id))
+          .filter((name): name is string => !!name);
+
         return {
           id: mj.id,
           job_id: mj.id,
@@ -234,6 +298,7 @@ export default function WorkshopMechanicDashboard() {
           vehicle_model: mj.lead?.vehicle_model || '',
           service_types: serviceTypeIds, // Keep IDs for reference
           service_type_names: serviceNames, // Add names for display
+          service_addon_names: addonNames, // Add addon names for display
           problem_description: mj.lead?.problem_description || '',
           mechanic_status: mj.mechanic_status,
           job_priority: mj.job_priority,
@@ -568,6 +633,15 @@ export default function WorkshopMechanicDashboard() {
                             ? job.service_type_names.join(', ')
                             : job.service_types?.join(', ') || 'N/A'}
                         </p>
+                        {job.service_addon_names && job.service_addon_names.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {job.service_addon_names.map((addon, idx) => (
+                              <span key={idx} className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                {addon}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       
                       <div>
