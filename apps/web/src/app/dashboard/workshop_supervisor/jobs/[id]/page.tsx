@@ -9,11 +9,15 @@ import ReassignMechanicModal from '@/components/supervisor/ReassignMechanicModal
 import ExtraWorkModal from '@/components/supervisor/ExtraWorkModal';
 import PhotoValidationModal from '@/components/supervisor/PhotoValidationModal';
 import SendBackModal from '@/components/supervisor/SendBackModal';
+import BeforeInspectionUpload from '@/components/mechanic/BeforeInspectionUpload';
+import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
+import JobCardSection from '@/components/lead-detail/JobCardSection';
+import InternalAssignment from '@/components/lead-detail/InternalAssignment';
 import { 
   ArrowLeft, Clock, User, Car, Calendar, Wrench, 
   CheckCircle, AlertTriangle, Image as ImageIcon, Package,
   DollarSign, FileText, MessageSquare, History, Loader2, Save,
-  XCircle, ArrowLeftCircle
+  XCircle, ArrowLeftCircle, Camera
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -120,12 +124,17 @@ export default function SupervisorJobDetailPage() {
       setLead(data);
       setInternalNotes(data.notes_internal || '');
 
-      // Fetch mechanic_jobs to get mechanic_id
+      // Fetch mechanic_jobs to get mechanic_id and job id
       const { data: mechanicJob } = await supabase
         .from('mechanic_jobs')
-        .select('mechanic_id')
+        .select('id, mechanic_id')
         .eq('lead_id', jobId)
         .single();
+      
+      // Store mechanic job id for BeforeInspectionUpload component
+      if (mechanicJob) {
+        (lead as any).mechanic_job_id = mechanicJob.id;
+      }
 
       // Fetch parts if mechanic is assigned
       if (mechanicJob?.mechanic_id) {
@@ -573,50 +582,47 @@ export default function SupervisorJobDetailPage() {
           )}
         </div>
 
-        {/* Section 4: Mechanic Assignment */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Wrench className="w-5 h-5" />
-              Mechanic Assignment
-            </h3>
-            {!lead.mechanic && lead.status === 'ASSIGNED' && (
-              <button
-                onClick={() => setShowAssignModal(true)}
-                className="btn btn-primary text-sm"
-              >
-                Assign Mechanic
-              </button>
-            )}
-            {lead.mechanic && (
-              <button
-                onClick={() => setShowReassignModal(true)}
-                className="btn btn-outline text-sm"
-              >
-                Reassign
-              </button>
-            )}
-          </div>
-          {lead.mechanic ? (
-            <div className="flex items-center gap-3">
-              {lead.mechanic.profile_image ? (
-                <img src={lead.mechanic.profile_image} alt="" className="w-10 h-10 rounded-full" />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-brand-primary flex items-center justify-center">
-                  <User className="w-5 h-5 text-white" />
-                </div>
-              )}
-              <div>
-                <p className="font-semibold">{lead.mechanic.full_name}</p>
-                <p className="text-sm text-gray-600">Assigned Mechanic</p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-gray-500 italic">No mechanic assigned yet</p>
-          )}
+        {/* Section 4: Internal Assignment */}
+        {lead.status !== 'NEW' && lead.status !== 'REJECTED' && (
+          <InternalAssignment lead={lead} onUpdate={fetchJobDetails} />
+        )}
+
+        {/* Section 5: Before Inspection Photos */}
+        <div className="card border-2 border-blue-300">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <Camera className="w-6 h-6 text-blue-600" />
+            Before Work Photos (Required)
+          </h2>
+          <BeforeInspectionUpload
+            leadId={jobId}
+            jobId={(lead as any).mechanic_job_id || ''}
+            onUploadComplete={() => {
+              fetchJobDetails();
+            }}
+          />
         </div>
 
-        {/* Section 5: Extra Charges */}
+        {/* Section 5.5: After Work Photos */}
+        <div className="card border-2 border-green-300">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <Camera className="w-6 h-6 text-green-600" />
+            After Work Photos (Required)
+          </h2>
+          <AfterServiceUpload
+            leadId={jobId}
+            jobId={(lead as any).mechanic_job_id || ''}
+            onUploadComplete={() => {
+              fetchJobDetails();
+            }}
+          />
+        </div>
+
+        {/* Section 5.7: Job Card & Parts */}
+        {lead.status !== 'NEW' && lead.status !== 'REJECTED' && (
+          <JobCardSection lead={lead} onUpdate={fetchJobDetails} />
+        )}
+
+        {/* Section 6: Extra Charges */}
         {pendingExtraCharges.length > 0 && (
           <div className="card bg-orange-50 border-orange-200">
             <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
@@ -671,13 +677,13 @@ export default function SupervisorJobDetailPage() {
           </div>
         )}
 
-        {/* Section 7: Parts Management */}
+        {/* Section 7: Mechanic Parts Assignment */}
         {lead.mechanic && (
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Package className="w-5 h-5" />
-                Parts Management ({parts.length})
+                Mechanic Parts Assignment ({parts.length})
               </h3>
               <button
                 onClick={() => {

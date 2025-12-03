@@ -9,8 +9,6 @@ import {
   Upload, X, Save, Send, Plus, Minus
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import BeforeInspectionUpload from '@/components/mechanic/BeforeInspectionUpload';
-import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
 import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
 import PartsUsedUpload from '@/components/mechanic/PartsUsedUpload';
 
@@ -92,11 +90,12 @@ export default function MechanicJobDetailPage() {
   const [extraWorkRequests, setExtraWorkRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   
   // Form states
   const [workNotes, setWorkNotes] = useState('');
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState('BEFORE');
+  const [selectedCategory, setSelectedCategory] = useState('PROGRESS');
   const [selectedPhotoType, setSelectedPhotoType] = useState<string>('');
   const [showExtraWorkForm, setShowExtraWorkForm] = useState(false);
   const [extraWorkForm, setExtraWorkForm] = useState({
@@ -271,6 +270,16 @@ export default function MechanicJobDetailPage() {
 
       if (checklistData && checklistData.checklist_items) {
         setChecklist(checklistData.checklist_items);
+        
+        // Auto-set active category to first incomplete category
+        const categories = Array.from(new Set(checklistData.checklist_items.map((item: ChecklistItem) => item.category).filter(Boolean))) as string[];
+        const firstIncompleteCategory = categories.find((cat: string) => {
+          const items = checklistData.checklist_items.filter((item: ChecklistItem) => item.category === cat);
+          return items.some((item: ChecklistItem) => item.status !== 'COMPLETED');
+        });
+        if (firstIncompleteCategory && !activeCategory) {
+          setActiveCategory(firstIncompleteCategory);
+        }
       }
 
       // Get media
@@ -716,7 +725,6 @@ export default function MechanicJobDetailPage() {
   const canStartJob = job.mechanic_status === 'ASSIGNED';
   const canCompleteJob = job.mechanic_status === 'IN_PROGRESS' && 
                          job.checklist_completed && 
-                         job.before_images_count >= 6 &&
                          job.after_images_count >= job.min_after_images;
 
   return (
@@ -942,25 +950,7 @@ export default function MechanicJobDetailPage() {
             {/* Progress Status */}
             <div className="card col-span-full">
               <h2 className="text-xl font-bold mb-4">Progress Status</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div className={`text-center p-4 rounded-lg border-2 ${
-                  job.before_images_count >= 6 
-                    ? 'bg-green-50 border-green-300' 
-                    : 'bg-blue-50 border-blue-300'
-                }`}>
-                  <Camera className="w-8 h-8 mx-auto mb-2 text-blue-600" />
-                  <p className="text-sm text-gray-600">Before Images</p>
-                  <p className={`text-2xl font-bold ${
-                    job.before_images_count >= 6 ? 'text-green-700' : 'text-blue-700'
-                  }`}>
-                    {job.before_images_count} / 6
-                  </p>
-                  {job.before_images_count < 6 && (
-                    <p className="text-xs text-red-600 mt-1 font-semibold">
-                      {6 - job.before_images_count} more needed
-                    </p>
-                  )}
-                </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                 <div className="text-center p-4 bg-yellow-50 rounded-lg border-2 border-yellow-300">
                   <Camera className="w-8 h-8 mx-auto mb-2 text-yellow-600" />
                   <p className="text-sm text-gray-600">Progress Images</p>
@@ -1148,124 +1138,236 @@ export default function MechanicJobDetailPage() {
             
             {/* Group by category if categories exist */}
             {checklist.some(item => item.category) ? (
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {Array.from(new Set(checklist.map(item => item.category).filter(Boolean))).map((category) => {
+                  if (!category) return null;
                   const categoryItems = checklist.filter(item => item.category === category);
                   if (categoryItems.length === 0) return null;
                   
+                  const allCompleted = categoryItems.every(item => item.status === 'COMPLETED');
+                  const isActive = activeCategory === category;
+                  // Lock other categories if a category is active and not completed
+                  // But allow completed categories to be unlocked
+                  const isLocked = activeCategory !== null && activeCategory !== category && !allCompleted;
+                  
+                  // Allow clicking on category header to activate it (if not locked)
+                  const canActivate = !isLocked && (activeCategory === null || allCompleted || activeCategory === category);
+                  
                   return (
-                    <div key={category} className="space-y-3">
-                      <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">
-                        {category} ({categoryItems.length})
-                      </h3>
-                      {categoryItems.map((item) => (
-                        <div key={item.id} className="p-4 border rounded-lg hover:shadow-md transition">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <input
-                                  type="checkbox"
-                                  checked={item.status === 'COMPLETED'}
-                                  onChange={(e) => updateChecklistItem(item.id, e.target.checked ? 'COMPLETED' : 'PENDING', item.notes || '', item.remark || '')}
-                                  className="w-5 h-5"
-                                />
-                                <span className={`font-medium ${item.status === 'COMPLETED' ? 'text-green-600' : 'text-gray-800'}`}>
-                                  {item.name}
-                                </span>
-                                {item.mandatory && (
-                                  <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs rounded">Required</span>
-                                )}
-                              </div>
-                              
-                              {/* Remark input */}
-                              <div className="ml-7 mt-2">
-                                <label className="block text-xs font-medium text-gray-600 mb-1">Remark:</label>
-                                <input
-                                  type="text"
-                                  value={item.remark || ''}
-                                  onChange={(e) => {
-                                    const updatedChecklist = checklist.map(i =>
-                                      i.id === item.id ? { ...i, remark: e.target.value } : i
-                                    );
-                                    setChecklist(updatedChecklist);
-                                  }}
-                                  onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
-                                  placeholder="Enter remark..."
-                                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                              </div>
-                              
-                              {item.notes && (
-                                <p className="text-sm text-gray-600 mt-2 ml-7">{item.notes}</p>
-                              )}
-                            </div>
-                            <span className={`px-3 py-1 rounded text-sm whitespace-nowrap ${
-                              item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                              item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {item.status}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                    <div 
+                      key={category} 
+                      className={`border rounded-lg p-4 transition-all ${
+                        isLocked ? 'opacity-50 pointer-events-none bg-gray-50' : 
+                        isActive ? 'border-blue-500 bg-blue-50' : 
+                        'border-gray-200 bg-white'
+                      }`}
+                    >
+                      <div 
+                        className="flex items-center justify-between mb-3 cursor-pointer"
+                        onClick={() => {
+                          // Allow activating category if not locked
+                          if (!isLocked && (activeCategory === null || allCompleted)) {
+                            setActiveCategory(category || null);
+                          }
+                        }}
+                      >
+                        <h3 className={`text-lg font-semibold ${canActivate ? 'text-gray-700 hover:text-blue-600' : 'text-gray-500'}`}>
+                          {category} ({categoryItems.length})
+                        </h3>
+                        {allCompleted && (
+                          <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                            ✓ Complete
+                          </span>
+                        )}
+                        {isActive && !allCompleted && (
+                          <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Table-like layout for compact display */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-gray-200">
+                              <th className="text-left py-2 px-2 w-12">✓</th>
+                              <th className="text-left py-2 px-3 font-semibold text-sm text-gray-700">Point Name</th>
+                              <th className="text-left py-2 px-3 font-semibold text-sm text-gray-700">Remark</th>
+                              <th className="text-center py-2 px-3 font-semibold text-sm text-gray-700 w-32">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {categoryItems.map((item, idx) => (
+                              <tr 
+                                key={item.id} 
+                                className={`border-b border-gray-100 hover:bg-gray-50 transition ${
+                                  item.status === 'COMPLETED' ? 'bg-green-50/30' : ''
+                                }`}
+                              >
+                                {/* Checkbox */}
+                                <td className="py-3 px-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.status === 'COMPLETED'}
+                                    onChange={(e) => {
+                                      const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
+                                      
+                                      // If checking a box in a different category, set that category as active
+                                      if (e.target.checked && activeCategory !== category) {
+                                        setActiveCategory(category);
+                                      }
+                                      
+                                      updateChecklistItem(item.id, newStatus, item.notes || '', item.remark || '');
+                                      
+                                      // Update local state immediately for UI responsiveness
+                                      const updatedChecklist = checklist.map(i =>
+                                        i.id === item.id ? { ...i, status: newStatus } : i
+                                      );
+                                      setChecklist(updatedChecklist);
+                                      
+                                      // Check if all items in category are completed
+                                      const updatedCategoryItems = updatedChecklist.filter(i => i.category === category);
+                                      const allDone = updatedCategoryItems.every(i => i.status === 'COMPLETED');
+                                      
+                                      if (allDone && activeCategory === category) {
+                                        // Find next incomplete category
+                                        const categories = Array.from(new Set(updatedChecklist.map(i => i.category).filter(Boolean)));
+                                        const nextCategory = categories.find(cat => {
+                                          const items = updatedChecklist.filter(i => i.category === cat);
+                                          return items.some(i => i.status !== 'COMPLETED');
+                                        });
+                                        setActiveCategory(nextCategory || null);
+                                      }
+                                    }}
+                                    disabled={isLocked}
+                                    className="w-5 h-5 cursor-pointer disabled:cursor-not-allowed"
+                                  />
+                                </td>
+                                
+                                {/* Point Name */}
+                                <td className="py-3 px-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`font-medium text-sm ${
+                                      item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
+                                    }`}>
+                                      {item.name}
+                                    </span>
+                                    {item.mandatory && (
+                                      <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs rounded font-semibold">
+                                        Required
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                
+                                {/* Remark Input */}
+                                <td className="py-3 px-3">
+                                  <input
+                                    type="text"
+                                    value={item.remark || ''}
+                                    onChange={(e) => {
+                                      const updatedChecklist = checklist.map(i =>
+                                        i.id === item.id ? { ...i, remark: e.target.value } : i
+                                      );
+                                      setChecklist(updatedChecklist);
+                                    }}
+                                    onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
+                                    placeholder="Enter remark..."
+                                    disabled={isLocked}
+                                    className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  />
+                                </td>
+                                
+                                {/* Status */}
+                                <td className="py-3 px-3 text-center">
+                                  <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${
+                                    item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                                    item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {item.status === 'COMPLETED' ? 'COMPLETE' : 'PENDING'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              /* Fallback: No categories - show simple list */
-              <div className="space-y-3">
-                {checklist.map((item) => (
-                  <div key={item.id} className="p-4 border rounded-lg">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
+              /* Fallback: No categories - show table format */
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-2 w-12">✓</th>
+                      <th className="text-left py-2 px-3 font-semibold text-sm text-gray-700">Point Name</th>
+                      <th className="text-left py-2 px-3 font-semibold text-sm text-gray-700">Remark</th>
+                      <th className="text-center py-2 px-3 font-semibold text-sm text-gray-700 w-32">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {checklist.map((item) => (
+                      <tr 
+                        key={item.id} 
+                        className={`border-b border-gray-100 hover:bg-gray-50 transition ${
+                          item.status === 'COMPLETED' ? 'bg-green-50/30' : ''
+                        }`}
+                      >
+                        <td className="py-3 px-2">
                           <input
                             type="checkbox"
                             checked={item.status === 'COMPLETED'}
                             onChange={(e) => updateChecklistItem(item.id, e.target.checked ? 'COMPLETED' : 'PENDING', item.notes || '', item.remark || '')}
-                            className="w-5 h-5"
+                            className="w-5 h-5 cursor-pointer"
                           />
-                          <span className={`font-medium ${item.status === 'COMPLETED' ? 'text-green-600' : ''}`}>
-                            {item.name}
-                          </span>
-                          {item.mandatory && (
-                            <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs rounded">Required</span>
-                          )}
-                        </div>
-                        {item.remark !== undefined && (
-                          <div className="ml-7 mt-2">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Remark:</label>
-                            <input
-                              type="text"
-                              value={item.remark || ''}
-                              onChange={(e) => {
-                                const updatedChecklist = checklist.map(i =>
-                                  i.id === item.id ? { ...i, remark: e.target.value } : i
-                                );
-                                setChecklist(updatedChecklist);
-                              }}
-                              onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
-                              placeholder="Enter remark..."
-                              className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-medium text-sm ${
+                              item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
+                            }`}>
+                              {item.name}
+                            </span>
+                            {item.mandatory && (
+                              <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs rounded font-semibold">
+                                Required
+                              </span>
+                            )}
                           </div>
-                        )}
-                        {item.notes && (
-                          <p className="text-sm text-gray-600 mt-2 ml-7">{item.notes}</p>
-                        )}
-                      </div>
-                      <span className={`px-3 py-1 rounded text-sm ${
-                        item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                        item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {item.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                        </td>
+                        <td className="py-3 px-3">
+                          <input
+                            type="text"
+                            value={item.remark || ''}
+                            onChange={(e) => {
+                              const updatedChecklist = checklist.map(i =>
+                                i.id === item.id ? { ...i, remark: e.target.value } : i
+                              );
+                              setChecklist(updatedChecklist);
+                            }}
+                            onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
+                            placeholder="Enter remark..."
+                            className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${
+                            item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                            item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {item.status === 'COMPLETED' ? 'COMPLETE' : 'PENDING'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -1288,67 +1390,11 @@ export default function MechanicJobDetailPage() {
                       }}
                       className="input w-full"
                     >
-                      <option value="BEFORE">Before Work</option>
                       <option value="PROGRESS">Work in Progress</option>
-                      <option value="AFTER">After Work</option>
                       <option value="PARTS_USED">Parts Used</option>
                     </select>
                   </div>
                 </div>
-
-                {/* BEFORE Category - Show BeforeInspectionUpload component */}
-                {selectedCategory === 'BEFORE' && job && job.id && (
-                  <div className="card border-2 border-blue-300">
-                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                      <Camera className="w-6 h-6 text-blue-600" />
-                      Before Inspection Photos (Required)
-                    </h2>
-                    {missingBeforePhotos.length > 0 && (
-                      <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-3 mb-4">
-                        <p className="text-sm font-semibold text-yellow-800 mb-2">
-                          ⚠️ Missing Required Photo Types: {missingBeforePhotos.map(t => t.replace('BEFORE_', '').replace('_', ' ')).join(', ')}
-                        </p>
-                        <p className="text-xs text-yellow-700">
-                          Please upload all required photos before starting the job.
-                        </p>
-                      </div>
-                    )}
-                    {missingBeforePhotos.length === 0 && beforePhotoTypes.length < 6 && (
-                      <div className="bg-blue-50 border-l-4 border-blue-400 rounded-lg p-3 mb-4">
-                        <p className="text-sm font-semibold text-blue-800 mb-2">
-                          📸 Upload {6 - beforePhotoTypes.length} more required photos
-                        </p>
-                        <p className="text-xs text-blue-700">
-                          Current: {beforePhotoTypes.length} / 6 photos uploaded
-                        </p>
-                      </div>
-                    )}
-                    <BeforeInspectionUpload
-                      leadId={leadId}
-                      jobId={job.id}
-                      onUploadComplete={() => {
-                        fetchJobDetails();
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* AFTER Category - Show AfterServiceUpload component */}
-                {selectedCategory === 'AFTER' && job && job.id && (
-                  <div className="card border-2 border-green-300">
-                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                      <Camera className="w-6 h-6 text-green-600" />
-                      After Service Photos (Required)
-                    </h2>
-                    <AfterServiceUpload
-                      leadId={leadId}
-                      jobId={job.id}
-                      onUploadComplete={() => {
-                        fetchJobDetails();
-                      }}
-                    />
-                  </div>
-                )}
 
                 {/* PROGRESS Category - During Service Upload */}
                 {selectedCategory === 'PROGRESS' && job && job.id && (
@@ -1439,95 +1485,6 @@ export default function MechanicJobDetailPage() {
                 )}
               </div>
             </div>
-
-            {/* Before Inspection Photos from mechanic_job_photos */}
-            {(canStartJob || job.mechanic_status === 'IN_PROGRESS') && (
-              <div className="card border-2 border-blue-300">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Camera className="w-6 h-6 text-blue-600" />
-                  Before Inspection Photos (Required)
-                </h2>
-                {beforePhotoTypes.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <Camera className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm mb-3">No before inspection photos uploaded yet</p>
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
-                      }}
-                      className="btn btn-primary cursor-pointer"
-                    >
-                      Upload Before Inspection Photos
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
-                      {['BEFORE_FRONT', 'BEFORE_REAR', 'BEFORE_LEFT', 'BEFORE_RIGHT', 'BEFORE_DASHBOARD', 'BEFORE_ENGINE_BAY'].map((type) => {
-                        const isUploaded = beforePhotoTypes.includes(type);
-                        return (
-                          <div
-                            key={type}
-                            className={`flex items-center gap-2 p-3 rounded-lg border-2 ${
-                              isUploaded
-                                ? 'bg-green-50 border-green-300'
-                                : 'bg-red-50 border-red-300'
-                            }`}
-                          >
-                            {isUploaded ? (
-                              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                            ) : (
-                              <X className="w-5 h-5 text-red-600 flex-shrink-0" />
-                            )}
-                            <span className={`text-sm font-semibold ${
-                              isUploaded ? 'text-green-800' : 'text-red-800'
-                            }`}>
-                              {type.replace('BEFORE_', '').replace('_', ' ')}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {missingBeforePhotos.length > 0 ? (
-                      <div className="bg-red-50 border-l-4 border-red-400 rounded-lg p-3">
-                        <p className="text-sm font-semibold text-red-800 mb-2">
-                          ⚠️ Missing: {missingBeforePhotos.map(t => t.replace('BEFORE_', '').replace('_', ' ')).join(', ')}
-                        </p>
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
-                          }}
-                          className="btn btn-primary text-sm px-4 py-2 cursor-pointer z-10 relative"
-                          type="button"
-                        >
-                          Upload Missing Photos
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="bg-blue-50 border-l-4 border-blue-400 rounded-lg p-3">
-                        <p className="text-sm font-semibold text-blue-800 mb-2">
-                          ✅ All required photo types uploaded
-                        </p>
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
-                          }}
-                          className="btn btn-outline text-sm px-4 py-2 cursor-pointer z-10 relative"
-                          type="button"
-                        >
-                          View/Manage Photos
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Media Grid */}
             <div className="card">

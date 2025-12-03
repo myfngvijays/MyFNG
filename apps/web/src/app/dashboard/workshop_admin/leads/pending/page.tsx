@@ -313,7 +313,7 @@ export default function PendingLeadsPage() {
                 <strong>{selectedLead.customer_name}</strong>.
               </p>
               <p className="text-sm text-gray-600 mb-6">
-                After accepting, you'll be redirected to assign team members (Mechanic, Supervisor, Pickup Boy).
+                After accepting, you'll be redirected to assign team members (Mechanic, Adviser, Pickupboy/Driver).
               </p>
               <div className="flex gap-3">
                 <button

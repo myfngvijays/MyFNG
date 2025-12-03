@@ -239,7 +239,7 @@ export default function WorkshopJobsPage() {
               {/* Pickup Boy Row */}
               {job.pickup_required && (
                 <div className="mt-3 pt-3 border-t">
-                  <p className="text-sm text-gray-600 mb-1">Pickup Boy</p>
+                  <p className="text-sm text-gray-600 mb-1">Pickupboy/Driver</p>
                   {job.assigned_pickup_boy ? (
                     <>
                       <p className="font-semibold flex items-center gap-2">

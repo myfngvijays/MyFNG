@@ -54,26 +54,27 @@ export default function HomePage() {
                 Powered by Advanced AI Technology
               </div>
               
-              <h1 className="text-5xl lg:text-7xl font-bold mb-6 leading-tight tracking-tight animate-fade-in-up delay-100">
-                India's First <br />
+              <h1 className="text-5xl lg:text-7xl font-bold mb-6 leading-tight tracking-tight animate-fade-in-up-delay-100">
+                Book Your <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-fng to-cyan-400">
                   AI-Powered
                 </span> <br />
-                Car Care Platform 🚗⚡
+                Car Service 🚗⚡
               </h1>
               
-              <p className="text-lg text-gray-300 mb-10 max-w-xl mx-auto lg:mx-0 leading-relaxed animate-fade-in-up delay-200">
-                Experience the future of car servicing with our AI assistant that understands your car better than you do. 
-                Smart diagnostics, transparent pricing, and premium service.
+              <p className="text-lg text-gray-300 mb-10 max-w-xl mx-auto lg:mx-0 leading-relaxed animate-fade-in-up-delay-200">
+                Get ready to experience hassle-free car maintenance with MY FNG. 
+                Our AI chatbot understands your car better than you do - book services directly without any employee interaction. 
+                <span className="text-white font-semibold">100% transparent pricing</span> powered by AI.
               </p>
 
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start animate-fade-in-up delay-300">
+              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start animate-fade-in-up-delay-300">
                 <button 
                   onClick={() => setIsChatOpen(true)}
                   className="btn bg-brand-primary hover:bg-brand-primary-hover text-white text-lg px-8 py-4 rounded-xl shadow-lg shadow-brand-primary/30 flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1"
                 >
                   <MessageSquare className="w-5 h-5" />
-                  Ask MY FNG AI
+                  Book Service with AI
                 </button>
                 
                 <div className="flex items-center bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-1 pr-2">
@@ -93,7 +94,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div className="mt-8 flex items-center justify-center lg:justify-start gap-6 text-sm text-gray-400 animate-fade-in-up delay-400">
+              <div className="mt-8 flex items-center justify-center lg:justify-start gap-6 text-sm text-gray-400 animate-fade-in-up-delay-400">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                   AI Assistant Online
@@ -106,7 +107,7 @@ export default function HomePage() {
             </div>
 
             {/* Right Visual: AI Analysis Card */}
-            <div className="lg:w-1/2 relative animate-fade-in-up delay-500">
+            <div className="lg:w-1/2 relative animate-fade-in-up-delay-500">
               <div className="relative z-10">
                 <img 
                   src="https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000" 
@@ -168,27 +169,28 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">How It Works</span>
-            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">AI-Powered Car Care in 3 Simple Steps</h2>
+            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">Hassle-Free Car Maintenance with MY FNG AI</h2>
             <p className="text-gray-600 mt-4 max-w-2xl mx-auto">
-              Experience the future of car servicing with our intelligent platform that makes car care effortless.
+              Experience the future of car servicing. Our AI chatbot books your service directly - no employee needed. 
+              Complete transparency in pricing and real-time tracking.
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
             <StepCard 
               number="01" 
-              title="AI Diagnosis" 
-              desc="Our AI analyzes your car details and predicts maintenance needs using advanced machine learning algorithms."
+              title="Chat with MY FNG AI" 
+              desc="Simply chat with our AI assistant - no employee interaction needed. Our AI understands your car model, service history, and recommends the perfect service package."
             />
             <StepCard 
               number="02" 
-              title="Smart Booking" 
-              desc="AI assistant books your slot based on urgency, location, and preferred timing with transparent pricing."
+              title="Transparent AI Pricing" 
+              desc="Get instant, transparent pricing based on your car model and location. No hidden charges - our AI ensures complete pricing transparency."
             />
             <StepCard 
               number="03" 
-              title="Premium Service" 
-              desc="Real-time tracking with AI-powered quality checks and instant updates throughout the service process."
+              title="Hassle-Free Service" 
+              desc="Book your service directly through AI chatbot. Real-time tracking, AI-powered quality checks, and instant updates throughout the process."
             />
           </div>
         </div>
@@ -199,8 +201,11 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">AI-Powered Pricing</span>
-            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">Smart Service Packages Tailored by AI</h2>
-            <p className="text-gray-600 mt-4">Recommended based on your car model & usage.</p>
+            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">Transparent Pricing - No Hidden Charges</h2>
+            <p className="text-gray-600 mt-4">
+              Our AI analyzes your car model and recommends the perfect service package. 
+              <span className="font-semibold text-brand-secondary">100% transparent pricing</span> - see exactly what you pay for.
+            </p>
             
             {/* Car Type Selector */}
             <div className="inline-flex bg-gray-100 p-1.5 rounded-full mt-8">
@@ -279,9 +284,12 @@ export default function HomePage() {
           </div>
           
           <div className="text-center mt-12">
-            <Link href="/services" className="text-brand-primary font-bold hover:underline flex items-center justify-center gap-2">
-              View All Services <ChevronRight className="w-4 h-4" />
+            <Link href="/services" className="btn btn-primary text-lg px-10 py-4 rounded-xl inline-flex items-center gap-2">
+              Book Service Now <ArrowRight className="w-5 h-5" />
             </Link>
+            <p className="text-sm text-gray-500 mt-4">
+              Or chat with our AI assistant for instant booking - <span className="font-semibold">no employee needed!</span>
+            </p>
           </div>
         </div>
       </section>
@@ -385,8 +393,11 @@ export default function HomePage() {
       {/* 5. Trusted Workshops */}
       <section className="py-20 bg-gray-50">
         <div className="container mx-auto px-4 text-center mb-12">
-          <h2 className="text-4xl font-bold text-brand-secondary">AI-Enhanced Premium Workshops</h2>
-          <p className="text-gray-600 mt-4">Our AI continuously monitors and rates workshop performance.</p>
+          <h2 className="text-4xl font-bold text-brand-secondary">How Can I Find a MY FNG Service Center Near Me?</h2>
+          <p className="text-gray-600 mt-4">
+            Our AI-powered platform connects you to premium workshops across Mumbai. 
+            <span className="font-semibold text-brand-secondary">AI continuously monitors</span> and rates workshop performance for quality assurance.
+          </p>
         </div>
 
         <div className="container mx-auto px-4 grid md:grid-cols-3 gap-8">
@@ -424,16 +435,245 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* 6. RSA Section with AI Theme */}
+      <section className="py-20 bg-gradient-to-br from-brand-secondary via-[#001530] to-[#000510] text-white relative overflow-hidden">
+        {/* Background Effects */}
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-red-600/20 rounded-full blur-[100px] -mr-20 -mt-20 animate-pulse"></div>
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
+        
+        <div className="container mx-auto px-4 relative z-10">
+          <div className="flex flex-col lg:flex-row items-center gap-16">
+            <div className="lg:w-1/2">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-red-500/20 backdrop-blur-md border border-red-500/30 rounded-full text-red-300 text-sm font-semibold mb-6">
+                <Activity className="w-4 h-4 animate-pulse" />
+                24/7 AI-POWERED EMERGENCY DISPATCH
+              </div>
+              
+              <h2 className="text-4xl lg:text-5xl font-bold mb-6">
+                Stuck on the Road? <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-300">
+                  AI Sends Help Instantly
+                </span>
+              </h2>
+              
+              <p className="text-lg text-gray-300 mb-8 leading-relaxed">
+                India's fastest AI-dispatched Roadside Assistance. Our system automatically locates 
+                the nearest recovery vehicle. <span className="text-white font-semibold">Average arrival: 28 minutes.</span>
+              </p>
+
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                <RSAService icon={<Car className="w-5 h-5" />} title="Towing" />
+                <RSAService icon={<Zap className="w-5 h-5" />} title="Jumpstart" />
+                <RSAService icon={<Shield className="w-5 h-5" />} title="Flat Tyre" />
+                <RSAService icon={<Activity className="w-5 h-5" />} title="Lockout" />
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button className="bg-red-600 hover:bg-red-700 text-white text-lg font-bold py-4 px-8 rounded-xl shadow-lg shadow-red-600/30 transition transform hover:-translate-y-1 flex items-center justify-center gap-3">
+                  <MessageSquare className="w-5 h-5" />
+                  Call 1800-MY-FNG
+                </button>
+                <Link href="/roadside-assistance" className="bg-white/10 hover:bg-white/20 border border-white/20 text-white text-lg font-bold py-4 px-8 rounded-xl backdrop-blur-md transition flex items-center justify-center gap-3">
+                  <MapPin className="w-5 h-5" />
+                  Share Location
+                </Link>
+              </div>
+            </div>
+
+            <div className="lg:w-1/2 w-full">
+              {/* RSA Tracking Card */}
+              <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-2xl">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <p className="text-xs text-gray-400">RSA Request #RSA-2024-882</p>
+                    <p className="font-bold text-lg">Battery Jumpstart - Honda City</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-400">ETA</p>
+                    <p className="font-bold text-brand-fng text-xl">12 min</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-4 relative">
+                  <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-white/20"></div>
+
+                  <div className="relative pl-10">
+                    <div className="absolute left-0 top-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center border-2 border-white z-10">
+                      <CheckCircle className="w-3 h-3 text-white" />
+                    </div>
+                    <p className="font-semibold text-sm">Request Received</p>
+                    <p className="text-xs text-gray-400">Just now • AI analyzing location</p>
+                  </div>
+                  
+                  <div className="relative pl-10">
+                    <div className="absolute left-0 top-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center border-2 border-white z-10">
+                      <Car className="w-3 h-3 text-white" />
+                    </div>
+                    <p className="font-semibold text-sm">Nearest Vehicle Assigned</p>
+                    <p className="text-xs text-gray-400">30 sec ago • Driver: Rajesh</p>
+                  </div>
+
+                  <div className="relative pl-10">
+                    <div className="absolute left-0 top-1 w-6 h-6 bg-brand-fng rounded-full flex items-center justify-center border-2 border-white z-10 animate-pulse">
+                      <MapPin className="w-3 h-3 text-white" />
+                    </div>
+                    <p className="font-semibold text-sm text-brand-fng">En Route</p>
+                    <p className="text-xs text-gray-400">Live • 2.5 km away</p>
+                    <div className="h-24 bg-gray-800 rounded-lg mt-2 relative overflow-hidden">
+                      <div className="absolute inset-0 bg-gray-700 opacity-50"></div>
+                      <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-xs">
+                        [Live Map Tracking]
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 7. Car Service Types Section */}
+      <section className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">Complete Car Care</span>
+            <h2 className="text-4xl font-bold mt-2 mb-4 text-brand-secondary">What Services Does MY FNG Offer?</h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              From periodic maintenance to complex repairs - our AI chatbot recommends the perfect service for your car. 
+              <span className="font-semibold text-brand-secondary">100% transparent pricing</span> with no hidden charges.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <ServiceTypeCard 
+              icon={<Activity className="w-8 h-8" />}
+              title="Periodic Service"
+              desc="AI-powered scheduled maintenance with digital health reports"
+              features={['Oil Change', 'Filter Replacement', 'Fluid Top-up', 'AI Health Report']}
+            />
+            <ServiceTypeCard 
+              icon={<Zap className="w-8 h-8" />}
+              title="Engine Service"
+              desc="Complete engine diagnostics powered by AI"
+              features={['Engine Diagnostics', 'Oil Service', 'Filter Change', 'Performance Check']}
+            />
+            <ServiceTypeCard 
+              icon={<Shield className="w-8 h-8" />}
+              title="AC Service"
+              desc="Complete climate control solutions"
+              features={['AC Cleaning', 'Gas Refill', 'Filter Change', 'Sanitization']}
+            />
+            <ServiceTypeCard 
+              icon={<Zap className="w-8 h-8" />}
+              title="Battery Service"
+              desc="AI-powered battery health analysis"
+              features={['Battery Check', 'Charging Test', 'Replacement', 'Warranty']}
+            />
+            <ServiceTypeCard 
+              icon={<Shield className="w-8 h-8" />}
+              title="Brake Service"
+              desc="Complete brake system inspection"
+              features={['Brake Pad Check', 'Fluid Replacement', 'Disc Inspection', 'Safety Test']}
+            />
+            <ServiceTypeCard 
+              icon={<Car className="w-8 h-8" />}
+              title="Tyre & Wheel Care"
+              desc="Professional tyre and wheel services"
+              features={['Tyre Rotation', 'Wheel Alignment', 'Balancing', 'Replacement']}
+            />
+            <ServiceTypeCard 
+              icon={<Activity className="w-8 h-8" />}
+              title="Detailing Service"
+              desc="Premium car detailing and protection"
+              features={['Interior Cleaning', 'Exterior Polish', 'Waxing', 'Ceramic Coating']}
+            />
+            <ServiceTypeCard 
+              icon={<Car className="w-8 h-8" />}
+              title="Denting & Painting"
+              desc="High-precision body work"
+              features={['Dent Removal', 'Color Matching', 'Paint Protection', 'Quality Check']}
+            />
+            <ServiceTypeCard 
+              icon={<Zap className="w-8 h-8" />}
+              title="Clutch Service"
+              desc="Expert clutch repair and replacement"
+              features={['Clutch Inspection', 'Plate Replacement', 'Cable Adjustment', 'Warranty']}
+            />
+          </div>
+
+          <div className="text-center mt-12">
+            <Link href="/services" className="btn btn-primary text-lg px-10 py-4 rounded-xl">
+              Explore All Services <ArrowRight className="w-5 h-5 ml-2" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Floating Chatbot (Always Visible) */}
       <div className="fixed bottom-6 right-6 z-50">
         <button 
           onClick={() => setIsChatOpen(!isChatOpen)}
-          className="bg-brand-primary hover:bg-brand-primary-hover text-white px-6 py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-3 group border-4 border-white/20"
+          className="bg-brand-primary hover:bg-brand-primary-hover text-white px-6 py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-3 group border-4 border-white/20 animate-bounce-slow"
         >
-          <Bot className="w-6 h-6" />
+          <Bot className="w-6 h-6 group-hover:rotate-12 transition-transform" />
           <span className="font-semibold">Ask MY FNG AI</span>
         </button>
       </div>
+
+      {/* Chatbot Modal */}
+      {isChatOpen && (
+        <div className="fixed bottom-24 right-6 z-50 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-fade-in-up">
+          <div className="bg-brand-primary p-4 flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <div className="bg-white/20 p-1.5 rounded-lg">
+                <Bot className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-white font-bold text-sm">MY FNG AI Assistant</p>
+                <p className="text-blue-100 text-xs">Online • Book service directly • No employee needed</p>
+              </div>
+            </div>
+            <button onClick={() => setIsChatOpen(false)} className="text-white/80 hover:text-white">
+              ×
+            </button>
+          </div>
+          <div className="h-80 bg-gray-50 p-4 overflow-y-auto">
+            <div className="flex gap-2 mb-4">
+              <div className="w-8 h-8 bg-brand-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+                <Bot className="w-4 h-4 text-brand-primary" />
+              </div>
+              <div className="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-sm text-gray-700">
+                Hi! 👋 I'm MY FNG AI Assistant. Book your car service directly with me - no employee needed! 
+                <br/><br/>What service do you need today?
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end mb-4">
+              <div className="bg-brand-primary p-3 rounded-2xl rounded-tr-none shadow-sm text-sm text-white">
+                I need periodic service for my car
+              </div>
+            </div>
+            <div className="flex gap-2 mb-4">
+               <div className="w-8 h-8 bg-brand-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+                <Bot className="w-4 h-4 text-brand-primary" />
+              </div>
+              <div className="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-sm text-gray-700">
+                Perfect! I can help you book periodic service. <br/><br/>
+                <strong>Transparent Pricing:</strong> Starting from ₹1,999 (varies by car model). 
+                <br/><br/>Would you like me to check your car details and show exact pricing?
+              </div>
+            </div>
+          </div>
+          <div className="p-3 border-t border-gray-100 bg-white">
+            <div className="flex gap-2">
+              <input type="text" placeholder="Type your message..." className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-brand-primary" />
+              <button className="bg-brand-primary text-white p-2 rounded-full hover:bg-brand-primary-hover">
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>
@@ -568,6 +808,37 @@ function StatBox({ number, label }: { number: string; label: string }) {
     <div>
       <div className="text-4xl font-bold text-brand-primary mb-2">{number}</div>
       <div className="text-gray-500 font-medium text-sm">{label}</div>
+    </div>
+  );
+}
+
+function RSAService({ icon, title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <div className="flex items-center gap-3 bg-white/10 p-4 rounded-xl backdrop-blur-sm hover:bg-white/20 transition group">
+      <div className="text-brand-fng bg-white/20 p-2 rounded-lg group-hover:bg-brand-fng group-hover:text-white transition">
+        {icon}
+      </div>
+      <span className="font-semibold">{title}</span>
+    </div>
+  );
+}
+
+function ServiceTypeCard({ icon, title, desc, features }: { icon: React.ReactNode; title: string; desc: string; features: string[] }) {
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl hover:border-brand-primary/30 transition group">
+      <div className="mb-6 bg-brand-primary/10 w-16 h-16 rounded-xl flex items-center justify-center text-brand-primary group-hover:bg-brand-primary group-hover:text-white transition-colors">
+        {icon}
+      </div>
+      <h3 className="text-xl font-bold mb-2 text-brand-secondary">{title}</h3>
+      <p className="text-gray-600 text-sm mb-4">{desc}</p>
+      <ul className="space-y-2">
+        {features.map((feature, idx) => (
+          <li key={idx} className="flex items-center gap-2 text-xs text-gray-500">
+            <CheckCircle className="w-3 h-3 text-green-500" />
+            {feature}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -161,7 +161,54 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
       </h2>
 
       <div className="space-y-6">
-        {/* Mechanic Assignment */}
+        {/* Pickup Boy Assignment - First */}
+        {lead.pickup_required && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+              <Truck className="w-4 h-4" />
+              Assign Pickupboy/Driver
+            </label>
+            <div className="flex gap-2">
+              <select
+                value={selectedPickup}
+                onChange={(e) => setSelectedPickup(e.target.value)}
+                disabled={loading}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+              >
+                <option value="">Select pickupboy/driver...</option>
+                {pickupBoys.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.full_name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => handleAssignment('pickup', selectedPickup)}
+                disabled={loading || !selectedPickup}
+                className="btn btn-primary disabled:opacity-50"
+              >
+                <CheckCircle className="w-4 h-4" />
+                Assign
+              </button>
+            </div>
+            {lead.assigned_pickup_boy_id && (
+              <div className="mt-2 text-sm text-green-600 flex items-center gap-1">
+                <CheckCircle className="w-4 h-4" />
+                Currently assigned
+                {lead.pickup_assigned_at && (
+                  <span className="text-gray-500">
+                    - {new Date(lead.pickup_assigned_at).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            )}
+            {pickupBoys.length === 0 && (
+              <p className="text-sm text-gray-500 mt-2">No pickupboys/drivers available</p>
+            )}
+          </div>
+        )}
+
+        {/* Mechanic Assignment - Second */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
             <UserCheck className="w-4 h-4" />
@@ -206,58 +253,11 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
           )}
         </div>
 
-        {/* Pickup Boy Assignment */}
-        {lead.pickup_required && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-              <Truck className="w-4 h-4" />
-              Assign Pickup Boy
-            </label>
-            <div className="flex gap-2">
-              <select
-                value={selectedPickup}
-                onChange={(e) => setSelectedPickup(e.target.value)}
-                disabled={loading}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              >
-                <option value="">Select pickup boy...</option>
-                {pickupBoys.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.full_name}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={() => handleAssignment('pickup', selectedPickup)}
-                disabled={loading || !selectedPickup}
-                className="btn btn-primary disabled:opacity-50"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Assign
-              </button>
-            </div>
-            {lead.assigned_pickup_boy_id && (
-              <div className="mt-2 text-sm text-green-600 flex items-center gap-1">
-                <CheckCircle className="w-4 h-4" />
-                Currently assigned
-                {lead.pickup_assigned_at && (
-                  <span className="text-gray-500">
-                    - {new Date(lead.pickup_assigned_at).toLocaleString()}
-                  </span>
-                )}
-              </div>
-            )}
-            {pickupBoys.length === 0 && (
-              <p className="text-sm text-gray-500 mt-2">No pickup boys available</p>
-            )}
-          </div>
-        )}
-
-        {/* Supervisor Assignment */}
+        {/* Supervisor Assignment - Third */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
             <Users className="w-4 h-4" />
-            Assign Supervisor
+            Assign Adviser
           </label>
           <div className="flex gap-2">
             <select
@@ -266,7 +266,7 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
               disabled={loading}
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
             >
-              <option value="">Select supervisor...</option>
+              <option value="">Select adviser...</option>
               {supervisors.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.full_name}
@@ -294,7 +294,7 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
             </div>
           )}
           {supervisors.length === 0 && (
-            <p className="text-sm text-gray-500 mt-2">No supervisors available</p>
+            <p className="text-sm text-gray-500 mt-2">No advisers available</p>
           )}
         </div>
 
@@ -303,6 +303,14 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
           <div className="pt-4 border-t border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Assignment History</h3>
             <div className="space-y-2 text-sm">
+              {lead.assigned_pickup_boy_id && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Pickupboy/Driver:</span>
+                  <span className="font-medium">
+                    {pickupBoys.find(p => p.id === lead.assigned_pickup_boy_id)?.full_name || 'Unknown'}
+                  </span>
+                </div>
+              )}
               {lead.assigned_mechanic_id && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Mechanic:</span>
@@ -311,17 +319,9 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
                   </span>
                 </div>
               )}
-              {lead.assigned_pickup_boy_id && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Pickup Boy:</span>
-                  <span className="font-medium">
-                    {pickupBoys.find(p => p.id === lead.assigned_pickup_boy_id)?.full_name || 'Unknown'}
-                  </span>
-                </div>
-              )}
               {lead.assigned_supervisor_id && (
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Supervisor:</span>
+                  <span className="text-gray-600">Adviser:</span>
                   <span className="font-medium">
                     {supervisors.find(s => s.id === lead.assigned_supervisor_id)?.full_name || 'Unknown'}
                   </span>

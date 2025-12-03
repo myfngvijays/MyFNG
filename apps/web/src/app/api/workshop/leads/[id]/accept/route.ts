@@ -14,20 +14,24 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
+    // Get user profile with role
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, role, workshop_id')
-      .eq('email', user.email)
+      .select('id, role, workshop_id, roles!role_id(role_code, role_name)')
+      .eq('id', user.id)
       .single();
 
     if (profileError || !userProfile) {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
-    // Verify user is workshop admin
-    if (userProfile.role !== 'workshop_admin') {
-      return NextResponse.json({ error: 'Forbidden: Workshop Admin only' }, { status: 403 });
+    // Verify user is workshop admin or supervisor
+    const roleCode = (userProfile.roles as any)?.role_code;
+    const isWorkshopAdmin = roleCode === 'WORKSHOP_ADMIN';
+    const isSupervisor = roleCode === 'WORKSHOP_SUPERVISOR';
+    
+    if (!isWorkshopAdmin && !isSupervisor) {
+      return NextResponse.json({ error: 'Forbidden: Workshop Admin or Supervisor only' }, { status: 403 });
     }
 
     const leadId = params.id;
@@ -56,15 +60,25 @@ export async function POST(
       }, { status: 400 });
     }
 
+    // Prepare update payload
+    const now = new Date().toISOString();
+    const updatePayload: any = {
+      status: 'ACCEPTED',
+      accepted_at: now,
+      workshop_accepted_by: userProfile.id,
+      updated_at: now
+    };
+
+    // If supervisor accepts, auto-assign them as supervisor
+    if (isSupervisor) {
+      updatePayload.assigned_supervisor_id = userProfile.id;
+      updatePayload.supervisor_assigned_at = now;
+    }
+
     // Update lead status to ACCEPTED
     const { data: updatedLead, error: updateError } = await supabase
       .from('service_leads')
-      .update({
-        status: 'ACCEPTED',
-        accepted_at: new Date().toISOString(),
-        workshop_accepted_by: userProfile.id,
-        updated_at: new Date().toISOString()
-      })
+      .update(updatePayload)
       .eq('id', leadId)
       .select()
       .single();
@@ -83,8 +97,10 @@ export async function POST(
         new_status: 'ACCEPTED',
         changed_by: userProfile.id,
         changed_at: new Date().toISOString(),
-        reason: 'Lead accepted by workshop admin',
-        notes: 'Workshop has accepted the lead and will assign team members'
+        reason: isSupervisor ? 'Lead accepted by workshop supervisor' : 'Lead accepted by workshop admin',
+        notes: isSupervisor 
+          ? 'Workshop supervisor accepted the lead and was auto-assigned as supervisor'
+          : 'Workshop has accepted the lead and will assign team members'
       });
 
     // Create activity log
@@ -94,7 +110,9 @@ export async function POST(
         lead_id: leadId,
         user_id: userProfile.id,
         activity_type: 'LEAD_ACCEPTED',
-        description: 'Workshop admin accepted the lead',
+        description: isSupervisor 
+          ? 'Workshop supervisor accepted the lead and was auto-assigned'
+          : 'Workshop admin accepted the lead',
         old_status: lead.status,
         new_status: 'ACCEPTED',
         metadata: {
@@ -106,9 +124,13 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: 'Lead accepted successfully',
+      message: isSupervisor 
+        ? 'Lead accepted successfully. You have been auto-assigned as supervisor.'
+        : 'Lead accepted successfully',
       lead: updatedLead,
-      next_step: 'Please assign team members (Mechanic, Supervisor, Pickup Boy)'
+      next_step: isSupervisor
+        ? 'Please assign team members (Mechanic, Pickup Boy)'
+        : 'Please assign team members (Mechanic, Supervisor, Pickup Boy)'
     }, { status: 200 });
 
   } catch (error) {

@@ -161,7 +161,7 @@ export default function WorkshopAdminDashboard() {
     <DashboardLayout role="workshop_admin">
       <div className="space-y-6">
         <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg -mx-6 -mt-6 mb-6">
-          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🏪 Workshop Admin Dashboard</h1>
+          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🏪 Workshop Owner Dashboard</h1>
           <p className="text-white font-medium mt-1">Manage your workshop operations and leads</p>
         </div>
 

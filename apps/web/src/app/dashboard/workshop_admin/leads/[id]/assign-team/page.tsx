@@ -261,13 +261,13 @@ export default function AssignTeamPage() {
             <div className="flex items-center gap-3 mb-4">
               <Eye className="w-6 h-6 text-purple-600" />
               <h3 className="text-lg font-semibold">
-                Select Supervisor <span className="text-gray-400 text-sm">(Optional)</span>
+                Select Adviser <span className="text-gray-400 text-sm">(Optional)</span>
               </h3>
             </div>
 
             {supervisors.length === 0 ? (
               <div className="text-center py-6 text-gray-500 text-sm">
-                No supervisors available - Job will proceed without supervisor QC
+                No advisers available - Job will proceed without adviser QC
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -302,13 +302,13 @@ export default function AssignTeamPage() {
               <div className="flex items-center gap-3 mb-4">
                 <Truck className="w-6 h-6 text-orange-600" />
                 <h3 className="text-lg font-semibold">
-                  Select Pickup Boy <span className="text-red-500">*</span>
+                  Select Pickupboy/Driver <span className="text-red-500">*</span>
                 </h3>
               </div>
 
               {pickupBoys.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  <p>No pickup boys available</p>
+                  <p>No pickupboys/drivers available</p>
                   <p className="text-sm mt-2 text-red-600">Pickup is required for this lead!</p>
                 </div>
               ) : (

@@ -41,6 +41,11 @@ const config: Config = {
       },
       animation: {
         'fade-in-up': 'fadeInUp 0.8s ease-out forwards',
+        'fade-in-up-delay-100': 'fadeInUp 0.8s ease-out 0.1s forwards',
+        'fade-in-up-delay-200': 'fadeInUp 0.8s ease-out 0.2s forwards',
+        'fade-in-up-delay-300': 'fadeInUp 0.8s ease-out 0.3s forwards',
+        'fade-in-up-delay-400': 'fadeInUp 0.8s ease-out 0.4s forwards',
+        'fade-in-up-delay-500': 'fadeInUp 0.8s ease-out 0.5s forwards',
         'bounce-slow': 'bounceSlow 3s infinite',
       },
     },
