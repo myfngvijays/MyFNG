@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
@@ -22,7 +22,7 @@ import {
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
-export default function CSETicketsPage() {
+function CSETicketsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
@@ -292,3 +292,16 @@ export default function CSETicketsPage() {
   );
 }
 
+export default function CSETicketsPage() {
+  return (
+    <Suspense fallback={
+      <DashboardLayout role="CUSTOMER_SERVICE_EXECUTIVE">
+        <div className="flex items-center justify-center min-h-screen">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      </DashboardLayout>
+    }>
+      <CSETicketsContent />
+    </Suspense>
+  );
+}

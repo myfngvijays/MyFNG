@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-export default function SubAdminPerformancePage() {
+function SubAdminPerformanceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
@@ -204,3 +204,16 @@ export default function SubAdminPerformancePage() {
   );
 }
 
+export default function SubAdminPerformancePage() {
+  return (
+    <Suspense fallback={
+      <DashboardLayout role="sub_admin">
+        <div className="flex items-center justify-center min-h-screen">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      </DashboardLayout>
+    }>
+      <SubAdminPerformanceContent />
+    </Suspense>
+  );
+}

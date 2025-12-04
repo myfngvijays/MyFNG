@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
@@ -16,7 +16,7 @@ import {
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
-export default function CreateTicketPage() {
+function CreateTicketContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const leadId = searchParams.get('lead_id');
@@ -210,3 +210,16 @@ export default function CreateTicketPage() {
   );
 }
 
+export default function CreateTicketPage() {
+  return (
+    <Suspense fallback={
+      <DashboardLayout role="CUSTOMER_SERVICE_EXECUTIVE">
+        <div className="flex items-center justify-center min-h-screen">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      </DashboardLayout>
+    }>
+      <CreateTicketContent />
+    </Suspense>
+  );
+}
