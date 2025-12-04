@@ -6,6 +6,7 @@ import { Users, Search, UserPlus, Shield, UserX, UserCheck } from 'lucide-react'
 
 const AVAILABLE_ROLES = [
   { code: 'SUPER_ADMIN', name: 'Super Admin', color: 'red' },
+  { code: 'SUB_ADMIN', name: 'Sub Admin', color: 'purple' },
   { code: 'LEAD_MANAGER', name: 'Lead Manager', color: 'purple' },
   { code: 'TELECALLER', name: 'Telecaller', color: 'blue' },
   { code: 'WORKSHOP_ADMIN', name: 'Workshop Owner', color: 'orange' },
@@ -34,7 +35,8 @@ export default function UserManagementPage() {
     password: '',
     role_id: '',
     workshop_id: '',
-    assigned_manager_id: ''
+    assigned_manager_id: '',
+    department: ''
   });
 
   useEffect(() => {
@@ -144,6 +146,12 @@ export default function UserManagementPage() {
       return;
     }
 
+    // Check if department is required for SUB_ADMIN
+    if (roleCode === 'SUB_ADMIN' && !newUser.department) {
+      alert('Please select a department for Sub Admin');
+      return;
+    }
+
     try {
       // First, create auth user in Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -173,6 +181,7 @@ export default function UserManagementPage() {
           role_id: newUser.role_id,
           workshop_id: newUser.workshop_id || null,
           assigned_manager_id: newUser.assigned_manager_id || null,
+          department: newUser.department || null,
           is_active: true
         }]);
 
@@ -190,7 +199,8 @@ export default function UserManagementPage() {
         password: '',
         role_id: '',
         workshop_id: '',
-        assigned_manager_id: ''
+        assigned_manager_id: '',
+        department: ''
       });
       fetchUsers();
     } catch (error: any) {
@@ -484,12 +494,13 @@ export default function UserManagementPage() {
                   <select
                     value={newUser.role_id}
                     onChange={(e) => {
-                      setNewUser({ 
-                        ...newUser, 
-                        role_id: e.target.value, 
-                        workshop_id: '',
-                        assigned_manager_id: ''
-                      });
+                    setNewUser({ 
+                      ...newUser, 
+                      role_id: e.target.value, 
+                      workshop_id: '',
+                      assigned_manager_id: '',
+                      department: ''
+                    });
                     }}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
@@ -529,6 +540,35 @@ export default function UserManagementPage() {
                       </select>
                       <p className="text-xs text-blue-600 mt-1">
                         ⚠️ Workshop Admin must be assigned to a workshop
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* Department Selection - Conditional for SUB_ADMIN */}
+                {newUser.role_id && (() => {
+                  const selectedRole = roles.find(r => r.id === newUser.role_id);
+                  const needsDepartment = selectedRole && selectedRole.role_code === 'SUB_ADMIN';
+                  
+                  if (!needsDepartment) return null;
+                  
+                  return (
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Department *
+                      </label>
+                      <select
+                        value={newUser.department}
+                        onChange={(e) => setNewUser({ ...newUser, department: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                      >
+                        <option value="">Select Department</option>
+                        <option value="CSE">CSE - Customer Service Manager</option>
+                        <option value="TELECALLER">TELECALLER - Telecalling Manager</option>
+                        <option value="AUDITOR">AUDITOR - Audit Manager</option>
+                      </select>
+                      <p className="text-xs text-purple-600 mt-1">
+                        ⚠️ Sub Admin must be assigned to a department
                       </p>
                     </div>
                   );
@@ -584,7 +624,8 @@ export default function UserManagementPage() {
                       password: '',
                       role_id: '',
                       workshop_id: '',
-                      assigned_manager_id: ''
+                      assigned_manager_id: '',
+                      department: ''
                     });
                   }}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -593,7 +634,13 @@ export default function UserManagementPage() {
                 </button>
                 <button
                   onClick={handleAddUser}
-                  disabled={!newUser.full_name || !newUser.email || !newUser.phone || !newUser.password || !newUser.role_id}
+                  disabled={!newUser.full_name || !newUser.email || !newUser.phone || !newUser.password || !newUser.role_id || (() => {
+                    const selectedRole = roles.find(r => r.id === newUser.role_id);
+                    if (selectedRole?.role_code === 'SUB_ADMIN' && !newUser.department) return true;
+                    if (selectedRole?.role_code === 'WORKSHOP_ADMIN' && !newUser.workshop_id) return true;
+                    if (selectedRole?.role_code === 'TELECALLER' && !newUser.assigned_manager_id) return true;
+                    return false;
+                  })()}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Create User

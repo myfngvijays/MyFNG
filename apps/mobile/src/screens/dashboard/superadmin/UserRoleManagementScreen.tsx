@@ -19,6 +19,7 @@ import { COLORS, SPACING } from '../../../constants/theme';
 
 const AVAILABLE_ROLES = [
   { code: 'SUPER_ADMIN', name: 'Super Admin', icon: 'shield-crown', color: COLORS.red },
+  { code: 'SUB_ADMIN', name: 'Sub Admin', icon: 'account-supervisor-circle', color: COLORS.purple },
   { code: 'LEAD_MANAGER', name: 'Lead Manager', icon: 'account-tie', color: COLORS.purple },
   { code: 'TELECALLER', name: 'Telecaller', icon: 'phone', color: COLORS.blue },
   { code: 'WORKSHOP_ADMIN', name: 'Workshop Owner', icon: 'store', color: COLORS.orange },
@@ -28,6 +29,12 @@ const AVAILABLE_ROLES = [
   { code: 'RSA_MANAGER', name: 'RSA Manager', icon: 'car-emergency', color: COLORS.red },
   { code: 'AUDITOR', name: 'Quality Auditor', icon: 'shield-check', color: COLORS.indigo },
   { code: 'CUSTOMER', name: 'Customer', icon: 'account', color: COLORS.gray },
+];
+
+const SUB_ADMIN_DEPARTMENTS = [
+  { code: 'CSE', name: 'CSE - Customer Service Manager', icon: 'headset' },
+  { code: 'TELECALLER', name: 'TELECALLER - Telecalling Manager', icon: 'phone-in-talk' },
+  { code: 'AUDITOR', name: 'AUDITOR - Audit Manager', icon: 'shield-check' },
 ];
 
 export default function UserRoleManagementScreen({ navigation }: any) {
@@ -45,7 +52,8 @@ export default function UserRoleManagementScreen({ navigation }: any) {
     email: '',
     phone: '',
     role_code: 'CUSTOMER',
-    password: ''
+    password: '',
+    department: ''
   });
 
   useEffect(() => {
@@ -94,15 +102,52 @@ export default function UserRoleManagementScreen({ navigation }: any) {
       return;
     }
 
+    // Validate department for SUB_ADMIN
+    if (newUser.role_code === 'SUB_ADMIN' && !newUser.department) {
+      Alert.alert('Error', 'Please select a department for Sub Admin');
+      return;
+    }
+
     try {
-      // In production, use Supabase Auth to create user
+      // Get role_id from role_code
+      const { data: roleData } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('role_code', newUser.role_code)
+        .single();
+
+      if (!roleData) {
+        Alert.alert('Error', 'Invalid role selected');
+        return;
+      }
+
+      // Create auth user first
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newUser.email,
+        password: newUser.password || 'TempPassword123!', // In production, generate secure password
+        options: {
+          data: {
+            full_name: newUser.full_name,
+            phone: newUser.phone
+          }
+        }
+      });
+
+      if (authError) {
+        Alert.alert('Error', authError.message);
+        return;
+      }
+
+      // Insert into users_login
       const { data, error } = await supabase
         .from('users_login')
         .insert([{
+          id: authData.user?.id,
           full_name: newUser.full_name,
           email: newUser.email,
           phone: newUser.phone || null,
-          role_code: newUser.role_code,
+          role_id: roleData.id,
+          department: newUser.department || null,
           is_active: true
         }])
         .select()
@@ -117,7 +162,8 @@ export default function UserRoleManagementScreen({ navigation }: any) {
         email: '',
         phone: '',
         role_code: 'CUSTOMER',
-        password: ''
+        password: '',
+        department: ''
       });
       fetchUsers();
     } catch (error: any) {
@@ -428,7 +474,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
                       styles.roleOption,
                       newUser.role_code === role.code && { backgroundColor: role.color }
                     ]}
-                    onPress={() => setNewUser({ ...newUser, role_code: role.code })}
+                    onPress={() => setNewUser({ ...newUser, role_code: role.code, department: '' })}
                   >
                     <Icon
                       name={role.icon}
@@ -444,6 +490,40 @@ export default function UserRoleManagementScreen({ navigation }: any) {
                   </TouchableOpacity>
                 ))}
               </ScrollView>
+
+              {/* Department Selection - Conditional for SUB_ADMIN */}
+              {newUser.role_code === 'SUB_ADMIN' && (
+                <View style={styles.departmentContainer}>
+                  <Text style={styles.fieldLabel}>Department *</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roleSelector}>
+                    {SUB_ADMIN_DEPARTMENTS.map((dept) => (
+                      <TouchableOpacity
+                        key={dept.code}
+                        style={[
+                          styles.roleOption,
+                          newUser.department === dept.code && { backgroundColor: COLORS.purple }
+                        ]}
+                        onPress={() => setNewUser({ ...newUser, department: dept.code })}
+                      >
+                        <Icon
+                          name={dept.icon}
+                          size={20}
+                          color={newUser.department === dept.code ? '#fff' : COLORS.purple}
+                        />
+                        <Text style={[
+                          styles.roleOptionText,
+                          newUser.department === dept.code && { color: '#fff' }
+                        ]}>
+                          {dept.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <Text style={styles.fieldHint}>
+                    ⚠️ Sub Admin must be assigned to a department
+                  </Text>
+                </View>
+              )}
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -721,6 +801,14 @@ const styles = StyleSheet.create({
   modalForm: {
     maxHeight: 400,
   },
+  departmentContainer: {
+    marginTop: SPACING.md,
+    padding: SPACING.md,
+    backgroundColor: COLORS.purple + '10',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.purple + '30',
+  },
   fieldLabel: {
     fontSize: 13,
     fontWeight: '600',
@@ -756,6 +844,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.textPrimary,
+  },
+  fieldHint: {
+    fontSize: 11,
+    color: COLORS.purple,
+    marginTop: SPACING.xs,
+    fontStyle: 'italic',
   },
   modalActions: {
     flexDirection: 'row',

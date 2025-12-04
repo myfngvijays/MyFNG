@@ -80,7 +80,7 @@ export default function MechanicJobDetailScreen() {
 
   useEffect(() => {
     if (jobId) {
-      fetchJobDetail();
+    fetchJobDetail();
 
       // Setup realtime subscription for job updates
       const channel = supabase

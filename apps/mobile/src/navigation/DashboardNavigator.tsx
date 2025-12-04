@@ -37,6 +37,21 @@ import ComplaintsManagementScreen from '../screens/dashboard/cse/ComplaintsManag
 import CSELeadDetailScreen from '../screens/dashboard/cse/CSELeadDetailScreen';
 import CSEFollowUpsScreen from '../screens/dashboard/cse/CSEFollowUpsScreen';
 import CloseComplaintScreen from '../screens/dashboard/cse/CloseComplaintScreen';
+import CSECallPanelScreen from '../screens/dashboard/cse/CSECallPanelScreen';
+import CSETicketsScreen from '../screens/dashboard/cse/CSETicketsScreen';
+import CSECreateTicketScreen from '../screens/dashboard/cse/CSECreateTicketScreen';
+import CSETicketDetailScreen from '../screens/dashboard/cse/CSETicketDetailScreen';
+
+// SUB_ADMIN screens
+import SubAdminDashboardScreen from '../screens/dashboard/subadmin/SubAdminDashboardScreen';
+import SubAdminTeamScreen from '../screens/dashboard/subadmin/SubAdminTeamScreen';
+import SubAdminLeadsScreen from '../screens/dashboard/subadmin/SubAdminLeadsScreen';
+import SubAdminEscalationsScreen from '../screens/dashboard/subadmin/SubAdminEscalationsScreen';
+import SubAdminPerformanceScreen from '../screens/dashboard/subadmin/SubAdminPerformanceScreen';
+import SubAdminProfileScreen from '../screens/dashboard/subadmin/SubAdminProfileScreen';
+import SubAdminTicketsScreen from '../screens/dashboard/subadmin/SubAdminTicketsScreen';
+import SubAdminCallbacksScreen from '../screens/dashboard/subadmin/SubAdminCallbacksScreen';
+import SubAdminAuditsScreen from '../screens/dashboard/subadmin/SubAdminAuditsScreen';
 
 // Auditor screens
 import AuditQueueScreen from '../screens/dashboard/auditor/AuditQueueScreen';
@@ -129,6 +144,9 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
       fontWeight: 'bold',
       fontFamily: 'Poppins',
     },
+    gestureEnabled: true, // Enable swipe back gesture
+    gestureDirection: 'horizontal', // Swipe from left edge
+    animation: 'slide_from_right', // Slide animation
   };
 
   // Telecaller Navigation
@@ -228,13 +246,33 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
   }
 
   // CSE Navigation
-  if (roleCode === 'CSE') {
+  if (roleCode === 'CSE' || roleCode === 'CUSTOMER_SERVICE_EXECUTIVE') {
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
           name="CSEDashboard" 
           component={CSEDashboardScreen}
           options={{ title: 'CSE Dashboard' }}
+        />
+        <Stack.Screen 
+          name="CSECallPanel" 
+          component={CSECallPanelScreen}
+          options={{ title: 'Call Panel' }}
+        />
+        <Stack.Screen 
+          name="CSETickets" 
+          component={CSETicketsScreen}
+          options={{ title: 'Support Tickets' }}
+        />
+        <Stack.Screen 
+          name="CSECreateTicket" 
+          component={CSECreateTicketScreen}
+          options={{ title: 'Create Ticket' }}
+        />
+        <Stack.Screen 
+          name="CSETicketDetail" 
+          component={CSETicketDetailScreen}
+          options={{ title: 'Ticket Details' }}
         />
         <Stack.Screen 
           name="ComplaintsManagement" 
@@ -255,6 +293,59 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="CloseComplaint" 
           component={CloseComplaintScreen}
           options={{ title: 'Close Complaint' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // SUB_ADMIN Navigation
+  if (roleCode === 'SUB_ADMIN') {
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen 
+          name="SubAdminDashboard" 
+          component={SubAdminDashboardScreen}
+          options={{ title: 'Sub Admin Dashboard' }}
+        />
+        <Stack.Screen 
+          name="SubAdminTeam" 
+          component={SubAdminTeamScreen}
+          options={{ title: 'Team Management' }}
+        />
+        <Stack.Screen 
+          name="SubAdminLeads" 
+          component={SubAdminLeadsScreen}
+          options={{ title: 'Leads' }}
+        />
+        <Stack.Screen 
+          name="SubAdminEscalations" 
+          component={SubAdminEscalationsScreen}
+          options={{ title: 'Escalations' }}
+        />
+        <Stack.Screen 
+          name="SubAdminPerformance" 
+          component={SubAdminPerformanceScreen}
+          options={{ title: 'Performance' }}
+        />
+        <Stack.Screen 
+          name="SubAdminProfile" 
+          component={SubAdminProfileScreen}
+          options={{ title: 'Profile' }}
+        />
+        <Stack.Screen 
+          name="SubAdminTickets" 
+          component={SubAdminTicketsScreen}
+          options={{ title: 'Tickets' }}
+        />
+        <Stack.Screen 
+          name="SubAdminCallbacks" 
+          component={SubAdminCallbacksScreen}
+          options={{ title: 'Callbacks' }}
+        />
+        <Stack.Screen 
+          name="SubAdminAudits" 
+          component={SubAdminAuditsScreen}
+          options={{ title: 'Audits' }}
         />
       </Stack.Navigator>
     );

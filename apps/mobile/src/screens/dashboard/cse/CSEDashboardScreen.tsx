@@ -15,11 +15,14 @@ import {
   ScrollView,
   RefreshControl,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function CSEDashboardScreen({ navigation }: any) {
+  const { logout } = useAuth();
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -28,6 +31,15 @@ export default function CSEDashboardScreen({ navigation }: any) {
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [showCallModal, setShowCallModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      // On dashboard, back button can exit app or do nothing
+      return false; // Allow default behavior (exit app)
+    });
+    return () => backHandler.remove();
+  }, []);
 
   const [stats, setStats] = useState({
     total: 0,
@@ -262,8 +274,72 @@ export default function CSEDashboardScreen({ navigation }: any) {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>CSE Dashboard</Text>
-        <Text style={styles.headerSubtitle}>Customer Service Executive</Text>
+        <View>
+          <Text style={styles.headerTitle}>CSE Dashboard</Text>
+          <Text style={styles.headerSubtitle}>Customer Service Executive</Text>
+        </View>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => navigation.navigate('Profile')}
+          >
+            <Ionicons name="person-circle" size={32} color="#3B82F6" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={() => {
+              Alert.alert(
+                'Logout',
+                'Are you sure you want to logout?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Logout',
+                    style: 'destructive',
+                    onPress: async () => {
+                      await supabase.auth.signOut();
+                      logout();
+                    },
+                  },
+                ]
+              );
+            }}
+          >
+            <Ionicons name="log-out-outline" size={24} color="#EF4444" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Quick Actions */}
+      <View style={styles.quickActionsContainer}>
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => navigation.navigate('CSECallPanel')}
+        >
+          <Ionicons name="call" size={24} color="#10B981" />
+          <Text style={styles.quickActionText}>Call Panel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => navigation.navigate('CSETickets')}
+        >
+          <Ionicons name="document-text" size={24} color="#3B82F6" />
+          <Text style={styles.quickActionText}>Tickets</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => navigation.navigate('CSEFollowUps')}
+        >
+          <Ionicons name="time" size={24} color="#F59E0B" />
+          <Text style={styles.quickActionText}>Follow-ups</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => navigation.navigate('ComplaintsManagement')}
+        >
+          <Ionicons name="alert-circle" size={24} color="#EF4444" />
+          <Text style={styles.quickActionText}>Complaints</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Stats */}
@@ -460,6 +536,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#8B5CF6',
     padding: 20,
     paddingTop: 50,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 24,
@@ -470,6 +549,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#E9D5FF',
     marginTop: 4,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  profileButton: {
+    padding: 4,
+  },
+  logoutButton: {
+    padding: 4,
+  },
+  quickActionsContainer: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  quickActionCard: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  quickActionText: {
+    fontSize: 12,
+    color: '#111827',
+    marginTop: 6,
+    fontWeight: '600',
   },
   statsContainer: {
     paddingHorizontal: 16,

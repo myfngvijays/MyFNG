@@ -62,28 +62,28 @@ export default function JobDetailScreen() {
 
   useEffect(() => {
     if (!jobId || !job?.lead_id?.id) return;
-
+      
     // Setup realtime subscription after job is loaded
-    const channel = supabase
-      .channel(`job-detail-${jobId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'mechanic_jobs',
-        filter: `id=eq.${jobId}`
-      }, () => {
-        console.log('Job Detail: Real-time update received');
-        fetchJobDetail();
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'mechanic_checklist_items',
-        filter: `job_id=eq.${jobId}`
-      }, () => {
-        console.log('Checklist: Real-time update received');
-        fetchJobDetail();
-      })
+      const channel = supabase
+        .channel(`job-detail-${jobId}`)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_jobs',
+          filter: `id=eq.${jobId}`
+        }, () => {
+          console.log('Job Detail: Real-time update received');
+          fetchJobDetail();
+        })
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_checklist_items',
+          filter: `job_id=eq.${jobId}`
+        }, () => {
+          console.log('Checklist: Real-time update received');
+          fetchJobDetail();
+        })
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
@@ -93,13 +93,13 @@ export default function JobDetailScreen() {
         console.log('Lead status updated in real-time:', payload);
         fetchJobDetail();
       })
-      .subscribe((status) => {
-        console.log('Job detail subscription status:', status);
-      });
-    
-    return () => {
-      supabase.removeChannel(channel);
-    };
+        .subscribe((status) => {
+          console.log('Job detail subscription status:', status);
+        });
+      
+      return () => {
+        supabase.removeChannel(channel);
+      };
   }, [jobId, job?.lead_id?.id]);
 
   const fetchJobDetail = async () => {

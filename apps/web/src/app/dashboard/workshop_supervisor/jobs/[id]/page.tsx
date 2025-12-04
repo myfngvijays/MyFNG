@@ -663,20 +663,20 @@ export default function SupervisorJobDetailPage() {
             <div className="mb-4">
               <p className="text-sm text-gray-600 mb-2 font-medium">Service Types:</p>
               <div className="flex flex-wrap gap-2">
-                {lead.service_type_names.map((serviceName: string, index: number) => (
+              {lead.service_type_names.map((serviceName: string, index: number) => (
                   <span
                     key={index}
                     className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
                   >
-                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                     {serviceName}
                   </span>
-                ))}
+              ))}
               </div>
             </div>
           ) : (
             <div className="mb-4">
-              <p className="text-gray-700">{lead.service_type || 'General Service'}</p>
+            <p className="text-gray-700">{lead.service_type || 'General Service'}</p>
             </div>
           )}
 

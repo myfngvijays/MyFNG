@@ -26,7 +26,9 @@ import {
   Calendar,
   CheckCircle,
   DollarSign,
-  Clock
+  Clock,
+  AlertTriangle,
+  Star
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -74,7 +76,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         setRole(profile.role.role_code);
 
         // Check if user has correct role for this page
-        if (profile.role.role_code.toLowerCase() !== role.toLowerCase()) {
+        // For SUB_ADMIN, allow access to sub_admin routes
+        if (profile.role.role_code.toLowerCase() !== role.toLowerCase() && role.toLowerCase() !== 'sub_admin') {
           router.push(`/dashboard/${profile.role.role_code.toLowerCase()}`);
         }
       }
@@ -163,6 +166,38 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/telecaller/leads', icon: <FileText className="w-5 h-5" />, label: 'My Leads' },
         { href: '/dashboard/telecaller/leads/create', icon: <ClipboardList className="w-5 h-5" />, label: 'Create Lead' },
         { href: '/dashboard/telecaller/profile', icon: <Users className="w-5 h-5" />, label: 'My Profile' },
+      ],
+      'SUB_ADMIN': [
+        { href: '/dashboard/sub_admin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/sub_admin/team', icon: <Users className="w-5 h-5" />, label: 'Team Management' },
+        { href: '/dashboard/sub_admin/leads', icon: <FileText className="w-5 h-5" />, label: 'Leads' },
+        { href: '/dashboard/sub_admin/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
+        { href: '/dashboard/sub_admin/performance', icon: <TrendingUp className="w-5 h-5" />, label: 'Performance' },
+        { href: '/dashboard/sub_admin/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
+      ],
+      'AUDITOR': [
+        { href: '/dashboard/auditor', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/auditor/audits', icon: <Shield className="w-5 h-5" />, label: 'My Audits' },
+        { href: '/dashboard/auditor/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
+        { href: '/dashboard/auditor/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
+        { href: '/dashboard/auditor/performance', icon: <TrendingUp className="w-5 h-5" />, label: 'Performance' },
+        { href: '/dashboard/auditor/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
+      ],
+      'CUSTOMER_SERVICE_EXECUTIVE': [
+        { href: '/dashboard/cse', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/cse/call-panel', icon: <Phone className="w-5 h-5" />, label: 'Call Panel' },
+        { href: '/dashboard/cse/tickets', icon: <FileText className="w-5 h-5" />, label: 'Tickets' },
+        { href: '/dashboard/cse/callbacks', icon: <Clock className="w-5 h-5" />, label: 'Callbacks' },
+        { href: '/dashboard/cse/ratings', icon: <Star className="w-5 h-5" />, label: 'Ratings' },
+        { href: '/dashboard/cse/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
+      ],
+      'CSE': [
+        { href: '/dashboard/cse', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/cse/call-panel', icon: <Phone className="w-5 h-5" />, label: 'Call Panel' },
+        { href: '/dashboard/cse/tickets', icon: <FileText className="w-5 h-5" />, label: 'Tickets' },
+        { href: '/dashboard/cse/callbacks', icon: <Clock className="w-5 h-5" />, label: 'Callbacks' },
+        { href: '/dashboard/cse/ratings', icon: <Star className="w-5 h-5" />, label: 'Ratings' },
+        { href: '/dashboard/cse/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
       ],
     };
 

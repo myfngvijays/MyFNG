@@ -15,11 +15,14 @@ import {
   ScrollView,
   RefreshControl,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function AuditorDashboardScreen({ navigation }: any) {
+  const { logout } = useAuth();
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -27,6 +30,15 @@ export default function AuditorDashboardScreen({ navigation }: any) {
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [showFlagModal, setShowFlagModal] = useState(false);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      // On dashboard, back button can exit app or do nothing
+      return false; // Allow default behavior (exit app)
+    });
+    return () => backHandler.remove();
+  }, []);
 
   const [stats, setStats] = useState({
     total: 0,
@@ -273,6 +285,68 @@ export default function AuditorDashboardScreen({ navigation }: any) {
             <Text style={styles.headerSubtitle}>Quality Control & Fraud Detection</Text>
           </View>
         </View>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => navigation.navigate('Profile')}
+          >
+            <Ionicons name="person-circle" size={32} color="#FFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={() => {
+              Alert.alert(
+                'Logout',
+                'Are you sure you want to logout?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Logout',
+                    style: 'destructive',
+                    onPress: async () => {
+                      await supabase.auth.signOut();
+                      logout();
+                    },
+                  },
+                ]
+              );
+            }}
+          >
+            <Ionicons name="log-out-outline" size={24} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Quick Actions */}
+      <View style={styles.quickActionsContainer}>
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => navigation.navigate('AuditQueue')}
+        >
+          <Ionicons name="list" size={24} color="#6366F1" />
+          <Text style={styles.quickActionText}>Audit Queue</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => navigation.navigate('FraudDetection')}
+        >
+          <Ionicons name="flag" size={24} color="#EF4444" />
+          <Text style={styles.quickActionText}>Fraud</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => Alert.alert('Workshops', 'Feature coming soon')}
+        >
+          <Ionicons name="business" size={24} color="#10B981" />
+          <Text style={styles.quickActionText}>Workshops</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => Alert.alert('Performance', 'Feature coming soon')}
+        >
+          <Ionicons name="stats-chart" size={24} color="#F59E0B" />
+          <Text style={styles.quickActionText}>Performance</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Stats */}
@@ -490,11 +564,49 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366F1',
     padding: 20,
     paddingTop: 50,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   headerTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  profileButton: {
+    padding: 4,
+  },
+  logoutButton: {
+    padding: 4,
+  },
+  quickActionsContainer: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  quickActionCard: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  quickActionText: {
+    fontSize: 12,
+    color: '#111827',
+    marginTop: 6,
+    fontWeight: '600',
   },
   headerTextContainer: {
     flex: 1,
