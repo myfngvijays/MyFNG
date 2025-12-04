@@ -6,11 +6,14 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
 
 export default function PerformanceScreen() {
+  const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -28,6 +31,19 @@ export default function PerformanceScreen() {
   });
 
   const [recentJobs, setRecentJobs] = useState<Array<any>>([]);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     fetchUserId();

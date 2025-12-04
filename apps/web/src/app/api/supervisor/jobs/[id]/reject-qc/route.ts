@@ -96,6 +96,23 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to reject QC' }, { status: 500 });
     }
 
+    // Update mechanic_jobs table to reset status so mechanic can see it
+    const { data: mechanicJob } = await supabase
+      .from('mechanic_jobs')
+      .select('id, mechanic_id')
+      .eq('lead_id', leadId)
+      .single();
+
+    if (mechanicJob) {
+      await supabase
+        .from('mechanic_jobs')
+        .update({
+          mechanic_status: 'IN_PROGRESS', // Reset to IN_PROGRESS so mechanic can see it
+          updated_at: now
+        })
+        .eq('id', mechanicJob.id);
+    }
+
     // Create/Update QC check record
     await supabase
       .from('qc_checks')

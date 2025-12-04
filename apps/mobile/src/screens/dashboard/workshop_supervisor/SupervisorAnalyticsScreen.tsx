@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   RefreshControl,
   Dimensions,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
@@ -42,7 +44,8 @@ interface DailyStats {
   assigned: number;
 }
 
-export default function SupervisorAnalyticsScreen({ navigation }: any) {
+export default function SupervisorAnalyticsScreen() {
+  const navigation = useNavigation();
   const [analytics, setAnalytics] = useState<Analytics>({
     totalJobs: 0,
     completedJobs: 0,
@@ -60,6 +63,19 @@ export default function SupervisorAnalyticsScreen({ navigation }: any) {
   const [period, setPeriod] = useState<'TODAY' | 'WEEK' | 'MONTH'>('WEEK');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     fetchAnalytics();

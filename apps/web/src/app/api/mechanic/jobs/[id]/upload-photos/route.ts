@@ -48,6 +48,20 @@ export async function POST(
       }, { status: 400 });
     }
 
+    // Validate file type - support images and videos
+    const fileLowerCaseName = file.name.toLowerCase();
+    const fileExtension = fileLowerCaseName.split('.').pop();
+    const isImage = file.type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '');
+    const isVideo = file.type.startsWith('video/') || ['mp4', 'webm', 'ogg', 'mov', 'avi', 'm4v', '3gp'].includes(fileExtension || '');
+
+    if (!isImage && !isVideo) {
+      return NextResponse.json({ 
+        error: 'Invalid file type. Only images (PNG, JPG, GIF, WEBP) and videos (MP4, MOV, AVI) are allowed.',
+        file_type: file.type,
+        file_name: file.name
+      }, { status: 400 });
+    }
+
     // Validate photo type
     const validPhotoTypes = [
       'BEFORE_FRONT', 'BEFORE_REAR', 'BEFORE_LEFT', 'BEFORE_RIGHT',
@@ -156,17 +170,50 @@ export async function POST(
     }
 
     // Upload file to Supabase Storage
-    const fileExt = file.name.split('.').pop();
+    const fileExt = fileExtension || file.name.split('.').pop() || (isImage ? 'jpg' : 'mp4');
     const fileName = `${leadId}/${photoCategory}/${photoType}_${Date.now()}.${fileExt}`;
     const filePath = `mechanic-job-photos/${fileName}`;
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // Determine correct content type - fix for PNG and video files
+    // Some browsers/devices don't set correct MIME type, so infer from extension
+    let contentType = file.type;
+    const ext = (fileExtension || fileExt || '').toLowerCase();
+    
+    if (!contentType || contentType === 'application/octet-stream' || contentType === '') {
+      // Infer content type from extension
+      if (ext === 'png') {
+        contentType = 'image/png';
+      } else if (ext === 'jpg' || ext === 'jpeg') {
+        contentType = 'image/jpeg';
+      } else if (ext === 'gif') {
+        contentType = 'image/gif';
+      } else if (ext === 'webp') {
+        contentType = 'image/webp';
+      } else if (ext === 'mp4') {
+        contentType = 'video/mp4';
+      } else if (ext === 'mov') {
+        contentType = 'video/quicktime';
+      } else if (ext === 'avi') {
+        contentType = 'video/x-msvideo';
+      } else if (ext === 'webm') {
+        contentType = 'video/webm';
+      } else if (ext === 'm4v') {
+        contentType = 'video/x-m4v';
+      } else if (ext === '3gp') {
+        contentType = 'video/3gpp';
+      } else {
+        // Default fallback
+        contentType = isImage ? 'image/jpeg' : 'video/mp4';
+      }
+    }
+
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('service-media')
       .upload(filePath, buffer, {
-        contentType: file.type,
+        contentType: contentType,
         upsert: false,
       });
 

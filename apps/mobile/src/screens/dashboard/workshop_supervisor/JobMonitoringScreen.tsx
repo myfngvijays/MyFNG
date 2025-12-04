@@ -9,9 +9,11 @@ import {
   ScrollView,
   Modal,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
 
 interface JobMonitor {
   id: string;
@@ -32,7 +34,8 @@ interface JobMonitor {
   has_issues: boolean;
 }
 
-export default function JobMonitoringScreen({ navigation }: any) {
+export default function JobMonitoringScreen() {
+  const navigation = useNavigation();
   const [jobs, setJobs] = useState<JobMonitor[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<JobMonitor[]>([]);
   const [filter, setFilter] = useState('ACTIVE');

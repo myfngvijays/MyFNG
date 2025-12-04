@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
@@ -24,6 +25,18 @@ export default function OTPVerificationScreen({
   onBack,
   onSuccess,
 }: Props) {
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (onBack) {
+        onBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [onBack]);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const inputs = React.useRef<Array<TextInput | null>>([]);

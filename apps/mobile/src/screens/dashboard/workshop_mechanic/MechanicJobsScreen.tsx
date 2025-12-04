@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 interface Job {
   id: string;
@@ -43,9 +45,63 @@ export default function MechanicJobsScreen({ navigation }: any) {
 
   const filters = ['ALL', 'ASSIGNED', 'IN_PROGRESS', 'HOLD', 'COMPLETED'];
 
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
+
   useEffect(() => {
     fetchJobs();
-  }, []);
+
+    // Setup realtime subscription for mechanic jobs
+    if (user?.id) {
+      const channel = supabase
+        .channel(`mechanic-jobs-${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'mechanic_jobs',
+            filter: `mechanic_id=eq.${user.id}`
+          },
+          () => {
+            console.log('Mechanic jobs updated in real-time');
+            fetchJobs();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'service_leads'
+          },
+          (payload) => {
+            // If status changed to IN_PROGRESS (sent back), refresh jobs
+            if (payload.new && payload.new.status === 'IN_PROGRESS') {
+              console.log('Lead status changed to IN_PROGRESS, refreshing jobs');
+              fetchJobs();
+            }
+          }
+        )
+        .subscribe((status) => {
+          console.log('Mechanic jobs subscription status:', status);
+        });
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     filterJobs();

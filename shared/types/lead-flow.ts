@@ -41,6 +41,9 @@ export type LeadStatus =
   
   // Delivery stages
   | 'AWAITING_DELIVERY'        // ✨ NEW - Waiting for vehicle pickup/delivery
+  | 'VEHICLE_DROPPED_AT_WORKSHOP' // ✨ NEW - Vehicle dropped at workshop by pickup boy
+  | 'READY_FOR_DELIVERY'       // Vehicle ready for delivery to customer
+  | 'DELIVERED'                // Vehicle delivered to customer
   | 'COMPLETED'                // Service completed
   
   // Final stages

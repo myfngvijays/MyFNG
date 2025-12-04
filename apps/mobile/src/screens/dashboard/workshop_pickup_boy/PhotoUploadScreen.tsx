@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  BackHandler,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -36,6 +37,18 @@ export default function PhotoUploadScreen({
   onBack,
   onComplete,
 }: Props) {
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (onBack) {
+        onBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [onBack]);
   const [photos, setPhotos] = useState<PhotoState[]>([]);
   const [odometerReading, setOdometerReading] = useState('');
   const [fuelLevel, setFuelLevel] = useState<FuelLevel>('HALF');

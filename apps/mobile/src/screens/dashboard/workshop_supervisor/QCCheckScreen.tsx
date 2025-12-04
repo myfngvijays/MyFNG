@@ -11,9 +11,11 @@ import {
   TextInput,
   Alert,
   Image,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
 
 interface QCJob {
   id: string;
@@ -51,6 +53,19 @@ export default function QCCheckScreen({ navigation }: any) {
   const [filter, setFilter] = useState('PENDING');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     fetchQCJobs();
@@ -385,10 +400,10 @@ export default function QCCheckScreen({ navigation }: any) {
         <TouchableOpacity
           style={styles.viewDetailsButton}
           onPress={() =>
-            navigation.navigate('JobDetail', { jobId: item.id })
+            navigation.navigate('QCReview', { jobId: item.lead_id || item.id })
           }
         >
-          <Text style={styles.viewDetailsText}>View Full Details →</Text>
+          <Text style={styles.viewDetailsText}>Review QC →</Text>
         </TouchableOpacity>
       </View>
     );

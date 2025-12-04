@@ -52,11 +52,14 @@ export async function POST(
       return NextResponse.json({ error: 'Job not assigned to you' }, { status: 403 });
     }
 
-    // Verify lead is IN_PROGRESS
-    if (lead.status !== 'IN_PROGRESS') {
+    // Verify lead is in a valid status for completion
+    // Allow multiple statuses: IN_PROGRESS, MECHANIC_WORKING, VEHICLE_DROPPED_AT_WORKSHOP
+    const allowedStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'VEHICLE_DROPPED_AT_WORKSHOP'];
+    if (!allowedStatuses.includes(lead.status)) {
       return NextResponse.json({ 
-        error: 'Job must be in IN_PROGRESS status to mark complete',
-        current_status: lead.status
+        error: 'Job must be in progress to mark complete',
+        current_status: lead.status,
+        allowed_statuses: allowedStatuses
       }, { status: 400 });
     }
 
@@ -89,22 +92,33 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Update lead status to WORK_COMPLETED (pending QC)
+    // Determine final status based on supervisor assignment
+    // If supervisor is assigned, go to QC_PENDING, otherwise WORK_COMPLETED
+    const finalStatus = lead.assigned_supervisor_id ? 'QC_PENDING' : 'WORK_COMPLETED';
+
+    // Update lead status - set final status directly
+    const updateData: any = {
+      status: finalStatus,
+      mechanic_completed_at: now,
+      notes: work_summary || notes || lead.notes,
+      updated_at: now
+    };
+
+    // If supervisor is assigned, also set QC status
+    if (lead.assigned_supervisor_id) {
+      updateData.qc_status = 'PENDING';
+    }
+
     const { data: updatedLead, error: updateError } = await supabase
       .from('service_leads')
-      .update({
-        status: 'WORK_COMPLETED',
-        mechanic_completed_at: now,
-        notes: work_summary || notes || lead.notes,
-        updated_at: now
-      })
+      .update(updateData)
       .eq('id', leadId)
       .select()
       .single();
 
     if (updateError) {
       console.error('Error completing job:', updateError);
-      return NextResponse.json({ error: 'Failed to complete job' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to complete job', details: updateError.message }, { status: 500 });
     }
 
     // Log status change in lead_status_history
@@ -113,7 +127,7 @@ export async function POST(
       .insert({
         lead_id: leadId,
         old_status: lead.status,
-        new_status: 'WORK_COMPLETED',
+        new_status: finalStatus,
         changed_by: userProfile.id,
         changed_at: now,
         reason: 'Mechanic completed the job',
@@ -129,7 +143,7 @@ export async function POST(
         activity_type: 'JOB_COMPLETED',
         description: 'Mechanic marked job as completed',
         old_status: lead.status,
-        new_status: 'WORK_COMPLETED',
+        new_status: finalStatus,
         metadata: {
           mechanic_id: userProfile.id,
           completed_at: now,
@@ -151,18 +165,21 @@ export async function POST(
       .eq('mechanic_id', userProfile.id)
       .eq('status', 'ACTIVE');
 
-    // TODO: Auto-assign to supervisor for QC if supervisor is assigned
-    // If supervisor is assigned, change status to QC_PENDING
-    if (lead.assigned_supervisor_id) {
-      await supabase
-        .from('service_leads')
-        .update({
-          status: 'QC_PENDING',
-          qc_status: 'PENDING'
-        })
-        .eq('id', leadId);
+    // Update mechanic_jobs table
+    const { data: mechanicJob } = await supabase
+      .from('mechanic_jobs')
+      .select('id')
+      .eq('lead_id', leadId)
+      .single();
 
-      // TODO: Send notification to supervisor
+    if (mechanicJob) {
+      await supabase
+        .from('mechanic_jobs')
+        .update({
+          mechanic_status: 'COMPLETED',
+          completed_at: now
+        })
+        .eq('id', mechanicJob.id);
     }
 
     // TODO: Send notification to workshop admin
@@ -172,6 +189,7 @@ export async function POST(
       success: true,
       message: 'Job completed successfully',
       lead: updatedLead,
+      status: finalStatus,
       next_step: lead.assigned_supervisor_id 
         ? 'Job sent to supervisor for Quality Check (QC)'
         : 'Job completed. Awaiting workshop admin approval',

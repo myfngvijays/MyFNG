@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   TextInput,
   Alert,
-  Modal
+  Modal,
+  BackHandler
 } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
@@ -42,6 +43,19 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
   useEffect(() => {
     fetchLeads();
   }, [activeFilter, sortBy]);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   const fetchLeads = async () => {
     try {

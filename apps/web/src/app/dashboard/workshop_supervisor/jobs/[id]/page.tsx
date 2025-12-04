@@ -9,15 +9,17 @@ import ReassignMechanicModal from '@/components/supervisor/ReassignMechanicModal
 import ExtraWorkModal from '@/components/supervisor/ExtraWorkModal';
 import PhotoValidationModal from '@/components/supervisor/PhotoValidationModal';
 import SendBackModal from '@/components/supervisor/SendBackModal';
+import ServicePackageChangeModal from '@/components/supervisor/ServicePackageChangeModal';
 import BeforeInspectionUpload from '@/components/mechanic/BeforeInspectionUpload';
 import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
 import JobCardSection from '@/components/lead-detail/JobCardSection';
 import InternalAssignment from '@/components/lead-detail/InternalAssignment';
+import InvoiceSection from '@/components/lead-detail/InvoiceSection';
 import { 
   ArrowLeft, Clock, User, Car, Calendar, Wrench, 
   CheckCircle, AlertTriangle, Image as ImageIcon, Package,
   DollarSign, FileText, MessageSquare, History, Loader2, Save,
-  XCircle, ArrowLeftCircle, Camera
+  XCircle, ArrowLeftCircle, Camera, Edit
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -35,6 +37,7 @@ export default function SupervisorJobDetailPage() {
   const [selectedExtraCharge, setSelectedExtraCharge] = useState<any>(null);
   const [showPhotoValidation, setShowPhotoValidation] = useState(false);
   const [showSendBack, setShowSendBack] = useState(false);
+  const [showServicePackageModal, setShowServicePackageModal] = useState(false);
   const [internalNotes, setInternalNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [parts, setParts] = useState<any[]>([]);
@@ -163,6 +166,30 @@ export default function SupervisorJobDetailPage() {
         
         if (serviceTypes && serviceTypes.length > 0) {
           data.service_type_names = serviceTypes.map((st: any) => st.name);
+        }
+      }
+
+      // Fetch service addon names if subservice_ids exists
+      let subserviceIds = data.subservice_ids;
+      if (typeof subserviceIds === 'string') {
+        try {
+          subserviceIds = JSON.parse(subserviceIds);
+        } catch (e) {
+          console.error('Failed to parse subservice_ids:', e);
+        }
+      }
+      
+      if (subserviceIds && Array.isArray(subserviceIds) && subserviceIds.length > 0) {
+        const { data: serviceAddons } = await supabase
+          .from('service_addons')
+          .select('id, name, price')
+          .in('id', subserviceIds);
+        
+        if (serviceAddons && serviceAddons.length > 0) {
+          data.service_addon_names = serviceAddons.map((sa: any) => ({
+            name: sa.name,
+            price: sa.price
+          }));
         }
       }
       
@@ -468,9 +495,16 @@ export default function SupervisorJobDetailPage() {
       'NEW': 'bg-blue-100 text-blue-700',
       'ASSIGNED': 'bg-purple-100 text-purple-700',
       'IN_PROGRESS': 'bg-green-100 text-green-700',
+      'MECHANIC_WORKING': 'bg-green-100 text-green-700',
+      'VEHICLE_DROPPED_AT_WORKSHOP': 'bg-blue-100 text-blue-700',
+      'WORK_COMPLETED': 'bg-teal-100 text-teal-700',
+      'QC_PENDING': 'bg-yellow-100 text-yellow-700',
+      'QC_APPROVED': 'bg-green-100 text-green-700',
+      'QC_FAILED': 'bg-red-100 text-red-700',
       'HOLD': 'bg-orange-100 text-orange-700',
       'COMPLETED': 'bg-teal-100 text-teal-700',
       'READY_FOR_DELIVERY': 'bg-indigo-100 text-indigo-700',
+      'DELIVERED': 'bg-purple-100 text-purple-700',
     };
     return colors[status] || 'bg-gray-100 text-gray-700';
   };
@@ -550,7 +584,11 @@ export default function SupervisorJobDetailPage() {
             <div>
               <p className="text-sm text-gray-600">Status</p>
               <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold mt-1 ${getStatusColor(lead.status)}`}>
-                {lead.status.replace(/_/g, ' ')}
+                {lead.status === 'WORK_COMPLETED' ? 'Mechanic Work Completed' :
+                 lead.status === 'QC_PENDING' ? 'QC Pending' :
+                 lead.status === 'MECHANIC_WORKING' ? 'Mechanic Working' :
+                 lead.status === 'VEHICLE_DROPPED_AT_WORKSHOP' ? 'Vehicle at Workshop' :
+                 lead.status.replace(/_/g, ' ')}
               </span>
             </div>
             <div>
@@ -603,19 +641,66 @@ export default function SupervisorJobDetailPage() {
 
         {/* Section 3: Service Details */}
         <div className="card">
-          <h3 className="text-lg font-semibold mb-3">Service Request</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Package className="w-5 h-5" />
+              Service Request
+            </h3>
+            {/* Show edit button only if mechanic hasn't started work yet */}
+            {(!lead.mechanic || lead.status === 'ACCEPTED' || lead.status === 'VEHICLE_DROPPED_AT_WORKSHOP') && (
+              <button
+                onClick={() => setShowServicePackageModal(true)}
+                className="btn btn-outline flex items-center gap-2 text-sm"
+              >
+                <Edit className="w-4 h-4" />
+                Change Package
+              </button>
+            )}
+          </div>
+          
+          {/* Service Types */}
           {lead.service_type_names && lead.service_type_names.length > 0 ? (
-            <div className="space-y-2">
-              {lead.service_type_names.map((serviceName: string, index: number) => (
-                <div key={index} className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                  <p className="text-gray-700 font-medium">{serviceName}</p>
-                </div>
-              ))}
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2 font-medium">Service Types:</p>
+              <div className="flex flex-wrap gap-2">
+                {lead.service_type_names.map((serviceName: string, index: number) => (
+                  <span
+                    key={index}
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
+                  >
+                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                    {serviceName}
+                  </span>
+                ))}
+              </div>
             </div>
           ) : (
-            <p className="text-gray-700">{lead.service_type || 'General Service'}</p>
+            <div className="mb-4">
+              <p className="text-gray-700">{lead.service_type || 'General Service'}</p>
+            </div>
           )}
+
+          {/* Service Addons */}
+          {lead.service_addon_names && lead.service_addon_names.length > 0 && (
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2 font-medium">Service Addons:</p>
+              <div className="flex flex-wrap gap-2">
+                {lead.service_addon_names.map((addon: any, index: number) => (
+                  <span
+                    key={index}
+                    className="inline-flex items-center gap-2 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium"
+                  >
+                    <Package className="w-3 h-3" />
+                    {addon.name}
+                    {addon.price && (
+                      <span className="text-xs font-semibold">(₹{addon.price.toLocaleString()})</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {lead.problem_description && (
             <div className="mt-3 p-3 bg-gray-50 rounded-lg">
               <p className="text-sm text-gray-600 font-semibold">Problem Description:</p>
@@ -833,6 +918,11 @@ export default function SupervisorJobDetailPage() {
           </div>
         </div>
 
+        {/* Section 9: Invoice Section - Show when car is ready for delivery */}
+        {['READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
+          <InvoiceSection lead={lead} onUpdate={fetchJobDetails} />
+        )}
+
         {/* Section 8: Status Management */}
         {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS' || lead.status === 'INSPECTED' || lead.status === 'QC_PENDING' || lead.status === 'WORK_COMPLETED') && (
           <div className="card bg-purple-50 border-purple-200">
@@ -1006,6 +1096,17 @@ export default function SupervisorJobDetailPage() {
             setShowSendBack(false);
             fetchJobDetails();
           }}
+        />
+      )}
+
+      {/* Service Package Change Modal */}
+      {showServicePackageModal && (
+        <ServicePackageChangeModal
+          leadId={jobId}
+          currentServiceTypeIds={lead.service_type_ids ? (typeof lead.service_type_ids === 'string' ? JSON.parse(lead.service_type_ids) : lead.service_type_ids) : []}
+          currentSubserviceIds={lead.subservice_ids ? (typeof lead.subservice_ids === 'string' ? JSON.parse(lead.subservice_ids) : lead.subservice_ids) : []}
+          onClose={() => setShowServicePackageModal(false)}
+          onUpdate={fetchJobDetails}
         />
       )}
 

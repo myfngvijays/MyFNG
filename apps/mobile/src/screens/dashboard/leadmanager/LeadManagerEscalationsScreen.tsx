@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Alert
+  Alert,
+  BackHandler
 } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
@@ -23,6 +24,19 @@ export default function LeadManagerEscalationsScreen({ navigation }: any) {
   useEffect(() => {
     fetchEscalations();
   }, [filter]);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   const fetchEscalations = async () => {
     try {

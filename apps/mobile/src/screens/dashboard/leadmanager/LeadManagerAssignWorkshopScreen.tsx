@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  TextInput
+  TextInput,
+  BackHandler
 } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
@@ -29,6 +30,19 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     if (searchTerm) {

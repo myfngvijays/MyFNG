@@ -21,7 +21,7 @@ export async function POST(
   const leadId = params.id;
 
   try {
-    // Fetch lead details with all related data
+    // Fetch lead details with all related data including pricing fields
     const { data: lead, error: leadError } = await supabase
       .from('service_leads')
       .select(`
@@ -30,20 +30,50 @@ export async function POST(
       `)
       .eq('id', leadId)
       .single();
+    
+    // Debug: Log lead pricing fields
+    console.log('Lead pricing fields:', {
+      estimated_cost: lead?.estimated_cost,
+      estimated_amount: lead?.estimated_amount,
+      final_amount: lead?.final_amount,
+      total_price: lead?.total_price,
+      actual_amount: lead?.actual_amount,
+      discount_amount: lead?.discount_amount,
+      tax_amount: lead?.tax_amount,
+    });
 
     if (leadError || !lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
-    // Check authorization
-    const { data: userProfile } = await supabase
+    // Check authorization - fetch role with join
+    const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('role_id, workshop_id')
+      .select('id, role_id, workshop_id, roles(role_code, role_name)')
       .eq('id', user.id)
       .single();
 
-    if (!userProfile || userProfile.workshop_id !== lead.workshop_id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (profileError || !userProfile) {
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    }
+
+    // Get role code
+    const roleCode = (userProfile.roles as any)?.role_code;
+
+    // Verify user has invoice generation permissions
+    const allowedRoles = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'];
+    if (!allowedRoles.includes(roleCode)) {
+      return NextResponse.json({ 
+        error: 'Forbidden: Insufficient permissions',
+        current_role: roleCode
+      }, { status: 403 });
+    }
+
+    // Verify user belongs to the same workshop (for workshop staff)
+    if (['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode)) {
+      if (!userProfile.workshop_id || userProfile.workshop_id !== lead.workshop_id) {
+        return NextResponse.json({ error: 'Forbidden: Lead not in your workshop' }, { status: 403 });
+      }
     }
 
     // Check if lead status allows invoice generation
@@ -68,12 +98,19 @@ export async function POST(
       );
     }
 
+    // Fetch pricing items from lead_pricing_items table (primary source)
+    const { data: pricingItems } = await supabase
+      .from('lead_pricing_items')
+      .select('*')
+      .eq('lead_id', leadId)
+      .eq('status', 'ACTIVE');
+
     // Fetch job card and parts
     const { data: jobCard } = await supabase
       .from('job_cards')
       .select('*, job_card_parts(*)')
       .eq('lead_id', leadId)
-      .single();
+      .maybeSingle();
 
     // Fetch approved extra charges
     const { data: extraCharges } = await supabase
@@ -82,49 +119,157 @@ export async function POST(
       .eq('lead_id', leadId)
       .eq('status', 'APPROVED');
 
-    // Calculate amounts
-    const baseAmount = lead.estimated_cost || 0;
+    // Calculate amounts - prioritize backend set rates:
+    // 1. final_amount (if already calculated in backend)
+    // 2. total_price (total with taxes)
+    // 3. actual_amount (final before taxes)
+    // 4. estimated_cost or estimated_amount (backend estimates)
+    // 5. lead_pricing_items (if exists, sum them up)
+    let baseAmount = 0;
+    
+    // Priority 1: Use final_amount if backend has already calculated it
+    if (lead.final_amount && parseFloat(lead.final_amount) > 0) {
+      baseAmount = parseFloat(lead.final_amount);
+    }
+    // Priority 2: Use total_price (includes taxes)
+    else if (lead.total_price && parseFloat(lead.total_price) > 0) {
+      baseAmount = parseFloat(lead.total_price);
+    }
+    // Priority 3: Use actual_amount (final before taxes)
+    else if (lead.actual_amount && parseFloat(lead.actual_amount) > 0) {
+      baseAmount = parseFloat(lead.actual_amount);
+    }
+    // Priority 4: Use estimated_cost (backend estimate)
+    else if (lead.estimated_cost && parseFloat(lead.estimated_cost) > 0) {
+      baseAmount = parseFloat(lead.estimated_cost);
+    }
+    // Priority 5: Use estimated_amount (backend estimate)
+    else if (lead.estimated_amount && parseFloat(lead.estimated_amount) > 0) {
+      baseAmount = parseFloat(lead.estimated_amount);
+    }
+    // Priority 6: Sum up pricing items if available
+    else if (pricingItems && pricingItems.length > 0) {
+      baseAmount = pricingItems.reduce(
+        (sum, item) => sum + parseFloat(item.final_price || '0'),
+        0
+      );
+    }
+    
     const partsTotal = jobCard?.job_card_parts?.reduce(
-      (sum: number, part: any) => sum + part.total_price,
+      (sum: number, part: any) => sum + parseFloat(part.total_price || '0'),
       0
     ) || 0;
+    
     const extraChargesTotal = extraCharges?.reduce(
-      (sum, charge) => sum + charge.amount,
+      (sum, charge) => sum + parseFloat(charge.amount || '0'),
       0
     ) || 0;
 
-    const subtotal = baseAmount + partsTotal + extraChargesTotal;
-    const cgst = subtotal * 0.09; // 9% CGST
-    const sgst = subtotal * 0.09; // 9% SGST
-    const totalAmount = subtotal + cgst + sgst;
+    // Check if baseAmount already includes taxes (final_amount or total_price)
+    const amountIncludesTax = lead.final_amount || lead.total_price;
+    
+    let subtotal, cgst, sgst, totalAmount;
+    
+    if (amountIncludesTax && baseAmount > 0) {
+      // If backend already calculated final amount with taxes, use it directly
+      // Extract tax from the total (assuming 18% total tax: 9% CGST + 9% SGST)
+      const taxRate = 0.18; // 18% total
+      subtotal = parseFloat((baseAmount / (1 + taxRate)).toFixed(2));
+      cgst = parseFloat((subtotal * 0.09).toFixed(2));
+      sgst = parseFloat((subtotal * 0.09).toFixed(2));
+      totalAmount = baseAmount; // Use the backend calculated amount
+    } else {
+      // Calculate taxes from base amount
+      subtotal = baseAmount + partsTotal + extraChargesTotal;
+      cgst = parseFloat((subtotal * 0.09).toFixed(2)); // 9% CGST
+      sgst = parseFloat((subtotal * 0.09).toFixed(2)); // 9% SGST
+      totalAmount = parseFloat((subtotal + cgst + sgst).toFixed(2));
+    }
 
-    // Generate invoice number
-    const invoiceNumber = `INV-${lead.lead_number}-${Date.now().toString().slice(-6)}`;
+    // Debug logging
+    console.log('Invoice calculation:', {
+      pricingItemsCount: pricingItems?.length || 0,
+      baseAmount,
+      partsTotal,
+      extraChargesTotal,
+      subtotal,
+      cgst,
+      sgst,
+      totalAmount,
+      amountIncludesTax,
+      leadFinalAmount: lead.final_amount,
+      leadTotalPrice: lead.total_price,
+      leadActualAmount: lead.actual_amount,
+      leadEstimatedCost: lead.estimated_cost,
+      leadEstimatedAmount: lead.estimated_amount,
+    });
 
-    // Create invoice
+    // Generate invoice number - handle case where lead_number might be null
+    // Make it more unique with timestamp and random component
+    const leadNumber = lead.lead_number || lead.id.substring(0, 8).toUpperCase().replace(/-/g, '');
+    const timestamp = Date.now();
+    const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    const invoiceNumber = `INV-${leadNumber}-${timestamp.toString().slice(-8)}-${randomSuffix}`;
+    
+    // Ensure invoice number doesn't exceed 50 characters (database constraint)
+    const finalInvoiceNumber = invoiceNumber.length > 50 
+      ? `INV-${timestamp}-${randomSuffix}` 
+      : invoiceNumber;
+
+    // Validate required fields
+    if (!lead.workshop_id) {
+      return NextResponse.json({ 
+        error: 'Lead workshop_id is missing',
+        lead_id: leadId
+      }, { status: 400 });
+    }
+
+    // Create invoice with proper numeric types
+    // All columns now available after migration
+    const invoiceData: any = {
+      lead_id: leadId,
+      workshop_id: lead.workshop_id,
+      invoice_number: finalInvoiceNumber,
+      base_amount: baseAmount,
+      parts_cost: partsTotal,
+      extra_charges: extraChargesTotal,
+      labour_cost: 0,
+      discount: 0,
+      sub_total: subtotal,
+      // Tax columns
+      cgst_percentage: 9,
+      cgst_amount: cgst,
+      sgst_percentage: 9,
+      sgst_amount: sgst,
+      igst_percentage: 0,
+      igst_amount: 0,
+      total_tax: cgst + sgst,
+      tax_amount: cgst + sgst,
+      final_amount: totalAmount,
+      total_amount: totalAmount,
+      payment_status: 'PENDING',
+      status: 'GENERATED',
+      generated_by: userProfile.id,
+    };
+
+    console.log('Creating invoice with data:', JSON.stringify(invoiceData, null, 2));
+
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
-      .insert({
-        lead_id: leadId,
-        invoice_number: invoiceNumber,
-        base_amount: baseAmount,
-        parts_amount: partsTotal,
-        extra_charges_amount: extraChargesTotal,
-        subtotal: subtotal,
-        cgst: cgst,
-        sgst: sgst,
-        total_amount: totalAmount,
-        invoice_date: new Date().toISOString(),
-        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
-        payment_status: 'PENDING',
-        created_by: user.id,
-      })
+      .insert(invoiceData)
       .select()
       .single();
 
     if (invoiceError) {
       console.error('Error creating invoice:', invoiceError);
-      return NextResponse.json({ error: 'Failed to create invoice' }, { status: 500 });
+      console.error('Invoice error details:', JSON.stringify(invoiceError, null, 2));
+      console.error('Invoice data attempted:', JSON.stringify(invoiceData, null, 2));
+      return NextResponse.json({ 
+        error: 'Failed to create invoice',
+        details: invoiceError.message,
+        code: invoiceError.code,
+        hint: invoiceError.hint
+      }, { status: 500 });
     }
 
     // Update lead with final amount
@@ -146,9 +291,22 @@ export async function POST(
       created_by: user.id,
     });
 
+    // Map database fields to component expected fields
+    const mappedInvoice = {
+      ...invoice,
+      parts_amount: (invoice as any).parts_cost || 0,
+      extra_charges_amount: invoice.extra_charges || 0,
+      subtotal: (invoice as any).sub_total || ((invoice.base_amount || 0) + (invoice.extra_charges || 0) - (invoice.discount || 0)),
+      cgst: (invoice as any).cgst_amount || 0,
+      sgst: (invoice as any).sgst_amount || 0,
+      total_amount: (invoice as any).final_amount || invoice.total_amount || 0,
+      invoice_date: invoice.created_at || new Date().toISOString(),
+      due_date: (invoice as any).due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+
     return NextResponse.json({
       message: 'Invoice generated successfully',
-      invoice,
+      invoice: mappedInvoice,
     });
   } catch (error: any) {
     console.error('Error generating invoice:', error);
@@ -174,25 +332,87 @@ export async function GET(
   const leadId = params.id;
 
   try {
-    const { data: invoice, error } = await supabase
-      .from('invoices')
-      .select(`
-        *,
-        lead:service_leads!lead_id(*),
-        creator:created_by(full_name)
-      `)
-      .eq('lead_id', leadId)
+    // Check authorization - fetch role with join
+    const { data: userProfile, error: profileError } = await supabase
+      .from('users_login')
+      .select('id, role_id, workshop_id, roles(role_code, role_name)')
+      .eq('id', user.id)
       .single();
 
-    if (error && error.code !== 'PGRST116') {
+    if (profileError || !userProfile) {
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    }
+
+    // Get role code
+    const roleCode = (userProfile.roles as any)?.role_code;
+
+    // Verify user has invoice viewing permissions
+    const allowedRoles = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'];
+    if (!allowedRoles.includes(roleCode)) {
+      return NextResponse.json({ 
+        error: 'Forbidden: Insufficient permissions',
+        current_role: roleCode
+      }, { status: 403 });
+    }
+
+    // Fetch invoice
+    const { data: invoice, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('lead_id', leadId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching invoice:', error);
       throw error;
     }
 
-    if (!invoice) {
-      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+    // If invoice exists, verify workshop access for workshop staff
+    if (invoice && ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode)) {
+      // Fetch lead to check workshop
+      const { data: lead } = await supabase
+        .from('service_leads')
+        .select('workshop_id')
+        .eq('id', leadId)
+        .single();
+
+      if (lead && userProfile.workshop_id !== lead.workshop_id) {
+        return NextResponse.json({ error: 'Forbidden: Lead not in your workshop' }, { status: 403 });
+      }
     }
 
-    return NextResponse.json({ invoice });
+    if (!invoice) {
+      return NextResponse.json({ invoice: null });
+    }
+
+    // Fetch creator name if generated_by exists
+    if (invoice.generated_by) {
+      const { data: creator } = await supabase
+        .from('users_login')
+        .select('full_name')
+        .eq('id', invoice.generated_by)
+        .single();
+      
+      if (creator) {
+        invoice.creator = { full_name: creator.full_name };
+      }
+    }
+
+    // Map database fields to component expected fields
+    const mappedInvoice = {
+      ...invoice,
+      // Map field names to match InvoiceSection component expectations
+      parts_amount: (invoice as any).parts_cost || 0,
+      extra_charges_amount: invoice.extra_charges || 0,
+      subtotal: (invoice as any).sub_total || ((invoice.base_amount || 0) + (invoice.extra_charges || 0) - (invoice.discount || 0)),
+      cgst: (invoice as any).cgst_amount || 0,
+      sgst: (invoice as any).sgst_amount || 0,
+      total_amount: (invoice as any).final_amount || invoice.total_amount || 0,
+      invoice_date: invoice.created_at || new Date().toISOString(),
+      due_date: (invoice as any).due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+
+    return NextResponse.json({ invoice: mappedInvoice });
   } catch (error: any) {
     console.error('Error fetching invoice:', error);
     return NextResponse.json(

@@ -9,9 +9,11 @@ import {
   Modal,
   ScrollView,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
 
 interface Job {
   id: string;
@@ -45,6 +47,19 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
   const [showMechanicModal, setShowMechanicModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     fetchData();

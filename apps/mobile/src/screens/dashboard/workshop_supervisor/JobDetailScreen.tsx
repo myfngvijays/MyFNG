@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
@@ -40,40 +41,66 @@ export default function JobDetailScreen() {
   const [extraCharges, setExtraCharges] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
+
   useEffect(() => {
     if (jobId) {
       fetchJobDetail();
-      
-      // Setup realtime subscription
-      const channel = supabase
-        .channel(`job-detail-${jobId}`)
-        .on('postgres_changes', {
-          event: '*',
-          schema: 'public',
-          table: 'mechanic_jobs',
-          filter: `id=eq.${jobId}`
-        }, () => {
-          console.log('Job Detail: Real-time update received');
-          fetchJobDetail();
-        })
-        .on('postgres_changes', {
-          event: '*',
-          schema: 'public',
-          table: 'mechanic_checklist_items',
-          filter: `job_id=eq.${jobId}`
-        }, () => {
-          console.log('Checklist: Real-time update received');
-          fetchJobDetail();
-        })
-        .subscribe((status) => {
-          console.log('Job detail subscription status:', status);
-        });
-      
-      return () => {
-        supabase.removeChannel(channel);
-      };
     }
   }, [jobId]);
+
+  useEffect(() => {
+    if (!jobId || !job?.lead_id?.id) return;
+
+    // Setup realtime subscription after job is loaded
+    const channel = supabase
+      .channel(`job-detail-${jobId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'mechanic_jobs',
+        filter: `id=eq.${jobId}`
+      }, () => {
+        console.log('Job Detail: Real-time update received');
+        fetchJobDetail();
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'mechanic_checklist_items',
+        filter: `job_id=eq.${jobId}`
+      }, () => {
+        console.log('Checklist: Real-time update received');
+        fetchJobDetail();
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'service_leads',
+        filter: `id=eq.${job.lead_id.id}`
+      }, (payload) => {
+        console.log('Lead status updated in real-time:', payload);
+        fetchJobDetail();
+      })
+      .subscribe((status) => {
+        console.log('Job detail subscription status:', status);
+      });
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [jobId, job?.lead_id?.id]);
 
   const fetchJobDetail = async () => {
     try {

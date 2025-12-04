@@ -124,13 +124,25 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
   const handleFileSelect = (index: number, file: File | null) => {
     if (!file) return;
 
-    // Accept both images and videos
+    // Accept both images and videos - check file extension first for better PNG/video detection
+    const fileName = file.name.toLowerCase();
+    const fileExtension = fileName.split('.').pop();
     const isImage = file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
-    const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|ogg|mov|avi)$/i.test(file.name);
+    const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|ogg|mov|avi|m4v|3gp)$/i.test(file.name);
 
+    // Special handling for PNG files that might not have correct MIME type
     if (!isImage && !isVideo) {
-      toast.error('Please select an image or video file');
-      return;
+      // Double check by extension
+      const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+      const videoExtensions = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'm4v', '3gp'];
+      
+      if (fileExtension && (imageExtensions.includes(fileExtension) || videoExtensions.includes(fileExtension))) {
+        // File extension is valid, proceed anyway
+        console.log('File type detected by extension:', fileExtension);
+      } else {
+        toast.error('Please select an image (PNG, JPG, GIF, WEBP) or video (MP4, MOV, AVI) file');
+        return;
+      }
     }
 
     const reader = new FileReader();
@@ -188,20 +200,23 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
         body: formData,
       });
 
-      // Check if response is ok before parsing JSON
-      if (!response.ok) {
-        let errorMessage = 'Upload failed';
-        try {
-          const errorResult = await response.json();
-          errorMessage = errorResult.error || errorResult.details || errorMessage;
-        } catch (e) {
-          // If JSON parsing fails, use status text
-          errorMessage = response.statusText || errorMessage;
-        }
-        throw new Error(errorMessage);
+      // Check content-type before parsing JSON
+      const contentType = response.headers.get('content-type');
+      let result: any;
+      
+      if (contentType && contentType.includes('application/json')) {
+        result = await response.json();
+      } else {
+        // If not JSON, get text response
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
 
-      const result = await response.json();
+      // Check if response is ok
+      if (!response.ok) {
+        throw new Error(result.error || result.details || 'Upload failed');
+      }
 
       // Double check for error in response body
       if (result.error) {

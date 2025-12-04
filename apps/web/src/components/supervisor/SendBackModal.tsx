@@ -109,18 +109,59 @@ Priority: ${priority}
 Please address all issues and resubmit.
       `.trim();
 
-      // Update lead status to HOLD and add notes
+      const now = new Date().toISOString();
+
+      // Get current lead status before updating
+      const { data: currentLead } = await supabase
+        .from('service_leads')
+        .select('status')
+        .eq('id', leadId)
+        .single();
+
+      const oldStatus = currentLead?.status || 'UNKNOWN';
+
+      // Update lead status to IN_PROGRESS (send back to mechanic) and add notes
       const { error: updateError } = await supabase
         .from('service_leads')
         .update({
-          status: 'HOLD',
+          status: 'IN_PROGRESS', // Send back to mechanic for rework
           priority: priority,
           notes_internal: sendBackMessage,
-          updated_at: new Date().toISOString()
+          updated_at: now
         })
         .eq('id', leadId);
 
       if (updateError) throw updateError;
+
+      // Update mechanic_jobs table to reset status so mechanic can see it
+      const { data: mechanicJob } = await supabase
+        .from('mechanic_jobs')
+        .select('id, mechanic_id')
+        .eq('lead_id', leadId)
+        .single();
+
+      if (mechanicJob) {
+        await supabase
+          .from('mechanic_jobs')
+          .update({
+            mechanic_status: 'IN_PROGRESS', // Reset to IN_PROGRESS so mechanic can see it
+            updated_at: now
+          })
+          .eq('id', mechanicJob.id);
+      }
+
+      // Log status change in lead_status_history
+      await supabase
+        .from('lead_status_history')
+        .insert({
+          lead_id: leadId,
+          old_status: oldStatus,
+          new_status: 'IN_PROGRESS',
+          changed_by: supervisorId,
+          changed_at: now,
+          reason: 'Job sent back to mechanic for rework',
+          notes: sendBackMessage
+        });
 
       // Create supervisor action
       await supabase

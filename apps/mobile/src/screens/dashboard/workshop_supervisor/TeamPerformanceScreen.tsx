@@ -19,6 +19,20 @@ import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 const { width } = Dimensions.get('window');
 
 export default function TeamPerformanceScreen() {
+  const navigation = useNavigation();
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
   const [workshopId, setWorkshopId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

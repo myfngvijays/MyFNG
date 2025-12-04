@@ -1,10 +1,30 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../../constants/theme';
 
 export default function SupervisorMenuScreen({ navigation }: any) {
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
+
   const menuItems = [
+    {
+      id: 'pending-leads',
+      title: '⏰ Pending Leads',
+      subtitle: 'Accept/reject incoming leads',
+      screen: 'PendingLeads',
+      color: '#f59e0b',
+    },
     {
       id: 'day-planning',
       title: '📅 Day Planning',

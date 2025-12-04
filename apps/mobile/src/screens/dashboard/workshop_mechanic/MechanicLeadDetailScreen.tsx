@@ -8,10 +8,12 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, FONTS } from '../../../constants/theme';
 import DashboardHeader from '../../../components/DashboardHeader';
+import { useNavigation } from '@react-navigation/native';
 
 interface JobDetail {
   id: string;
@@ -41,12 +43,26 @@ interface JobDetail {
   pickup_status: string;
 }
 
-export default function MechanicLeadDetailScreen({ route, navigation }: any) {
+export default function MechanicLeadDetailScreen({ route }: any) {
+  const navigation = useNavigation();
   const { leadId } = route.params;
   const [job, setJob] = useState<JobDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processing, setProcessing] = useState(false);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     fetchJobDetails();

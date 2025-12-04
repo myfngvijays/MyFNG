@@ -10,10 +10,12 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../../constants/theme';
+import { useNavigation } from '@react-navigation/native';
 
 interface JobWithPriority {
   id: string;
@@ -40,7 +42,8 @@ interface Mechanic {
   activeJobs: number;
 }
 
-export default function DayPlanningScreen({ navigation }: any) {
+export default function DayPlanningScreen() {
+  const navigation = useNavigation();
   const [jobs, setJobs] = useState<JobWithPriority[]>([]);
   const [mechanics, setMechanics] = useState<Mechanic[]>([]);
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());

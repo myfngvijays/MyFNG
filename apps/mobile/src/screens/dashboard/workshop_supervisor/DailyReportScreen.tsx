@@ -4,16 +4,31 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, BackHandler } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
+import { useNavigation } from '@react-navigation/native';
 
 export default function DailyReportScreen() {
+  const navigation = useNavigation();
   const { userProfile } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [report, setReport] = useState({ completed: 0, pending: 0, qcPassed: 0, revenue: 0 });
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     fetchDailyReport();

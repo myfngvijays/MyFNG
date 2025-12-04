@@ -9,11 +9,13 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, FONTS } from '../../../constants/theme';
 import DashboardHeader from '../../../components/DashboardHeader';
 import BottomNav from '../../../components/BottomNav';
+import { useNavigation } from '@react-navigation/native';
 
 interface MechanicProfile {
   id: string;

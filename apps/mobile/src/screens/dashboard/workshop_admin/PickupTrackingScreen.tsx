@@ -9,9 +9,11 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
 
 interface PickupTask {
   id: string;
@@ -28,6 +30,7 @@ interface PickupTask {
 }
 
 export default function PickupTrackingScreen() {
+  const navigation = useNavigation();
   const [pickups, setPickups] = useState<PickupTask[]>([]);
   const [filteredPickups, setFilteredPickups] = useState<PickupTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,6 +48,19 @@ export default function PickupTrackingScreen() {
   useEffect(() => {
     fetchWorkshopId();
   }, []);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     if (workshopId) {

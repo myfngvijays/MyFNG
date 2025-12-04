@@ -8,7 +8,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   TextInput,
-  Alert
+  Alert,
+  BackHandler
 } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
@@ -64,6 +65,19 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
   useEffect(() => {
     fetchLeadDetails();
   }, []);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   const fetchLeadDetails = async () => {
     try {

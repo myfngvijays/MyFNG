@@ -274,20 +274,23 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
         body: formData,
       });
 
-      // Check if response is ok before parsing JSON
-      if (!response.ok) {
-        let errorMessage = 'Upload failed';
-        try {
-          const errorResult = await response.json();
-          errorMessage = errorResult.error || errorResult.details || errorMessage;
-        } catch (e) {
-          // If JSON parsing fails, use status text
-          errorMessage = response.statusText || errorMessage;
-        }
-        throw new Error(errorMessage);
+      // Check content-type before parsing JSON
+      const contentType = response.headers.get('content-type');
+      let result: any;
+      
+      if (contentType && contentType.includes('application/json')) {
+        result = await response.json();
+      } else {
+        // If not JSON, get text response
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
 
-      const result = await response.json();
+      // Check if response is ok
+      if (!response.ok) {
+        throw new Error(result.error || result.details || 'Upload failed');
+      }
 
       // Double check for error in response body
       if (result.error) {

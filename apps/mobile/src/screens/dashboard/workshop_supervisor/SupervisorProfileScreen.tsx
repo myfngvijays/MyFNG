@@ -4,16 +4,31 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, BackHandler } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
+import { useNavigation } from '@react-navigation/native';
 
 export default function SupervisorProfileScreen() {
+  const navigation = useNavigation();
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [profile, setProfile] = useState({ full_name: '', phone: '', email: '' });
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     fetchUserProfile();

@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
@@ -54,6 +55,19 @@ export default function LeadsListScreen() {
       fetchLeads();
     }
   }, [workshopId]);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     filterLeads();

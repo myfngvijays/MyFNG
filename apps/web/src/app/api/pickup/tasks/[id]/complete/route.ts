@@ -95,12 +95,12 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Update lead status to DELIVERED (vehicle at workshop)
+    // Update lead status to VEHICLE_DROPPED_AT_WORKSHOP (vehicle at workshop, ready for service)
     const { data: updatedLead, error: updateError } = await supabase
       .from('service_leads')
       .update({
         pickup_status: 'DELIVERED',
-        status: 'DELIVERED',
+        status: 'VEHICLE_DROPPED_AT_WORKSHOP',
         vehicle_odometer: odometer_reading || lead.vehicle_odometer,
         updated_at: now
       })
@@ -131,11 +131,11 @@ export async function POST(
       .insert({
         lead_id: leadId,
         old_status: lead.status,
-        new_status: 'DELIVERED',
+        new_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
         changed_by: userProfile.id,
         changed_at: now,
         reason: 'Vehicle delivered to workshop by pickup boy',
-        notes: notes || 'Delivery completed successfully'
+        notes: notes || 'Vehicle dropped at workshop, ready for service'
       });
 
     // Create activity log
@@ -147,7 +147,7 @@ export async function POST(
         activity_type: 'PICKUP_COMPLETED',
         description: 'Vehicle delivered to workshop',
         old_status: lead.status,
-        new_status: 'DELIVERED',
+        new_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
         metadata: {
           pickup_boy_id: userProfile.id,
           delivered_at: now,

@@ -11,9 +11,11 @@ import {
   TextInput,
   Alert,
   Image,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
 
 interface ExtraWorkRequest {
   id: string;
@@ -42,6 +44,19 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
   const [filter, setFilter] = useState('PENDING');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     fetchRequests();

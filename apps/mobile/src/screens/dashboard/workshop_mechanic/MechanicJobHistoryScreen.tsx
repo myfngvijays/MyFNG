@@ -8,11 +8,13 @@ import {
   TextInput,
   RefreshControl,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, FONTS } from '../../../constants/theme';
 import DashboardHeader from '../../../components/DashboardHeader';
 import BottomNav from '../../../components/BottomNav';
+import { useNavigation } from '@react-navigation/native';
 
 interface JobHistoryItem {
   job_id: string;
@@ -31,7 +33,8 @@ interface JobHistoryItem {
   efficiency_score: number | null;
 }
 
-export default function MechanicJobHistoryScreen({ navigation }: any) {
+export default function MechanicJobHistoryScreen() {
+  const navigation = useNavigation();
   const [jobs, setJobs] = useState<JobHistoryItem[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<JobHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,6 +48,19 @@ export default function MechanicJobHistoryScreen({ navigation }: any) {
     avg_efficiency: 0,
     on_time_completion: 0,
   });
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     fetchJobHistory();

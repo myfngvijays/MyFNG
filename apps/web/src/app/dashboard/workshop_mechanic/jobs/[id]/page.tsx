@@ -146,6 +146,22 @@ export default function MechanicJobDetailPage() {
         .on(
           'postgres_changes',
           {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'service_leads',
+            filter: `id=eq.${leadId}`
+          },
+          (payload) => {
+            console.log('Lead status updated in real-time:', payload);
+            // If status changed to IN_PROGRESS (sent back), refresh immediately
+            if (payload.new && payload.new.status === 'IN_PROGRESS') {
+              fetchJobDetails();
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
             event: '*',
             schema: 'public',
             table: 'mechanic_media',

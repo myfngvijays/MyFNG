@@ -8,11 +8,13 @@ import {
   Alert,
   Linking,
   RefreshControl,
+  BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
 import type { PickupTracking, ServiceLead } from '../../../../../shared/types';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { useNavigation } from '@react-navigation/native';
 
 interface Props {
   leadId: string;
@@ -35,10 +37,24 @@ export default function PickupJobDetailScreen({
   onNavigate,
   onReportIncident,
 }: Props) {
+  const navigation = useNavigation();
   const [lead, setLead] = useState<ServiceLead | null>(null);
   const [tracking, setTracking] = useState<PickupTracking | null>(null);
   const [photoCount, setPhotoCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (onBack) {
+        onBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [onBack]);
 
   useEffect(() => {
     fetchLeadDetails();

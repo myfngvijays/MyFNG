@@ -12,12 +12,15 @@ import {
   RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
+import { useNavigation } from '@react-navigation/native';
 
-export default function TeamOverviewScreen({ navigation }: any) {
+export default function TeamOverviewScreen() {
+  const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);

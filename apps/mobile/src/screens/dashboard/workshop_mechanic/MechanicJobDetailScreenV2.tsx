@@ -10,11 +10,13 @@ import {
   TextInput,
   Image,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 interface JobDetail {
   id: string;
@@ -42,7 +44,8 @@ interface JobDetail {
   work_notes: string;
 }
 
-export default function MechanicJobDetailScreen({ route, navigation }: any) {
+export default function MechanicJobDetailScreen({ route }: any) {
+  const navigation = useNavigation();
   const { jobId } = route.params;
   const [job, setJob] = useState<JobDetail | null>(null);
   const [checklist, setChecklist] = useState<any[]>([]);
@@ -54,6 +57,19 @@ export default function MechanicJobDetailScreen({ route, navigation }: any) {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedCategory, setSelectedCategory] = useState('BEFORE');
   const { user } = useAuth();
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     fetchJobDetail();

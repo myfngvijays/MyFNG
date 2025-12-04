@@ -8,13 +8,16 @@ import {
   RefreshControl,
   ActivityIndicator,
   Dimensions,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
 export default function ReportsScreen() {
+  const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<'TODAY' | 'WEEK' | 'MONTH'>('WEEK');
@@ -38,6 +41,19 @@ export default function ReportsScreen() {
   useEffect(() => {
     fetchWorkshopId();
   }, []);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     if (workshopId) {

@@ -23,21 +23,27 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
+    // Get user profile with role join
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, role, workshop_id')
-      .eq('email', user.email)
+      .select('id, role_id, workshop_id, roles(role_code, role_name)')
+      .eq('id', user.id)
       .single();
 
     if (profileError || !userProfile) {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
-    // Verify user has billing permissions
-    const allowedRoles = ['super_admin', 'sub_admin', 'workshop_admin'];
-    if (!allowedRoles.includes(userProfile.role)) {
-      return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
+    // Get role code
+    const roleCode = (userProfile.roles as any)?.role_code;
+
+    // Verify user has billing permissions - allow advisor and admin
+    const allowedRoles = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'];
+    if (!allowedRoles.includes(roleCode)) {
+      return NextResponse.json({ 
+        error: 'Forbidden: Insufficient permissions',
+        current_role: roleCode
+      }, { status: 403 });
     }
 
     const leadId = params.id;
@@ -76,14 +82,21 @@ export async function POST(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
-    // Verify lead is ready for billing
-    const validStatuses = ['QC_APPROVED', 'READY_FOR_BILLING', 'AUDIT_APPROVED'];
+    // Verify lead is ready for billing - allow READY_FOR_DELIVERY for advisor
+    const validStatuses = ['QC_APPROVED', 'READY_FOR_BILLING', 'AUDIT_APPROVED', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
     if (!validStatuses.includes(lead.status)) {
       return NextResponse.json({ 
         error: 'Lead not ready for billing',
         current_status: lead.status,
-        hint: 'Lead must be QC approved or audit approved'
+        hint: 'Lead must be QC approved, audit approved, or ready for delivery'
       }, { status: 400 });
+    }
+
+    // Verify user belongs to the same workshop (for workshop staff)
+    if (['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode)) {
+      if (!userProfile.workshop_id || userProfile.workshop_id !== lead.workshop_id) {
+        return NextResponse.json({ error: 'Forbidden: Lead not in your workshop' }, { status: 403 });
+      }
     }
 
     // Check if invoice already exists
@@ -277,7 +290,11 @@ export async function POST(
 
     if (invoiceError) {
       console.error('Error creating invoice:', invoiceError);
-      return NextResponse.json({ error: 'Failed to generate invoice' }, { status: 500 });
+      console.error('Invoice error details:', JSON.stringify(invoiceError, null, 2));
+      return NextResponse.json({ 
+        error: 'Failed to generate invoice',
+        details: invoiceError.message 
+      }, { status: 500 });
     }
 
     // Update lead with invoice details
@@ -355,7 +372,7 @@ export async function POST(
       entityType: 'invoice',
       entityId: invoice.id,
       actorId: userProfile.id,
-      actorRole: userProfile.role,
+      actorRole: roleCode,
       eventData: {
         invoice_number: invoiceNumber,
         lead_id: leadId,

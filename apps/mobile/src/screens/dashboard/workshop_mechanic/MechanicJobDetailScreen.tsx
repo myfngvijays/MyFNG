@@ -8,10 +8,12 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 interface JobDetail {
   id: string;
@@ -50,8 +52,10 @@ interface ChecklistItem {
   completed_at?: string;
 }
 
-export default function MechanicJobDetailScreen({ route, navigation }: any) {
-  const { jobId } = route.params;
+export default function MechanicJobDetailScreen() {
+  const navigation = useNavigation();
+  const route = useRoute();
+  const { jobId } = route.params as { jobId: string };
   const [job, setJob] = useState<JobDetail | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [workNotes, setWorkNotes] = useState('');
@@ -61,8 +65,63 @@ export default function MechanicJobDetailScreen({ route, navigation }: any) {
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const { user } = useAuth();
 
+  // Handle hardware back button
   useEffect(() => {
-    fetchJobDetail();
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
+
+  useEffect(() => {
+    if (jobId) {
+      fetchJobDetail();
+
+      // Setup realtime subscription for job updates
+      const channel = supabase
+        .channel(`mechanic-job-${jobId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'mechanic_jobs',
+            filter: `lead_id=eq.${jobId}`
+          },
+          () => {
+            console.log('Mechanic job updated in real-time');
+            fetchJobDetail();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'service_leads',
+            filter: `id=eq.${jobId}`
+          },
+          (payload) => {
+            console.log('Lead status updated in real-time:', payload);
+            // If status changed to IN_PROGRESS (sent back), refresh immediately
+            if (payload.new && payload.new.status === 'IN_PROGRESS') {
+              fetchJobDetail();
+            }
+          }
+        )
+        .subscribe((status) => {
+          console.log('Mechanic job subscription status:', status);
+        });
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, [jobId]);
 
   async function fetchJobDetail() {

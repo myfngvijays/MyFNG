@@ -24,6 +24,12 @@ import SystemSettingsScreen from './superadmin/SystemSettingsScreen';
 import FinancePayoutScreen from './superadmin/FinancePayoutScreen';
 import FraudDetectionScreen from './superadmin/FraudDetectionScreen';
 import AuditLogsScreen from './superadmin/AuditLogsScreen';
+import InventoryProductsScreen from './superadmin/InventoryProductsScreen';
+import InventoryPackagesScreen from './superadmin/InventoryPackagesScreen';
+import InventoryPackageDetailScreen from './superadmin/InventoryPackageDetailScreen';
+import InventoryZonesScreen from './superadmin/InventoryZonesScreen';
+import InventoryPricingScreen from './superadmin/InventoryPricingScreen';
+import InventoryServicePricingScreen from './superadmin/InventoryServicePricingScreen';
 
 export default function SuperAdminDashboard() {
   const navigation = useNavigation();
@@ -368,9 +374,10 @@ export default function SuperAdminDashboard() {
   };
 
   const [currentScreen, setCurrentScreen] = useState('dashboard');
+  const [routeParams, setRouteParams] = useState<any>({});
   const [screenParams, setScreenParams] = useState<any>({});
 
-  const handleNavigation = (screen: string) => {
+  const handleNavigation = (screen: string, params?: any) => {
     const screenMap: { [key: string]: string } = {
       'workshops': 'WorkshopManagement',
       'users': 'UserRoleManagement',
@@ -380,20 +387,32 @@ export default function SuperAdminDashboard() {
       'leads': 'LeadsManagement',
       'fraud': 'FraudDetection',
       'audit': 'AuditLogs',
+      'inventory-products': 'InventoryProducts',
+      'inventory-packages': 'InventoryPackages',
+      'inventory-package-detail': 'InventoryPackageDetail',
+      'inventory-zones': 'InventoryZones',
+      'inventory-pricing': 'InventoryPricing',
+      'inventory-service-pricing': 'InventoryServicePricing',
     };
     
     const screenName = screenMap[screen];
     if (screenName) {
       setCurrentScreen(screenName);
+      if (params) setScreenParams(params);
+    } else {
+      setCurrentScreen(screen);
+      if (params) setScreenParams(params);
     }
   };
 
   const navigationObj = {
     navigate: (screen: string, params?: any) => {
-      setCurrentScreen(screen);
-      if (params) setScreenParams(params);
+      handleNavigation(screen, params);
     },
-    goBack: () => setCurrentScreen('dashboard'),
+    goBack: () => {
+      setCurrentScreen('dashboard');
+      setScreenParams({});
+    },
   };
 
   // Render different screens based on currentScreen
@@ -431,6 +450,30 @@ export default function SuperAdminDashboard() {
 
   if (currentScreen === 'AuditLogs') {
     return <AuditLogsScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'InventoryProducts') {
+    return <InventoryProductsScreen navigation={navigationObj} />;
+  }
+
+  if (currentScreen === 'InventoryPackages') {
+    return <InventoryPackagesScreen navigation={navigationObj} />;
+  }
+
+  if (currentScreen === 'InventoryPackageDetail') {
+    return <InventoryPackageDetailScreen navigation={navigationObj} route={{ params: screenParams }} />;
+  }
+
+  if (currentScreen === 'InventoryZones') {
+    return <InventoryZonesScreen navigation={navigationObj} />;
+  }
+
+  if (currentScreen === 'InventoryPricing') {
+    return <InventoryPricingScreen navigation={navigationObj} />;
+  }
+
+  if (currentScreen === 'InventoryServicePricing') {
+    return <InventoryServicePricingScreen navigation={navigationObj} />;
   }
 
   if (loading) {
@@ -690,6 +733,104 @@ export default function SuperAdminDashboard() {
           </View>
         </View>
 
+        {/* Quick Actions - Inventory Management */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📦 Inventory Management</Text>
+          <View style={styles.quickActionsGrid}>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('inventory-products')}
+            >
+              <Text style={styles.quickActionIcon}>📦</Text>
+              <Text style={styles.quickActionLabel}>Products</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('inventory-packages')}
+            >
+              <Text style={styles.quickActionIcon}>📋</Text>
+              <Text style={styles.quickActionLabel}>Packages</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('inventory-zones')}
+            >
+              <Text style={styles.quickActionIcon}>🗺️</Text>
+              <Text style={styles.quickActionLabel}>Zones</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('inventory-pricing')}
+            >
+              <Text style={styles.quickActionIcon}>💰</Text>
+              <Text style={styles.quickActionLabel}>Product Pricing</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('inventory-service-pricing')}
+            >
+              <Text style={styles.quickActionIcon}>🔧</Text>
+              <Text style={styles.quickActionLabel}>Service Pricing</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('workshops')}
+            >
+              <Text style={styles.quickActionIcon}>🏭</Text>
+              <Text style={styles.quickActionLabel}>Workshops</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Quick Actions - System Management */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>⚙️ System Management</Text>
+          <View style={styles.quickActionsGrid}>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('users')}
+            >
+              <Text style={styles.quickActionIcon}>👥</Text>
+              <Text style={styles.quickActionLabel}>Users</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('leads')}
+            >
+              <Text style={styles.quickActionIcon}>📋</Text>
+              <Text style={styles.quickActionLabel}>Leads</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('reports')}
+            >
+              <Text style={styles.quickActionIcon}>📊</Text>
+              <Text style={styles.quickActionLabel}>Reports</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('audit')}
+            >
+              <Text style={styles.quickActionIcon}>🔍</Text>
+              <Text style={styles.quickActionLabel}>Audit Logs</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('fraud')}
+            >
+              <Text style={styles.quickActionIcon}>🚨</Text>
+              <Text style={styles.quickActionLabel}>Fraud</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => handleNavigation('finance')}
+            >
+              <Text style={styles.quickActionIcon}>💰</Text>
+              <Text style={styles.quickActionLabel}>Finance</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -888,6 +1029,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textLight,
     marginTop: 4,
+    fontFamily: FONTS.family,
+  },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  quickActionCard: {
+    width: '23%',
+    minWidth: 90,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  quickActionIcon: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
+  quickActionLabel: {
+    fontSize: 12,
+    color: COLORS.text,
+    textAlign: 'center',
     fontFamily: FONTS.family,
   },
 });

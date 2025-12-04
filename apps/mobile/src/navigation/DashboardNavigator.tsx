@@ -23,6 +23,8 @@ import DailyReportScreen from '../screens/dashboard/workshop_supervisor/DailyRep
 import PickupDeliveryTrackingScreen from '../screens/dashboard/workshop_supervisor/PickupDeliveryTrackingScreen';
 import SupervisorProfileScreen from '../screens/dashboard/workshop_supervisor/SupervisorProfileScreen';
 import QCCheckScreen from '../screens/dashboard/workshop_supervisor/QCCheckScreen';
+import QCReviewScreen from '../screens/dashboard/workshop_supervisor/QCReviewScreen';
+import PendingLeadsScreen from '../screens/dashboard/workshop_supervisor/PendingLeadsScreen';
 import ExtraWorkApprovalScreen from '../screens/dashboard/workshop_supervisor/ExtraWorkApprovalScreen';
 import SupervisorAnalyticsScreen from '../screens/dashboard/workshop_supervisor/SupervisorAnalyticsScreen';
 import JobMonitoringScreen from '../screens/dashboard/workshop_supervisor/JobMonitoringScreen';
@@ -362,6 +364,16 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="QCCheck" 
           component={QCCheckScreen}
           options={{ title: 'QC Queue' }}
+        />
+        <Stack.Screen 
+          name="QCReview" 
+          component={QCReviewScreen}
+          options={{ title: 'QC Review' }}
+        />
+        <Stack.Screen 
+          name="PendingLeads" 
+          component={PendingLeadsScreen}
+          options={{ title: 'Pending Leads' }}
         />
         <Stack.Screen 
           name="ExtraWorkApproval" 

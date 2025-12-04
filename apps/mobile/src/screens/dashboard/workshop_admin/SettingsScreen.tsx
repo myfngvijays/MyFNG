@@ -9,9 +9,11 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
 
 interface WorkshopSettings {
   id: string;
@@ -30,6 +32,7 @@ interface WorkshopSettings {
 }
 
 export default function SettingsScreen() {
+  const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [workshopId, setWorkshopId] = useState<string | null>(null);
@@ -38,6 +41,19 @@ export default function SettingsScreen() {
   useEffect(() => {
     fetchWorkshopId();
   }, []);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     if (workshopId) {

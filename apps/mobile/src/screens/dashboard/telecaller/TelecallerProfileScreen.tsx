@@ -9,7 +9,9 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  BackHandler
 } from 'react-native';
+import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../../utils/constants';
 
@@ -28,7 +30,7 @@ interface UserProfile {
   };
 }
 
-export default function TelecallerProfileScreen() {
+export default function TelecallerProfileScreen({ navigation }: any) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -42,6 +44,19 @@ export default function TelecallerProfileScreen() {
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   const fetchProfile = async () => {
     try {
@@ -143,10 +158,19 @@ export default function TelecallerProfileScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      {/* Header */}
+      {/* Header with Back Button */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Profile</Text>
-        <Text style={styles.headerSubtitle}>Manage your personal information</Text>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => navigation?.goBack()}
+        >
+          <Icon name="arrow-left" size={24} color="#fff" />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>My Profile</Text>
+          <Text style={styles.headerSubtitle}>Manage your personal information</Text>
+        </View>
+        <View style={{ width: 40 }} />
       </View>
 
       {/* Profile Image Section */}
@@ -347,16 +371,25 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     padding: 20,
     paddingTop: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: 'bold',
     color: COLORS.white,
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: COLORS.white,
-    marginTop: 5,
+    marginTop: 2,
     opacity: 0.9,
   },
   imageSection: {

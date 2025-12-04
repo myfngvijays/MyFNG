@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
+  BackHandler,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -18,6 +19,7 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
 import Icon from '../../../components/Icon';
+import { useNavigation } from '@react-navigation/native';
 
 interface PhotoState {
   type: string;
@@ -44,7 +46,8 @@ const REQUIRED_AFTER_PHOTOS = [
   { type: 'AFTER_ODOMETER', label: 'Final Odometer Reading', required: true },
 ];
 
-export default function AfterServicePhotoScreen({ route, navigation }: Props) {
+export default function AfterServicePhotoScreen({ route }: Props) {
+  const navigation = useNavigation();
   const { jobId, leadId } = route.params;
   const { user } = useAuth();
   const [photos, setPhotos] = useState<PhotoState[]>([]);
@@ -58,6 +61,19 @@ export default function AfterServicePhotoScreen({ route, navigation }: Props) {
   const [checklistCompleted, setChecklistCompleted] = useState(false);
   const [partsRecorded, setPartsRecorded] = useState(false);
   const [workNotes, setWorkNotes] = useState('');
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     requestPermissions();

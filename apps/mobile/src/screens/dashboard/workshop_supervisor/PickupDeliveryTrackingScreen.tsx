@@ -4,16 +4,31 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, BackHandler } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
+import { useNavigation } from '@react-navigation/native';
 
 export default function PickupDeliveryTrackingScreen() {
+  const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<any[]>([]);
   const [workshopId, setWorkshopId] = useState<string | null>(null);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     initializeScreen();

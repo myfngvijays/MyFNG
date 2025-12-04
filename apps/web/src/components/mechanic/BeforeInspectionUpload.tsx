@@ -184,7 +184,18 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
         body: formData,
       });
 
-      const result = await response.json();
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      let result: any;
+      
+      if (contentType && contentType.includes('application/json')) {
+        result = await response.json();
+      } else {
+        // If not JSON, get text response
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
 
       if (!response.ok) {
         console.error('Upload error response:', result);

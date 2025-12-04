@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  BackHandler,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -23,6 +24,18 @@ interface Props {
 }
 
 export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Props) {
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (onBack) {
+        onBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [onBack]);
   const [incidentType, setIncidentType] = useState<IncidentType | ''>('');
   const [severity, setSeverity] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'>('MEDIUM');
   const [description, setDescription] = useState('');

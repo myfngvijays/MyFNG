@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
+  BackHandler,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -18,6 +19,7 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
 import Icon from '../../../components/Icon';
+import { useNavigation } from '@react-navigation/native';
 
 interface PhotoState {
   type: string;
@@ -44,7 +46,8 @@ const REQUIRED_PHOTOS = [
   { type: 'BEFORE_TYRE', label: 'Tyres (Optional)', required: false },
 ];
 
-export default function BeforeInspectionScreen({ route, navigation }: Props) {
+export default function BeforeInspectionScreen({ route }: Props) {
+  const navigation = useNavigation();
   const { jobId, leadId } = route.params;
   const { user } = useAuth();
   const [photos, setPhotos] = useState<PhotoState[]>([]);
@@ -56,6 +59,19 @@ export default function BeforeInspectionScreen({ route, navigation }: Props) {
   const [showOdometerModal, setShowOdometerModal] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   const [job, setJob] = useState<any>(null);
+
+  // Handle hardware back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation?.goBack) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useEffect(() => {
     requestPermissions();
