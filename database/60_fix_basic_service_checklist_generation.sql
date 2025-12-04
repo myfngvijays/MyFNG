@@ -15,6 +15,7 @@ CREATE OR REPLACE FUNCTION generate_service_checklist(
 )
 RETURNS uuid
 LANGUAGE plpgsql
+SECURITY DEFINER
 AS $$
 DECLARE
   v_checklist_id uuid;
@@ -364,4 +365,8 @@ $$;
 
 -- Run the function to fix existing leads (optional - can be run manually)
 -- SELECT * FROM regenerate_missing_checklists();
+
+-- Grant execute permission on the function to authenticated users
+GRANT EXECUTE ON FUNCTION generate_service_checklist(uuid, uuid, varchar) TO authenticated;
+GRANT EXECUTE ON FUNCTION regenerate_missing_checklists() TO authenticated;
 

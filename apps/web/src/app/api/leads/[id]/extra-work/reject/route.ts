@@ -30,7 +30,7 @@ export async function POST(
     // Get user profile to verify supervisor role
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('role_id, workshop_id, full_name, roles!inner(role_code)')
+      .select('id, role_id, workshop_id, full_name, roles!inner(role_code)')
       .eq('id', user.id)
       .single();
 
@@ -58,17 +58,35 @@ export async function POST(
     // Fetch the extra charge
     const { data: extraCharge, error: chargeError } = await supabase
       .from('lead_extra_charges')
-      .select('*, lead:service_leads!inner(workshop_id)')
+      .select('*')
       .eq('id', charge_id)
       .eq('lead_id', leadId)
       .single();
 
     if (chargeError || !extraCharge) {
-      return NextResponse.json({ error: 'Extra charge not found' }, { status: 404 });
+      console.error('Error fetching extra charge:', chargeError);
+      return NextResponse.json({ 
+        error: 'Extra charge not found',
+        details: chargeError?.message 
+      }, { status: 404 });
+    }
+
+    // Fetch lead to verify workshop ownership
+    const { data: lead, error: leadError } = await supabase
+      .from('service_leads')
+      .select('workshop_id')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !lead) {
+      console.error('Error fetching lead:', leadError);
+      return NextResponse.json({ 
+        error: 'Lead not found',
+        details: leadError?.message 
+      }, { status: 404 });
     }
 
     // Verify workshop ownership
-    const lead = extraCharge.lead as any;
     if (lead.workshop_id !== userProfile.workshop_id) {
       return NextResponse.json({ error: 'Forbidden: Lead belongs to different workshop' }, { status: 403 });
     }
@@ -82,36 +100,53 @@ export async function POST(
 
     // Reject the extra charge
     const combinedNotes = reason + (notes ? `\n\nAdditional notes: ${notes}` : '');
+    const now = new Date().toISOString();
 
     const { error: updateError } = await supabase
       .from('lead_extra_charges')
       .update({
         status: 'REJECTED',
-        supervisor_approved_by: user.id,
+        supervisor_approved_by: userProfile.id,
         supervisor_approval_notes: combinedNotes,
-        approval_responded_at: new Date().toISOString()
+        approval_responded_at: now
       })
       .eq('id', charge_id);
 
     if (updateError) {
       console.error('Error rejecting extra charge:', updateError);
-      return NextResponse.json({ error: 'Failed to reject extra charge' }, { status: 500 });
+      console.error('Update error details:', {
+        code: updateError.code,
+        message: updateError.message,
+        hint: updateError.hint,
+        details: updateError.details
+      });
+      return NextResponse.json({ 
+        error: 'Failed to reject extra charge',
+        details: updateError.message,
+        code: updateError.code
+      }, { status: 500 });
     }
 
-    // Log activity
-    await supabase.from('lead_events').insert({
-      lead_id: leadId,
-      event_type: 'EXTRA_WORK_REJECTED',
-      event_description: `Extra work charge of ₹${extraCharge.amount} rejected by supervisor ${userProfile.full_name}. Reason: ${reason}`,
-      created_by: user.id,
-      event_data: {
-        charge_id: charge_id,
-        amount: extraCharge.amount,
-        description: extraCharge.description,
-        rejection_reason: reason,
-        notes: notes
-      }
-    });
+    // Log activity (don't fail request if logging fails)
+    try {
+      await supabase.from('lead_activities').insert({
+        lead_id: leadId,
+        user_id: userProfile.id,
+        activity_type: 'EXTRA_WORK_REJECTED',
+        description: `Extra work charge of ₹${extraCharge.amount} rejected by supervisor ${userProfile.full_name}. Reason: ${reason}`,
+        metadata: {
+          charge_id: charge_id,
+          amount: extraCharge.amount,
+          description: extraCharge.description,
+          rejection_reason: reason,
+          notes: notes,
+          supervisor_id: userProfile.id
+        }
+      });
+    } catch (logError) {
+      // Log activity error but don't fail the request
+      console.error('Error logging activity:', logError);
+    }
 
     return NextResponse.json({
       success: true,

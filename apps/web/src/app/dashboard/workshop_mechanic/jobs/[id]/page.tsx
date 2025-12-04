@@ -312,6 +312,116 @@ export default function MechanicJobDetailPage() {
           }
         } else {
           console.log('No checklist found for lead_id:', leadId, 'mechanic_id:', jobData.mechanic_id);
+          
+          // Auto-generate checklist if it doesn't exist
+          // Try to get service type from multiple sources
+          let serviceTypeIds = jobData.service_leads?.service_type_ids;
+          const legacyServiceType = jobData.service_leads?.service_type;
+          
+          // Parse service_type_ids if it's a string (JSONB from Supabase)
+          if (typeof serviceTypeIds === 'string') {
+            try {
+              serviceTypeIds = JSON.parse(serviceTypeIds);
+            } catch (e) {
+              console.error('Failed to parse service_type_ids:', e);
+              serviceTypeIds = null;
+            }
+          }
+          
+          if (serviceTypeIds || legacyServiceType) {
+            try {
+              // Get service type name
+              let serviceTypeName = '';
+              
+              if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
+                // Fetch service type name from database
+                const { data: serviceType, error: serviceTypeError } = await supabase
+                  .from('service_types')
+                  .select('name')
+                  .eq('id', serviceTypeIds[0])
+                  .single();
+                
+                if (serviceTypeError) {
+                  console.error('Error fetching service type:', serviceTypeError);
+                }
+                
+                if (serviceType?.name) {
+                  serviceTypeName = serviceType.name;
+                }
+              }
+              
+              // Fallback to legacy service_type column
+              if (!serviceTypeName && legacyServiceType) {
+                serviceTypeName = legacyServiceType;
+              }
+              
+              if (serviceTypeName) {
+                console.log('Auto-generating checklist for service type:', serviceTypeName);
+                
+                // Call API endpoint to generate checklist
+                try {
+                  const response = await fetch(`/api/mechanic/jobs/${leadId}/generate-checklist`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                  });
+                  
+                  const result = await response.json();
+                  
+                  if (response.ok && result.checklist) {
+                    console.log('Checklist generated successfully');
+                    
+                    // Parse checklist items
+                    let items = result.checklist.checklist_items;
+                    if (typeof items === 'string') {
+                      try {
+                        items = JSON.parse(items);
+                      } catch (e) {
+                        console.error('Failed to parse checklist_items:', e);
+                        items = [];
+                      }
+                    }
+                    
+                    if (items && items.length > 0) {
+                      setChecklist(items);
+                      
+                      // Auto-set active category
+                      const categories = Array.from(new Set(items.map((item: ChecklistItem) => item.category).filter(Boolean))) as string[];
+                      const firstIncompleteCategory = categories.find((cat: string) => {
+                        const categoryItems = items.filter((item: ChecklistItem) => item.category === cat);
+                        return categoryItems.some((item: ChecklistItem) => item.status !== 'COMPLETED');
+                      });
+                      if (firstIncompleteCategory && !activeCategory) {
+                        setActiveCategory(firstIncompleteCategory);
+                      }
+                      return; // Exit early since we got the checklist
+                    } else {
+                      // If checklist was created but has no items, wait a bit and refetch
+                      setTimeout(() => {
+                        fetchJobDetails();
+                      }, 1000);
+                    }
+                  } else {
+                    console.error('Error generating checklist:', result.error, result.details);
+                    // Don't retry automatically - let user click the button manually
+                  }
+                } catch (error) {
+                  console.error('Error calling generate-checklist API:', error);
+                }
+              } else {
+                console.log('Service type name not found, cannot auto-generate checklist', {
+                  service_type_ids: serviceTypeIds,
+                  service_type: legacyServiceType
+                });
+              }
+            } catch (error) {
+              console.error('Error in auto-generate checklist:', error);
+            }
+          } else {
+            console.log('No service type information found for this lead');
+          }
+          
           setChecklist([]);
         }
       }
@@ -1234,10 +1344,73 @@ export default function MechanicJobDetailPage() {
 
         {activeTab === 'checklist' && (
           <div className="card">
-            <h2 className="text-xl font-bold mb-4">Service Checklist</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Service Checklist</h2>
+              {checklist.length === 0 && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch(`/api/mechanic/jobs/${leadId}/generate-checklist`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                      });
+                      
+                      const result = await response.json();
+                      
+                      if (response.ok && result.checklist) {
+                        // Parse checklist items
+                        let items = result.checklist.checklist_items;
+                        if (typeof items === 'string') {
+                          try {
+                            items = JSON.parse(items);
+                          } catch (e) {
+                            console.error('Failed to parse checklist_items:', e);
+                            items = [];
+                          }
+                        }
+                        
+                        if (items && items.length > 0) {
+                          setChecklist(items);
+                          
+                          // Auto-set active category
+                          const categories = Array.from(new Set(items.map((item: ChecklistItem) => item.category).filter(Boolean))) as string[];
+                          const firstIncompleteCategory = categories.find((cat: string) => {
+                            const categoryItems = items.filter((item: ChecklistItem) => item.category === cat);
+                            return categoryItems.some((item: ChecklistItem) => item.status !== 'COMPLETED');
+                          });
+                          if (firstIncompleteCategory && !activeCategory) {
+                            setActiveCategory(firstIncompleteCategory);
+                          }
+                        } else {
+                          alert('Checklist generated but has no items. Please refresh the page.');
+                          setTimeout(() => fetchJobDetails(), 1000);
+                        }
+                      } else {
+                        alert(`Failed to generate checklist: ${result.error || 'Unknown error'}`);
+                      }
+                    } catch (error) {
+                      console.error('Error generating checklist:', error);
+                      alert('Failed to generate checklist. Please try again.');
+                    }
+                  }}
+                  className="btn-primary flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Generate Checklist
+                </button>
+              )}
+            </div>
             
-            {/* Group by category if categories exist */}
-            {checklist.some(item => item.category) ? (
+            {checklist.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p className="mb-4">No checklist available for this job.</p>
+                <p className="text-sm">Click "Generate Checklist" button above to create one.</p>
+              </div>
+            ) : (
+              /* Group by category if categories exist */
+              checklist.some(item => item.category) ? (
               <div className="space-y-4">
                 {Array.from(new Set(checklist.map(item => item.category).filter(Boolean))).map((category) => {
                   if (!category) return null;
@@ -1469,6 +1642,7 @@ export default function MechanicJobDetailPage() {
                   </tbody>
                 </table>
               </div>
+            )
             )}
           </div>
         )}

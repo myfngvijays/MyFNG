@@ -52,26 +52,71 @@ export default function SupervisorJobDetailPage() {
       fetchJobDetails();
     }
 
-    // Real-time updates
+    // Real-time updates for service_leads status changes
     const supabase = createClient();
     const channel = supabase
-      .channel(`job-${jobId}`)
+      .channel(`job-${jobId}-realtime`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'service_leads',
+          filter: `id=eq.${jobId}`
+        },
+        (payload) => {
+          console.log('Real-time status update received:', payload);
+          // Immediately update status if it changed
+          if (payload.new && payload.new.status) {
+            setLead((prevLead: any) => {
+              if (!prevLead) return prevLead;
+              return {
+                ...prevLead,
+                status: payload.new.status,
+                sla_status: payload.new.sla_status || prevLead.sla_status,
+                priority: payload.new.priority || prevLead.priority,
+                updated_at: payload.new.updated_at || prevLead.updated_at
+              };
+            });
+          }
+          // Also refetch full details to ensure consistency
+          setTimeout(() => {
+            fetchJobDetails();
+          }, 500);
+        }
+      )
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'service_leads',
-          filter: `id=eq.${jobId}`
+          table: 'mechanic_jobs',
+          filter: `lead_id=eq.${jobId}`
         },
         () => {
+          console.log('Mechanic job updated, refreshing...');
           fetchJobDetails();
         }
       )
-      .subscribe();
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'lead_extra_charges',
+          filter: `lead_id=eq.${jobId}`
+        },
+        () => {
+          console.log('Extra charges updated, refreshing...');
+          fetchJobDetails();
+        }
+      )
+      .subscribe((status) => {
+        console.log('Real-time subscription status:', status);
+      });
 
     return () => {
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, [jobId]);
 

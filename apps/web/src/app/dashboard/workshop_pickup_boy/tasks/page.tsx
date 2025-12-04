@@ -19,8 +19,10 @@ interface PickupTask {
   city: string;
   pincode: string;
   status: string;
-  preferred_date: string;
-  preferred_time_slot: string;
+  preferred_date?: string | null;
+  preferred_time_slot?: string | null;
+  preferred_slot_start?: string | null;
+  preferred_slot_end?: string | null;
   pickup_otp: string;
   pickup_otp_verified_at: string;
 }
@@ -225,16 +227,59 @@ export default function PickupTasksPage() {
                         <span className={statusBadge.class}>{statusBadge.text}</span>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-gray-600">Preferred Date</p>
-                        <p className="font-semibold">
-                          {task.preferred_date 
-                            ? new Date(task.preferred_date).toLocaleDateString()
-                            : 'Not specified'
+                        <p className="text-sm text-gray-600">Preferred Date & Time</p>
+                        {(() => {
+                          // Check for preferred_date (DATE column)
+                          if (task.preferred_date) {
+                            const date = new Date(task.preferred_date);
+                            return (
+                              <>
+                                <p className="font-semibold">
+                                  {date.toLocaleDateString('en-IN', { 
+                                    weekday: 'short',
+                                    year: 'numeric', 
+                                    month: 'short', 
+                                    day: 'numeric' 
+                                  })}
+                                </p>
+                                {task.preferred_time_slot && (
+                                  <p className="text-sm text-gray-600">{task.preferred_time_slot}</p>
+                                )}
+                              </>
+                            );
                           }
-                        </p>
-                        {task.preferred_time_slot && (
-                          <p className="text-sm text-gray-600">{task.preferred_time_slot}</p>
-                        )}
+                          // Check for preferred_slot_start (TIMESTAMP column)
+                          if (task.preferred_slot_start) {
+                            const startDate = new Date(task.preferred_slot_start);
+                            const endDate = task.preferred_slot_end ? new Date(task.preferred_slot_end) : null;
+                            return (
+                              <>
+                                <p className="font-semibold">
+                                  {startDate.toLocaleDateString('en-IN', { 
+                                    weekday: 'short',
+                                    year: 'numeric', 
+                                    month: 'short', 
+                                    day: 'numeric' 
+                                  })}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  {startDate.toLocaleTimeString('en-IN', { 
+                                    hour: '2-digit', 
+                                    minute: '2-digit',
+                                    hour12: true 
+                                  })}
+                                  {endDate && ` - ${endDate.toLocaleTimeString('en-IN', { 
+                                    hour: '2-digit', 
+                                    minute: '2-digit',
+                                    hour12: true 
+                                  })}`}
+                                </p>
+                              </>
+                            );
+                          }
+                          // No preferred date/time found
+                          return <p className="font-semibold text-gray-400">Not specified</p>;
+                        })()}
                       </div>
                     </div>
 

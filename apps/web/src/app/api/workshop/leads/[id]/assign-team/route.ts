@@ -55,8 +55,11 @@ export async function POST(
       notes 
     } = body;
 
-    if (!mechanic_id) {
-      return NextResponse.json({ error: 'Mechanic ID is required' }, { status: 400 });
+    // Allow partial assignments - at least one team member must be assigned
+    if (!mechanic_id && !supervisor_id && !pickup_boy_id) {
+      return NextResponse.json({ 
+        error: 'At least one team member (mechanic, supervisor, or pickup boy) must be assigned' 
+      }, { status: 400 });
     }
 
     const leadId = params.id;
@@ -83,26 +86,31 @@ export async function POST(
       // Don't block - allow reassignment even if status is not ideal
     }
 
-    // Verify mechanic exists and belongs to this workshop
-    const { data: mechanic, error: mechanicError } = await supabase
-      .from('users_login')
-      .select('id, full_name, email, role_id, workshop_id, roles(role_code, role_name)')
-      .eq('id', mechanic_id)
-      .eq('workshop_id', userProfile.workshop_id)
-      .maybeSingle();
+    // Verify mechanic exists and belongs to this workshop (only if mechanic_id is provided)
+    let mechanic = null;
+    if (mechanic_id) {
+      const { data: mechanicData, error: mechanicError } = await supabase
+        .from('users_login')
+        .select('id, full_name, email, role_id, workshop_id, roles(role_code, role_name)')
+        .eq('id', mechanic_id)
+        .eq('workshop_id', userProfile.workshop_id)
+        .maybeSingle();
 
-    if (mechanicError) {
-      console.error('Error fetching mechanic:', mechanicError);
-      return NextResponse.json({ error: 'Failed to verify mechanic' }, { status: 500 });
-    }
+      if (mechanicError) {
+        console.error('Error fetching mechanic:', mechanicError);
+        return NextResponse.json({ error: 'Failed to verify mechanic' }, { status: 500 });
+      }
 
-    if (!mechanic) {
-      return NextResponse.json({ error: 'Invalid mechanic or mechanic not in your workshop' }, { status: 400 });
-    }
+      if (!mechanicData) {
+        return NextResponse.json({ error: 'Invalid mechanic or mechanic not in your workshop' }, { status: 400 });
+      }
 
-    const mechanicRoleCode = (mechanic.roles as any)?.role_code;
-    if (mechanicRoleCode !== 'WORKSHOP_MECHANIC') {
-      return NextResponse.json({ error: 'Selected user is not a mechanic' }, { status: 400 });
+      const mechanicRoleCode = (mechanicData.roles as any)?.role_code;
+      if (mechanicRoleCode !== 'WORKSHOP_MECHANIC') {
+        return NextResponse.json({ error: 'Selected user is not a mechanic' }, { status: 400 });
+      }
+
+      mechanic = mechanicData;
     }
 
     // Verify supervisor if provided
@@ -171,21 +179,24 @@ export async function POST(
       nextStatus = 'ACCEPTED';
     }
     
-    // Update lead with team assignments
-    
-    const updatePayload = {
-      assigned_mechanic_id: mechanic_id,
-      mechanic_assigned_at: now,
+    // Update lead with team assignments (only update fields that are provided)
+    const updatePayload: any = {
       assigned_supervisor_id: supervisor_id || null,
       supervisor_assigned_at: supervisor_id ? now : null,
       assigned_pickup_boy_id: pickup_boy_id || null,
       pickup_assigned_at: pickup_boy_id ? now : null,
       assigned_by_workshop_admin_id: roleCode === 'WORKSHOP_ADMIN' ? userProfile.id : null,
       status: nextStatus,
-      pickup_status: pickup_boy_id ? 'ASSIGNED' : (lead.pickup_required ? 'PENDING' : 'NOT_REQUIRED'),
+      pickup_status: pickup_boy_id ? 'ASSIGNED' : (lead.pickup_required ? lead.pickup_status || 'PENDING' : 'NOT_REQUIRED'),
       internal_notes: notes || null,
       updated_at: now
     };
+
+    // Only update mechanic assignment if mechanic_id is provided
+    if (mechanic_id) {
+      updatePayload.assigned_mechanic_id = mechanic_id;
+      updatePayload.mechanic_assigned_at = now;
+    }
     
     const { data: updatedLead, error: updateError } = await supabase
       .from('service_leads')
@@ -216,105 +227,118 @@ export async function POST(
         reason: roleCode === 'WORKSHOP_ADMIN' 
           ? 'Team members assigned by workshop admin'
           : 'Team members assigned by workshop supervisor',
-        notes: `Mechanic: ${mechanic.full_name}${supervisor ? `, Supervisor: ${supervisor.full_name}` : ''}${pickupBoy ? `, Pickup Boy: ${pickupBoy.full_name}` : ''}`
+        notes: [
+          mechanic ? `Mechanic: ${mechanic.full_name}` : null,
+          supervisor ? `Supervisor: ${supervisor.full_name}` : null,
+          pickupBoy ? `Pickup Boy: ${pickupBoy.full_name}` : null
+        ].filter(Boolean).join(', ')
       });
 
     // Create activity log
+    const assignmentDescription = [
+      mechanic ? `Mechanic - ${mechanic.full_name}` : null,
+      supervisor ? `Supervisor - ${supervisor.full_name}` : null,
+      pickupBoy ? `Pickup Boy - ${pickupBoy.full_name}` : null
+    ].filter(Boolean).join(', ');
+
     await supabase
       .from('lead_activities')
       .insert({
         lead_id: leadId,
         user_id: userProfile.id,
         activity_type: 'TEAM_ASSIGNED',
-        description: `Team assigned: Mechanic - ${mechanic.full_name}`,
+        description: `Team assigned: ${assignmentDescription}`,
         old_status: lead.status,
         new_status: nextStatus,
         metadata: {
-          mechanic_id: mechanic_id,
-          mechanic_name: mechanic.full_name,
-          supervisor_id: supervisor_id,
-          supervisor_name: supervisor?.full_name,
-          pickup_boy_id: pickup_boy_id,
-          pickup_boy_name: pickupBoy?.full_name,
+          mechanic_id: mechanic_id || null,
+          mechanic_name: mechanic?.full_name || null,
+          supervisor_id: supervisor_id || null,
+          supervisor_name: supervisor?.full_name || null,
+          pickup_boy_id: pickup_boy_id || null,
+          pickup_boy_name: pickupBoy?.full_name || null,
           assigned_by: userProfile.id,
           assigned_at: now
         }
       });
 
-    // Create mechanic assignment record
-    await supabase
-      .from('mechanic_assignments')
-      .insert({
-        lead_id: leadId,
-        mechanic_id: mechanic_id,
-        assigned_by: userProfile.id,
-        assigned_at: now,
-        status: 'ACTIVE',
-        assignment_notes: notes
-      });
-
-    // CRITICAL: Create or update mechanic_jobs entry so mechanic can see the job
-    
-    // Check if mechanic_jobs record already exists
-    const { data: existingJob, error: checkError } = await supabase
-      .from('mechanic_jobs')
-      .select('id, mechanic_id, mechanic_status')
-      .eq('lead_id', leadId)
-      .maybeSingle(); // Use maybeSingle to avoid error when no record exists
-
-    if (checkError) {
-      console.error('Error checking existing job:', checkError);
+    // Create mechanic assignment record (only if mechanic_id is provided)
+    if (mechanic_id) {
+      await supabase
+        .from('mechanic_assignments')
+        .insert({
+          lead_id: leadId,
+          mechanic_id: mechanic_id,
+          assigned_by: userProfile.id,
+          assigned_at: now,
+          status: 'ACTIVE',
+          assignment_notes: notes
+        });
     }
 
-    if (existingJob) {
-      // Update existing record
-      const updateData = {
-        mechanic_id: mechanic_id,
-        assigned_by: userProfile.id,
-        mechanic_status: 'ASSIGNED',
-        job_priority: lead.lead_priority || 'NORMAL',
-        assigned_at: now,
-        updated_at: now,
-        work_notes: notes || null
-      };
-      
-      const { data: updatedJob, error: updateJobError } = await supabase
+    // CRITICAL: Create or update mechanic_jobs entry so mechanic can see the job (only if mechanic_id is provided)
+    if (mechanic_id) {
+      // Check if mechanic_jobs record already exists
+      const { data: existingJob, error: checkError } = await supabase
         .from('mechanic_jobs')
-        .update(updateData)
-        .eq('id', existingJob.id)
-        .select();
+        .select('id, mechanic_id, mechanic_status')
+        .eq('lead_id', leadId)
+        .maybeSingle(); // Use maybeSingle to avoid error when no record exists
 
-      if (updateJobError) {
-        console.error('Error updating mechanic job:', updateJobError);
-        return NextResponse.json({ 
-          error: 'Failed to update mechanic job',
-          details: updateJobError.message 
-        }, { status: 500 });
+      if (checkError) {
+        console.error('Error checking existing job:', checkError);
       }
-      
-    } else {
-      // Create new record
-      const insertData = {
-        lead_id: leadId,
-        mechanic_id: mechanic_id,
-        assigned_by: userProfile.id,
-        mechanic_status: 'ASSIGNED',
-        job_priority: lead.lead_priority || 'NORMAL',
-        assigned_at: now,
-        work_notes: notes || null
-      };
-      
-      const { data: newJob, error: mechanicJobError } = await supabase
-        .from('mechanic_jobs')
-        .insert(insertData)
-        .select();
 
-      if (mechanicJobError) {
-        console.error('Error creating mechanic job:', mechanicJobError);
-        return NextResponse.json({ 
-          error: 'Failed to create mechanic job',
-          details: mechanicJobError.message 
-        }, { status: 500 });
+      if (existingJob) {
+        // Update existing record
+        const updateData = {
+          mechanic_id: mechanic_id,
+          assigned_by: userProfile.id,
+          mechanic_status: 'ASSIGNED',
+          job_priority: lead.lead_priority || 'NORMAL',
+          assigned_at: now,
+          updated_at: now,
+          work_notes: notes || null
+        };
+        
+        const { data: updatedJob, error: updateJobError } = await supabase
+          .from('mechanic_jobs')
+          .update(updateData)
+          .eq('id', existingJob.id)
+          .select();
+
+        if (updateJobError) {
+          console.error('Error updating mechanic job:', updateJobError);
+          return NextResponse.json({ 
+            error: 'Failed to update mechanic job',
+            details: updateJobError.message 
+          }, { status: 500 });
+        }
+        
+      } else {
+        // Create new record
+        const insertData = {
+          lead_id: leadId,
+          mechanic_id: mechanic_id,
+          assigned_by: userProfile.id,
+          mechanic_status: 'ASSIGNED',
+          job_priority: lead.lead_priority || 'NORMAL',
+          assigned_at: now,
+          work_notes: notes || null
+        };
+        
+        const { data: newJob, error: mechanicJobError } = await supabase
+          .from('mechanic_jobs')
+          .insert(insertData)
+          .select();
+
+        if (mechanicJobError) {
+          console.error('Error creating mechanic job:', mechanicJobError);
+          return NextResponse.json({ 
+            error: 'Failed to create mechanic job',
+            details: mechanicJobError.message 
+          }, { status: 500 });
+        }
       }
     }
     
@@ -326,13 +350,15 @@ export async function POST(
       message: 'Team assigned successfully',
       lead: updatedLead,
       assignments: {
-        mechanic: mechanic,
-        supervisor: supervisor,
-        pickup_boy: pickupBoy
+        mechanic: mechanic || null,
+        supervisor: supervisor || null,
+        pickup_boy: pickupBoy || null
       },
       next_step: pickup_boy_id 
         ? 'Pickup boy will collect the vehicle from customer'
-        : 'Mechanic can start working on the job'
+        : mechanic_id
+        ? 'Mechanic can start working on the job'
+        : 'Team members assigned successfully'
     }, { status: 200 });
 
   } catch (error: any) {
