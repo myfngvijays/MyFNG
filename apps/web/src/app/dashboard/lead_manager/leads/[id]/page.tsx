@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
   CheckCircle, XCircle, Building, MapPin, Phone, Mail, Car,
@@ -14,7 +14,7 @@ import { toast } from 'react-hot-toast';
 export default function LeadReviewPage() {
   const params = useParams();
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);

@@ -14,24 +14,37 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile with role
+    // Get user profile
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, role, workshop_id, roles!role_id(role_code, role_name)')
+      .select('id, role_id, workshop_id')
       .eq('id', user.id)
       .single();
 
     if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+      console.error('User profile error:', profileError);
+      return NextResponse.json({ error: 'User profile not found', details: profileError?.message }, { status: 404 });
+    }
+
+    // Get role details
+    const { data: roleData, error: roleError } = await supabase
+      .from('roles')
+      .select('role_code')
+      .eq('id', userProfile.role_id)
+      .single();
+
+    if (roleError || !roleData) {
+      console.error('Role fetch error:', roleError);
+      return NextResponse.json({ error: 'Role not found', details: roleError?.message }, { status: 404 });
     }
 
     // Verify user is workshop admin or supervisor
-    const roleCode = (userProfile.roles as any)?.role_code;
+    const roleCode = roleData.role_code;
     const isWorkshopAdmin = roleCode === 'WORKSHOP_ADMIN';
     const isSupervisor = roleCode === 'WORKSHOP_SUPERVISOR';
     
     if (!isWorkshopAdmin && !isSupervisor) {
-      return NextResponse.json({ error: 'Forbidden: Workshop Admin or Supervisor only' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden: Workshop Admin or Supervisor only', roleCode }, { status: 403 });
     }
 
     const leadId = params.id;
@@ -133,10 +146,11 @@ export async function POST(
         : 'Please assign team members (Mechanic, Supervisor, Pickup Boy)'
     }, { status: 200 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in accept lead API:', error);
+    console.error('Error stack:', error.stack);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error.message || 'Unknown error occurred' },
       { status: 500 }
     );
   }

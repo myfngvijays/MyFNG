@@ -24,25 +24,41 @@ export async function POST(
       );
     }
 
-    // 2. Get user profile and role
+    // 2. Get user profile
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, role_id, workshop_id, full_name, roles!role_id(role_code)')
+      .select('id, role_id, workshop_id, full_name')
       .eq('id', user.id)
       .single();
 
     if (profileError || !userProfile) {
+      console.error('User profile error:', profileError);
       return NextResponse.json(
-        { success: false, error: 'User profile not found' },
+        { success: false, error: 'User profile not found', details: profileError?.message },
+        { status: 404 }
+      );
+    }
+
+    // Get role details
+    const { data: roleData, error: roleError } = await supabase
+      .from('roles')
+      .select('role_code')
+      .eq('id', userProfile.role_id)
+      .single();
+
+    if (roleError || !roleData) {
+      console.error('Role fetch error:', roleError);
+      return NextResponse.json(
+        { success: false, error: 'Role not found', details: roleError?.message },
         { status: 404 }
       );
     }
 
     // 3. Verify user is WORKSHOP_ADMIN or WORKSHOP_SUPERVISOR
-    const roleCode = (userProfile.roles as any)?.role_code;
+    const roleCode = roleData.role_code;
     if (roleCode !== 'WORKSHOP_ADMIN' && roleCode !== 'WORKSHOP_SUPERVISOR') {
       return NextResponse.json(
-        { success: false, error: 'Insufficient permissions. Only Workshop Admin can accept leads.' },
+        { success: false, error: 'Insufficient permissions. Only Workshop Admin can accept leads.', roleCode },
         { status: 403 }
       );
     }
@@ -162,10 +178,11 @@ export async function POST(
       lead: updatedLead,
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in accept lead API:', error);
+    console.error('Error stack:', error.stack);
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: 'Internal server error', details: error.message || 'Unknown error occurred' },
       { status: 500 }
     );
   }

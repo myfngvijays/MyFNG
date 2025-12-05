@@ -84,12 +84,13 @@ export default function WorkshopAdminPendingLeadsPage() {
 
       setWorkshopId(userProfile.workshop_id);
 
-      // Fetch leads with ASSIGNED status (waiting for workshop acceptance)
+      // Fetch leads waiting for workshop acceptance
+      // Include: ASSIGNED_TO_WORKSHOP, ASSIGNED, and VALIDATED (if workshop is already assigned)
       const { data: pendingLeads, error } = await supabase
         .from('service_leads')
         .select('*')
         .eq('workshop_id', userProfile.workshop_id)
-        .in('status', ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED'])
+        .in('status', ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED', 'VALIDATED'])
         .order('created_at', { ascending: true });
 
       if (error) {
