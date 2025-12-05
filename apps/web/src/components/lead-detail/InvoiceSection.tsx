@@ -19,17 +19,47 @@ interface Invoice {
   id: string;
   invoice_number: string;
   base_amount: number;
-  parts_amount: number;
-  extra_charges_amount: number;
+  parts_cost?: number;
+  parts_amount?: number;
+  extra_charges?: number;
+  extra_charges_amount?: number;
+  discount_amount?: number;
   subtotal: number;
-  cgst: number;
-  sgst: number;
+  sub_total?: number;
+  cgst?: number;
+  cgst_amount?: number;
+  sgst?: number;
+  sgst_amount?: number;
+  igst?: number;
+  igst_amount?: number;
+  total_tax?: number;
+  round_off_amount?: number;
   total_amount: number;
+  final_amount?: number;
+  amount_in_words?: string;
   invoice_date: string;
   due_date: string;
-  payment_status: 'PENDING' | 'PAID' | 'PARTIALLY_PAID' | 'OVERDUE';
+  payment_status: 'PENDING' | 'PAID' | 'PARTIAL' | 'PARTIALLY_PAID' | 'OVERDUE';
+  payment_mode?: string;
+  payment_txn_id?: string;
+  payment_remarks?: string;
   paid_amount?: number;
+  old_parts_handed_over?: boolean;
+  old_parts_handed_over_notes?: string;
+  warranty_info?: {
+    labour_warranty?: string;
+    parts_warranty?: string;
+    notes?: string;
+  };
+  recommended_future_work?: string;
+  invoice_notes?: string;
+  bank_name?: string;
+  bank_account_name?: string;
+  bank_account_number?: string;
+  bank_ifsc?: string;
+  bank_branch?: string;
   created_at: string;
+  status?: string;
 }
 
 export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) {
@@ -44,10 +74,30 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   async function fetchInvoice() {
     setLoading(true);
     try {
+      // Fetch invoice using the existing API route
       const response = await fetch(`/api/leads/${lead.id}/invoice`);
+      
       if (response.ok) {
         const data = await response.json();
-        setInvoice(data.invoice);
+        // Handle API response format
+        const invoiceData = data.invoice;
+        if (invoiceData) {
+          // Map fields to ensure compatibility
+          const mappedInvoice: Invoice = {
+            ...invoiceData,
+            parts_amount: invoiceData.parts_amount || invoiceData.parts_cost || 0,
+            extra_charges_amount: invoiceData.extra_charges_amount || invoiceData.extra_charges || 0,
+            subtotal: invoiceData.subtotal || invoiceData.sub_total || 0,
+            cgst: invoiceData.cgst || invoiceData.cgst_amount || 0,
+            sgst: invoiceData.sgst || invoiceData.sgst_amount || 0,
+            igst: invoiceData.igst || invoiceData.igst_amount || 0,
+            total_amount: invoiceData.total_amount || invoiceData.final_amount || 0,
+            invoice_date: invoiceData.invoice_date || invoiceData.created_at || new Date().toISOString(),
+            due_date: invoiceData.due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+            payment_status: invoiceData.payment_status || 'PENDING',
+          };
+          setInvoice(mappedInvoice);
+        }
       }
     } catch (error) {
       console.error('Error fetching invoice:', error);
@@ -59,7 +109,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   async function generateInvoice() {
     setGenerating(true);
     try {
-      const response = await fetch(`/api/leads/${lead.id}/invoice`, {
+      // Use the new billing API route
+      const response = await fetch(`/api/billing/leads/${lead.id}/generate-invoice`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -231,36 +282,75 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
               <tbody className="divide-y divide-gray-200">
                 <tr>
                   <td className="px-4 py-3">Base Service Charges</td>
-                  <td className="px-4 py-3 text-right font-medium">₹{invoice.base_amount.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right font-medium">₹{(invoice.base_amount || 0).toFixed(2)}</td>
                 </tr>
-                {invoice.parts_amount > 0 && (
+                {(invoice.parts_amount || invoice.parts_cost || 0) > 0 && (
                   <tr>
                     <td className="px-4 py-3">Parts & Materials</td>
-                    <td className="px-4 py-3 text-right font-medium">₹{invoice.parts_amount.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-medium">₹{((invoice.parts_amount || invoice.parts_cost) || 0).toFixed(2)}</td>
                   </tr>
                 )}
-                {invoice.extra_charges_amount > 0 && (
+                {(invoice.extra_charges_amount || invoice.extra_charges || 0) > 0 && (
                   <tr>
                     <td className="px-4 py-3">Additional Charges</td>
-                    <td className="px-4 py-3 text-right font-medium">₹{invoice.extra_charges_amount.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-medium">₹{((invoice.extra_charges_amount || invoice.extra_charges) || 0).toFixed(2)}</td>
                   </tr>
                 )}
                 <tr className="bg-gray-50">
-                  <td className="px-4 py-3 font-semibold">Subtotal</td>
-                  <td className="px-4 py-3 text-right font-semibold">₹{invoice.subtotal.toFixed(2)}</td>
+                  <td className="px-4 py-3 font-semibold">Sub-Total (without taxes)</td>
+                  <td className="px-4 py-3 text-right font-semibold">₹{((invoice.subtotal || invoice.sub_total) || 0).toFixed(2)}</td>
                 </tr>
-                <tr>
-                  <td className="px-4 py-3">CGST @ 9%</td>
-                  <td className="px-4 py-3 text-right">₹{invoice.cgst.toFixed(2)}</td>
+                {(invoice.discount_amount || 0) > 0 && (
+                  <tr>
+                    <td className="px-4 py-3">Discount / Coupon</td>
+                    <td className="px-4 py-3 text-right text-red-600">-₹{(invoice.discount_amount || 0).toFixed(2)}</td>
+                  </tr>
+                )}
+                <tr className="bg-gray-50">
+                  <td className="px-4 py-3 font-semibold">Net Taxable Value</td>
+                  <td className="px-4 py-3 text-right font-semibold">₹{((invoice.subtotal || invoice.sub_total || 0) - (invoice.discount_amount || 0)).toFixed(2)}</td>
                 </tr>
-                <tr>
-                  <td className="px-4 py-3">SGST @ 9%</td>
-                  <td className="px-4 py-3 text-right">₹{invoice.sgst.toFixed(2)}</td>
-                </tr>
+                {(invoice.cgst_amount || invoice.cgst || 0) > 0 && (
+                  <tr>
+                    <td className="px-4 py-3">CGST @ 9%</td>
+                    <td className="px-4 py-3 text-right">₹{((invoice.cgst_amount || invoice.cgst) || 0).toFixed(2)}</td>
+                  </tr>
+                )}
+                {(invoice.sgst_amount || invoice.sgst || 0) > 0 && (
+                  <tr>
+                    <td className="px-4 py-3">SGST @ 9%</td>
+                    <td className="px-4 py-3 text-right">₹{((invoice.sgst_amount || invoice.sgst) || 0).toFixed(2)}</td>
+                  </tr>
+                )}
+                {(invoice.igst_amount || invoice.igst || 0) > 0 && (
+                  <tr>
+                    <td className="px-4 py-3">IGST @ 18%</td>
+                    <td className="px-4 py-3 text-right">₹{((invoice.igst_amount || invoice.igst) || 0).toFixed(2)}</td>
+                  </tr>
+                )}
+                {(invoice.total_tax || 0) > 0 && (
+                  <tr>
+                    <td className="px-4 py-3 font-semibold">Total GST</td>
+                    <td className="px-4 py-3 text-right font-semibold">₹{(invoice.total_tax || 0).toFixed(2)}</td>
+                  </tr>
+                )}
+                {(invoice.round_off_amount || 0) !== 0 && (
+                  <tr>
+                    <td className="px-4 py-3">Round Off</td>
+                    <td className="px-4 py-3 text-right">{(invoice.round_off_amount || 0) > 0 ? '+' : ''}₹{(invoice.round_off_amount || 0).toFixed(2)}</td>
+                  </tr>
+                )}
                 <tr className="bg-brand-primary bg-opacity-10 font-bold text-lg">
-                  <td className="px-4 py-3">Total Amount</td>
-                  <td className="px-4 py-3 text-right">₹{invoice.total_amount.toFixed(2)}</td>
+                  <td className="px-4 py-3">Amount Payable (INR)</td>
+                  <td className="px-4 py-3 text-right">₹{((invoice.final_amount || invoice.total_amount) || 0).toFixed(2)}</td>
                 </tr>
+                {invoice.amount_in_words && (
+                  <tr>
+                    <td colSpan={2} className="px-4 py-3 text-center italic text-gray-600 bg-gray-50">
+                      <strong>Amount in Words:</strong> {invoice.amount_in_words}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -272,13 +362,75 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                 <div>
                   <p className="text-sm text-green-700">Amount Paid</p>
                   <p className="text-2xl font-bold text-green-800">₹{invoice.paid_amount.toFixed(2)}</p>
+                  {invoice.payment_mode && (
+                    <p className="text-xs text-green-600 mt-1">Via: {invoice.payment_mode}</p>
+                  )}
+                  {invoice.payment_txn_id && (
+                    <p className="text-xs text-green-600">Txn Ref: {invoice.payment_txn_id}</p>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-green-700">Balance Due</p>
                   <p className="text-2xl font-bold text-green-800">
-                    ₹{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
+                    ₹{(((invoice.final_amount || invoice.total_amount) || 0) - invoice.paid_amount).toFixed(2)}
                   </p>
                 </div>
+              </div>
+              {invoice.payment_remarks && (
+                <div className="mt-3 pt-3 border-t border-green-200">
+                  <p className="text-xs text-green-700"><strong>Payment Remarks:</strong> {invoice.payment_remarks}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Additional Invoice Details */}
+          {(invoice.old_parts_handed_over !== undefined || invoice.warranty_info || invoice.recommended_future_work || invoice.invoice_notes) && (
+            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <h4 className="font-semibold mb-3">Additional Information</h4>
+              {invoice.old_parts_handed_over !== undefined && (
+                <p className="text-sm mb-2">
+                  <strong>Old parts handed over:</strong> {invoice.old_parts_handed_over ? 'Yes' : 'No'}
+                  {invoice.old_parts_handed_over_notes && ` - ${invoice.old_parts_handed_over_notes}`}
+                </p>
+              )}
+              {invoice.warranty_info && (
+                <div className="text-sm mb-2">
+                  <strong>Warranty:</strong>
+                  {invoice.warranty_info.labour_warranty && (
+                    <p className="ml-4">Labour: {invoice.warranty_info.labour_warranty}</p>
+                  )}
+                  {invoice.warranty_info.parts_warranty && (
+                    <p className="ml-4">Parts: {invoice.warranty_info.parts_warranty}</p>
+                  )}
+                  {invoice.warranty_info.notes && (
+                    <p className="ml-4 text-gray-600">{invoice.warranty_info.notes}</p>
+                  )}
+                </div>
+              )}
+              {invoice.recommended_future_work && (
+                <p className="text-sm mb-2">
+                  <strong>Recommended future work:</strong> {invoice.recommended_future_work}
+                </p>
+              )}
+              {invoice.invoice_notes && (
+                <p className="text-sm">
+                  <strong>Notes:</strong> {invoice.invoice_notes}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Bank Details */}
+          {(invoice.bank_name || invoice.bank_account_number) && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="font-semibold mb-2">Bank Details (NEFT/RTGS)</h4>
+              <div className="text-sm space-y-1">
+                {invoice.bank_name && <p><strong>Bank:</strong> {invoice.bank_name}</p>}
+                {invoice.bank_account_name && <p><strong>Account Name:</strong> {invoice.bank_account_name}</p>}
+                {invoice.bank_account_number && <p><strong>Account No:</strong> {invoice.bank_account_number}</p>}
+                {invoice.bank_ifsc && <p><strong>IFSC:</strong> {invoice.bank_ifsc}</p>}
+                {invoice.bank_branch && <p><strong>Branch:</strong> {invoice.bank_branch}</p>}
               </div>
             </div>
           )}

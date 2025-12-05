@@ -197,13 +197,28 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
   const handleFileSelect = (photoKey: string, file: File | null) => {
     if (!file) return;
 
-    // Accept both images and videos, with fallback to file extension check for PNG
-    const isImage = file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
-    const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|ogg|mov|avi)$/i.test(file.name);
+    // Accept both images and videos - check file extension first for better PNG/video detection
+    const fileName = file.name.toLowerCase();
+    const fileExtension = fileName.split('.').pop();
+    
+    // Comprehensive list of image formats
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif', 'svg', 'heic', 'heif', 'ico', 'jfif', 'pjpeg', 'pjp'];
+    // Comprehensive list of video formats
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'ogv', 'mov', 'avi', 'm4v', '3gp', 'mkv', 'flv', 'wmv', 'mpg', 'mpeg', 'm2v', 'ts', 'mts', 'f4v', 'asf', 'rm', 'rmvb', 'vob'];
+    
+    const isImage = file.type.startsWith('image/') || (fileExtension && imageExtensions.includes(fileExtension));
+    const isVideo = file.type.startsWith('video/') || (fileExtension && videoExtensions.includes(fileExtension));
 
+    // Special handling for files that might not have correct MIME type (especially PNG, HEIC, etc.)
     if (!isImage && !isVideo) {
-      toast.error('Please select an image or video file');
-      return;
+      // Double check by extension
+      if (fileExtension && (imageExtensions.includes(fileExtension) || videoExtensions.includes(fileExtension))) {
+        // File extension is valid, proceed anyway
+        console.log('File type detected by extension:', fileExtension);
+      } else {
+        toast.error('Please select an image or video file');
+        return;
+      }
     }
 
     const reader = new FileReader();
@@ -506,7 +521,7 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
 
               {photo.preview ? (
                 <div className="relative">
-                  {photo.file?.type.startsWith('video/') || /\.(mp4|webm|ogg|mov|avi)$/i.test(photo.file?.name || '') ? (
+                  {(photo.file?.type.startsWith('video/') || /\.(mp4|webm|ogg|ogv|mov|avi|m4v|3gp|mkv|flv|wmv|mpg|mpeg|m2v|ts|mts|f4v|asf|rm|rmvb|vob)$/i.test(photo.file?.name || '') || /\.(mp4|webm|ogg|ogv|mov|avi|m4v|3gp|mkv|flv|wmv|mpg|mpeg|m2v|ts|mts|f4v|asf|rm|rmvb|vob)$/i.test(photo.preview || '')) ? (
                     <video
                       src={photo.preview}
                       className="w-full h-32 object-cover rounded-lg mb-2"

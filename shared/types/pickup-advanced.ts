@@ -180,12 +180,20 @@ export interface CreateVehiclePhotoInput {
   longitude?: number | null;
 }
 
-// UTILITY TYPES
-export type PickupTaskType = 'PICKUP_ONLY' | 'DELIVERY_ONLY' | 'PICKUP_AND_DELIVERY';
-export type PickupTaskStatus = 'PENDING' | 'ASSIGNED' | 'EN_ROUTE' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-export type PickupIncidentType = 'ACCIDENT' | 'VEHICLE_DAMAGE' | 'CUSTOMER_ISSUE' | 'DELAY' | 'ROUTE_PROBLEM' | 'OTHER';
+// UTILITY TYPES (Updated to match database)
+export type PickupTaskType = 'PICKUP' | 'DELIVERY' | 'BOTH'; // Matches pickup_task_type enum
+export type PickupTaskStatus = 'PENDING' | 'ASSIGNED' | 'IN_TRANSIT' | 'COMPLETED' | 'CANCELLED'; // Matches pickup_task_status enum
+export type PickupIncidentType = 'WRONG_CUSTOMER' | 'VEHICLE_NOT_AVAILABLE' | 'CUSTOMER_REFUSED' | 'WRONG_ADDRESS' | 'CUSTOMER_AGGRESSIVE' | 'SAFETY_ISSUE' | 'ACCIDENT' | 'VEHICLE_DAMAGE' | 'OTHER';
 export type IncidentSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-export type OTPType = 'PICKUP' | 'DELIVERY';
-export type PhotoType = 'BEFORE_PICKUP' | 'AFTER_PICKUP' | 'BEFORE_DELIVERY' | 'AFTER_DELIVERY' | 'DAMAGE' | 'ODOMETER' | 'FUEL_GAUGE';
+export type OTPType = 'PICKUP' | 'DROP'; // Matches database
+export type PhotoType = 
+  // Pickup photos
+  'PICKUP_FRONT' | 'PICKUP_REAR' | 'PICKUP_LEFT' | 'PICKUP_RIGHT' | 'PICKUP_INTERIOR' | 
+  'PICKUP_DASHBOARD' | 'PICKUP_ODOMETER' | 'PICKUP_DAMAGE' | 'PICKUP_FUEL' |
+  // Drop photos
+  'DROP_FRONT' | 'DROP_REAR' | 'DROP_LEFT' | 'DROP_RIGHT' | 'DROP_INTERIOR' | 
+  'DROP_DASHBOARD' | 'DROP_ODOMETER' |
+  // After work
+  'AFTER_WORK';
 export type FuelLevel = 'EMPTY' | 'QUARTER' | 'HALF' | 'THREE_QUARTER' | 'FULL';
 

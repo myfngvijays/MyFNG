@@ -65,8 +65,9 @@ export async function POST(
       updateData.pickup_status = 'OTP_VERIFIED';
       updateData.pickup_otp_verified_at = new Date().toISOString();
     } else if (otp_type === 'DROP') {
-      updateData.drop_status = 'ASSIGNED';
+      // For drop, OTP verification means ready for delivery
       updateData.drop_otp_verified_at = new Date().toISOString();
+      // Status will be updated when delivery is completed
     }
 
     const { data: updated, error: updateError } = await supabase

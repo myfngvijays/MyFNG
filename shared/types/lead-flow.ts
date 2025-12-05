@@ -190,7 +190,7 @@ export interface ServiceLead {
   assigned_pickup_boy_id?: string;
   assigned_pickup_id?: string;
   pickup_assigned_at?: string;
-  pickup_status?: 'NOT_ASSIGNED' | 'ASSIGNED' | 'EN_ROUTE' | 'PICKED_UP' | 'DELIVERED' | 'CANCELLED';
+  pickup_status?: 'NOT_ASSIGNED' | 'PENDING' | 'ON_THE_WAY' | 'ARRIVED' | 'OTP_VERIFIED' | 'PICKED' | 'VEHICLE_IN_TRANSIT' | 'ARRIVED_AT_WORKSHOP' | 'VEHICLE_DROPPED_AT_WORKSHOP' | 'DROPPED' | 'FAILED_PICKUP';
   
   // Preferred Schedule
   preferred_date?: string;

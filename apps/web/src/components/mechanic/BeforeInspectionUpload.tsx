@@ -52,6 +52,11 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
   }, [leadId, jobId]);
 
   const fetchExistingPhotos = async () => {
+    // Guard: Don't fetch if jobId is empty or invalid
+    if (!jobId || jobId.trim() === '') {
+      return;
+    }
+
     try {
       const supabase = createClient();
       const { data, error } = await supabase
@@ -123,12 +128,36 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
   };
 
   const handleFileSelect = (index: number, file: File) => {
-    // Accept images with fallback to file extension check for PNG compatibility
-    const isImage = file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
-    
-    if (!isImage) {
-      toast.error('Please select an image file (PNG, JPG, GIF, WebP)');
+    // Check file size before processing (100MB limit for videos)
+    const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+    if (file.size > MAX_FILE_SIZE) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      toast.error(`File too large: ${fileSizeMB}MB. Maximum size is 100MB. Please compress the video or use a smaller file.`);
       return;
+    }
+
+    // Accept both images and videos - check file extension first for better PNG/video detection
+    const fileName = file.name.toLowerCase();
+    const fileExtension = fileName.split('.').pop();
+    
+    // Comprehensive list of image formats
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif', 'svg', 'heic', 'heif', 'ico', 'jfif', 'pjpeg', 'pjp'];
+    // Comprehensive list of video formats
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'ogv', 'mov', 'avi', 'm4v', '3gp', 'mkv', 'flv', 'wmv', 'mpg', 'mpeg', 'm2v', 'ts', 'mts', 'f4v', 'asf', 'rm', 'rmvb', 'vob'];
+    
+    const isImage = file.type.startsWith('image/') || (fileExtension && imageExtensions.includes(fileExtension));
+    const isVideo = file.type.startsWith('video/') || (fileExtension && videoExtensions.includes(fileExtension));
+
+    // Special handling for files that might not have correct MIME type (especially PNG, HEIC, etc.)
+    if (!isImage && !isVideo) {
+      // Double check by extension
+      if (fileExtension && (imageExtensions.includes(fileExtension) || videoExtensions.includes(fileExtension))) {
+        // File extension is valid, proceed anyway
+        console.log('File type detected by extension:', fileExtension);
+      } else {
+        toast.error('Please select an image or video file');
+        return;
+      }
     }
 
     const reader = new FileReader();
@@ -183,6 +212,11 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
         },
         body: formData,
       });
+
+      // Handle 413 Payload Too Large error before parsing
+      if (response.status === 413) {
+        throw new Error('File too large. Maximum size is 100MB. Please compress the video or use a smaller file.');
+      }
 
       // Check if response is JSON before parsing
       const contentType = response.headers.get('content-type');
@@ -387,11 +421,20 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
 
             {photo.preview ? (
               <div className="relative">
-                <img
-                  src={photo.preview}
-                  alt={photo.label}
-                  className="w-full h-32 object-cover rounded-lg mb-2"
-                />
+                {(photo.file?.type.startsWith('video/') || /\.(mp4|webm|ogg|ogv|mov|avi|m4v|3gp|mkv|flv|wmv|mpg|mpeg|m2v|ts|mts|f4v|asf|rm|rmvb|vob)$/i.test(photo.file?.name || '') || /\.(mp4|webm|ogg|ogv|mov|avi|m4v|3gp|mkv|flv|wmv|mpg|mpeg|m2v|ts|mts|f4v|asf|rm|rmvb|vob)$/i.test(photo.preview || '')) ? (
+                  <video
+                    src={photo.preview}
+                    className="w-full h-32 object-cover rounded-lg mb-2"
+                    controls
+                    preload="metadata"
+                  />
+                ) : (
+                  <img
+                    src={photo.preview}
+                    alt={photo.label}
+                    className="w-full h-32 object-cover rounded-lg mb-2"
+                  />
+                )}
                 {photo.uploading && (
                   <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
@@ -422,7 +465,7 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
                 <input
                   ref={(el) => { fileInputRefs.current[index] = el; }}
                   type="file"
-                  accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/*"
+                  accept="image/*,video/*"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -431,7 +474,7 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
                 />
                 <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                 <p className="text-sm text-gray-600">Click to Upload</p>
-                <p className="text-xs text-gray-400 mt-1">or drag & drop</p>
+                <p className="text-xs text-gray-400 mt-1">Image or Video</p>
               </div>
             )}
           </div>

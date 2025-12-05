@@ -54,12 +54,13 @@ export async function POST(
       return NextResponse.json({ error: 'Not assigned to this drop' }, { status: 403 });
     }
 
-    // Update drop tracking
+    // Update drop tracking - Start delivery (OUT_FOR_DELIVERY status)
     const { data: updated, error: updateError } = await supabase
       .from('pickup_tracking')
       .update({
-        drop_status: 'IN_TRANSIT',
+        drop_status: 'OUT_FOR_DELIVERY',          // ✨ NEW: Out for delivery to customer
         drop_start_time: new Date().toISOString(),
+        drop_out_for_delivery_at: new Date().toISOString(), // ✨ NEW: When status changed to OUT_FOR_DELIVERY
         updated_at: new Date().toISOString(),
       })
       .eq('lead_id', leadId)

@@ -151,9 +151,14 @@ export async function POST(
     // Calculate subtotal
     const subtotal = baseAmount + extraChargesTotal + partsTotal - discount;
 
-    // Determine place of supply and tax type
+    // Get customer address details (used for both tax calculation and invoice display)
+    const customerAddress = lead.customer?.address || lead.customer_address || '';
+    const customerCity = lead.customer?.city || lead.customer_city || '';
     const customerState = lead.customer?.state || lead.customer_state || 'Maharashtra';
     const customerStateCode = lead.customer?.state_code || lead.customer_state_code || '27';
+    const customerPincode = lead.customer?.pincode || lead.customer_pincode || '';
+
+    // Determine place of supply and tax type
     const workshopState = lead.workshop?.state || 'Maharashtra';
     const workshopStateCode = lead.workshop?.state_code || '27';
 
@@ -232,7 +237,26 @@ export async function POST(
     // Amount in words
     const amountInWords = numberToWords(finalAmount);
 
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const invoiceDate = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const invoiceTime = now.toTimeString().split(' ')[0].substring(0, 8); // HH:MM:SS
+    const dueDate = new Date(now);
+    dueDate.setDate(dueDate.getDate() + 7); // 7 days from invoice date
+
+    // Get workshop bank details (if available)
+    const bankName = lead.workshop?.bank_name || 'HDFC Bank';
+    const bankAccountName = lead.workshop?.bank_account_name || lead.workshop?.name || 'MyFNG Autocare Pvt. Ltd.';
+    const bankAccountNumber = lead.workshop?.bank_account_number || '123456789012';
+    const bankIFSC = lead.workshop?.bank_ifsc || 'HDFC0001234';
+    const bankBranch = lead.workshop?.bank_branch || `${lead.workshop?.city || 'Kamothe'}, Navi Mumbai`;
+
+    // Get warranty info from job card
+    const warrantyInfo = {
+      labour_warranty: jobCard?.warranty_labour_period || '1 month / 1,000 km (whichever earlier)',
+      parts_warranty: jobCard?.warranty_parts_period || '6 months',
+      notes: jobCard?.warranty_notes || 'Warranty on service: 1 month / 1,000 km (whichever earlier) on labour for this job.'
+    };
 
     // Create invoice with all required fields
     const { data: invoice, error: invoiceError } = await supabase
@@ -241,7 +265,14 @@ export async function POST(
         lead_id: leadId,
         workshop_id: lead.workshop_id,
         customer_id: lead.customer_id || lead.customer?.id,
+        jobcard_id: jobCard?.id || null,
         invoice_number: invoiceNumber,
+        
+        // Invoice Date & Time
+        invoice_date: invoiceDate,
+        invoice_time: invoiceTime,
+        due_date: dueDate.toISOString().split('T')[0],
+        payment_terms: 'Due on Receipt',
         
         // Amounts
         base_amount: baseAmount,
@@ -254,6 +285,9 @@ export async function POST(
         coupon_code: couponCode,
         discount_percentage: discount > 0 ? (discount / subtotal) * 100 : 0,
         discount_amount: discount,
+        
+        // Round off
+        round_off_amount: roundOffAmount,
         
         // Taxes
         cgst_percentage: useIGST ? 0 : 9,
@@ -276,14 +310,33 @@ export async function POST(
         line_items: lineItems,
         hsn_sac_codes: hsnSacCodes,
         
+        // Customer Address (for invoice display)
+        customer_address: customerAddress,
+        customer_city: customerCity,
+        customer_state: customerState,
+        customer_pincode: customerPincode,
+        
+        // Bank Details
+        bank_name: bankName,
+        bank_account_name: bankAccountName,
+        bank_account_number: bankAccountNumber,
+        bank_ifsc: bankIFSC,
+        bank_branch: bankBranch,
+        
+        // Warranty Info
+        warranty_info: warrantyInfo,
+        
+        // Old Parts (default false, can be updated later)
+        old_parts_handed_over: false,
+        
         // Status
         status: 'GENERATED',
         payment_status: 'PENDING',
         
         // Audit
         generated_by: userProfile.id,
-        created_at: now,
-        updated_at: now,
+        created_at: nowISO,
+        updated_at: nowISO,
       })
       .select()
       .single();
@@ -297,37 +350,51 @@ export async function POST(
       }, { status: 500 });
     }
 
-    // Update lead with invoice details
+    // Update lead with invoice details (Step 0: System actions)
+    // Status should be INVOICE_GENERATED initially, will change to AWAITING_PAYMENT after approval
     await supabase
       .from('service_leads')
       .update({
         invoice_id: invoice.id,
         invoice_amount: finalAmount,
         invoice_generated_by: userProfile.id,
-        invoice_generated_at: now,
-        status: 'INVOICE_GENERATED',
-        updated_at: now
+        invoice_generated_at: nowISO,
+        status: 'INVOICE_GENERATED', // Will change to AWAITING_PAYMENT after approval
+        updated_at: nowISO
       })
       .eq('id', leadId);
 
-    // Lock job card for edits (except allowed fields)
+    // Lock job card for edits after invoice generation (Step 0: System actions)
     // Mark job card as locked after invoice generation
-    const { data: existingJobCard } = await supabase
-      .from('job_cards')
-      .select('id')
-      .eq('lead_id', leadId)
-      .single();
-
     if (jobCard) {
-      // Add locked_at timestamp to job card (if column exists)
-      // For now, we'll track this via a metadata field or status
+      // Update job card with locked_at timestamp (column added in migration 78)
       await supabase
         .from('job_cards')
         .update({
-          updated_at: now,
-          // Note: If job_cards table has a locked_at or is_locked column, update it here
+          locked_at: nowISO,
+          locked_by: userProfile.id,
+          lock_reason: `Locked after invoice generation: ${invoiceNumber}`,
+          status: 'INVOICE_GENERATED', // Mark as invoice generated to prevent edits
+          updated_at: nowISO,
         })
         .eq('id', jobCard.id);
+
+      // Log job card lock event
+      await supabase
+        .from('lead_activities')
+        .insert({
+          lead_id: leadId,
+          user_id: userProfile.id,
+          activity_type: 'JOB_CARD_LOCKED',
+          description: `Job card locked after invoice generation`,
+          metadata: {
+            jobcard_id: jobCard.id,
+            invoice_id: invoice.id,
+            invoice_number: invoiceNumber,
+            locked_at: nowISO,
+            locked_by: userProfile.id,
+          },
+        });
     }
 
     // Log status change
@@ -338,7 +405,7 @@ export async function POST(
         old_status: lead.status,
         new_status: 'INVOICE_GENERATED',
         changed_by: userProfile.id,
-        changed_at: now,
+        changed_at: nowISO,
         reason: 'Invoice generated',
         notes: `Invoice number: ${invoiceNumber}`
       });
@@ -361,12 +428,14 @@ export async function POST(
           discount: discount,
           tax_amount: totalTax,
           final_amount: finalAmount,
+          round_off: roundOffAmount,
+          due_date: dueDate.toISOString().split('T')[0],
           generated_by: userProfile.id,
-          generated_at: now
+          generated_at: nowISO
         }
       });
 
-    // Create finance event for invoice creation
+    // Create finance event for invoice creation (Step 0: System actions)
     await createFinanceEvent({
       eventType: 'invoice_created',
       entityType: 'invoice',
@@ -376,14 +445,39 @@ export async function POST(
       eventData: {
         invoice_number: invoiceNumber,
         lead_id: leadId,
+        jobcard_id: jobCard?.id,
         final_amount: finalAmount,
         base_amount: baseAmount,
         extra_charges: extraChargesTotal,
         parts_cost: partsTotal,
         total_tax: totalTax,
-        generated_at: now,
+        round_off: roundOffAmount,
+        due_date: dueDate.toISOString().split('T')[0],
+        generated_at: nowISO,
       },
     });
+
+    // Create lead event for invoice creation (Step 13: Notifications & Audit Trail)
+    await supabase
+      .from('lead_events')
+      .insert({
+        lead_id: leadId,
+        event_type: 'INVOICE_GENERATED',
+        event_description: `Invoice ${invoiceNumber} generated - Amount: ₹${finalAmount.toFixed(2)}`,
+        event_data: {
+          invoice_id: invoice.id,
+          invoice_number: invoiceNumber,
+          final_amount: finalAmount,
+          base_amount: baseAmount,
+          extra_charges: extraChargesTotal,
+          parts_cost: partsTotal,
+          total_tax: totalTax,
+          generated_by: userProfile.id,
+          generated_at: nowISO,
+        },
+        created_by: userProfile.id,
+        created_at: nowISO,
+      });
 
     // TODO: Generate PDF invoice
     // TODO: Send invoice to customer (Email/WhatsApp)
@@ -408,8 +502,11 @@ export async function POST(
         amount_in_words: amountInWords,
         place_of_supply: placeOfSupply,
         use_igst: useIGST,
+        due_date: dueDate.toISOString().split('T')[0],
+        payment_terms: 'Due on Receipt',
       },
       line_items: lineItems,
+      warranty_info: warrantyInfo,
       next_step: 'Review invoice and send to customer for payment'
     }, { status: 201 });
 

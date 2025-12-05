@@ -51,12 +51,13 @@ export async function POST(
       return NextResponse.json({ error: 'Not assigned to this pickup' }, { status: 403 });
     }
 
-    // Update pickup tracking
+    // Update pickup tracking - Start navigation (ON_THE_WAY status)
     const { data: updated, error: updateError } = await supabase
       .from('pickup_tracking')
       .update({
-        pickup_status: 'PENDING',
+        pickup_status: 'ON_THE_WAY',              // ✨ NEW: Status when navigation started
         pickup_start_time: new Date().toISOString(),
+        pickup_on_the_way_at: new Date().toISOString(), // ✨ NEW: Timestamp for ON_THE_WAY status
         updated_at: new Date().toISOString(),
       })
       .eq('lead_id', leadId)

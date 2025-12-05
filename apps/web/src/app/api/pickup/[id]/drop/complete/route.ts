@@ -37,7 +37,11 @@ export async function POST(
       longitude,
       payment_mode,
       payment_amount,
-      payment_proof_url 
+      payment_proof_url,
+      odometer_reading,        // ✨ NEW: Odometer reading at delivery
+      final_remarks,           // ✨ NEW: Customer issues reported at delivery
+      invoice_paid,            // ✨ NEW: Invoice payment verification
+      invoice_id               // ✨ NEW: Reference to invoice
     } = body;
 
     // Check if minimum drop photos are uploaded
@@ -58,13 +62,27 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Update drop tracking
+    // Update drop tracking with all new fields
     const updateData: any = {
       drop_status: 'DELIVERED',
       drop_completed_time: new Date().toISOString(),
+      drop_odometer_reading: odometer_reading || null, // ✨ NEW: Odometer reading at delivery
+      drop_final_remarks: final_remarks || null,        // ✨ NEW: Customer issues reported at delivery
       drop_notes: notes,
       updated_at: new Date().toISOString(),
     };
+    
+    // Add invoice verification if provided
+    if (invoice_paid !== undefined) {
+      updateData.invoice_paid = invoice_paid;
+      if (invoice_paid) {
+        updateData.invoice_paid_at = new Date().toISOString();
+        updateData.invoice_paid_by = user.id;
+      }
+      if (invoice_id) {
+        updateData.invoice_id = invoice_id;
+      }
+    }
 
     // Add payment info if COD
     if (payment_mode === 'COD' && payment_amount) {

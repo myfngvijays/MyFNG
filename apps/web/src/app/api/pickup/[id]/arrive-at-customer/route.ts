@@ -7,8 +7,8 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 /**
- * POST /api/pickup/[id]/mark-picked
- * Mark vehicle as picked
+ * POST /api/pickup/[id]/arrive-at-customer
+ * Mark arrived at customer location (for pickup)
  */
 export async function POST(
   request: NextRequest,
@@ -33,34 +33,14 @@ export async function POST(
 
     const leadId = params.id;
     const body = await request.json();
-    const { notes, latitude, longitude } = body;
+    const { latitude, longitude } = body;
 
-    // Check if minimum photos are uploaded
-    const { count: photoCount, error: photoCountError } = await supabase
-      .from('vehicle_condition_photos')
-      .select('*', { count: 'exact', head: true })
-      .eq('lead_id', leadId)
-      .like('photo_type', 'PICKUP_%');
-
-    if (photoCountError) {
-      return NextResponse.json({ error: 'Failed to check photos' }, { status: 500 });
-    }
-
-    if ((photoCount || 0) < 4) {
-      return NextResponse.json({ 
-        error: 'Minimum 4 pickup photos required',
-        required_photos: ['PICKUP_FRONT', 'PICKUP_LEFT', 'PICKUP_RIGHT', 'PICKUP_INTERIOR']
-      }, { status: 400 });
-    }
-
-    // Update pickup tracking - Mark as picked and start driving to workshop
+    // Update pickup tracking - Arrived at customer location
     const { data: updated, error: updateError } = await supabase
       .from('pickup_tracking')
       .update({
-        pickup_status: 'VEHICLE_IN_TRANSIT',      // ✨ NEW: Vehicle in transit to workshop
-        pickup_picked_time: new Date().toISOString(),
-        pickup_in_transit_at: new Date().toISOString(), // ✨ NEW: When started driving to workshop
-        pickup_notes: notes,
+        pickup_status: 'ARRIVED',                 // ✨ NEW: Arrived at customer location
+        pickup_arrived_at: new Date().toISOString(), // ✨ NEW: Timestamp for ARRIVED status
         updated_at: new Date().toISOString(),
       })
       .eq('lead_id', leadId)
@@ -68,7 +48,7 @@ export async function POST(
       .single();
 
     if (updateError) {
-      return NextResponse.json({ error: 'Failed to mark as picked', details: updateError.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to mark as arrived', details: updateError.message }, { status: 500 });
     }
 
     // Log location
@@ -86,18 +66,18 @@ export async function POST(
     await supabase.from('lead_activities').insert({
       lead_id: leadId,
       user_id: user.id,
-      activity_type: 'VEHICLE_PICKED',
-      description: 'Vehicle picked up by pickup boy',
-      metadata: { notes, latitude, longitude },
+      activity_type: 'ARRIVED_AT_CUSTOMER',
+      description: 'Pickup boy arrived at customer location',
+      metadata: { latitude, longitude },
     });
 
     return NextResponse.json({
       success: true,
       data: updated,
-      message: 'Vehicle marked as picked successfully',
+      message: 'Arrived at customer location',
     });
   } catch (error: any) {
-    console.error('Error marking as picked:', error);
+    console.error('Error marking as arrived at customer:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

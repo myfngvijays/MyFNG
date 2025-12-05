@@ -258,6 +258,48 @@ export async function POST(
             payment_remarks: payment_remarks,
           },
         });
+
+      // Create lead event for payment (Step 13: Notifications & Audit Trail)
+      await supabase
+        .from('lead_events')
+        .insert({
+          lead_id: invoice.lead_id,
+          event_type: is_cod ? 'PAYMENT_COD_RECORDED' : (isFullPayment ? 'PAYMENT_RECEIVED' : 'PAYMENT_PARTIAL'),
+          event_description: `Payment of ₹${paidAmount.toFixed(2)} received via ${payment_mode}${is_cod ? ' (COD)' : ''}`,
+          event_data: {
+            invoice_id: invoiceId,
+            invoice_number: invoice.invoice_number,
+            payment_mode: payment_mode,
+            paid_amount: paidAmount,
+            transaction_id: transactionId,
+            is_cod: is_cod,
+            is_partial: !isFullPayment,
+            payment_received_by: userProfile.id,
+            payment_remarks: payment_remarks,
+            timestamp: now,
+          },
+          created_by: userProfile.id,
+          created_at: now,
+        });
+
+      // Auto-generate receipt for full payments (Step 5: Receipt Generation)
+      if (isFullPayment && !is_cod) {
+        try {
+          // Call receipt generation API
+          const receiptResponse = await fetch(
+            `${request.nextUrl.origin}/api/payments/invoices/${invoiceId}/generate-receipt`,
+            { method: 'POST' }
+          );
+          
+          if (receiptResponse.ok) {
+            const receiptData = await receiptResponse.json();
+            console.log('Receipt auto-generated:', receiptData.receipt_url);
+          }
+        } catch (receiptError) {
+          // Log error but don't fail payment recording
+          console.error('Error auto-generating receipt:', receiptError);
+        }
+      }
     }
 
     return NextResponse.json({

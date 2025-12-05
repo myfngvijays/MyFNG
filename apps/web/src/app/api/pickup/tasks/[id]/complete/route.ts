@@ -55,10 +55,10 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
-    // Verify pickup status is IN_TRANSIT
-    if (lead.pickup_status !== 'IN_TRANSIT') {
+    // Verify pickup status is VEHICLE_IN_TRANSIT (driving to workshop)
+    if (lead.pickup_status !== 'VEHICLE_IN_TRANSIT') {
       return NextResponse.json({ 
-        error: 'Pickup must be in IN_TRANSIT status',
+        error: 'Pickup must be in VEHICLE_IN_TRANSIT status',
         current_status: lead.pickup_status
       }, { status: 400 });
     }
@@ -99,7 +99,7 @@ export async function POST(
     const { data: updatedLead, error: updateError } = await supabase
       .from('service_leads')
       .update({
-        pickup_status: 'DELIVERED',
+        pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP', // ✨ NEW: Updated status
         status: 'VEHICLE_DROPPED_AT_WORKSHOP',
         vehicle_odometer: odometer_reading || lead.vehicle_odometer,
         updated_at: now
@@ -113,13 +113,14 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to complete pickup' }, { status: 500 });
     }
 
-    // Update pickup tracking
+    // Update pickup tracking with all new fields
     await supabase
       .from('pickup_tracking')
       .update({
-        pickup_status: 'DELIVERED',
-        pickup_picked_time: now,
+        pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP', // ✨ NEW: Updated status
         pickup_arrival_time: now,
+        pickup_handover_to_workshop_at: now, // ✨ NEW: When keys handed over
+        pickup_odometer_reading: odometer_reading || null, // ✨ NEW: Odometer reading at pickup
         pickup_notes: notes || 'Vehicle delivered to workshop',
         updated_at: now
       })

@@ -30,15 +30,19 @@ export async function POST(
     }
 
     const leadId = params.id;
-    const body = await request.json();
-    const { notes, latitude, longitude } = body;
 
-    // Update pickup tracking
+    const body = await request.json();
+    const { notes, latitude, longitude, handover_to_user_id } = body; // ✨ NEW: handover_to_user_id for workshop handover
+
+    // Update pickup tracking - Arrived at workshop and handover keys
     const { data: updated, error: updateError } = await supabase
       .from('pickup_tracking')
       .update({
-        pickup_status: 'ARRIVED_AT_WORKSHOP',
+        pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP', // ✨ NEW: Vehicle dropped at workshop (keys handed over)
         pickup_arrival_time: new Date().toISOString(),
+        pickup_handover_to_workshop_at: new Date().toISOString(), // ✨ NEW: When keys handed over
+        pickup_handover_to_workshop_by: handover_to_user_id || null, // ✨ NEW: Who received at workshop
+        pickup_notes: notes,
         updated_at: new Date().toISOString(),
       })
       .eq('lead_id', leadId)

@@ -51,17 +51,30 @@ export default function SubAdminEscalationsPage() {
       params.append('limit', '20');
 
       const response = await fetch(`/api/subadmin/escalate?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch escalations');
+      
+      // Check content-type before parsing JSON
+      const contentType = response.headers.get('content-type');
+      let data: any = null;
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        // If not JSON, get text response
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch escalations');
+      }
+
       setEscalations(data.escalations || []);
       setTotalPages(data.pagination?.total_pages || 1);
       setLoading(false);
     } catch (error: any) {
       console.error('Error fetching escalations:', error);
-      toast.error('Failed to load escalations');
+      toast.error(error.message || 'Failed to load escalations');
       setLoading(false);
     }
   };
@@ -78,14 +91,27 @@ export default function SubAdminEscalationsPage() {
         }),
       });
 
+      // Check content-type before parsing JSON
+      const contentType = response.headers.get('content-type');
+      let errorData: any = null;
+      
+      if (contentType && contentType.includes('application/json')) {
+        errorData = await response.json();
+      } else {
+        // If not JSON, get text response
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to process escalation');
+        throw new Error(errorData.error || 'Failed to process escalation');
       }
 
       toast.success(`Escalation ${action.toLowerCase()}d successfully`);
       fetchEscalations();
     } catch (error: any) {
+      console.error('Error processing escalation:', error);
       toast.error(error.message || 'Failed to process escalation');
     }
   };

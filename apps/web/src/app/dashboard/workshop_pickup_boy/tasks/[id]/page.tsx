@@ -70,6 +70,22 @@ export default function PickupTaskDetailPage() {
 
       setBeforePhotos(photos || []);
 
+      // Fetch pickup tracking for time slot
+      const { data: pickupTracking } = await supabase
+        .from('pickup_tracking')
+        .select('pickup_time_slot, drop_time_slot')
+        .eq('lead_id', taskId)
+        .single();
+
+      // Merge pickup tracking data if available
+      if (pickupTracking) {
+        setTask((prev: any) => ({
+          ...prev,
+          pickup_time_slot: pickupTracking.pickup_time_slot,
+          drop_time_slot: pickupTracking.drop_time_slot,
+        }));
+      }
+
     } catch (error) {
       console.error('Error:', error);
       toast.error('Failed to load task details');
@@ -203,30 +219,51 @@ export default function PickupTaskDetailPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Update lead status to COMPLETED (pickup boy's task done)
-      const updateData: any = {
-        status: 'COMPLETED',
-        completed_at: new Date().toISOString()
-      };
-      
-      const { error: updateError } = await supabase
-        .from('service_leads')
-        .update(updateData)
-        .eq('id', taskId);
+      // First, ensure status is VEHICLE_IN_TRANSIT (required by API)
+      // If current status is OTP_VERIFIED or IN_PROGRESS, update to VEHICLE_IN_TRANSIT first
+      if (task?.pickup_status !== 'VEHICLE_IN_TRANSIT' && task?.status !== 'VEHICLE_IN_TRANSIT') {
+        const { error: transitError } = await supabase
+          .from('service_leads')
+          .update({
+            pickup_status: 'VEHICLE_IN_TRANSIT',
+            status: 'VEHICLE_IN_TRANSIT',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', taskId);
 
-      if (updateError) throw updateError;
+        if (transitError) {
+          console.warn('Warning: Could not update to VEHICLE_IN_TRANSIT:', transitError);
+          // Continue anyway, API will handle it
+        }
 
-      // Create lead event (don't fail request if this fails)
-      try {
-        await supabase.from('lead_events').insert({
-          lead_id: taskId,
-          event_type: 'VEHICLE_DELIVERED_TO_WORKSHOP',
-          event_description: `Vehicle delivered to workshop by pickup boy`,
-          created_by: user.id,
-        });
-      } catch (eventError) {
-        // Log but don't fail the request
-        console.error('Error creating lead event (non-critical):', eventError);
+        // Also update pickup_tracking
+        await supabase
+          .from('pickup_tracking')
+          .update({
+            pickup_status: 'VEHICLE_IN_TRANSIT',
+            pickup_in_transit_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('lead_id', taskId);
+      }
+
+      // Use the proper API endpoint to complete pickup task
+      const response = await fetch(`/api/pickup/tasks/${taskId}/complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          notes: 'Vehicle delivered to workshop',
+          odometer_reading: null, // Can be added if needed
+          fuel_level: null, // Can be added if needed
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to complete pickup');
       }
 
       toast.success('✅ Vehicle delivered to workshop successfully!');
@@ -493,7 +530,106 @@ export default function PickupTaskDetailPage() {
           </h3>
           <div className="space-y-2">
             {(() => {
-              // Check for preferred_date (DATE column)
+              // Priority 1: Check pickup_tracking.pickup_time_slot (formatted text like "10:00 AM - 12:00 PM")
+              if (task.pickup_time_slot) {
+                const date = task.preferred_date 
+                  ? new Date(task.preferred_date) 
+                  : task.preferred_slot_start 
+                    ? new Date(task.preferred_slot_start) 
+                    : new Date();
+                
+                return (
+                  <>
+                    <div>
+                      <p className="text-sm text-gray-600">Preferred Date</p>
+                      <p className="font-semibold">
+                        {date.toLocaleDateString('en-IN', { 
+                          weekday: 'long',
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Time Slot</p>
+                      <p className="font-semibold">{task.pickup_time_slot}</p>
+                    </div>
+                  </>
+                );
+              }
+              
+              // Priority 2: Check preferred_time_slot (formatted text)
+              if (task.preferred_time_slot) {
+                const date = task.preferred_date 
+                  ? new Date(task.preferred_date) 
+                  : task.preferred_slot_start 
+                    ? new Date(task.preferred_slot_start) 
+                    : new Date();
+                
+                return (
+                  <>
+                    <div>
+                      <p className="text-sm text-gray-600">Preferred Date</p>
+                      <p className="font-semibold">
+                        {date.toLocaleDateString('en-IN', { 
+                          weekday: 'long',
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Time Slot</p>
+                      <p className="font-semibold">{task.preferred_time_slot}</p>
+                    </div>
+                  </>
+                );
+              }
+              
+              // Priority 3: Check for preferred_slot_start (TIMESTAMP column) - Convert UTC to IST properly
+              if (task.preferred_slot_start) {
+                // Convert UTC to IST (UTC+5:30)
+                const startDate = new Date(task.preferred_slot_start);
+                const endDate = task.preferred_slot_end ? new Date(task.preferred_slot_end) : null;
+                
+                // Format in IST timezone
+                const formatTimeIST = (date: Date) => {
+                  return date.toLocaleTimeString('en-IN', { 
+                    timeZone: 'Asia/Kolkata', // ✨ FIX: Explicitly use IST timezone
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: true 
+                  });
+                };
+                
+                return (
+                  <>
+                    <div>
+                      <p className="text-sm text-gray-600">Preferred Date</p>
+                      <p className="font-semibold">
+                        {startDate.toLocaleDateString('en-IN', { 
+                          timeZone: 'Asia/Kolkata', // ✨ FIX: Use IST timezone
+                          weekday: 'long',
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Time Slot</p>
+                      <p className="font-semibold">
+                        {formatTimeIST(startDate)}
+                        {endDate && ` - ${formatTimeIST(endDate)}`}
+                      </p>
+                    </div>
+                  </>
+                );
+              }
+              
+              // Priority 4: Check for preferred_date only
               if (task.preferred_date) {
                 const date = new Date(task.preferred_date);
                 return (
@@ -509,50 +645,10 @@ export default function PickupTaskDetailPage() {
                         })}
                       </p>
                     </div>
-                    {task.preferred_time_slot && (
-                      <div>
-                        <p className="text-sm text-gray-600">Time Slot</p>
-                        <p className="font-semibold">{task.preferred_time_slot}</p>
-                      </div>
-                    )}
                   </>
                 );
               }
-              // Check for preferred_slot_start (TIMESTAMP column)
-              if (task.preferred_slot_start) {
-                const startDate = new Date(task.preferred_slot_start);
-                const endDate = task.preferred_slot_end ? new Date(task.preferred_slot_end) : null;
-                return (
-                  <>
-                    <div>
-                      <p className="text-sm text-gray-600">Preferred Date</p>
-                      <p className="font-semibold">
-                        {startDate.toLocaleDateString('en-IN', { 
-                          weekday: 'long',
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Time Slot</p>
-                      <p className="font-semibold">
-                        {startDate.toLocaleTimeString('en-IN', { 
-                          hour: '2-digit', 
-                          minute: '2-digit',
-                          hour12: true 
-                        })}
-                        {endDate && ` - ${endDate.toLocaleTimeString('en-IN', { 
-                          hour: '2-digit', 
-                          minute: '2-digit',
-                          hour12: true 
-                        })}`}
-                      </p>
-                    </div>
-                  </>
-                );
-              }
+              
               // No preferred date/time found
               return <p className="text-gray-500">No schedule information available</p>;
             })()}

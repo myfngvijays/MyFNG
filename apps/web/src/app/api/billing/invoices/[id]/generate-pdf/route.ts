@@ -28,6 +28,7 @@ export async function GET(
         *,
         lead:service_leads!lead_id(
           id,
+          lead_number,
           customer_name,
           customer_email,
           customer_phone,
@@ -37,6 +38,10 @@ export async function GET(
           vehicle_fuel_type,
           odometer_reading
         ),
+        jobcard:job_cards!jobcard_id(
+          id,
+          jobcard_number
+        ),
         workshop:workshops!workshop_id(
           name,
           address,
@@ -45,7 +50,12 @@ export async function GET(
           phone,
           email,
           gst_number,
-          pan_number
+          pan_number,
+          bank_name,
+          bank_account_name,
+          bank_account_number,
+          bank_ifsc,
+          bank_branch
         )
       `)
       .eq('id', invoiceId)
@@ -77,15 +87,62 @@ export async function GET(
 }
 
 function generateInvoiceHTML(invoice: any): string {
-  const invoiceDate = new Date(invoice.created_at || invoice.invoice_date).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  });
+  const invoiceDate = invoice.invoice_date 
+    ? new Date(invoice.invoice_date).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      })
+    : new Date(invoice.created_at).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+
+  const dueDate = invoice.due_date 
+    ? new Date(invoice.due_date).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      })
+    : null;
 
   const lineItems = invoice.line_items || [];
   const workshop = invoice.workshop || {};
   const lead = invoice.lead || {};
+  const jobcard = invoice.jobcard || {};
+  
+  // Use invoice customer address if available, otherwise use lead
+  const customerAddress = invoice.customer_address || lead.customer_address || '';
+  const customerCity = invoice.customer_city || lead.customer_city || '';
+  const customerState = invoice.customer_state || lead.customer_state || '';
+  const customerPincode = invoice.customer_pincode || lead.customer_pincode || '';
+  
+  // Use invoice bank details if available, otherwise use workshop
+  const bankName = invoice.bank_name || workshop.bank_name || 'HDFC Bank';
+  const bankAccountName = invoice.bank_account_name || workshop.bank_account_name || workshop.name || 'MyFNG Autocare Pvt. Ltd.';
+  const bankAccountNumber = invoice.bank_account_number || workshop.bank_account_number || '123456789012';
+  const bankIFSC = invoice.bank_ifsc || workshop.bank_ifsc || 'HDFC0001234';
+  const bankBranch = invoice.bank_branch || workshop.bank_branch || `${workshop.city || 'Kamothe'}, Navi Mumbai`;
+  
+  // Warranty info
+  const warrantyInfo = invoice.warranty_info || {};
+  const labourWarranty = warrantyInfo.labour_warranty || '1 month / 1,000 km (whichever earlier)';
+  const partsWarranty = warrantyInfo.parts_warranty || '6 months';
+  const warrantyNotes = warrantyInfo.notes || 'Warranty on service: 1 month / 1,000 km (whichever earlier) on labour for this job.';
+  
+  // Old parts handed over
+  const oldPartsHandedOver = invoice.old_parts_handed_over || false;
+  const oldPartsNotes = invoice.old_parts_handed_over_notes || '';
+  
+  // Recommended future work
+  const recommendedWork = invoice.recommended_future_work || '';
+  
+  // Round off amount
+  const roundOffAmount = invoice.round_off_amount || 0;
+  
+  // Calculate net taxable value
+  const netTaxableValue = (invoice.base_amount || 0) + (invoice.extra_charges || 0) + (invoice.parts_cost || 0) - (invoice.discount_amount || 0);
 
   return `
 <!DOCTYPE html>
@@ -236,12 +293,16 @@ function generateInvoiceHTML(invoice: any): string {
         <h3>Invoice Details</h3>
         <p><strong>Invoice No:</strong> ${invoice.invoice_number}</p>
         <p><strong>Invoice Date:</strong> ${invoiceDate}</p>
-        <p><strong>Place of Supply:</strong> ${invoice.place_of_supply || lead.state || 'Maharashtra'}</p>
-        <p><strong>Payment Terms:</strong> Due on Receipt</p>
+        ${dueDate ? `<p><strong>Due Date:</strong> ${dueDate}</p>` : ''}
+        <p><strong>Place of Supply:</strong> ${invoice.place_of_supply || lead.state || 'Maharashtra'} (${invoice.place_of_supply_state_code || '27'})</p>
+        <p><strong>Payment Terms:</strong> ${invoice.payment_terms || 'Due on Receipt'}</p>
+        ${jobcard.jobcard_number ? `<p><strong>Lead / Jobcard ID:</strong> ${lead.lead_number || 'N/A'} / ${jobcard.jobcard_number || 'N/A'}</p>` : ''}
       </div>
       <div class="info-box">
         <h3>Customer Details</h3>
         <p><strong>Name:</strong> ${lead.customer_name || 'N/A'}</p>
+        ${customerAddress ? `<p><strong>Address:</strong> ${customerAddress}</p>` : ''}
+        ${customerCity || customerState || customerPincode ? `<p>${[customerCity, customerState, customerPincode].filter(Boolean).join(', ')}</p>` : ''}
         <p><strong>Phone:</strong> ${lead.customer_phone || 'N/A'}</p>
         <p><strong>Email:</strong> ${lead.customer_email || 'N/A'}</p>
       </div>
@@ -286,17 +347,17 @@ function generateInvoiceHTML(invoice: any): string {
     <div class="total-section">
       <div class="total-row">
         <span>Sub-Total (without taxes):</span>
-        <span>₹${(invoice.base_amount + invoice.extra_charges + invoice.parts_cost - invoice.discount_amount || 0).toFixed(2)}</span>
+        <span>₹${netTaxableValue.toFixed(2)}</span>
       </div>
       ${invoice.discount_amount > 0 ? `
         <div class="total-row">
-          <span>Discount:</span>
+          <span>Discount / Coupon ${invoice.coupon_code ? `(${invoice.coupon_code})` : ''}:</span>
           <span>-₹${invoice.discount_amount.toFixed(2)}</span>
         </div>
       ` : ''}
       <div class="total-row">
         <span>Net Taxable Value:</span>
-        <span>₹${(invoice.base_amount + invoice.extra_charges + invoice.parts_cost - invoice.discount_amount || 0).toFixed(2)}</span>
+        <span>₹${netTaxableValue.toFixed(2)}</span>
       </div>
       ${invoice.cgst_amount > 0 ? `
         <div class="total-row">
@@ -320,8 +381,18 @@ function generateInvoiceHTML(invoice: any): string {
         <span>Total GST:</span>
         <span>₹${invoice.total_tax?.toFixed(2) || (invoice.cgst_amount + invoice.sgst_amount + invoice.igst_amount).toFixed(2)}</span>
       </div>
+      <div class="total-row">
+        <span>Add: Total GST:</span>
+        <span>₹${invoice.total_tax?.toFixed(2) || (invoice.cgst_amount + invoice.sgst_amount + invoice.igst_amount).toFixed(2)}</span>
+      </div>
+      ${roundOffAmount !== 0 ? `
+        <div class="total-row">
+          <span>Round Off:</span>
+          <span>${roundOffAmount > 0 ? '+' : ''}₹${roundOffAmount.toFixed(2)}</span>
+        </div>
+      ` : ''}
       <div class="grand-total total-row">
-        <span>Grand Total:</span>
+        <span>Amount Payable (INR):</span>
         <span>₹${invoice.final_amount.toFixed(2)}</span>
       </div>
       ${invoice.amount_in_words ? `
@@ -349,20 +420,21 @@ function generateInvoiceHTML(invoice: any): string {
     <!-- Bank Details -->
     <div class="bank-details">
       <h3 style="margin-bottom: 10px; color: #2563eb;">Bank Details (NEFT/RTGS)</h3>
-      <p><strong>Bank Name:</strong> HDFC Bank</p>
-      <p><strong>Account Name:</strong> MyFNG Autocare Pvt. Ltd.</p>
-      <p><strong>Account No:</strong> 123456789012</p>
-      <p><strong>IFSC:</strong> HDFC0001234</p>
-      <p><strong>Branch:</strong> Kamothe, Navi Mumbai</p>
+      <p><strong>Bank Name:</strong> ${bankName}</p>
+      <p><strong>Account Name:</strong> ${bankAccountName}</p>
+      <p><strong>Account No:</strong> ${bankAccountNumber}</p>
+      <p><strong>IFSC:</strong> ${bankIFSC}</p>
+      <p><strong>Branch:</strong> ${bankBranch}</p>
     </div>
 
-    <!-- Notes -->
-    ${invoice.notes ? `
-      <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
-        <h3 style="margin-bottom: 10px; color: #2563eb;">Notes / Remarks</h3>
-        <p>${invoice.notes}</p>
-      </div>
-    ` : ''}
+    <!-- Notes / Remarks -->
+    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+      <h3 style="margin-bottom: 10px; color: #2563eb;">Notes / Remarks</h3>
+      <p><strong>Old parts handed over to customer:</strong> ${oldPartsHandedOver ? 'Yes' : 'No'}${oldPartsNotes ? ` - ${oldPartsNotes}` : ''}</p>
+      ${recommendedWork ? `<p><strong>Recommended future work:</strong> ${recommendedWork}</p>` : ''}
+      <p><strong>Warranty on service:</strong> ${warrantyNotes}</p>
+      ${invoice.invoice_notes ? `<p>${invoice.invoice_notes}</p>` : ''}
+    </div>
 
     <!-- Footer -->
     <div class="footer">

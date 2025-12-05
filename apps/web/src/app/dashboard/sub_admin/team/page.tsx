@@ -59,16 +59,29 @@ export default function SubAdminTeamPage() {
 
       // Fetch team members
       const response = await fetch('/api/subadmin/team');
-      if (!response.ok) {
-        throw new Error('Failed to fetch team');
+      
+      // Check content-type before parsing JSON
+      const contentType = response.headers.get('content-type');
+      let data: any = null;
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        // If not JSON, get text response
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch team');
+      }
+
       setTeamMembers(data.team_members || []);
       setLoading(false);
     } catch (error: any) {
       console.error('Error fetching team:', error);
-      toast.error('Failed to load team');
+      toast.error(error.message || 'Failed to load team');
       setLoading(false);
     }
   };
@@ -117,15 +130,28 @@ export default function SubAdminTeamPage() {
         body: JSON.stringify({ team_member_id: memberId }),
       });
 
+      // Check content-type before parsing JSON
+      const contentType = response.headers.get('content-type');
+      let errorData: any = null;
+      
+      if (contentType && contentType.includes('application/json')) {
+        errorData = await response.json();
+      } else {
+        // If not JSON, get text response
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to assign member');
+        throw new Error(errorData.error || 'Failed to assign member');
       }
 
       toast.success('Team member assigned successfully');
       fetchTeamData();
       setShowAssignModal(false);
     } catch (error: any) {
+      console.error('Error assigning member:', error);
       toast.error(error.message || 'Failed to assign member');
     }
   };
@@ -140,14 +166,27 @@ export default function SubAdminTeamPage() {
         body: JSON.stringify({ assignment_id: assignmentId }),
       });
 
+      // Check content-type before parsing JSON
+      const contentType = response.headers.get('content-type');
+      let errorData: any = null;
+      
+      if (contentType && contentType.includes('application/json')) {
+        errorData = await response.json();
+      } else {
+        // If not JSON, get text response
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to remove member');
+        throw new Error(errorData.error || 'Failed to remove member');
       }
 
       toast.success('Team member removed successfully');
       fetchTeamData();
     } catch (error: any) {
+      console.error('Error removing member:', error);
       toast.error(error.message || 'Failed to remove member');
     }
   };

@@ -186,6 +186,13 @@ export async function POST(
       totalAmount = parseFloat((subtotal + cgst + sgst).toFixed(2));
     }
 
+    // If all amounts are 0, this might be an issue - log warning but allow to proceed
+    if (baseAmount === 0 && partsTotal === 0 && extraChargesTotal === 0) {
+      console.warn('⚠️ Warning: All invoice amounts are 0. Lead might not have pricing configured.');
+      // You might want to return an error here or use a default amount
+      // For now, we'll allow it but log the warning
+    }
+
     // Debug logging
     console.log('Invoice calculation:', {
       pricingItemsCount: pricingItems?.length || 0,
@@ -272,20 +279,58 @@ export async function POST(
       }, { status: 500 });
     }
 
-    // Update lead with final amount
+    // Update lead with invoice details and status
+    const now = new Date().toISOString();
     await supabase
       .from('service_leads')
-      .update({ final_amount: totalAmount })
+      .update({ 
+        final_amount: totalAmount,
+        invoice_id: invoice.id,
+        invoice_generated_by: userProfile.id,
+        invoice_generated_at: now,
+        status: 'INVOICE_GENERATED', // ✨ Update status to INVOICE_GENERATED
+        updated_at: now
+      })
       .eq('id', leadId);
+
+    // Log status change
+    await supabase
+      .from('lead_status_history')
+      .insert({
+        lead_id: leadId,
+        old_status: lead.status,
+        new_status: 'INVOICE_GENERATED',
+        changed_by: userProfile.id,
+        changed_at: now,
+        reason: 'Invoice generated',
+        notes: `Invoice number: ${finalInvoiceNumber}`
+      });
+
+    // Create activity log
+    await supabase
+      .from('lead_activities')
+      .insert({
+        lead_id: leadId,
+        user_id: userProfile.id,
+        activity_type: 'INVOICE_GENERATED',
+        description: `Invoice generated: ${finalInvoiceNumber}`,
+        old_status: lead.status,
+        new_status: 'INVOICE_GENERATED',
+        metadata: {
+          invoice_id: invoice.id,
+          invoice_number: finalInvoiceNumber,
+          total_amount: totalAmount,
+        }
+      });
 
     // Create event
     await supabase.from('lead_events').insert({
       lead_id: leadId,
       event_type: 'INVOICE_GENERATED',
-      event_description: `Invoice ${invoiceNumber} generated - ₹${totalAmount.toFixed(2)}`,
+      event_description: `Invoice ${finalInvoiceNumber} generated - ₹${totalAmount.toFixed(2)}`,
       event_data: {
         invoice_id: invoice.id,
-        invoice_number: invoiceNumber,
+        invoice_number: finalInvoiceNumber,
         total_amount: totalAmount,
       },
       created_by: user.id,
@@ -398,18 +443,42 @@ export async function GET(
       }
     }
 
-    // Map database fields to component expected fields
+    // Map database fields to component expected fields - include ALL new fields
     const mappedInvoice = {
       ...invoice,
       // Map field names to match InvoiceSection component expectations
       parts_amount: (invoice as any).parts_cost || 0,
       extra_charges_amount: invoice.extra_charges || 0,
-      subtotal: (invoice as any).sub_total || ((invoice.base_amount || 0) + (invoice.extra_charges || 0) - (invoice.discount || 0)),
+      subtotal: (invoice as any).sub_total || ((invoice.base_amount || 0) + (invoice.extra_charges || 0) - (invoice.discount_amount || invoice.discount || 0)),
+      sub_total: (invoice as any).sub_total,
       cgst: (invoice as any).cgst_amount || 0,
+      cgst_amount: (invoice as any).cgst_amount || 0,
       sgst: (invoice as any).sgst_amount || 0,
+      sgst_amount: (invoice as any).sgst_amount || 0,
+      igst: (invoice as any).igst_amount || 0,
+      igst_amount: (invoice as any).igst_amount || 0,
+      total_tax: (invoice as any).total_tax || 0,
+      round_off_amount: (invoice as any).round_off_amount || 0,
+      discount_amount: (invoice as any).discount_amount || invoice.discount || 0,
       total_amount: (invoice as any).final_amount || invoice.total_amount || 0,
-      invoice_date: invoice.created_at || new Date().toISOString(),
+      final_amount: (invoice as any).final_amount || invoice.total_amount || 0,
+      amount_in_words: (invoice as any).amount_in_words,
+      invoice_date: (invoice as any).invoice_date || invoice.created_at || new Date().toISOString(),
       due_date: (invoice as any).due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      payment_status: invoice.payment_status || 'PENDING',
+      payment_mode: (invoice as any).payment_mode,
+      payment_txn_id: (invoice as any).payment_txn_id,
+      payment_remarks: (invoice as any).payment_remarks,
+      old_parts_handed_over: (invoice as any).old_parts_handed_over,
+      old_parts_handed_over_notes: (invoice as any).old_parts_handed_over_notes,
+      warranty_info: (invoice as any).warranty_info,
+      recommended_future_work: (invoice as any).recommended_future_work,
+      invoice_notes: (invoice as any).invoice_notes,
+      bank_name: (invoice as any).bank_name,
+      bank_account_name: (invoice as any).bank_account_name,
+      bank_account_number: (invoice as any).bank_account_number,
+      bank_ifsc: (invoice as any).bank_ifsc,
+      bank_branch: (invoice as any).bank_branch,
     };
 
     return NextResponse.json({ invoice: mappedInvoice });

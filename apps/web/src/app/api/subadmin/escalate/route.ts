@@ -305,32 +305,30 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const priority = searchParams.get('priority');
+    const search = searchParams.get('search');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = (page - 1) * limit;
 
+    // Build query - use simpler select to avoid join errors
     let query = supabase
       .from('escalations')
-      .select(`
-        *,
-        lead:service_leads!lead_id(lead_number, customer_name, vehicle_number),
-        ticket:customer_complaints!ticket_id(complaint_number, description),
-        audit:workshop_audits!audit_id(id, workshop_id),
-        escalated_by_user:users_login!escalated_by(full_name, email),
-        resolved_by_user:users_login!resolved_by(full_name, email)
-      `, { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('department', department);
 
-    // Filter by status
-    if (status) {
+    // Filter by status (only if not 'all')
+    if (status && status !== 'all') {
       query = query.in('status', status.split(','));
-    } else {
-      query = query.in('status', ['OPEN', 'ACKNOWLEDGED', 'IN_PROGRESS']);
     }
 
-    // Filter by priority
-    if (priority) {
+    // Filter by priority (only if not 'all')
+    if (priority && priority !== 'all') {
       query = query.in('priority', priority.split(','));
+    }
+
+    // Search filter (if provided)
+    if (search) {
+      query = query.or(`escalation_reason.ilike.%${search}%,escalation_type.ilike.%${search}%`);
     }
 
     // Order by priority and created date
@@ -340,7 +338,23 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error('Error fetching escalations:', error);
-      return NextResponse.json({ error: 'Failed to fetch escalations' }, { status: 500 });
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      // Check if table doesn't exist
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return NextResponse.json({ 
+          error: 'Escalations table not found',
+          details: 'The escalations table may not exist in the database. Please check database schema.',
+          code: error.code
+        }, { status: 500 });
+      }
+      
+      return NextResponse.json({ 
+        error: 'Failed to fetch escalations',
+        details: error.message,
+        code: error.code,
+        hint: error.hint
+      }, { status: 500 });
     }
 
     return NextResponse.json({

@@ -1,8 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Configure route for large file uploads (videos can be large)
+export const runtime = 'nodejs';
+export const maxDuration = 300; // 5 minutes for large video uploads
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+// Maximum file size: 100MB (for videos)
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB in bytes
 
 /**
  * POST /api/mechanic/jobs/[id]/upload-photos
@@ -48,17 +55,35 @@ export async function POST(
       }, { status: 400 });
     }
 
+    // Check file size (videos can be large)
+    if (file.size > MAX_FILE_SIZE) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      const maxSizeMB = (MAX_FILE_SIZE / (1024 * 1024)).toFixed(0);
+      return NextResponse.json({ 
+        error: `File size too large: ${fileSizeMB}MB. Maximum allowed size is ${maxSizeMB}MB`,
+        file_size: file.size,
+        max_size: MAX_FILE_SIZE
+      }, { status: 413 });
+    }
+
     // Validate file type - support images and videos
     const fileLowerCaseName = file.name.toLowerCase();
     const fileExtension = fileLowerCaseName.split('.').pop();
-    const isImage = file.type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '');
-    const isVideo = file.type.startsWith('video/') || ['mp4', 'webm', 'ogg', 'mov', 'avi', 'm4v', '3gp'].includes(fileExtension || '');
+    
+    // Comprehensive list of image formats
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif', 'svg', 'heic', 'heif', 'ico', 'jfif', 'pjpeg', 'pjp'];
+    // Comprehensive list of video formats
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'ogv', 'mov', 'avi', 'm4v', '3gp', 'mkv', 'flv', 'wmv', 'mpg', 'mpeg', 'm2v', 'ts', 'mts', 'f4v', 'asf', 'rm', 'rmvb', 'vob'];
+    
+    const isImage = file.type.startsWith('image/') || (fileExtension && imageExtensions.includes(fileExtension));
+    const isVideo = file.type.startsWith('video/') || (fileExtension && videoExtensions.includes(fileExtension));
 
     if (!isImage && !isVideo) {
       return NextResponse.json({ 
-        error: 'Invalid file type. Only images (PNG, JPG, GIF, WEBP) and videos (MP4, MOV, AVI) are allowed.',
+        error: 'Invalid file type. Please upload an image or video file.',
         file_type: file.type,
-        file_name: file.name
+        file_name: file.name,
+        file_extension: fileExtension
       }, { status: 400 });
     }
 
@@ -184,15 +209,30 @@ export async function POST(
     
     if (!contentType || contentType === 'application/octet-stream' || contentType === '') {
       // Infer content type from extension
+      // Image formats
       if (ext === 'png') {
         contentType = 'image/png';
-      } else if (ext === 'jpg' || ext === 'jpeg') {
+      } else if (ext === 'jpg' || ext === 'jpeg' || ext === 'jfif' || ext === 'pjpeg' || ext === 'pjp') {
         contentType = 'image/jpeg';
       } else if (ext === 'gif') {
         contentType = 'image/gif';
       } else if (ext === 'webp') {
         contentType = 'image/webp';
-      } else if (ext === 'mp4') {
+      } else if (ext === 'bmp') {
+        contentType = 'image/bmp';
+      } else if (ext === 'tiff' || ext === 'tif') {
+        contentType = 'image/tiff';
+      } else if (ext === 'svg') {
+        contentType = 'image/svg+xml';
+      } else if (ext === 'heic') {
+        contentType = 'image/heic';
+      } else if (ext === 'heif') {
+        contentType = 'image/heif';
+      } else if (ext === 'ico') {
+        contentType = 'image/x-icon';
+      }
+      // Video formats
+      else if (ext === 'mp4' || ext === 'm4v') {
         contentType = 'video/mp4';
       } else if (ext === 'mov') {
         contentType = 'video/quicktime';
@@ -200,10 +240,28 @@ export async function POST(
         contentType = 'video/x-msvideo';
       } else if (ext === 'webm') {
         contentType = 'video/webm';
-      } else if (ext === 'm4v') {
-        contentType = 'video/x-m4v';
       } else if (ext === '3gp') {
         contentType = 'video/3gpp';
+      } else if (ext === 'ogg' || ext === 'ogv') {
+        contentType = 'video/ogg';
+      } else if (ext === 'mkv') {
+        contentType = 'video/x-matroska';
+      } else if (ext === 'flv') {
+        contentType = 'video/x-flv';
+      } else if (ext === 'wmv') {
+        contentType = 'video/x-ms-wmv';
+      } else if (ext === 'mpg' || ext === 'mpeg' || ext === 'm2v') {
+        contentType = 'video/mpeg';
+      } else if (ext === 'ts' || ext === 'mts') {
+        contentType = 'video/mp2t';
+      } else if (ext === 'f4v') {
+        contentType = 'video/x-f4v';
+      } else if (ext === 'asf') {
+        contentType = 'video/x-ms-asf';
+      } else if (ext === 'rm' || ext === 'rmvb') {
+        contentType = 'application/vnd.rn-realmedia';
+      } else if (ext === 'vob') {
+        contentType = 'video/dvd';
       } else {
         // Default fallback
         contentType = isImage ? 'image/jpeg' : 'video/mp4';

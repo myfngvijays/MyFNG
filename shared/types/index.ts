@@ -37,7 +37,7 @@ export enum PickupTaskType {
   BOTH = 'BOTH',
 }
 
-// Pickup Task Status
+// Pickup Task Status (Matches database enum)
 export enum PickupTaskStatus {
   PENDING = 'PENDING',
   ASSIGNED = 'ASSIGNED',
@@ -221,25 +221,30 @@ export interface DataDeletionRequest {
 // PICKUP BOY SPECIFIC TYPES
 // ============================================
 
-// Pickup Status
+// Pickup Status (Complete as per documentation)
 export enum PickupStatus {
   NOT_ASSIGNED = 'NOT_ASSIGNED',
   PENDING = 'PENDING',
-  OTP_VERIFIED = 'OTP_VERIFIED',
-  PICKED = 'PICKED',
-  IN_TRANSIT = 'IN_TRANSIT',
-  ARRIVED_AT_WORKSHOP = 'ARRIVED_AT_WORKSHOP',
-  DROPPED = 'DROPPED',
+  ON_THE_WAY = 'ON_THE_WAY',              // ✨ NEW: Pickup boy started navigation
+  ARRIVED = 'ARRIVED',                    // ✨ NEW: Arrived at customer location
+  OTP_VERIFIED = 'OTP_VERIFIED',          // OTP verified, authorized to pickup
+  PICKED = 'PICKED',                      // Vehicle picked from customer
+  VEHICLE_IN_TRANSIT = 'VEHICLE_IN_TRANSIT', // ✨ NEW: Vehicle in transit to workshop
+  ARRIVED_AT_WORKSHOP = 'ARRIVED_AT_WORKSHOP', // Arrived at workshop
+  VEHICLE_DROPPED_AT_WORKSHOP = 'VEHICLE_DROPPED_AT_WORKSHOP', // ✨ NEW: Vehicle dropped at workshop (keys handed over)
+  DROPPED = 'DROPPED',                    // Legacy status
   FAILED_PICKUP = 'FAILED_PICKUP',
 }
 
-// Drop Status
+// Drop Status (Complete as per documentation)
 export enum DropStatus {
   NOT_REQUIRED = 'NOT_REQUIRED',
   PENDING = 'PENDING',
   ASSIGNED = 'ASSIGNED',
-  IN_TRANSIT = 'IN_TRANSIT',
-  DELIVERED = 'DELIVERED',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',  // ✨ NEW: Out for delivery to customer
+  IN_TRANSIT = 'IN_TRANSIT',              // Vehicle in transit to customer
+  ARRIVED_AT_CUSTOMER = 'ARRIVED_AT_CUSTOMER', // ✨ NEW: Arrived at customer location for delivery
+  DELIVERED = 'DELIVERED',                 // Vehicle delivered successfully
   FAILED_DROP = 'FAILED_DROP',
 }
 
@@ -266,23 +271,28 @@ export enum IncidentType {
   OTHER = 'OTHER',
 }
 
-// Vehicle Photo Type
+// Vehicle Photo Type (Complete as per documentation)
 export enum VehiclePhotoType {
-  PICKUP_FRONT = 'PICKUP_FRONT',
-  PICKUP_LEFT = 'PICKUP_LEFT',
-  PICKUP_RIGHT = 'PICKUP_RIGHT',
-  PICKUP_REAR = 'PICKUP_REAR',
-  PICKUP_INTERIOR = 'PICKUP_INTERIOR',
-  PICKUP_ODOMETER = 'PICKUP_ODOMETER',
-  PICKUP_FUEL = 'PICKUP_FUEL',
-  PICKUP_DAMAGE = 'PICKUP_DAMAGE',
-  DROP_FRONT = 'DROP_FRONT',
-  DROP_LEFT = 'DROP_LEFT',
-  DROP_RIGHT = 'DROP_RIGHT',
-  DROP_REAR = 'DROP_REAR',
-  DROP_INTERIOR = 'DROP_INTERIOR',
-  DROP_ODOMETER = 'DROP_ODOMETER',
-  AFTER_WORK = 'AFTER_WORK',
+  // Pickup photos (BEFORE pickup - required)
+  PICKUP_FRONT = 'PICKUP_FRONT',           // Front view
+  PICKUP_REAR = 'PICKUP_REAR',             // Rear view
+  PICKUP_LEFT = 'PICKUP_LEFT',             // Left side
+  PICKUP_RIGHT = 'PICKUP_RIGHT',           // Right side
+  PICKUP_INTERIOR = 'PICKUP_INTERIOR',     // Interior view
+  PICKUP_DASHBOARD = 'PICKUP_DASHBOARD',   // ✨ NEW: Dashboard + Odometer (as per doc)
+  PICKUP_ODOMETER = 'PICKUP_ODOMETER',     // Odometer reading
+  PICKUP_DAMAGE = 'PICKUP_DAMAGE',         // Any visible damages
+  PICKUP_FUEL = 'PICKUP_FUEL',             // Fuel level
+  // Drop photos (Optional but recommended)
+  DROP_FRONT = 'DROP_FRONT',               // Front view at delivery
+  DROP_REAR = 'DROP_REAR',                 // Rear view at delivery
+  DROP_LEFT = 'DROP_LEFT',                 // Left side at delivery
+  DROP_RIGHT = 'DROP_RIGHT',               // Right side at delivery
+  DROP_INTERIOR = 'DROP_INTERIOR',         // Interior at delivery
+  DROP_DASHBOARD = 'DROP_DASHBOARD',       // ✨ NEW: Dashboard at delivery
+  DROP_ODOMETER = 'DROP_ODOMETER',         // Odometer at delivery
+  // After work photos
+  AFTER_WORK = 'AFTER_WORK',               // After service completion
 }
 
 // Fuel Level
@@ -302,44 +312,64 @@ export interface PickupTracking {
   pickup_required: boolean;
   drop_required: boolean;
   
-  // Pickup workflow
+  // Pickup workflow (Complete as per documentation)
   pickup_status: PickupStatus;
   pickup_assigned_to?: string;
   pickup_assigned_to_user?: User;
   pickup_assigned_at?: string;
-  pickup_start_time?: string;
+  pickup_start_time?: string;              // When navigation started
+  pickup_on_the_way_at?: string;          // ✨ NEW: When status changed to ON_THE_WAY
+  pickup_arrived_at?: string;              // ✨ NEW: When arrived at customer location
   pickup_otp?: string;
   pickup_otp_verified_at?: string;
   pickup_picked_time?: string;
-  pickup_arrival_time?: string;
+  pickup_odometer_reading?: number;        // ✨ NEW: Odometer reading at pickup
+  pickup_in_transit_at?: string;          // ✨ NEW: When started driving to workshop
+  pickup_arrival_time?: string;           // When arrived at workshop
+  pickup_handover_to_workshop_at?: string; // ✨ NEW: When keys handed over
+  pickup_handover_to_workshop_by?: string; // ✨ NEW: Who received at workshop (Supervisor/Admin/Reception)
   pickup_address?: string;
   pickup_latitude?: number;
   pickup_longitude?: number;
   pickup_distance?: number;
+  pickup_time_slot?: string;               // ✨ NEW: Time slot (e.g., "10:00 AM - 12:00 PM")
   pickup_time_window_start?: string;
   pickup_time_window_end?: string;
   pickup_notes?: string;
   pickup_customer_instructions?: string;
+  pickup_remarks?: string;                // ✨ NEW: Any remarks during pickup
   
-  // Drop workflow
+  // Drop workflow (Complete as per documentation)
   drop_status: DropStatus;
   drop_assigned_to?: string;
   drop_assigned_to_user?: User;
   drop_assigned_at?: string;
-  drop_start_time?: string;
+  drop_start_time?: string;               // When started from workshop
+  drop_out_for_delivery_at?: string;      // ✨ NEW: When status changed to OUT_FOR_DELIVERY
+  drop_in_transit_at?: string;            // ✨ NEW: When in transit to customer
+  drop_arrived_at?: string;               // ✨ NEW: When arrived at customer location
   drop_otp?: string;
   drop_otp_verified_at?: string;
   drop_completed_time?: string;
+  drop_odometer_reading?: number;         // ✨ NEW: Odometer reading at delivery
   drop_address?: string;
   drop_latitude?: number;
   drop_longitude?: number;
+  drop_time_slot?: string;                // ✨ NEW: Time slot for delivery
   drop_notes?: string;
+  drop_final_remarks?: string;            // ✨ NEW: Customer issues reported at delivery
   
   // Payment
   payment_mode: PaymentMode;
   payment_amount?: number;
   payment_collected_at?: string;
   payment_proof_url?: string;
+  
+  // Invoice verification (for delivery)
+  invoice_paid?: boolean;                  // ✨ NEW: Invoice payment verification
+  invoice_paid_at?: string;                 // ✨ NEW: When invoice was paid
+  invoice_paid_by?: string;                // ✨ NEW: Who verified payment
+  invoice_id?: string;                     // ✨ NEW: Reference to invoice
   
   created_at: string;
   updated_at: string;
