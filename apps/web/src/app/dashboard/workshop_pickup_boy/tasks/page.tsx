@@ -129,7 +129,18 @@ export default function PickupTasksPage() {
   };
 
   const openGoogleMaps = async (task: PickupTask) => {
-    const fullAddress = `${task.address}, ${task.city}, ${task.pincode}`;
+    // Build address string from available fields
+    const addressParts = [];
+    if (task.address) addressParts.push(task.address);
+    if (task.city) addressParts.push(task.city);
+    if (task.pincode) addressParts.push(task.pincode);
+    const fullAddress = addressParts.join(', ');
+    
+    if (!fullAddress) {
+      toast.error('No address available for navigation');
+      return;
+    }
+    
     const encodedAddress = encodeURIComponent(fullAddress);
     
     // Open Google Maps
@@ -149,16 +160,17 @@ export default function PickupTasksPage() {
       });
       
       if (response.ok) {
-        toast.success('Status updated to ON_THE_WAY');
+        const data = await response.json();
+        toast.success(data.message || 'Status updated to ON_THE_WAY');
         fetchTasks(); // Refresh tasks
       } else {
         const data = await response.json();
-        console.error('Failed to update status:', data.error);
-        toast.error('Failed to update status');
+        console.error('Failed to update status:', data);
+        toast.error(data.error || 'Failed to update status');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating status:', error);
-      toast.error('Failed to update status');
+      toast.error('Failed to update status: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -338,15 +350,14 @@ export default function PickupTasksPage() {
                             {task.city && <p className="text-sm text-gray-600">{task.city}{task.pincode ? `, ${task.pincode}` : ''}</p>}
                           </div>
                         </div>
-                        {task.address && (
                         <button
-                            onClick={() => openGoogleMaps(task)}
+                          onClick={() => openGoogleMaps(task)}
                           className="btn-secondary bg-green-600 hover:bg-green-700 text-white text-sm flex items-center gap-2"
+                          disabled={!task.address && !task.city}
                         >
                           <Navigation className="w-4 h-4" />
                           Navigate
                         </button>
-                        )}
                       </div>
                     </div>
 

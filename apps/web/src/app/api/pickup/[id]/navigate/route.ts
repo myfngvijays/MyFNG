@@ -57,12 +57,8 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
-    // Verify pickup is required
-    if (!lead.pickup_required) {
-      return NextResponse.json({ 
-        error: 'Pickup not required for this lead' 
-      }, { status: 400 });
-    }
+    // Note: Allow navigation even if pickup_required is not explicitly set
+    // This allows flexibility for pickup boys to navigate to any assigned task
 
     const now = new Date().toISOString();
 
@@ -78,9 +74,18 @@ export async function POST(
 
     if (updateLeadError) {
       console.error('Error updating lead status:', updateLeadError);
+      // Check if it's an enum value error
+      if (updateLeadError.message && updateLeadError.message.includes('ON_THE_WAY')) {
+        return NextResponse.json({ 
+          error: 'ON_THE_WAY status not found in database enum',
+          details: 'Please run database migration: database/81_add_on_the_way_status.sql',
+          hint: updateLeadError.message
+        }, { status: 500 });
+      }
       return NextResponse.json({ 
         error: 'Failed to update lead status', 
-        details: updateLeadError.message 
+        details: updateLeadError.message,
+        code: updateLeadError.code
       }, { status: 500 });
     }
 

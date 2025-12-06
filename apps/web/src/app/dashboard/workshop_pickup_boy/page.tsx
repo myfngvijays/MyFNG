@@ -179,39 +179,63 @@ export default function WorkshopPickupBoyDashboard() {
                   <div className="flex gap-2">
                     <button 
                       onClick={async () => {
-                        // Open Google Maps
+                        console.log('Navigate button clicked for task:', task.id, task.lead_number);
+                        
+                        // Open Google Maps - use coordinates if available, otherwise use address
+                        const address = task.pickup_address || task.customer_address || task.address || '';
+                        const city = task.city || '';
+                        const pincode = task.pincode || '';
+                        const fullAddress = `${address}, ${city}, ${pincode}`.trim();
+                        
+                        console.log('Address info:', { address, city, pincode, fullAddress, lat: task.customer_lat, lng: task.customer_lng });
+                        
                         if (task.customer_lat && task.customer_lng) {
                           window.open(`https://maps.google.com/?q=${task.customer_lat},${task.customer_lng}`, '_blank');
+                        } else if (fullAddress) {
+                          const encodedAddress = encodeURIComponent(fullAddress);
+                          window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
+                        } else {
+                          toast.error('No address or coordinates available');
+                          return;
                         }
                         
                         // Update lead status to ON_THE_WAY
                         try {
+                          console.log('Calling navigate API for task:', task.id);
                           const response = await fetch(`/api/pickup/${task.id}/navigate`, {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
                             },
                             body: JSON.stringify({
-                              latitude: task.customer_lat,
-                              longitude: task.customer_lng
+                              latitude: task.customer_lat || null,
+                              longitude: task.customer_lng || null
                             })
                           });
                           
+                          console.log('Navigate API response status:', response.status);
+                          
                           if (response.ok) {
-                            toast.success('Status updated to ON_THE_WAY');
+                            const data = await response.json();
+                            console.log('Navigate API success:', data);
+                            toast.success(data.message || 'Status updated to ON_THE_WAY');
                             fetchPickupData(); // Refresh tasks
                           } else {
                             const data = await response.json();
-                            console.error('Failed to update status:', data.error);
+                            console.error('Navigate API failed:', data);
+                            toast.error(data.error || 'Failed to update status');
+                            if (data.details) {
+                              console.error('Error details:', data.details);
+                            }
                           }
-                        } catch (error) {
-                          console.error('Error updating status:', error);
+                        } catch (error: any) {
+                          console.error('Navigate API error:', error);
+                          toast.error('Failed to update status: ' + (error.message || 'Unknown error'));
                         }
                       }}
-                      className="btn btn-outline text-sm flex-1"
-                      disabled={!task.customer_lat || !task.customer_lng}
+                      className="btn btn-outline text-sm flex-1 flex items-center justify-center gap-2"
                     >
-                      <MapPin className="w-4 h-4" />
+                      <Navigation className="w-4 h-4" />
                       Navigate
                     </button>
                     <button 
