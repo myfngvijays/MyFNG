@@ -73,9 +73,31 @@ export default function SupervisorJobDetailPage() {
           if (payload.new && payload.new.status) {
             setLead((prevLead: any) => {
               if (!prevLead) return prevLead;
+              const newStatus = payload.new.status;
+              let displayStatus = newStatus;
+              
+              // Always prioritize mechanic_status over lead status
+              if (prevLead.mechanic_status === 'COMPLETED') {
+                // If mechanic completed, check QC status
+                if (prevLead.qc_status === 'APPROVED' || newStatus === 'READY_FOR_BILLING' || newStatus === 'QC_APPROVED') {
+                  // QC already approved - show READY_FOR_BILLING or QC_APPROVED
+                  displayStatus = newStatus === 'READY_FOR_BILLING' ? 'READY_FOR_BILLING' : (newStatus === 'QC_APPROVED' ? 'QC_APPROVED' : 'READY_FOR_BILLING');
+                } else {
+                  // Mechanic completed but QC not approved yet - show COMPLETED
+                  displayStatus = 'COMPLETED';
+                }
+              } else if (prevLead.mechanic_status === 'IN_PROGRESS') {
+                // If mechanic is working, show IN_PROGRESS
+                displayStatus = 'IN_PROGRESS';
+              } else {
+                // Otherwise use the new status
+                displayStatus = newStatus;
+              }
+              
               return {
                 ...prevLead,
-                status: payload.new.status,
+                status: newStatus,
+                display_status: displayStatus,
                 sla_status: payload.new.sla_status || prevLead.sla_status,
                 priority: payload.new.priority || prevLead.priority,
                 updated_at: payload.new.updated_at || prevLead.updated_at
@@ -107,13 +129,11 @@ export default function SupervisorJobDetailPage() {
               
               if (mechanicStatus === 'IN_PROGRESS') {
                 displayStatus = 'IN_PROGRESS';
+              } else if (mechanicStatus === 'COMPLETED' && (prevLead.status === 'COMPLETED' || prevLead.status === 'QC_PENDING' || prevLead.status === 'WORK_COMPLETED')) {
+                displayStatus = 'COMPLETED';
               } else if (mechanicStatus === 'COMPLETED') {
-                // If mechanic completed, show WORK_COMPLETED status
-                if (prevLead.status === 'WORK_COMPLETED' || prevLead.status === 'QC_PENDING') {
-                  displayStatus = prevLead.status; // Use actual status if already updated
-                } else {
-                  displayStatus = 'WORK_COMPLETED'; // Force display as WORK_COMPLETED
-                }
+                // If mechanic completed, always show COMPLETED regardless of current status
+                displayStatus = 'COMPLETED';
               }
               
               return {
@@ -236,19 +256,27 @@ export default function SupervisorJobDetailPage() {
         (data as any).mechanic_status = mechanicJob.mechanic_status;
         (data as any).mechanic_started_at = mechanicJob.started_at;
         
-        // Override lead status based on mechanic_status
-        if (mechanicJob.mechanic_status === 'IN_PROGRESS' && data.status !== 'IN_PROGRESS') {
+        // Override lead status based on mechanic_status - prioritize mechanic_status over lead status
+        if (mechanicJob.mechanic_status === 'IN_PROGRESS') {
           // Update the displayed status to reflect mechanic is working
           data.display_status = 'IN_PROGRESS';
         } else if (mechanicJob.mechanic_status === 'COMPLETED') {
-          // If mechanic completed, show WORK_COMPLETED status (regardless of current lead status)
-          // This ensures supervisor sees the correct status even if lead.status hasn't updated yet
-          if (data.status === 'WORK_COMPLETED' || data.status === 'QC_PENDING') {
-            data.display_status = data.status; // Use actual status if already updated
+          // If mechanic completed, check QC status
+          if (data.qc_status === 'APPROVED' || data.status === 'READY_FOR_BILLING' || data.status === 'QC_APPROVED') {
+            // QC already approved - show READY_FOR_BILLING or QC_APPROVED
+            data.display_status = data.status === 'READY_FOR_BILLING' ? 'READY_FOR_BILLING' : (data.status === 'QC_APPROVED' ? 'QC_APPROVED' : 'READY_FOR_BILLING');
           } else {
-            data.display_status = 'WORK_COMPLETED'; // Force display as WORK_COMPLETED
+            // Mechanic completed but QC not approved yet - ALWAYS show COMPLETED
+            // Override any other status (like READY_FOR_BILLING) if QC is not approved
+            data.display_status = 'COMPLETED';
           }
+        } else {
+          // Use lead status as display status
+          data.display_status = data.status;
         }
+      } else {
+        // No mechanic job, use lead status
+        data.display_status = data.status;
       }
 
       setLead(data);
@@ -965,13 +993,13 @@ export default function SupervisorJobDetailPage() {
           </div>
         </div>
 
-        {/* Section 9: Invoice Section - Show when car is ready for delivery */}
-        {['READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
+        {/* Section 9: Invoice Section - Show when car is ready for delivery or completed */}
+        {['COMPLETED', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
           <InvoiceSection lead={lead} onUpdate={fetchJobDetails} />
         )}
 
         {/* Section 8: Status Management */}
-        {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS' || lead.status === 'INSPECTED' || lead.status === 'QC_PENDING' || lead.status === 'WORK_COMPLETED') && (
+        {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS' || lead.status === 'INSPECTED' || lead.status === 'QC_PENDING' || lead.status === 'COMPLETED' || lead.status === 'WORK_COMPLETED') && (
           <div className="card bg-purple-50 border-purple-200">
             <h3 className="text-lg font-semibold mb-3">Change Job Status</h3>
             <p className="text-sm text-gray-600 mb-4">

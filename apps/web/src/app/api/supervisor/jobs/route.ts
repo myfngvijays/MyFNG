@@ -59,9 +59,8 @@ export async function GET(request: Request) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const offset = (page - 1) * limit;
 
-    console.log('Supervisor jobs API - Filters:', { status, mechanicId, serviceType, slaStatus, search, page });
-
-    // Build query
+    // Build optimized query - fetch only essential data first
+    // Avoid nested queries which are slow - we'll fetch related data separately
     let query = supabase
       .from('service_leads')
       .select(`
@@ -86,13 +85,7 @@ export async function GET(request: Request) {
         created_at,
         updated_at,
         assigned_mechanic_id,
-        qc_status,
-        mechanic_completed_at,
-        mechanic:assigned_mechanic_id(id, full_name, profile_image),
-        pickup_boy:assigned_pickup_boy_id(id, full_name, profile_image),
-        extra_charges:lead_extra_charges(id, status),
-        media:mechanic_media(id, media_category),
-        mechanic_jobs!mechanic_jobs_lead_id_fkey(mechanic_status, started_at, completed_at)
+        qc_status
       `, { count: 'exact' })
       .eq('workshop_id', workshopId)
       .not('status', 'in', '(REJECTED,CANCELLED)');
@@ -133,30 +126,126 @@ export async function GET(request: Request) {
       );
     }
 
-    // Fetch mechanic_jobs separately for all leads to ensure we get the status
-    const leadIds = (jobs || []).map((j: any) => j.id);
-    let mechanicJobsMap: Record<string, any> = {};
-    
-    if (leadIds.length > 0) {
-      const { data: mechanicJobs, error: mjError } = await supabase
+    if (!jobs || jobs.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          jobs: [],
+          pagination: {
+            total: count || 0,
+            page,
+            limit,
+            totalPages: count ? Math.ceil(count / limit) : 0
+          }
+        }
+      });
+    }
+
+    // Fetch related data in parallel (much faster than nested queries)
+    const leadIds = jobs.map((j: any) => j.id);
+    const mechanicIds = [...new Set(jobs.map((j: any) => j.assigned_mechanic_id).filter(Boolean))];
+    const pickupBoyIds = [...new Set(jobs.map((j: any) => j.assigned_pickup_boy_id).filter(Boolean))];
+
+    // Parallel fetch all related data
+    const [
+      { data: mechanicJobsData },
+      { data: mechanicsData },
+      { data: pickupBoysData },
+      { data: extraChargesData },
+      { data: mediaData }
+    ] = await Promise.all([
+      // Mechanic jobs
+      supabase
         .from('mechanic_jobs')
         .select('lead_id, mechanic_status, started_at, completed_at')
-        .in('lead_id', leadIds);
-      
-      if (!mjError && mechanicJobs) {
-        mechanicJobsMap = mechanicJobs.reduce((acc: any, mj: any) => {
-          acc[mj.lead_id] = mj;
-          return acc;
-        }, {});
+        .in('lead_id', leadIds),
+      // Mechanics
+      mechanicIds.length > 0 ? supabase
+        .from('users_login')
+        .select('id, full_name, profile_image')
+        .in('id', mechanicIds) : Promise.resolve({ data: [] }),
+      // Pickup boys
+      pickupBoyIds.length > 0 ? supabase
+        .from('users_login')
+        .select('id, full_name, profile_image')
+        .in('id', pickupBoyIds) : Promise.resolve({ data: [] }),
+      // Extra charges
+      supabase
+        .from('lead_extra_charges')
+        .select('lead_id, status')
+        .in('lead_id', leadIds),
+      // Media
+      supabase
+        .from('mechanic_media')
+        .select('lead_id, media_category')
+        .in('lead_id', leadIds)
+    ]);
+
+    // Create lookup maps for O(1) access
+    const mechanicJobsMap = new Map();
+    (mechanicJobsData || []).forEach((mj: any) => {
+      mechanicJobsMap.set(mj.lead_id, mj);
+    });
+
+    const mechanicsMap = new Map();
+    (mechanicsData || []).forEach((m: any) => {
+      mechanicsMap.set(m.id, m);
+    });
+
+    const pickupBoysMap = new Map();
+    (pickupBoysData || []).forEach((pb: any) => {
+      pickupBoysMap.set(pb.id, pb);
+    });
+
+    const extraChargesMap = new Map();
+    (extraChargesData || []).forEach((ec: any) => {
+      if (!extraChargesMap.has(ec.lead_id)) {
+        extraChargesMap.set(ec.lead_id, []);
       }
+      extraChargesMap.get(ec.lead_id).push(ec);
+    });
+
+    const mediaMap = new Map();
+    (mediaData || []).forEach((m: any) => {
+      if (!mediaMap.has(m.lead_id)) {
+        mediaMap.set(m.lead_id, []);
+      }
+      mediaMap.get(m.lead_id).push(m);
+    });
+
+    // Collect all unique service_type_ids for batch fetching
+    const allServiceTypeIds = new Set<string>();
+    jobs.forEach((job: any) => {
+      let serviceTypeIds = job.service_type_ids;
+      if (typeof serviceTypeIds === 'string') {
+        try {
+          serviceTypeIds = JSON.parse(serviceTypeIds);
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      if (Array.isArray(serviceTypeIds)) {
+        serviceTypeIds.forEach((id: string) => allServiceTypeIds.add(id));
+      }
+    });
+
+    // Batch fetch all service types at once (single query instead of N queries)
+    const serviceTypesMap = new Map();
+    if (allServiceTypeIds.size > 0) {
+      const { data: serviceTypes } = await supabase
+        .from('service_types')
+        .select('id, name')
+        .in('id', Array.from(allServiceTypeIds));
       
-      if (mjError) {
-        console.error('Error fetching mechanic_jobs:', mjError);
+      if (serviceTypes) {
+        serviceTypes.forEach((st: any) => {
+          serviceTypesMap.set(st.id, st.name);
+        });
       }
     }
 
-    // Transform data to include computed fields
-    const transformedJobs = await Promise.all((jobs || []).map(async (job: any) => {
+    // Transform data synchronously (no async operations in map)
+    const transformedJobs = (jobs || []).map((job: any) => {
       // Calculate SLA time remaining
       let timeRemaining = null;
       let slaDeadline = null;
@@ -181,8 +270,9 @@ export async function GET(request: Request) {
         }
       }
 
-      // Check image status from mechanic_media table
-      const mediaByCategory = (job.media || []).reduce((acc: any, m: any) => {
+      // Check image status from pre-fetched media map
+      const jobMedia = mediaMap.get(job.id) || [];
+      const mediaByCategory = jobMedia.reduce((acc: any, m: any) => {
         acc[m.media_category] = true;
         return acc;
       }, {});
@@ -193,62 +283,38 @@ export async function GET(request: Request) {
         after: mediaByCategory['AFTER'] || false
       };
 
-      // Check for pending extra work
-      const extraWorkPending = (job.extra_charges || []).some((ec: any) => ec.status === 'PENDING');
+      // Check for pending extra work from pre-fetched map
+      const jobExtraCharges = extraChargesMap.get(job.id) || [];
+      const extraWorkPending = jobExtraCharges.some((ec: any) => ec.status === 'PENDING');
 
-      // Get mechanic_status from mechanic_jobs (if exists)
-      // First try from the joined query, then fallback to separate fetch
-      let mechanicJob = null;
-      if (Array.isArray(job.mechanic_jobs) && job.mechanic_jobs.length > 0) {
-        mechanicJob = job.mechanic_jobs[0];
-      } else if (mechanicJobsMap[job.id]) {
-        // Fallback to separately fetched data
-        mechanicJob = mechanicJobsMap[job.id];
-      }
-      
+      // Get mechanic_status from pre-fetched map
+      const mechanicJob = mechanicJobsMap.get(job.id) || null;
       const mechanicStatus = mechanicJob?.mechanic_status || null;
 
-      // Debug logging for status determination
-      if (job.lead_number === 'L-18431112' || job.id === 'b1e78531-265e-4a60-868c-fa2a83c3e740') {
-        console.log('Status debug for', job.lead_number, {
-          lead_status: job.status,
-          mechanic_status: mechanicStatus,
-          mechanic_job: mechanicJob,
-          mechanic_jobs_array: job.mechanic_jobs
-        });
-      }
-
       // Determine display status: prioritize mechanic_status over lead status
+      // IMPORTANT: Check COMPLETED FIRST before IN_PROGRESS to prevent override
       let displayStatus = job.status;
       
-      // If lead status is already WORK_COMPLETED or QC_PENDING, use it directly
-      if (job.status === 'WORK_COMPLETED' || job.status === 'QC_PENDING') {
-        displayStatus = job.status;
-      } else if (mechanicStatus === 'IN_PROGRESS' && job.status !== 'IN_PROGRESS') {
+      // Priority 1: If mechanic completed, show COMPLETED (unless QC approved)
+      if (mechanicStatus === 'COMPLETED') {
+        // If mechanic completed, check QC status
+        if (job.qc_status === 'APPROVED' || job.status === 'READY_FOR_BILLING' || job.status === 'QC_APPROVED') {
+          // QC already approved - show READY_FOR_BILLING or QC_APPROVED
+          displayStatus = job.status === 'READY_FOR_BILLING' ? 'READY_FOR_BILLING' : (job.status === 'QC_APPROVED' ? 'QC_APPROVED' : 'READY_FOR_BILLING');
+        } else {
+          // Mechanic completed but QC not approved yet - ALWAYS show COMPLETED
+          // Override ANY status (IN_PROGRESS, ACCEPTED, VEHICLE_DROPPED_AT_WORKSHOP, etc.)
+          displayStatus = 'COMPLETED';
+        }
+      } 
+      // Priority 2: If mechanic is working (but not completed), show IN_PROGRESS
+      else if (mechanicStatus === 'IN_PROGRESS' && job.status !== 'IN_PROGRESS') {
+        // Only show IN_PROGRESS if mechanic is working AND hasn't completed yet
         displayStatus = 'IN_PROGRESS';
-      } else if (mechanicStatus === 'COMPLETED') {
-        // If mechanic completed, show WORK_COMPLETED status regardless of current lead status
-        // This ensures supervisor sees the correct status even if lead.status hasn't updated yet
-        displayStatus = 'WORK_COMPLETED';
-        
-        // Debug log
-        if (job.lead_number === 'L-18431112' || job.id === 'b1e78531-265e-4a60-868c-fa2a83c3e740') {
-          console.log('Setting displayStatus to WORK_COMPLETED for', job.lead_number, {
-            original_status: job.status,
-            mechanic_status: mechanicStatus,
-            display_status: displayStatus,
-            mechanic_job_found: !!mechanicJob
-          });
-        }
-      }
-      
-      // Additional check: if mechanic_completed_at is set, status should be WORK_COMPLETED
-      // This handles cases where mechanic completed but status wasn't updated
-      if (job.mechanic_completed_at && displayStatus !== 'WORK_COMPLETED' && displayStatus !== 'QC_PENDING') {
-        displayStatus = 'WORK_COMPLETED';
-        if (job.lead_number === 'L-18431112' || job.id === 'b1e78531-265e-4a60-868c-fa2a83c3e740') {
-          console.log('Setting displayStatus to WORK_COMPLETED based on mechanic_completed_at for', job.lead_number);
-        }
+      } 
+      // Priority 3: If status is READY_FOR_BILLING but mechanic hasn't completed, keep it
+      else if (job.status === 'READY_FOR_BILLING' && (!mechanicStatus || mechanicStatus !== 'COMPLETED')) {
+        displayStatus = 'READY_FOR_BILLING';
       }
 
       // Mask phone number (show only last 4 digits)
@@ -256,7 +322,7 @@ export async function GET(request: Request) {
         ? `xxxxxx${job.customer_phone.slice(-4)}` 
         : null;
 
-      // Parse service types from JSONB array and fetch names
+      // Parse service types from JSONB array using pre-fetched map
       let serviceTypeDisplay = job.service_type || 'General Service';
       let serviceTypeNames: string[] = [];
       
@@ -266,20 +332,17 @@ export async function GET(request: Request) {
         try {
           serviceTypeIds = JSON.parse(serviceTypeIds);
         } catch (e) {
-          console.error('Failed to parse service_type_ids:', e);
+          // Ignore parse errors
         }
       }
       
       if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
-        // Fetch service type names from database
-        const { data: serviceTypes } = await supabase
-          .from('service_types')
-          .select('id, name')
-          .in('id', serviceTypeIds);
+        // Use pre-fetched service types map (no database query here)
+        serviceTypeNames = serviceTypeIds
+          .map((id: string) => serviceTypesMap.get(id))
+          .filter((name: string | undefined) => name !== undefined);
         
-        if (serviceTypes && serviceTypes.length > 0) {
-          serviceTypeNames = serviceTypes.map((st: any) => st.name);
-          
+        if (serviceTypeNames.length > 0) {
           if (serviceTypeNames.length === 1) {
             serviceTypeDisplay = serviceTypeNames[0];
           } else {
@@ -307,22 +370,22 @@ export async function GET(request: Request) {
         pickup_required: job.pickup_required,
         pickup_status: job.pickup_status,
         qc_status: job.qc_status,
-        mechanic: job.mechanic ? {
-          id: job.mechanic.id,
-          name: job.mechanic.full_name,
-          profileImage: job.mechanic.profile_image
-        } : null,
-        pickup_boy: job.pickup_boy ? {
-          id: job.pickup_boy.id,
-          name: job.pickup_boy.full_name,
-          profileImage: job.pickup_boy.profile_image
-        } : null,
+        mechanic: job.assigned_mechanic_id ? (mechanicsMap.get(job.assigned_mechanic_id) ? {
+          id: mechanicsMap.get(job.assigned_mechanic_id).id,
+          name: mechanicsMap.get(job.assigned_mechanic_id).full_name,
+          profileImage: mechanicsMap.get(job.assigned_mechanic_id).profile_image
+        } : null) : null,
+        pickup_boy: job.assigned_pickup_boy_id ? (pickupBoysMap.get(job.assigned_pickup_boy_id) ? {
+          id: pickupBoysMap.get(job.assigned_pickup_boy_id).id,
+          name: pickupBoysMap.get(job.assigned_pickup_boy_id).full_name,
+          profileImage: pickupBoysMap.get(job.assigned_pickup_boy_id).profile_image
+        } : null) : null,
         images,
         extra_work_pending: extraWorkPending,
         created_at: job.created_at,
         updated_at: job.updated_at
       };
-    }));
+    });
 
     return NextResponse.json({
       success: true,

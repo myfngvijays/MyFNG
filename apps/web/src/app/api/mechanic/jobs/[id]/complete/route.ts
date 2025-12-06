@@ -54,8 +54,8 @@ export async function POST(
 
     // Verify lead is in a valid status for completion
     // Allow multiple statuses: IN_PROGRESS, MECHANIC_WORKING, VEHICLE_DROPPED_AT_WORKSHOP
-    // Also allow if already WORK_COMPLETED (idempotent operation)
-    const allowedStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'VEHICLE_DROPPED_AT_WORKSHOP', 'WORK_COMPLETED'];
+    // Also allow if already COMPLETED (idempotent operation)
+    const allowedStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'VEHICLE_DROPPED_AT_WORKSHOP', 'COMPLETED'];
     if (!allowedStatuses.includes(lead.status)) {
       return NextResponse.json({ 
         error: 'Job must be in progress to mark complete',
@@ -64,13 +64,13 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // If already WORK_COMPLETED, just return success (idempotent)
-    if (lead.status === 'WORK_COMPLETED') {
+    // If already COMPLETED, just return success (idempotent)
+    if (lead.status === 'COMPLETED') {
       return NextResponse.json({
         success: true,
         message: 'Job already completed',
         lead: lead,
-        status: 'WORK_COMPLETED'
+        status: 'COMPLETED'
       }, { status: 200 });
     }
 
@@ -103,11 +103,11 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Set status to WORK_COMPLETED when mechanic completes job
-    // Supervisor will see this status and can perform QC
-    const finalStatus = 'WORK_COMPLETED';
+    // Set status to COMPLETED when mechanic completes job
+    // Supervisor will see this status and can perform QC or generate invoice
+    const finalStatus = 'COMPLETED';
 
-    // Update lead status - set to WORK_COMPLETED
+    // Update lead status - set to COMPLETED
     const updateData: any = {
       status: finalStatus,
       mechanic_completed_at: now,
@@ -120,13 +120,13 @@ export async function POST(
       updateData.qc_status = 'PENDING';
     }
 
-    // Update the lead status to WORK_COMPLETED
-    // Only update if status is in allowed pre-completion states (not already WORK_COMPLETED or later)
+    // Use a WHERE clause to ensure we only update if status hasn't changed
+    // This prevents race conditions where status might be changed by another process
     const { data: updatedLead, error: updateError } = await supabase
       .from('service_leads')
       .update(updateData)
       .eq('id', leadId)
-      .in('status', ['IN_PROGRESS', 'MECHANIC_WORKING', 'VEHICLE_DROPPED_AT_WORKSHOP']) // Only update from these statuses
+      .in('status', allowedStatuses.filter(s => s !== 'COMPLETED')) // Only update if status is still in allowed pre-completion states
       .select()
       .single();
 
@@ -139,13 +139,13 @@ export async function POST(
         .eq('id', leadId)
         .single();
       
-      if (currentLead?.status === 'WORK_COMPLETED') {
+      if (currentLead?.status === 'COMPLETED') {
         // Status was already updated, return success
         return NextResponse.json({
           success: true,
           message: 'Job already completed',
           lead: currentLead,
-          status: 'WORK_COMPLETED'
+          status: 'COMPLETED'
         }, { status: 200 });
       }
       
@@ -161,12 +161,12 @@ export async function POST(
         .eq('id', leadId)
         .single();
       
-      if (currentLead?.status === 'WORK_COMPLETED') {
+      if (currentLead?.status === 'COMPLETED') {
         return NextResponse.json({
           success: true,
           message: 'Job already completed',
           lead: currentLead,
-          status: 'WORK_COMPLETED'
+          status: 'COMPLETED'
         }, { status: 200 });
       }
       

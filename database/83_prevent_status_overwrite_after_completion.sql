@@ -7,20 +7,25 @@
 CREATE OR REPLACE FUNCTION prevent_status_overwrite_after_completion()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- If old status is WORK_COMPLETED or later, prevent downgrading
-  IF OLD.status IN ('WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED') THEN
+  -- If old status is COMPLETED or later, prevent downgrading
+  IF OLD.status IN ('COMPLETED', 'WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED') THEN
     -- Only allow status to move forward, not backward
     -- Define allowed forward transitions
     CASE OLD.status
+      WHEN 'COMPLETED' THEN
+        -- Can move to QC_PENDING, QC_APPROVED, READY_FOR_BILLING, or stay COMPLETED
+        IF NEW.status NOT IN ('COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED') THEN
+          RAISE EXCEPTION 'Cannot change status from COMPLETED to %. Status can only move forward to QC_PENDING, QC_APPROVED, READY_FOR_BILLING, or later stages.', NEW.status;
+        END IF;
       WHEN 'WORK_COMPLETED' THEN
-        -- Can move to QC_PENDING, QC_APPROVED, READY_FOR_BILLING
-        IF NEW.status NOT IN ('WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED') THEN
-          RAISE EXCEPTION 'Cannot change status from WORK_COMPLETED to %. Status can only move forward to QC_PENDING, QC_APPROVED, READY_FOR_BILLING, or later stages.', NEW.status;
+        -- Can move to QC_PENDING, QC_APPROVED, READY_FOR_BILLING, or COMPLETED
+        IF NEW.status NOT IN ('COMPLETED', 'WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED') THEN
+          RAISE EXCEPTION 'Cannot change status from WORK_COMPLETED to %. Status can only move forward to COMPLETED, QC_PENDING, QC_APPROVED, READY_FOR_BILLING, or later stages.', NEW.status;
         END IF;
       WHEN 'QC_PENDING' THEN
-        -- Can move to QC_APPROVED, READY_FOR_BILLING, or back to WORK_COMPLETED (if QC rejected)
-        IF NEW.status NOT IN ('WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED') THEN
-          RAISE EXCEPTION 'Cannot change status from QC_PENDING to %. Status can only move forward or back to WORK_COMPLETED.', NEW.status;
+        -- Can move to QC_APPROVED, READY_FOR_BILLING, or back to COMPLETED/WORK_COMPLETED (if QC rejected)
+        IF NEW.status NOT IN ('COMPLETED', 'WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED') THEN
+          RAISE EXCEPTION 'Cannot change status from QC_PENDING to %. Status can only move forward or back to COMPLETED/WORK_COMPLETED.', NEW.status;
         END IF;
       WHEN 'QC_APPROVED' THEN
         -- Can move to READY_FOR_BILLING, READY_FOR_DELIVERY, DELIVERED, CLOSED

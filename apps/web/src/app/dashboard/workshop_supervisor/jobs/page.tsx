@@ -87,7 +87,6 @@ function SupervisorJobsContent() {
           table: 'service_leads'
         },
         () => {
-          console.log('service_leads changed, refreshing jobs...');
           fetchJobs(true);
         }
       )
@@ -98,15 +97,12 @@ function SupervisorJobsContent() {
           schema: 'public',
           table: 'mechanic_jobs'
         },
-        (payload) => {
-          console.log('mechanic_jobs changed, refreshing jobs...', payload);
-          // Refresh jobs when mechanic status changes
+        () => {
+          // Refresh when mechanic_jobs changes (e.g., mechanic completes)
           fetchJobs(true);
         }
       )
-      .subscribe((status) => {
-        console.log('Real-time subscription status:', status);
-      });
+      .subscribe();
 
     return () => {
       channel.unsubscribe();

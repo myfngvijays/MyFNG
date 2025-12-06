@@ -176,13 +176,27 @@ export async function POST(
 
       nextStep = 'Job sent to auditor for final verification';
     } else {
-      // Move to invoice generation
+      // Move to invoice generation - Update status to READY_FOR_BILLING
       await supabase
         .from('service_leads')
         .update({
-          status: 'READY_FOR_BILLING'
+          status: 'READY_FOR_BILLING',
+          updated_at: now
         })
         .eq('id', leadId);
+      
+      // Log status change to READY_FOR_BILLING
+      await supabase
+        .from('lead_status_history')
+        .insert({
+          lead_id: leadId,
+          old_status: 'QC_APPROVED',
+          new_status: 'READY_FOR_BILLING',
+          changed_by: userProfile.id,
+          changed_at: now,
+          reason: 'QC approved - ready for billing/invoice generation',
+          notes: 'Job passed QC and is now ready for billing team to generate invoice'
+        });
     }
 
     // TODO: Send notification to workshop admin

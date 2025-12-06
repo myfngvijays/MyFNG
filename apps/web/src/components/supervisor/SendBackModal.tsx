@@ -170,8 +170,8 @@ Please address all issues and resubmit.
           supervisor_id: supervisorId,
           lead_id: leadId,
           action_type: 'SENT_BACK_TO_MECHANIC',
+          action_description: `Job sent back to ${currentMechanicName}`,
           action_data: {
-            mechanic_name: currentMechanicName,
             reasons: allReasons,
             instructions: additionalInstructions,
             priority: priority

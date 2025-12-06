@@ -131,8 +131,8 @@ export default function PickupTaskDetailPage() {
 
       // Update lead status - don't change status if already ON_THE_WAY
       const updateData: any = {
-        pickup_otp: otp,
-        updated_at: new Date().toISOString()
+          pickup_otp: otp,
+          updated_at: new Date().toISOString()
       };
 
       // Only update status if not already ON_THE_WAY
@@ -358,12 +358,12 @@ export default function PickupTaskDetailPage() {
       }
 
       // Status updated and OTP generated, now open maps
-      const address = task.address || task.customer_address || task.pickup_address || '';
-      const city = task.city || '';
-      const pincode = task.pincode || '';
-      const fullAddress = `${address}, ${city}, ${pincode}`.trim();
-      const encodedAddress = encodeURIComponent(fullAddress);
-      window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
+    const address = task.address || task.customer_address || task.pickup_address || '';
+    const city = task.city || '';
+    const pincode = task.pincode || '';
+    const fullAddress = `${address}, ${city}, ${pincode}`.trim();
+    const encodedAddress = encodeURIComponent(fullAddress);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
       
       // Refresh task details to get the updated OTP
       fetchTaskDetails();

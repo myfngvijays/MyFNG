@@ -59,8 +59,8 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
-    // Prevent overwriting WORK_COMPLETED or later statuses
-    const protectedStatuses = ['WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
+    // Prevent overwriting COMPLETED or later statuses
+    const protectedStatuses = ['COMPLETED', 'WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
     if (protectedStatuses.includes(lead.status)) {
       return NextResponse.json({ 
         error: 'Cannot update status - work already completed',
