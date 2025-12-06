@@ -62,7 +62,14 @@ export default function WorkshopPickupBoyDashboard() {
         .from('service_leads')
         .select('*')
         .eq('assigned_pickup_boy_id', userProfile.id)
-        .in('status', ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP', 'IN_PROGRESS'])
+        .in('status', [
+          'ACCEPTED', 
+          'ASSIGNED_TO_WORKSHOP', 
+          'ON_THE_WAY',
+          'VEHICLE_IN_TRANSIT',
+          'VEHICLE_DROPPED_AT_WORKSHOP',
+          'IN_PROGRESS'
+        ])
         .order('created_at', { ascending: false })
         .limit(5);
 
@@ -81,7 +88,12 @@ export default function WorkshopPickupBoyDashboard() {
         t.status === 'COMPLETED' || t.status === 'READY_FOR_DELIVERY'
       ).length || 0;
 
-      const inTransitCount = allTasks?.filter(t => t.status === 'IN_PROGRESS').length || 0;
+      const inTransitCount = allTasks?.filter(t => 
+        t.status === 'ON_THE_WAY' || 
+        t.status === 'VEHICLE_IN_TRANSIT' || 
+        t.status === 'VEHICLE_DROPPED_AT_WORKSHOP' ||
+        t.status === 'IN_PROGRESS'
+      ).length || 0;
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);

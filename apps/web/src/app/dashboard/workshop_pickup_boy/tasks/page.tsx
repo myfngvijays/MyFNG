@@ -32,6 +32,12 @@ export default function PickupTasksPage() {
   const [tasks, setTasks] = useState<PickupTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'scheduled' | 'in_transit' | 'completed'>('all');
+  const [filterCounts, setFilterCounts] = useState({
+    all: 0,
+    scheduled: 0,
+    in_transit: 0,
+    completed: 0
+  });
 
   useEffect(() => {
     fetchTasks();
@@ -92,12 +98,19 @@ export default function PickupTasksPage() {
       if (filter === 'scheduled') {
         query = query.in('status', ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP']);
       } else if (filter === 'in_transit') {
-        query = query.eq('status', 'IN_PROGRESS');
+        query = query.in('status', ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS']);
       } else if (filter === 'completed') {
-        query = query.eq('status', 'COMPLETED');
+        query = query.in('status', ['COMPLETED', 'DELIVERED', 'CLOSED']);
       } else {
         // All active tasks (assigned but not completed)
-        query = query.in('status', ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP', 'IN_PROGRESS']);
+        query = query.in('status', [
+          'ACCEPTED', 
+          'ASSIGNED_TO_WORKSHOP', 
+          'ON_THE_WAY',
+          'VEHICLE_IN_TRANSIT',
+          'VEHICLE_DROPPED_AT_WORKSHOP',
+          'IN_PROGRESS'
+        ]);
       }
 
       const { data, error } = await query;
@@ -109,6 +122,38 @@ export default function PickupTasksPage() {
       }
 
       setTasks(data || []);
+
+      // Fetch counts for all filters
+      const allTasksQuery = supabase
+        .from('service_leads')
+        .select('status', { count: 'exact', head: true })
+        .eq('assigned_pickup_boy_id', userProfile.id)
+        .not('status', 'in', '(REJECTED,CANCELLED)');
+
+      // Get all tasks for counting
+      const { data: allTasksData } = await supabase
+        .from('service_leads')
+        .select('status')
+        .eq('assigned_pickup_boy_id', userProfile.id)
+        .not('status', 'in', '(REJECTED,CANCELLED)');
+
+      if (allTasksData) {
+        const counts = {
+          all: allTasksData.filter(t => 
+            ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP', 'ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS'].includes(t.status)
+          ).length,
+          scheduled: allTasksData.filter(t => 
+            ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP'].includes(t.status)
+          ).length,
+          in_transit: allTasksData.filter(t => 
+            ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS'].includes(t.status)
+          ).length,
+          completed: allTasksData.filter(t => 
+            ['COMPLETED', 'DELIVERED', 'CLOSED'].includes(t.status)
+          ).length
+        };
+        setFilterCounts(counts);
+      }
     } catch (error) {
       console.error('Error:', error);
       toast.error('Failed to load tasks');
@@ -123,8 +168,11 @@ export default function PickupTasksPage() {
       if (!otpVerified) return { class: 'badge-orange', text: 'OTP Pending' };
       return { class: 'badge-blue', text: 'In Transit' };
     }
+    if (status === 'ON_THE_WAY') return { class: 'badge-blue', text: 'On The Way' };
+    if (status === 'VEHICLE_IN_TRANSIT') return { class: 'badge-purple', text: 'In Transit' };
+    if (status === 'VEHICLE_DROPPED_AT_WORKSHOP') return { class: 'badge-green', text: 'At Workshop' };
     if (status === 'IN_PROGRESS') return { class: 'badge-blue', text: 'In Progress' };
-    if (status === 'COMPLETED') return { class: 'badge-green', text: 'Completed' };
+    if (status === 'COMPLETED' || status === 'DELIVERED' || status === 'CLOSED') return { class: 'badge-green', text: 'Completed' };
     return { class: 'badge-gray', text: status.replace(/_/g, ' ') };
   };
 
@@ -204,7 +252,7 @@ export default function PickupTasksPage() {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              All Active ({tasks.length})
+              All Active ({filterCounts.all})
             </button>
             <button
               onClick={() => setFilter('scheduled')}
@@ -214,7 +262,7 @@ export default function PickupTasksPage() {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              Scheduled
+              Scheduled ({filterCounts.scheduled})
             </button>
             <button
               onClick={() => setFilter('in_transit')}
@@ -224,7 +272,7 @@ export default function PickupTasksPage() {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              In Transit
+              In Transit ({filterCounts.in_transit})
             </button>
             <button
               onClick={() => setFilter('completed')}
@@ -234,7 +282,7 @@ export default function PickupTasksPage() {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              Completed
+              Completed ({filterCounts.completed})
             </button>
           </div>
         </div>
