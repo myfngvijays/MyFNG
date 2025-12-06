@@ -96,8 +96,28 @@ export default function SupervisorJobDetailPage() {
           table: 'mechanic_jobs',
           filter: `lead_id=eq.${jobId}`
         },
-        () => {
-          console.log('Mechanic job updated, refreshing...');
+        (payload) => {
+          console.log('Mechanic job updated, refreshing...', payload);
+          // Update display status based on mechanic_status changes
+          if (payload.new && (payload.new as any).mechanic_status) {
+            const mechanicStatus = (payload.new as any).mechanic_status;
+            setLead((prevLead: any) => {
+              if (!prevLead) return prevLead;
+              let displayStatus = prevLead.status;
+              
+              if (mechanicStatus === 'IN_PROGRESS') {
+                displayStatus = 'IN_PROGRESS';
+              } else if (mechanicStatus === 'COMPLETED' && (prevLead.status === 'QC_PENDING' || prevLead.status === 'WORK_COMPLETED')) {
+                displayStatus = 'COMPLETED';
+              }
+              
+              return {
+                ...prevLead,
+                display_status: displayStatus,
+                mechanic_status: mechanicStatus
+              };
+            });
+          }
           fetchJobDetails();
         }
       )
@@ -193,16 +213,32 @@ export default function SupervisorJobDetailPage() {
         }
       }
       
-      // Fetch mechanic_jobs to get mechanic_id and job id
-      const { data: mechanicJob } = await supabase
+      // Fetch mechanic_jobs to get mechanic_id, job id, and mechanic_status
+      const { data: mechanicJob, error: mechanicJobError } = await supabase
         .from('mechanic_jobs')
-        .select('id, mechanic_id')
+        .select('id, mechanic_id, mechanic_status, started_at')
         .eq('lead_id', jobId)
-        .single();
+        .maybeSingle();
+      
+      if (mechanicJobError) {
+        console.error('Error fetching mechanic_jobs:', mechanicJobError);
+        // Don't throw - continue without mechanic job data
+      }
       
       // Store mechanic job id for BeforeInspectionUpload component
       if (mechanicJob) {
         (data as any).mechanic_job_id = mechanicJob.id;
+        (data as any).mechanic_status = mechanicJob.mechanic_status;
+        (data as any).mechanic_started_at = mechanicJob.started_at;
+        
+        // Override lead status based on mechanic_status
+        if (mechanicJob.mechanic_status === 'IN_PROGRESS' && data.status !== 'IN_PROGRESS') {
+          // Update the displayed status to reflect mechanic is working
+          data.display_status = 'IN_PROGRESS';
+        } else if (mechanicJob.mechanic_status === 'COMPLETED' && (data.status === 'QC_PENDING' || data.status === 'WORK_COMPLETED')) {
+          // If mechanic completed, show COMPLETED status for QC purposes
+          data.display_status = 'COMPLETED';
+        }
       }
 
       setLead(data);
@@ -583,12 +619,13 @@ export default function SupervisorJobDetailPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <p className="text-sm text-gray-600">Status</p>
-              <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold mt-1 ${getStatusColor(lead.status)}`}>
-                {lead.status === 'WORK_COMPLETED' ? 'Mechanic Work Completed' :
-                 lead.status === 'QC_PENDING' ? 'QC Pending' :
-                 lead.status === 'MECHANIC_WORKING' ? 'Mechanic Working' :
-                 lead.status === 'VEHICLE_DROPPED_AT_WORKSHOP' ? 'Vehicle at Workshop' :
-                 lead.status.replace(/_/g, ' ')}
+              <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold mt-1 ${getStatusColor(lead.display_status || lead.status)}`}>
+                {(lead.display_status || lead.status) === 'WORK_COMPLETED' ? 'Mechanic Work Completed' :
+                 (lead.display_status || lead.status) === 'QC_PENDING' ? 'QC Pending' :
+                 (lead.display_status || lead.status) === 'MECHANIC_WORKING' ? 'Mechanic Working' :
+                 (lead.display_status || lead.status) === 'IN_PROGRESS' ? 'In Progress' :
+                 (lead.display_status || lead.status) === 'VEHICLE_DROPPED_AT_WORKSHOP' ? 'Vehicle at Workshop' :
+                 (lead.display_status || lead.status).replace(/_/g, ' ')}
               </span>
             </div>
             <div>

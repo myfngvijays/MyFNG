@@ -216,8 +216,8 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
         // File extension is valid, proceed anyway
         console.log('File type detected by extension:', fileExtension);
       } else {
-        toast.error('Please select an image or video file');
-        return;
+      toast.error('Please select an image or video file');
+      return;
       }
     }
 

@@ -152,7 +152,7 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
         console.log('File type detected by extension:', fileExtension);
       } else {
         toast.error('Please select an image or video file');
-        return;
+      return;
       }
     }
 

@@ -156,15 +156,15 @@ export async function POST(request: NextRequest) {
 
     // Log the activity (non-blocking)
     try {
-      await supabase.from('lead_activities').insert({
-        lead_id,
-        user_id: user.id,
-        activity_type: is_valid ? 'VALIDATED' : 'VALIDATION_FAILED',
-        description: `Lead ${is_valid ? 'validated' : 'marked as incomplete'} by Lead Manager`,
-        old_status: lead.status,
-        new_status: updateData.status,
-        metadata: { validation_notes }
-      });
+    await supabase.from('lead_activities').insert({
+      lead_id,
+      user_id: user.id,
+      activity_type: is_valid ? 'VALIDATED' : 'VALIDATION_FAILED',
+      description: `Lead ${is_valid ? 'validated' : 'marked as incomplete'} by Lead Manager`,
+      old_status: lead.status,
+      new_status: updateData.status,
+      metadata: { validation_notes }
+    });
     } catch (activityError) {
       console.error('Failed to log activity:', activityError);
       // Don't fail the request if activity logging fails
@@ -172,14 +172,14 @@ export async function POST(request: NextRequest) {
 
     // Log status history (non-blocking)
     try {
-      await supabase.from('lead_status_history').insert({
-        lead_id,
-        old_status: lead.status,
-        new_status: updateData.status,
-        changed_by: user.id,
-        reason: 'Lead Manager Validation',
-        notes: validation_notes
-      });
+    await supabase.from('lead_status_history').insert({
+      lead_id,
+      old_status: lead.status,
+      new_status: updateData.status,
+      changed_by: user.id,
+      reason: 'Lead Manager Validation',
+      notes: validation_notes
+    });
     } catch (historyError) {
       console.error('Failed to log status history:', historyError);
       // Don't fail the request if history logging fails

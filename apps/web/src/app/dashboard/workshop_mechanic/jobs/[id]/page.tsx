@@ -6,7 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { 
   ArrowLeft, PlayCircle, PauseCircle, CheckCircle, Camera, 
   Package, AlertTriangle, MessageSquare, FileText, Clock,
-  Upload, X, Save, Send, Plus, Minus
+  Upload, X, Save, Send, Minus
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
@@ -1362,67 +1362,12 @@ export default function MechanicJobDetailPage() {
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold">Service Checklist</h2>
-              {checklist.length === 0 && (
-                <button
-                  onClick={async () => {
-                    try {
-                      const response = await fetch(`/api/mechanic/jobs/${leadId}/generate-checklist`, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                        },
-                      });
-                      
-                      const result = await response.json();
-                      
-                      if (response.ok && result.checklist) {
-                        // Parse checklist items
-                        let items = result.checklist.checklist_items;
-                        if (typeof items === 'string') {
-                          try {
-                            items = JSON.parse(items);
-                          } catch (e) {
-                            console.error('Failed to parse checklist_items:', e);
-                            items = [];
-                          }
-                        }
-                        
-                        if (items && items.length > 0) {
-                          setChecklist(items);
-                          
-                          // Auto-set active category
-                          const categories = Array.from(new Set(items.map((item: ChecklistItem) => item.category).filter(Boolean))) as string[];
-                          const firstIncompleteCategory = categories.find((cat: string) => {
-                            const categoryItems = items.filter((item: ChecklistItem) => item.category === cat);
-                            return categoryItems.some((item: ChecklistItem) => item.status !== 'COMPLETED');
-                          });
-                          if (firstIncompleteCategory && !activeCategory) {
-                            setActiveCategory(firstIncompleteCategory);
-                          }
-                        } else {
-                          alert('Checklist generated but has no items. Please refresh the page.');
-                          setTimeout(() => fetchJobDetails(), 1000);
-                        }
-                      } else {
-                        alert(`Failed to generate checklist: ${result.error || 'Unknown error'}`);
-                      }
-                    } catch (error) {
-                      console.error('Error generating checklist:', error);
-                      alert('Failed to generate checklist. Please try again.');
-                    }
-                  }}
-                  className="btn-primary flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Generate Checklist
-                </button>
-              )}
             </div>
             
             {checklist.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <p className="mb-4">No checklist available for this job.</p>
-                <p className="text-sm">Click "Generate Checklist" button above to create one.</p>
+                <p className="text-sm">Checklist will be automatically generated when a mechanic is assigned.</p>
               </div>
             ) : (
               /* Group by category if categories exist */

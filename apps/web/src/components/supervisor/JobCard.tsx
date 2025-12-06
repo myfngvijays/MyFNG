@@ -85,7 +85,10 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
       case 'HOLD':
         return 'bg-orange-100 text-orange-700';
       case 'COMPLETED':
+      case 'WORK_COMPLETED':
         return 'bg-teal-100 text-teal-700';
+      case 'QC_PENDING':
+        return 'bg-purple-100 text-purple-700';
       case 'READY_FOR_DELIVERY':
         return 'bg-emerald-100 text-emerald-700';
       case 'DELIVERED':
@@ -188,7 +191,7 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
           </div>
         )}
 
-        {job.qc_status === 'PENDING' && job.status === 'COMPLETED' && (
+        {job.qc_status === 'PENDING' && (job.status === 'COMPLETED' || job.status === 'QC_PENDING' || job.status === 'WORK_COMPLETED') && (
           <div className="flex items-center gap-1 text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded">
             <AlertTriangle className="w-3 h-3" />
             QC Required
@@ -261,7 +264,7 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
           </button>
         )}
 
-        {job.status === 'COMPLETED' && job.qc_status === 'PENDING' && (
+        {(job.status === 'COMPLETED' || job.status === 'QC_PENDING' || job.status === 'WORK_COMPLETED') && job.qc_status === 'PENDING' && (
           <button
             onClick={() => onQuickAction?.('qc', job.id)}
             className="btn bg-purple-600 hover:bg-purple-700 text-white text-sm flex-1"

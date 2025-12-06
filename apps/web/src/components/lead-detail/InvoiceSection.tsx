@@ -301,7 +301,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   <td className="px-4 py-3 text-right font-semibold">₹{((invoice.subtotal || invoice.sub_total) || 0).toFixed(2)}</td>
                 </tr>
                 {(invoice.discount_amount || 0) > 0 && (
-                  <tr>
+                <tr>
                     <td className="px-4 py-3">Discount / Coupon</td>
                     <td className="px-4 py-3 text-right text-red-600">-₹{(invoice.discount_amount || 0).toFixed(2)}</td>
                   </tr>
@@ -317,8 +317,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   </tr>
                 )}
                 {(invoice.sgst_amount || invoice.sgst || 0) > 0 && (
-                  <tr>
-                    <td className="px-4 py-3">SGST @ 9%</td>
+                <tr>
+                  <td className="px-4 py-3">SGST @ 9%</td>
                     <td className="px-4 py-3 text-right">₹{((invoice.sgst_amount || invoice.sgst) || 0).toFixed(2)}</td>
                   </tr>
                 )}
@@ -338,7 +338,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   <tr>
                     <td className="px-4 py-3">Round Off</td>
                     <td className="px-4 py-3 text-right">{(invoice.round_off_amount || 0) > 0 ? '+' : ''}₹{(invoice.round_off_amount || 0).toFixed(2)}</td>
-                  </tr>
+                </tr>
                 )}
                 <tr className="bg-brand-primary bg-opacity-10 font-bold text-lg">
                   <td className="px-4 py-3">Amount Payable (INR)</td>

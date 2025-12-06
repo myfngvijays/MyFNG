@@ -90,7 +90,8 @@ export async function GET(request: Request) {
         mechanic:assigned_mechanic_id(id, full_name, profile_image),
         pickup_boy:assigned_pickup_boy_id(id, full_name, profile_image),
         extra_charges:lead_extra_charges(id, status),
-        media:mechanic_media(id, media_category)
+        media:mechanic_media(id, media_category),
+        mechanic_jobs:mechanic_jobs(mechanic_status, started_at, completed_at)
       `, { count: 'exact' })
       .eq('workshop_id', workshopId)
       .not('status', 'in', '(REJECTED,CANCELLED)');
@@ -172,6 +173,21 @@ export async function GET(request: Request) {
       // Check for pending extra work
       const extraWorkPending = (job.extra_charges || []).some((ec: any) => ec.status === 'PENDING');
 
+      // Get mechanic_status from mechanic_jobs (if exists)
+      const mechanicJob = Array.isArray(job.mechanic_jobs) && job.mechanic_jobs.length > 0 
+        ? job.mechanic_jobs[0] 
+        : null;
+      const mechanicStatus = mechanicJob?.mechanic_status || null;
+
+      // Determine display status: prioritize mechanic_status over lead status
+      let displayStatus = job.status;
+      if (mechanicStatus === 'IN_PROGRESS' && job.status !== 'IN_PROGRESS') {
+        displayStatus = 'IN_PROGRESS';
+      } else if (mechanicStatus === 'COMPLETED' && (job.status === 'QC_PENDING' || job.status === 'WORK_COMPLETED')) {
+        // If mechanic completed, show COMPLETED status for QC purposes
+        displayStatus = 'COMPLETED';
+      }
+
       // Mask phone number (show only last 4 digits)
       const maskedPhone = job.customer_phone 
         ? `xxxxxx${job.customer_phone.slice(-4)}` 
@@ -221,7 +237,7 @@ export async function GET(request: Request) {
         service_type: serviceTypeDisplay,
         service_type_names: serviceTypeNames,
         service_type_ids: job.service_type_ids,
-        status: job.status,
+        status: displayStatus, // Use display status instead of raw status
         priority: job.priority,
         sla_status: job.sla_status,
         time_remaining: timeRemaining,

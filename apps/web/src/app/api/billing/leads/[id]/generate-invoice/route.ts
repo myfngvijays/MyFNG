@@ -477,7 +477,7 @@ export async function POST(
         },
         created_by: userProfile.id,
         created_at: nowISO,
-      });
+    });
 
     // TODO: Generate PDF invoice
     // TODO: Send invoice to customer (Email/WhatsApp)

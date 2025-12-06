@@ -94,10 +94,10 @@ function generateInvoiceHTML(invoice: any): string {
         year: 'numeric'
       })
     : new Date(invoice.created_at).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
 
   const dueDate = invoice.due_date 
     ? new Date(invoice.due_date).toLocaleDateString('en-IN', {
@@ -428,13 +428,13 @@ function generateInvoiceHTML(invoice: any): string {
     </div>
 
     <!-- Notes / Remarks -->
-    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
-      <h3 style="margin-bottom: 10px; color: #2563eb;">Notes / Remarks</h3>
+      <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+        <h3 style="margin-bottom: 10px; color: #2563eb;">Notes / Remarks</h3>
       <p><strong>Old parts handed over to customer:</strong> ${oldPartsHandedOver ? 'Yes' : 'No'}${oldPartsNotes ? ` - ${oldPartsNotes}` : ''}</p>
       ${recommendedWork ? `<p><strong>Recommended future work:</strong> ${recommendedWork}</p>` : ''}
       <p><strong>Warranty on service:</strong> ${warrantyNotes}</p>
       ${invoice.invoice_notes ? `<p>${invoice.invoice_notes}</p>` : ''}
-    </div>
+      </div>
 
     <!-- Footer -->
     <div class="footer">

@@ -223,13 +223,13 @@ export default function PickupTaskDetailPage() {
       // If current status is OTP_VERIFIED or IN_PROGRESS, update to VEHICLE_IN_TRANSIT first
       if (task?.pickup_status !== 'VEHICLE_IN_TRANSIT' && task?.status !== 'VEHICLE_IN_TRANSIT') {
         const { error: transitError } = await supabase
-          .from('service_leads')
+        .from('service_leads')
           .update({
             pickup_status: 'VEHICLE_IN_TRANSIT',
             status: 'VEHICLE_IN_TRANSIT',
             updated_at: new Date().toISOString()
           })
-          .eq('id', taskId);
+        .eq('id', taskId);
 
         if (transitError) {
           console.warn('Warning: Could not update to VEHICLE_IN_TRANSIT:', transitError);
@@ -580,10 +580,10 @@ export default function PickupTaskDetailPage() {
                         })}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Time Slot</p>
-                      <p className="font-semibold">{task.preferred_time_slot}</p>
-                    </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Time Slot</p>
+                        <p className="font-semibold">{task.preferred_time_slot}</p>
+                      </div>
                   </>
                 );
               }

@@ -5,6 +5,8 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { Search, Loader2, ArrowRight, Building, X } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 function LeadManagerLeadsContent() {
   const supabase = createClientComponentClient();
@@ -16,6 +18,16 @@ function LeadManagerLeadsContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState(filterParam);
   const [sortBy, setSortBy] = useState<'priority' | 'sla' | 'created'>('priority');
+  
+  // Assignment modal state
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [workshops, setWorkshops] = useState<any[]>([]);
+  const [selectedWorkshop, setSelectedWorkshop] = useState<string>('');
+  const [workshopSearch, setWorkshopSearch] = useState('');
+  const [assignmentNotes, setAssignmentNotes] = useState('');
+  const [priority, setPriority] = useState('MEDIUM');
+  const [assigning, setAssigning] = useState(false);
 
   const filters = [
     { value: 'all', label: 'All Leads' },
@@ -138,6 +150,88 @@ function LeadManagerLeadsContent() {
       default: return 'text-green-600 bg-green-100';
     }
   };
+
+  const fetchWorkshops = async (lead: any) => {
+    try {
+      const city = lead.city || '';
+      let url = `/api/lead-manager/available-workshops?`;
+      
+      if (workshopSearch) {
+        url += `search=${encodeURIComponent(workshopSearch)}`;
+      } else if (city) {
+        url += `city=${encodeURIComponent(city)}`;
+      }
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.success) {
+        setWorkshops(data.workshops || []);
+      }
+    } catch (error) {
+      console.error('Error fetching workshops:', error);
+    }
+  };
+
+  const handleAssignClick = (lead: any) => {
+    setSelectedLead(lead);
+    setShowAssignModal(true);
+    setWorkshopSearch('');
+    setSelectedWorkshop('');
+    setAssignmentNotes('');
+    setPriority(lead.lead_priority || 'MEDIUM');
+    fetchWorkshops(lead);
+  };
+
+  const handleAssignWorkshop = async () => {
+    if (!selectedWorkshop || !selectedLead) {
+      return;
+    }
+
+    setAssigning(true);
+    try {
+      const response = await fetch('/api/lead-manager/assign-workshop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_id: selectedLead.id,
+          workshop_id: selectedWorkshop,
+          assignment_notes: assignmentNotes,
+          priority
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Close modal and refresh leads
+        setShowAssignModal(false);
+        setSelectedLead(null);
+        setSelectedWorkshop('');
+        setAssignmentNotes('');
+        fetchLeads();
+        
+        toast.success(data.message || 'Workshop assigned successfully!');
+      } else {
+        toast.error(data.error || 'Assignment failed');
+      }
+    } catch (error) {
+      console.error('Assignment error:', error);
+      toast.error('Failed to assign workshop');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const filteredWorkshops = workshops.filter((workshop) => {
+    if (!workshopSearch) return true;
+    const search = workshopSearch.toLowerCase();
+    return (
+      workshop.name?.toLowerCase().includes(search) ||
+      workshop.city?.toLowerCase().includes(search) ||
+      workshop.state?.toLowerCase().includes(search)
+    );
+  });
 
   if (loading) {
     return (
@@ -315,9 +409,12 @@ function LeadManagerLeadsContent() {
                           View
                         </button>
                       </Link>
-                      {!lead.workshop_id && (
-                        <button className="text-green-600 hover:text-green-800 font-medium text-sm">
-                          Assign
+                      {(lead.status === 'VALIDATED' || lead.status === 'ASSIGNED_TO_WORKSHOP') && (
+                        <button 
+                          onClick={() => handleAssignClick(lead)}
+                          className="text-green-600 hover:text-green-800 font-medium text-sm"
+                        >
+                          {lead.workshop_id ? 'Reassign' : 'Assign'}
                         </button>
                       )}
                       {lead.is_incomplete && (
@@ -333,6 +430,148 @@ function LeadManagerLeadsContent() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Assignment Modal */}
+      {showAssignModal && selectedLead && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">
+                Assign Workshop - Lead #{selectedLead.lead_number}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAssignModal(false);
+                  setSelectedLead(null);
+                  setSelectedWorkshop('');
+                  setAssignmentNotes('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            {/* Priority Selection */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Priority Level</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+                <option value="CRITICAL">Critical</option>
+              </select>
+            </div>
+
+            {/* Workshop Search */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Search Workshops</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  value={workshopSearch}
+                  onChange={(e) => {
+                    setWorkshopSearch(e.target.value);
+                    if (selectedLead) {
+                      fetchWorkshops(selectedLead);
+                    }
+                  }}
+                  placeholder="Search by name or city..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Workshop List */}
+            <div className="mb-4 max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
+              {filteredWorkshops.length === 0 ? (
+                <p className="p-4 text-center text-gray-500">No workshops found</p>
+              ) : (
+                filteredWorkshops.map((workshop) => (
+                  <div
+                    key={workshop.id}
+                    onClick={() => setSelectedWorkshop(workshop.id)}
+                    className={`p-4 cursor-pointer hover:bg-gray-50 transition border-b border-gray-100 ${
+                      selectedWorkshop === workshop.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900">{workshop.name}</h4>
+                        <p className="text-sm text-gray-600">{workshop.city}, {workshop.state}</p>
+                        <p className="text-xs text-gray-500 mt-1">{workshop.contact_person} • {workshop.phone}</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium">Rating: {workshop.rating || 'N/A'}</span>
+                        </div>
+                        <div className={`text-xs mt-1 px-2 py-1 rounded ${
+                          workshop.capacity_status === 'AVAILABLE' ? 'bg-green-100 text-green-800' :
+                          workshop.capacity_status === 'BUSY' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {workshop.capacity_status} ({workshop.active_leads_count} active)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Assignment Notes */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Assignment Notes (Optional)</label>
+              <textarea
+                value={assignmentNotes}
+                onChange={(e) => setAssignmentNotes(e.target.value)}
+                rows={3}
+                className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500"
+                placeholder="Any special instructions or notes for the workshop..."
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowAssignModal(false);
+                  setSelectedLead(null);
+                  setSelectedWorkshop('');
+                  setAssignmentNotes('');
+                }}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium"
+                disabled={assigning}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAssignWorkshop}
+                disabled={assigning || !selectedWorkshop}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {assigning ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Assigning...
+                  </>
+                ) : (
+                  <>
+                    Assign Workshop
+                    <ArrowRight className="w-5 h-5" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

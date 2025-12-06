@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Configure route for large file uploads (videos can be large)
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes for large video uploads
 
@@ -119,30 +120,66 @@ export async function POST(
 
     const roleCode = (userProfile.roles as any)?.role_code;
 
-    // Get job_id from lead_id
-    const { data: jobData, error: jobError } = await supabase
-      .from('mechanic_jobs')
-      .select('id, mechanic_id')
-      .eq('lead_id', leadId)
-      .single();
-
-    if (jobError || !jobData) {
-      return NextResponse.json({ 
-        error: 'Job not found',
-        details: jobError?.message 
-      }, { status: 404 });
-    }
-
-    // Get lead to check supervisor assignment
+    // Get lead first to check assignments
     const { data: leadData, error: leadError } = await supabase
       .from('service_leads')
-      .select('assigned_supervisor_id, assigned_mechanic_id')
+      .select('assigned_supervisor_id, assigned_mechanic_id, workshop_id')
       .eq('id', leadId)
       .single();
 
     if (leadError || !leadData) {
       return NextResponse.json({ 
         error: 'Lead not found' 
+      }, { status: 404 });
+    }
+
+    // Get job_id from lead_id
+    // Use maybeSingle() to handle cases where job might not exist yet
+    let { data: jobData, error: jobError } = await supabase
+      .from('mechanic_jobs')
+      .select('id, mechanic_id')
+      .eq('lead_id', leadId)
+      .maybeSingle();
+
+    if (jobError) {
+      console.error('Error fetching mechanic_jobs:', jobError);
+      return NextResponse.json({ 
+        error: 'Failed to fetch job',
+        details: jobError.message 
+      }, { status: 500 });
+    }
+
+    // Auto-create mechanic_jobs record if it doesn't exist but mechanic is assigned
+    if (!jobData && leadData.assigned_mechanic_id) {
+      console.log('Auto-creating mechanic_jobs record for lead:', leadId);
+      
+      const { data: newJobData, error: createError } = await supabase
+        .from('mechanic_jobs')
+        .insert({
+          lead_id: leadId,
+          mechanic_id: leadData.assigned_mechanic_id,
+          assigned_by: user.id, // Current user creating the record
+          mechanic_status: 'ASSIGNED',
+          job_priority: 'NORMAL',
+        })
+        .select('id, mechanic_id')
+        .single();
+
+      if (createError) {
+        console.error('Error creating mechanic_jobs:', createError);
+        return NextResponse.json({ 
+          error: 'Failed to create job record',
+          details: createError.message 
+        }, { status: 500 });
+      }
+
+      jobData = newJobData;
+    }
+
+    if (!jobData) {
+      return NextResponse.json({ 
+        error: 'Job not found. Please ensure a mechanic is assigned to this lead.',
+        details: 'No mechanic_jobs record found and no mechanic assigned to this lead'
       }, { status: 404 });
     }
 
@@ -450,15 +487,25 @@ export async function GET(
     const roleCode = (userProfile.roles as any)?.role_code;
 
     // Get job_id from lead_id
+    // Use maybeSingle() to handle cases where job might not exist yet
     const { data: jobData, error: jobError } = await supabase
       .from('mechanic_jobs')
       .select('id, mechanic_id')
       .eq('lead_id', leadId)
-      .single();
+      .maybeSingle();
 
-    if (jobError || !jobData) {
+    if (jobError) {
+      console.error('Error fetching mechanic_jobs:', jobError);
       return NextResponse.json({ 
-        error: 'Job not found' 
+        error: 'Failed to fetch job',
+        details: jobError.message 
+      }, { status: 500 });
+    }
+
+    if (!jobData) {
+      return NextResponse.json({ 
+        error: 'Job not found. Please ensure a mechanic is assigned to this lead.',
+        details: 'No mechanic_jobs record found for this lead_id'
       }, { status: 404 });
     }
 

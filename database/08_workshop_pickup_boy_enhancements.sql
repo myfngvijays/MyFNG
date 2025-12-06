@@ -31,19 +31,19 @@
 -- Create type if it doesn't exist (with exception handling)
 DO $$
 BEGIN
-  CREATE TYPE pickup_status AS ENUM (
-    'NOT_ASSIGNED',
-    'PENDING',
+CREATE TYPE pickup_status AS ENUM (
+  'NOT_ASSIGNED',
+  'PENDING',
     'ON_THE_WAY',
     'ARRIVED',
-    'OTP_VERIFIED',
-    'PICKED',
+  'OTP_VERIFIED',
+  'PICKED',
     'VEHICLE_IN_TRANSIT',
-    'ARRIVED_AT_WORKSHOP',
+  'ARRIVED_AT_WORKSHOP',
     'VEHICLE_DROPPED_AT_WORKSHOP',
-    'DROPPED',
-    'FAILED_PICKUP'
-  );
+  'DROPPED',
+  'FAILED_PICKUP'
+);
 EXCEPTION WHEN duplicate_object THEN
   -- Type already exists - new enum values need to be added manually if missing:
   -- ALTER TYPE pickup_status ADD VALUE 'ON_THE_WAY';
@@ -57,16 +57,16 @@ END $$;
 -- Drop Status (Complete as per documentation)
 DO $$
 BEGIN
-  CREATE TYPE drop_status AS ENUM (
-    'NOT_REQUIRED',
-    'PENDING',
-    'ASSIGNED',
+CREATE TYPE drop_status AS ENUM (
+  'NOT_REQUIRED',
+  'PENDING',
+  'ASSIGNED',
     'OUT_FOR_DELIVERY',
-    'IN_TRANSIT',
+  'IN_TRANSIT',
     'ARRIVED_AT_CUSTOMER',
-    'DELIVERED',
-    'FAILED_DROP'
-  );
+  'DELIVERED',
+  'FAILED_DROP'
+);
 EXCEPTION WHEN duplicate_object THEN
   -- Type already exists - new enum values need to be added manually if missing:
   -- ALTER TYPE drop_status ADD VALUE 'OUT_FOR_DELIVERY';
@@ -79,14 +79,14 @@ END $$;
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_mode') THEN
-    CREATE TYPE payment_mode AS ENUM (
-      'ONLINE',
-      'COD',
-      'UPI',
-      'CARD',
-      'WALLET',
-      'PENDING'
-    );
+CREATE TYPE payment_mode AS ENUM (
+  'ONLINE',
+  'COD',
+  'UPI',
+  'CARD',
+  'WALLET',
+  'PENDING'
+);
   END IF;
 END $$;
 
@@ -94,17 +94,17 @@ END $$;
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'incident_type') THEN
-    CREATE TYPE incident_type AS ENUM (
-      'WRONG_CUSTOMER',
-      'VEHICLE_NOT_AVAILABLE',
-      'CUSTOMER_REFUSED',
-      'WRONG_ADDRESS',
-      'CUSTOMER_AGGRESSIVE',
-      'SAFETY_ISSUE',
-      'ACCIDENT',
-      'VEHICLE_DAMAGE',
-      'OTHER'
-    );
+CREATE TYPE incident_type AS ENUM (
+  'WRONG_CUSTOMER',
+  'VEHICLE_NOT_AVAILABLE',
+  'CUSTOMER_REFUSED',
+  'WRONG_ADDRESS',
+  'CUSTOMER_AGGRESSIVE',
+  'SAFETY_ISSUE',
+  'ACCIDENT',
+  'VEHICLE_DAMAGE',
+  'OTHER'
+);
   END IF;
 END $$;
 

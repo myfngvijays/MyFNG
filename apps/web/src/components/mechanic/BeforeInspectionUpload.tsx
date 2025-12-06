@@ -429,11 +429,11 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
                     preload="metadata"
                   />
                 ) : (
-                  <img
-                    src={photo.preview}
-                    alt={photo.label}
-                    className="w-full h-32 object-cover rounded-lg mb-2"
-                  />
+                <img
+                  src={photo.preview}
+                  alt={photo.label}
+                  className="w-full h-32 object-cover rounded-lg mb-2"
+                />
                 )}
                 {photo.uploading && (
                   <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center">
