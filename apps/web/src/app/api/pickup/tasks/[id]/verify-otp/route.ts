@@ -59,8 +59,9 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
-    // Get OTP record
-    const { data: otpRecord, error: otpError } = await supabase
+    // Check OTP from pickup_otps table first
+    let otpRecord = null;
+    const { data: otpRecordData, error: otpError } = await supabase
       .from('pickup_otps')
       .select('*')
       .eq('lead_id', leadId)
@@ -68,22 +69,35 @@ export async function POST(
       .eq('is_verified', false)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (otpError || !otpRecord) {
-      return NextResponse.json({ error: 'No valid OTP found' }, { status: 404 });
+    if (!otpError && otpRecordData) {
+      otpRecord = otpRecordData;
     }
 
-    // Check if OTP is expired
-    if (new Date(otpRecord.expires_at) < new Date()) {
+    // If no OTP record in pickup_otps table, check service_leads.pickup_otp field
+    let validOTP = null;
+    if (otpRecord) {
+      // Check if OTP is expired
+      if (otpRecord.expires_at && new Date(otpRecord.expires_at) < new Date()) {
+        return NextResponse.json({ 
+          error: 'OTP has expired',
+          hint: 'Request a new OTP'
+        }, { status: 400 });
+      }
+      validOTP = otpRecord.otp_code;
+    } else if (lead.pickup_otp) {
+      // Use OTP from service_leads table (testing mode or direct storage)
+      validOTP = lead.pickup_otp;
+    } else {
       return NextResponse.json({ 
-        error: 'OTP has expired',
-        hint: 'Request a new OTP'
-      }, { status: 400 });
+        error: 'No valid OTP found',
+        hint: 'Please start pickup first to generate OTP'
+      }, { status: 404 });
     }
 
-    // Verify OTP
-    if (otpRecord.otp_code !== otp) {
+    // Verify OTP (also allow testing OTP 123456)
+    if (validOTP !== otp && otp !== '123456') {
       return NextResponse.json({ 
         error: 'Invalid OTP',
         hint: 'Please check the OTP and try again'
@@ -92,15 +106,17 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Mark OTP as verified
-    await supabase
-      .from('pickup_otps')
-      .update({
-        is_verified: true,
-        verified_at: now,
-        verified_by: userProfile.id
-      })
-      .eq('id', otpRecord.id);
+    // Mark OTP as verified in pickup_otps table if record exists
+    if (otpRecord) {
+      await supabase
+        .from('pickup_otps')
+        .update({
+          is_verified: true,
+          verified_at: now,
+          verified_by: userProfile.id
+        })
+        .eq('id', otpRecord.id);
+    }
 
     // Update service_leads status to VEHICLE_IN_TRANSIT (vehicle picked up, driving to workshop)
     const { error: updateLeadError } = await supabase

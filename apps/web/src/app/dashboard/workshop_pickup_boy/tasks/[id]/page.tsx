@@ -338,7 +338,8 @@ export default function PickupTaskDetailPage() {
     );
   }
 
-  const canStart = (task.status === 'ACCEPTED' || task.status === 'ASSIGNED_TO_WORKSHOP' || task.status === 'ON_THE_WAY') && !task.pickup_otp;
+  const canStart = (task.status === 'ACCEPTED' || task.status === 'ASSIGNED_TO_WORKSHOP') && !task.pickup_otp;
+  const canVerifyOTP = (task.status === 'ON_THE_WAY' || task.status === 'ACCEPTED' || task.status === 'ASSIGNED_TO_WORKSHOP') && task.pickup_otp && !otpVerified;
   const isInProgress = task.status === 'IN_PROGRESS' || task.status === 'VEHICLE_IN_TRANSIT';
   const canMarkArrived = task.status === 'VEHICLE_IN_TRANSIT' && otpVerified;
   const canComplete = (task.status === 'VEHICLE_DROPPED_AT_WORKSHOP' || task.status === 'VEHICLE_IN_TRANSIT') && otpVerified;
@@ -365,7 +366,7 @@ export default function PickupTaskDetailPage() {
                 Start Pickup
               </button>
             )}
-            {canStart && task.pickup_otp && !otpVerified && (
+            {canVerifyOTP && (
               <button
                 onClick={() => setShowOTPModal(true)}
                 className="btn-secondary bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2"
