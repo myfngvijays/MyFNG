@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { CheckCircle, XCircle, Clock, Eye, Camera, AlertCircle, User, Car } from 'lucide-react';
+import { CheckCircle, Clock, Eye, Camera, AlertCircle, User, Car } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 
@@ -26,17 +26,6 @@ export default function QCQueuePage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<QCJob[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedJob, setSelectedJob] = useState<QCJob | null>(null);
-  const [showApproveModal, setShowApproveModal] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  
-  const [approvalNotes, setApprovalNotes] = useState('');
-  const [qualityScore, setQualityScore] = useState(5);
-  
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [failedItems, setFailedItems] = useState<string[]>([]);
-  
-  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     fetchQCQueue();
@@ -62,10 +51,22 @@ export default function QCQueuePage() {
         {
           event: '*',
           schema: 'public',
-          table: 'mechanic_job_photos'
+          table: 'lead_media'
         },
         (payload) => {
           console.log('Photos updated:', payload);
+          fetchQCQueue();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_media'
+        },
+        (payload) => {
+          console.log('Mechanic media updated:', payload);
           fetchQCQueue();
         }
       )
@@ -101,9 +102,9 @@ export default function QCQueuePage() {
       // Fetch jobs pending QC - jobs where mechanic has completed work
       // Check both service_leads.mechanic_completed_at AND mechanic_jobs.completed_at
       // AND qc_status is NULL/PENDING (not yet QC'd)
-      // AND status is not final states
+      // AND status is WORK_COMPLETED or other valid states
       
-      // First: Get jobs from service_leads with mechanic_completed_at set
+      // First: Get jobs from service_leads with WORK_COMPLETED status OR mechanic_completed_at set
       const { data: qcJobsFromLeads, error: leadsError } = await supabase
         .from('service_leads')
         .select(`
@@ -120,12 +121,13 @@ export default function QCQueuePage() {
           assigned_mechanic_id
         `)
         .eq('workshop_id', userProfile.workshop_id)
-        .not('mechanic_completed_at', 'is', null)
+        .or('status.eq.WORK_COMPLETED,mechanic_completed_at.not.is.null')
         .or('qc_status.is.null,qc_status.eq.PENDING')
         .not('status', 'eq', 'REJECTED')
         .not('status', 'eq', 'CANCELLED')
-        .not('status', 'eq', 'COMPLETED')
         .not('status', 'eq', 'CLOSED')
+        .not('status', 'eq', 'QC_APPROVED')
+        .not('status', 'eq', 'READY_FOR_BILLING')
         .order('mechanic_completed_at', { ascending: true, nullsFirst: false });
 
       // Second: Get jobs from mechanic_jobs table where completed_at is set
@@ -167,8 +169,10 @@ export default function QCQueuePage() {
           qcJobsFromMechanicJobs = leadsFromJobs
             .filter(lead => {
               const qcOk = !lead.qc_status || lead.qc_status === 'PENDING';
-              const statusOk = !['REJECTED', 'CANCELLED', 'COMPLETED', 'CLOSED'].includes(lead.status);
-              return qcOk && statusOk;
+              const statusOk = !['REJECTED', 'CANCELLED', 'CLOSED', 'QC_APPROVED', 'READY_FOR_BILLING'].includes(lead.status);
+              // Include WORK_COMPLETED status for QC
+              const isWorkCompleted = lead.status === 'WORK_COMPLETED';
+              return qcOk && (statusOk || isWorkCompleted);
             })
             .map(lead => {
               const mechanicJob = completedMechanicJobs.find(mj => mj.lead_id === lead.id);
@@ -242,24 +246,37 @@ export default function QCQueuePage() {
           .eq('id', job.assigned_mechanic_id)
           .maybeSingle();
 
-        // Get image counts from mechanic_job_photos table
+        // Get image counts from lead_media table
         const { count: beforeCount } = await supabase
-          .from('mechanic_job_photos')
+          .from('lead_media')
           .select('*', { count: 'exact', head: true })
           .eq('lead_id', job.id)
-          .eq('photo_category', 'before');
+          .eq('category', 'BEFORE');
 
         const { count: afterCount } = await supabase
-          .from('mechanic_job_photos')
+          .from('lead_media')
           .select('*', { count: 'exact', head: true })
           .eq('lead_id', job.id)
-          .eq('photo_category', 'after');
+          .eq('category', 'AFTER');
+
+        // Also check mechanic_media table as fallback
+        const { count: beforeCountMechanic } = await supabase
+          .from('mechanic_media')
+          .select('*', { count: 'exact', head: true })
+          .eq('lead_id', job.id)
+          .eq('media_category', 'BEFORE');
+
+        const { count: afterCountMechanic } = await supabase
+          .from('mechanic_media')
+          .select('*', { count: 'exact', head: true })
+          .eq('lead_id', job.id)
+          .eq('media_category', 'AFTER');
 
         return {
           ...job,
           mechanic_name: mechanic?.full_name || 'Unknown',
-          before_images_count: beforeCount || 0,
-          after_images_count: afterCount || 0,
+          before_images_count: (beforeCount || 0) + (beforeCountMechanic || 0),
+          after_images_count: (afterCount || 0) + (afterCountMechanic || 0),
           work_summary: job.notes || 'No summary provided'
         };
       }));
@@ -273,95 +290,6 @@ export default function QCQueuePage() {
     }
   }
 
-  async function handleApprove() {
-    if (!selectedJob) return;
-
-    setProcessing(true);
-
-    try {
-      const response = await fetch(`/api/supervisor/jobs/${selectedJob.id}/approve-qc`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          notes: approvalNotes,
-          quality_score: qualityScore
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error(data.error || 'Failed to approve QC');
-        return;
-      }
-
-      toast.success('QC approved successfully!');
-      setShowApproveModal(false);
-      setSelectedJob(null);
-      setApprovalNotes('');
-      setQualityScore(5);
-      fetchQCQueue();
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Failed to approve QC');
-    } finally {
-      setProcessing(false);
-    }
-  }
-
-  async function handleReject() {
-    if (!selectedJob || !rejectionReason) {
-      toast.error('Please provide a rejection reason');
-      return;
-    }
-
-    setProcessing(true);
-
-    try {
-      const response = await fetch(`/api/supervisor/jobs/${selectedJob.id}/reject-qc`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reason: rejectionReason,
-          failed_checklist_items: failedItems,
-          notes: approvalNotes
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error(data.error || 'Failed to reject QC');
-        return;
-      }
-
-      toast.success('QC rejected - Job sent back to mechanic');
-      setShowRejectModal(false);
-      setSelectedJob(null);
-      setRejectionReason('');
-      setFailedItems([]);
-      setApprovalNotes('');
-      fetchQCQueue();
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Failed to reject QC');
-    } finally {
-      setProcessing(false);
-    }
-  }
-
-  const checklistItems = [
-    'Before images uploaded',
-    'After images uploaded',
-    'Progress images uploaded',
-    'All parts documented',
-    'Service completed as requested',
-    'No warning lights',
-    'Test drive completed',
-    'Car cleaned',
-    'Documents ready',
-    'No additional issues found'
-  ];
 
   if (loading) {
     return (
@@ -496,25 +424,11 @@ export default function QCQueuePage() {
                   {/* Quick Actions */}
                   <div className="flex gap-2 pt-2 border-t">
                     <button
-                      onClick={() => {
-                        setSelectedJob(job);
-                        setShowApproveModal(true);
-                      }}
+                      onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
                       className="btn-primary flex-1 flex items-center justify-center gap-2"
-                      disabled={job.before_images_count === 0 || job.after_images_count === 0}
                     >
-                      <CheckCircle className="w-4 h-4" />
-                      Approve QC
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedJob(job);
-                        setShowRejectModal(true);
-                      }}
-                      className="btn-secondary bg-red-600 hover:bg-red-700 text-white flex-1 flex items-center justify-center gap-2"
-                    >
-                      <XCircle className="w-4 h-4" />
-                      Reject QC
+                      <Eye className="w-4 h-4" />
+                      Review
                     </button>
                   </div>
                 </div>
@@ -523,164 +437,6 @@ export default function QCQueuePage() {
           </div>
         )}
 
-        {/* Approve Modal */}
-        {showApproveModal && selectedJob && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <h3 className="text-xl font-bold mb-4 text-green-600">Approve Quality Check</h3>
-              <p className="text-gray-700 mb-4">
-                Lead: <strong>{selectedJob.lead_number}</strong>
-              </p>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Quality Score (1-5)
-                  </label>
-                  <div className="flex gap-2">
-                    {[1, 2, 3, 4, 5].map((score) => (
-                      <button
-                        key={score}
-                        onClick={() => setQualityScore(score)}
-                        className={`flex-1 py-2 rounded border-2 font-semibold transition ${
-                          qualityScore === score
-                            ? 'border-green-600 bg-green-50 text-green-700'
-                            : 'border-gray-300 hover:border-green-400'
-                        }`}
-                      >
-                        {score}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Approval Notes (Optional)
-                  </label>
-                  <textarea
-                    value={approvalNotes}
-                    onChange={(e) => setApprovalNotes(e.target.value)}
-                    className="input w-full"
-                    rows={3}
-                    placeholder="Any notes or feedback..."
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={handleApprove}
-                  disabled={processing}
-                  className="btn-primary bg-green-600 hover:bg-green-700 flex-1"
-                >
-                  {processing ? 'Approving...' : 'Approve & Continue'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowApproveModal(false);
-                    setSelectedJob(null);
-                    setApprovalNotes('');
-                    setQualityScore(5);
-                  }}
-                  disabled={processing}
-                  className="btn-secondary flex-1"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Reject Modal */}
-        {showRejectModal && selectedJob && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
-              <h3 className="text-xl font-bold mb-4 text-red-600">Reject Quality Check</h3>
-              <p className="text-gray-700 mb-4">
-                Lead: <strong>{selectedJob.lead_number}</strong>
-              </p>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Rejection Reason <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    className="input w-full"
-                    rows={3}
-                    placeholder="Explain what needs to be fixed..."
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Failed Checklist Items
-                  </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {checklistItems.map((item) => (
-                      <label key={item} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={failedItems.includes(item)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setFailedItems([...failedItems, item]);
-                            } else {
-                              setFailedItems(failedItems.filter(i => i !== item));
-                            }
-                          }}
-                          className="w-4 h-4"
-                        />
-                        <span className="text-sm">{item}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Additional Notes (Optional)
-                  </label>
-                  <textarea
-                    value={approvalNotes}
-                    onChange={(e) => setApprovalNotes(e.target.value)}
-                    className="input w-full"
-                    rows={2}
-                    placeholder="Additional feedback for mechanic..."
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={handleReject}
-                  disabled={processing || !rejectionReason}
-                  className="btn-secondary bg-red-600 hover:bg-red-700 text-white flex-1"
-                >
-                  {processing ? 'Rejecting...' : 'Reject & Send Back'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowRejectModal(false);
-                    setSelectedJob(null);
-                    setRejectionReason('');
-                    setFailedItems([]);
-                    setApprovalNotes('');
-                  }}
-                  disabled={processing}
-                  className="btn-secondary flex-1"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </DashboardLayout>
   );

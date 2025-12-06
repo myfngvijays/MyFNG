@@ -92,11 +92,11 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Determine final status based on supervisor assignment
-    // If supervisor is assigned, go to QC_PENDING, otherwise WORK_COMPLETED
-    const finalStatus = lead.assigned_supervisor_id ? 'QC_PENDING' : 'WORK_COMPLETED';
+    // Set status to WORK_COMPLETED when mechanic completes job
+    // Supervisor will see this status and can perform QC
+    const finalStatus = 'WORK_COMPLETED';
 
-    // Update lead status - set final status directly
+    // Update lead status - set to WORK_COMPLETED
     const updateData: any = {
       status: finalStatus,
       mechanic_completed_at: now,
@@ -104,7 +104,7 @@ export async function POST(
       updated_at: now
     };
 
-    // If supervisor is assigned, also set QC status
+    // If supervisor is assigned, set QC status to PENDING
     if (lead.assigned_supervisor_id) {
       updateData.qc_status = 'PENDING';
     }

@@ -85,17 +85,41 @@ export default function QCReviewPage() {
         setMechanic(mechanicData);
       }
 
-      // Fetch photos
+      // Fetch photos from lead_media table
       const { data: photosData, error: photosError } = await supabase
-        .from('mechanic_job_photos')
+        .from('lead_media')
         .select('*')
         .eq('lead_id', jobId)
         .order('created_at', { ascending: false });
 
       if (!photosError && photosData) {
-        setBeforePhotos(photosData.filter(p => p.photo_category === 'before'));
-        setAfterPhotos(photosData.filter(p => p.photo_category === 'after'));
-        setDuringPhotos(photosData.filter(p => p.photo_category === 'during'));
+        setBeforePhotos(photosData.filter(p => p.category === 'BEFORE'));
+        setAfterPhotos(photosData.filter(p => p.category === 'AFTER'));
+        setDuringPhotos(photosData.filter(p => p.category === 'PROGRESS' || p.category === 'DURING'));
+      }
+
+      // Also try fetching from mechanic_media table as fallback
+      const { data: mechanicMediaData, error: mechanicMediaError } = await supabase
+        .from('mechanic_media')
+        .select('*')
+        .eq('lead_id', jobId)
+        .order('uploaded_at', { ascending: false });
+
+      if (!mechanicMediaError && mechanicMediaData) {
+        const beforeFromMechanic = mechanicMediaData.filter(p => p.media_category === 'BEFORE');
+        const afterFromMechanic = mechanicMediaData.filter(p => p.media_category === 'AFTER');
+        const duringFromMechanic = mechanicMediaData.filter(p => p.media_category === 'PROGRESS' || p.media_category === 'DURING');
+        
+        // Merge with existing photos if any
+        if (beforeFromMechanic.length > 0) {
+          setBeforePhotos(prev => [...prev, ...beforeFromMechanic]);
+        }
+        if (afterFromMechanic.length > 0) {
+          setAfterPhotos(prev => [...prev, ...afterFromMechanic]);
+        }
+        if (duringFromMechanic.length > 0) {
+          setDuringPhotos(prev => [...prev, ...duringFromMechanic]);
+        }
       }
 
       // Fetch parts used
@@ -140,7 +164,17 @@ export default function QCReviewPage() {
   }
 
   async function handleApprove() {
-    if (!lead) return;
+    if (!lead) {
+      toast.error('Lead data not loaded');
+      return;
+    }
+
+    console.log('Approving QC for job:', jobId, {
+      qualityScore,
+      approvalNotes,
+      leadStatus: lead.status,
+      qcStatus: lead.qc_status
+    });
 
     setProcessing(true);
 
@@ -155,9 +189,12 @@ export default function QCReviewPage() {
       });
 
       const data = await response.json();
+      console.log('Approve QC response:', { status: response.status, data });
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to approve QC');
+        const errorMsg = data.error || data.details || 'Failed to approve QC';
+        console.error('QC approval failed:', { status: response.status, error: errorMsg, data });
+        throw new Error(errorMsg);
       }
 
       toast.success('QC approved successfully!');
@@ -479,8 +516,8 @@ export default function QCReviewPage() {
           <div className="flex gap-3">
             <button
               onClick={handleApprove}
-              disabled={processing || beforePhotos.length === 0 || afterPhotos.length === 0}
-              className="btn bg-green-600 hover:bg-green-700 text-white flex-1 flex items-center justify-center gap-2"
+              disabled={processing}
+              className="btn bg-green-600 hover:bg-green-700 text-white flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {processing ? (
                 <>

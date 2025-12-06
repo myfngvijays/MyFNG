@@ -183,9 +183,9 @@ export async function GET(request: Request) {
       let displayStatus = job.status;
       if (mechanicStatus === 'IN_PROGRESS' && job.status !== 'IN_PROGRESS') {
         displayStatus = 'IN_PROGRESS';
-      } else if (mechanicStatus === 'COMPLETED' && (job.status === 'QC_PENDING' || job.status === 'WORK_COMPLETED')) {
-        // If mechanic completed, show COMPLETED status for QC purposes
-        displayStatus = 'COMPLETED';
+      } else if (mechanicStatus === 'COMPLETED' && job.status === 'WORK_COMPLETED') {
+        // If mechanic completed, show WORK_COMPLETED status (not COMPLETED)
+        displayStatus = 'WORK_COMPLETED';
       }
 
       // Mask phone number (show only last 4 digits)

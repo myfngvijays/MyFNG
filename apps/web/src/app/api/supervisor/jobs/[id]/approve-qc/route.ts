@@ -16,20 +16,36 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile with role
+    // Get user profile
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, workshop_id, roles!inner(role_code)')
+      .select('id, workshop_id, role_id')
       .eq('id', user.id)
       .single();
 
     if (profileError || !userProfile) {
+      console.error('Profile error:', profileError);
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
+    // Get role code separately
+    if (!userProfile.role_id) {
+      return NextResponse.json({ error: 'User role not found' }, { status: 404 });
+    }
+
+    const { data: roleData, error: roleError } = await supabase
+      .from('roles')
+      .select('role_code')
+      .eq('id', userProfile.role_id)
+      .single();
+
+    if (roleError || !roleData) {
+      console.error('Role error:', roleError);
+      return NextResponse.json({ error: 'User role not found' }, { status: 404 });
+    }
+
     // Verify user is supervisor
-    const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'WORKSHOP_SUPERVISOR') {
+    if (roleData.role_code !== 'WORKSHOP_SUPERVISOR') {
       return NextResponse.json({ error: 'Forbidden: Supervisor only' }, { status: 403 });
     }
 
@@ -89,7 +105,12 @@ export async function POST(
 
     if (updateError) {
       console.error('Error approving QC:', updateError);
-      return NextResponse.json({ error: 'Failed to approve QC' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Failed to approve QC', 
+        details: updateError.message,
+        code: updateError.code,
+        hint: updateError.hint
+      }, { status: 500 });
     }
 
     // Create/Update QC check record
@@ -176,10 +197,14 @@ export async function POST(
       quality_score: quality_score
     }, { status: 200 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in approve QC API:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        details: error?.message || 'Unknown error',
+        stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+      },
       { status: 500 }
     );
   }

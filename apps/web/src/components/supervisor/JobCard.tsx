@@ -3,7 +3,7 @@
 import React from 'react';
 import { 
   User, Car, Clock, AlertTriangle, Image as ImageIcon,
-  CheckCircle, XCircle, Truck, DollarSign, Wrench
+  CheckCircle, XCircle, Truck, DollarSign, Wrench, Eye
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -232,10 +232,32 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
       <div className="flex items-center gap-2 pt-3 border-t border-gray-200">
         <button
           onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}`)}
-          className="btn btn-outline text-sm flex-1"
+          className="btn btn-outline text-sm"
         >
           View Details
         </button>
+
+        {/* QC Review Button - Show when status is WORK_COMPLETED */}
+        {job.status === 'WORK_COMPLETED' && (
+          <button
+            onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
+            className="btn bg-purple-600 hover:bg-purple-700 text-white text-sm flex items-center gap-2"
+          >
+            <Eye className="w-4 h-4" />
+            QC Review
+          </button>
+        )}
+
+        {/* QC Review Button - Also show for QC_PENDING status */}
+        {job.status === 'QC_PENDING' && job.qc_status === 'PENDING' && (
+          <button
+            onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
+            className="btn bg-purple-600 hover:bg-purple-700 text-white text-sm flex items-center gap-2"
+          >
+            <Eye className="w-4 h-4" />
+            QC Review
+          </button>
+        )}
 
         {!job.mechanic && job.status === 'ASSIGNED' && (
           <button
@@ -246,7 +268,7 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
           </button>
         )}
 
-        {job.mechanic && job.status !== 'COMPLETED' && (
+        {job.mechanic && job.status !== 'COMPLETED' && job.status !== 'WORK_COMPLETED' && (
           <button
             onClick={() => onQuickAction?.('reassign', job.id)}
             className="btn btn-outline text-sm"
@@ -261,15 +283,6 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
             className="btn bg-orange-600 hover:bg-orange-700 text-white text-sm"
           >
             Approve Work
-          </button>
-        )}
-
-        {(job.status === 'COMPLETED' || job.status === 'QC_PENDING' || job.status === 'WORK_COMPLETED') && job.qc_status === 'PENDING' && (
-          <button
-            onClick={() => onQuickAction?.('qc', job.id)}
-            className="btn bg-purple-600 hover:bg-purple-700 text-white text-sm flex-1"
-          >
-            Perform QC
           </button>
         )}
       </div>
