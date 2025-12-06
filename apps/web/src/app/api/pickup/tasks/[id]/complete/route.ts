@@ -55,11 +55,13 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
-    // Verify pickup status is VEHICLE_IN_TRANSIT (driving to workshop)
-    if (lead.pickup_status !== 'VEHICLE_IN_TRANSIT') {
+    // Verify pickup status is VEHICLE_IN_TRANSIT or VEHICLE_DROPPED_AT_WORKSHOP
+    // Allow both statuses - VEHICLE_IN_TRANSIT means still driving, VEHICLE_DROPPED_AT_WORKSHOP means arrived
+    if (lead.pickup_status !== 'VEHICLE_IN_TRANSIT' && lead.pickup_status !== 'VEHICLE_DROPPED_AT_WORKSHOP') {
       return NextResponse.json({ 
-        error: 'Pickup must be in VEHICLE_IN_TRANSIT status',
-        current_status: lead.pickup_status
+        error: 'Pickup must be in VEHICLE_IN_TRANSIT or VEHICLE_DROPPED_AT_WORKSHOP status',
+        current_status: lead.pickup_status,
+        hint: 'Please mark as arrived at workshop first'
       }, { status: 400 });
     }
 

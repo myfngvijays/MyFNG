@@ -128,10 +128,38 @@ export default function PickupTasksPage() {
     return { class: 'badge-gray', text: status.replace(/_/g, ' ') };
   };
 
-  const openGoogleMaps = (address: string, city: string, pincode: string) => {
-    const fullAddress = `${address}, ${city}, ${pincode}`;
+  const openGoogleMaps = async (task: PickupTask) => {
+    const fullAddress = `${task.address}, ${task.city}, ${task.pincode}`;
     const encodedAddress = encodeURIComponent(fullAddress);
+    
+    // Open Google Maps
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
+    
+    // Update lead status to ON_THE_WAY
+    try {
+      const response = await fetch(`/api/pickup/${task.id}/navigate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          latitude: null, // Can be added if available
+          longitude: null
+        })
+      });
+      
+      if (response.ok) {
+        toast.success('Status updated to ON_THE_WAY');
+        fetchTasks(); // Refresh tasks
+      } else {
+        const data = await response.json();
+        console.error('Failed to update status:', data.error);
+        toast.error('Failed to update status');
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast.error('Failed to update status');
+    }
   };
 
   if (loading) {
@@ -312,11 +340,11 @@ export default function PickupTasksPage() {
                         </div>
                         {task.address && (
                         <button
-                            onClick={() => openGoogleMaps(task.address, task.city || '', task.pincode || '')}
+                            onClick={() => openGoogleMaps(task)}
                           className="btn-secondary bg-green-600 hover:bg-green-700 text-white text-sm flex items-center gap-2"
                         >
                           <Navigation className="w-4 h-4" />
-                          Open in Maps
+                          Navigate
                         </button>
                         )}
                       </div>

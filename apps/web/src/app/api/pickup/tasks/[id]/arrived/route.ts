@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * POST /api/pickup/tasks/[id]/arrived
+ * Mark vehicle as arrived at workshop (status: VEHICLE_DROPPED_AT_WORKSHOP)
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -16,10 +20,10 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile with role
+    // Get user profile
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, workshop_id, roles!inner(role_code)')
+      .select('id, roles!inner(role_code)')
       .eq('id', user.id)
       .single();
 
@@ -33,14 +37,6 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden: Pickup Boy only' }, { status: 403 });
     }
 
-    // Get request body
-    const body = await request.json();
-    const { otp } = body;
-
-    if (!otp) {
-      return NextResponse.json({ error: 'OTP is required' }, { status: 400 });
-    }
-
     const leadId = params.id;
 
     // Get lead details
@@ -51,7 +47,7 @@ export async function POST(
       .single();
 
     if (leadError || !lead) {
-      return NextResponse.json({ error: 'Pickup task not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
     // Verify task is assigned to this pickup boy
@@ -59,56 +55,30 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
-    // Get OTP record
-    const { data: otpRecord, error: otpError } = await supabase
-      .from('pickup_otps')
-      .select('*')
-      .eq('lead_id', leadId)
-      .eq('otp_type', 'PICKUP')
-      .eq('is_verified', false)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (otpError || !otpRecord) {
-      return NextResponse.json({ error: 'No valid OTP found' }, { status: 404 });
-    }
-
-    // Check if OTP is expired
-    if (new Date(otpRecord.expires_at) < new Date()) {
+    // Verify pickup is required
+    if (!lead.pickup_required) {
       return NextResponse.json({ 
-        error: 'OTP has expired',
-        hint: 'Request a new OTP'
+        error: 'Pickup not required for this lead' 
       }, { status: 400 });
     }
 
-    // Verify OTP
-    if (otpRecord.otp_code !== otp) {
+    // Verify current status is VEHICLE_IN_TRANSIT
+    if (lead.pickup_status !== 'VEHICLE_IN_TRANSIT' && lead.status !== 'VEHICLE_IN_TRANSIT') {
       return NextResponse.json({ 
-        error: 'Invalid OTP',
-        hint: 'Please check the OTP and try again'
+        error: 'Vehicle must be in transit before marking as arrived',
+        current_status: lead.status,
+        current_pickup_status: lead.pickup_status
       }, { status: 400 });
     }
 
     const now = new Date().toISOString();
 
-    // Mark OTP as verified
-    await supabase
-      .from('pickup_otps')
-      .update({
-        is_verified: true,
-        verified_at: now,
-        verified_by: userProfile.id
-      })
-      .eq('id', otpRecord.id);
-
-    // Update service_leads status to VEHICLE_IN_TRANSIT (vehicle picked up, driving to workshop)
+    // Update service_leads status to VEHICLE_DROPPED_AT_WORKSHOP
     const { error: updateLeadError } = await supabase
       .from('service_leads')
       .update({
-        pickup_otp_verified_at: now,
-        pickup_status: 'VEHICLE_IN_TRANSIT',
-        status: 'VEHICLE_IN_TRANSIT',
+        pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
+        status: 'VEHICLE_DROPPED_AT_WORKSHOP',
         updated_at: now
       })
       .eq('id', leadId);
@@ -121,13 +91,12 @@ export async function POST(
       }, { status: 500 });
     }
 
-    // Update pickup tracking
+    // Update pickup_tracking
     await supabase
       .from('pickup_tracking')
       .update({
-        pickup_status: 'VEHICLE_IN_TRANSIT',
-        pickup_otp_verified_at: now,
-        pickup_in_transit_at: now,
+        pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
+        pickup_arrival_time: now,
         updated_at: now
       })
       .eq('lead_id', leadId);
@@ -138,11 +107,11 @@ export async function POST(
       .insert({
         lead_id: leadId,
         old_status: lead.status,
-        new_status: 'VEHICLE_IN_TRANSIT',
+        new_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
         changed_by: userProfile.id,
         changed_at: now,
-        reason: 'OTP verified - Vehicle picked up, driving to workshop',
-        notes: 'Customer OTP verified successfully'
+        reason: 'Vehicle arrived at workshop',
+        notes: 'Pickup boy marked vehicle as arrived at workshop'
       });
 
     // Create activity log
@@ -151,33 +120,26 @@ export async function POST(
       .insert({
         lead_id: leadId,
         user_id: userProfile.id,
-        activity_type: 'OTP_VERIFIED',
-        description: 'Customer OTP verified - Vehicle picked up, driving to workshop',
+        activity_type: 'VEHICLE_ARRIVED_AT_WORKSHOP',
+        description: 'Vehicle arrived at workshop',
         old_status: lead.status,
-        new_status: 'VEHICLE_IN_TRANSIT',
+        new_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
         metadata: {
           pickup_boy_id: userProfile.id,
-          verified_at: now,
-          otp_type: 'PICKUP'
+          arrived_at: now
         }
       });
 
     return NextResponse.json({
       success: true,
-      message: 'OTP verified successfully',
-      next_step: 'Upload before images of the vehicle',
-      instructions: [
-        'Take clear photos of all 4 sides of vehicle',
-        'Include close-ups of any existing damage',
-        'Check vehicle interior condition',
-        'Note down fuel level and odometer reading'
-      ]
+      message: 'Vehicle marked as arrived at workshop',
+      status: 'VEHICLE_DROPPED_AT_WORKSHOP'
     }, { status: 200 });
 
-  } catch (error) {
-    console.error('Error in verify OTP API:', error);
+  } catch (error: any) {
+    console.error('Error in arrived API:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error.message },
       { status: 500 }
     );
   }

@@ -149,52 +149,26 @@ export default function PickupTaskDetailPage() {
     }
 
     setProcessing(true);
-    const supabase = createClient();
 
     try {
-      // Bypass mode: Accept 123456 or actual OTP
-      if (task.pickup_otp !== otpInput && otpInput !== '123456') {
-        toast.error('Invalid OTP. Please try again.');
-        setProcessing(false);
-        return;
+      // Use API endpoint to verify OTP (this will update status to VEHICLE_IN_TRANSIT)
+      const response = await fetch(`/api/pickup/tasks/${taskId}/verify-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          otp: otpInput
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to verify OTP');
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      // Mark OTP as verified and update status to IN_PROGRESS
-      const updateData: any = {
-        pickup_otp_verified_at: new Date().toISOString(),
-        status: 'IN_PROGRESS'
-      };
-      
-      // Only add updated_at if column exists (check via try-catch or just omit it)
-      // Most tables have updated_at, but if it doesn't exist, it will cause an error
-      
-      const { error: updateError } = await supabase
-        .from('service_leads')
-        .update(updateData)
-        .eq('id', taskId);
-
-      if (updateError) {
-        console.error('Error updating service_leads:', updateError);
-        throw updateError;
-      }
-
-      // Create lead event (don't fail request if this fails)
-      try {
-        await supabase.from('lead_events').insert({
-          lead_id: taskId,
-          event_type: 'OTP_VERIFIED',
-          event_description: `Customer OTP verified for vehicle handover`,
-          created_by: user.id,
-        });
-      } catch (eventError) {
-        // Log but don't fail the request
-        console.error('Error creating lead event (non-critical):', eventError);
-      }
-
-      toast.success('✅ OTP verified successfully!');
+      toast.success('✅ OTP verified successfully! Status updated to VEHICLE_IN_TRANSIT');
       setShowOTPModal(false);
       setOtpVerified(true);
       fetchTaskDetails();
@@ -213,38 +187,21 @@ export default function PickupTaskDetailPage() {
     }
 
     setProcessing(true);
-    const supabase = createClient();
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      // If status is not VEHICLE_DROPPED_AT_WORKSHOP, mark as arrived first
+      if (task?.status !== 'VEHICLE_DROPPED_AT_WORKSHOP' && task?.pickup_status !== 'VEHICLE_DROPPED_AT_WORKSHOP') {
+        const arrivedResponse = await fetch(`/api/pickup/tasks/${taskId}/arrived`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
 
-      // First, ensure status is VEHICLE_IN_TRANSIT (required by API)
-      // If current status is OTP_VERIFIED or IN_PROGRESS, update to VEHICLE_IN_TRANSIT first
-      if (task?.pickup_status !== 'VEHICLE_IN_TRANSIT' && task?.status !== 'VEHICLE_IN_TRANSIT') {
-        const { error: transitError } = await supabase
-        .from('service_leads')
-          .update({
-            pickup_status: 'VEHICLE_IN_TRANSIT',
-            status: 'VEHICLE_IN_TRANSIT',
-            updated_at: new Date().toISOString()
-          })
-        .eq('id', taskId);
-
-        if (transitError) {
-          console.warn('Warning: Could not update to VEHICLE_IN_TRANSIT:', transitError);
-          // Continue anyway, API will handle it
+        if (!arrivedResponse.ok) {
+          const arrivedData = await arrivedResponse.json();
+          throw new Error(arrivedData.error || 'Failed to mark as arrived');
         }
-
-        // Also update pickup_tracking
-        await supabase
-          .from('pickup_tracking')
-          .update({
-            pickup_status: 'VEHICLE_IN_TRANSIT',
-            pickup_in_transit_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('lead_id', taskId);
       }
 
       // Use the proper API endpoint to complete pickup task
@@ -381,9 +338,10 @@ export default function PickupTaskDetailPage() {
     );
   }
 
-  const canStart = (task.status === 'ACCEPTED' || task.status === 'ASSIGNED_TO_WORKSHOP') && !task.pickup_otp;
-  const isInProgress = task.status === 'IN_PROGRESS';
-  const canComplete = isInProgress && otpVerified;
+  const canStart = (task.status === 'ACCEPTED' || task.status === 'ASSIGNED_TO_WORKSHOP' || task.status === 'ON_THE_WAY') && !task.pickup_otp;
+  const isInProgress = task.status === 'IN_PROGRESS' || task.status === 'VEHICLE_IN_TRANSIT';
+  const canMarkArrived = task.status === 'VEHICLE_IN_TRANSIT' && otpVerified;
+  const canComplete = (task.status === 'VEHICLE_DROPPED_AT_WORKSHOP' || task.status === 'VEHICLE_IN_TRANSIT') && otpVerified;
 
   return (
     <DashboardLayout role="workshop_pickup_boy">
@@ -416,13 +374,47 @@ export default function PickupTaskDetailPage() {
                 Verify OTP
               </button>
             )}
+            {canMarkArrived && (
+              <button
+                onClick={async () => {
+                  setProcessing(true);
+                  try {
+                    const response = await fetch(`/api/pickup/tasks/${taskId}/arrived`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      }
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                      throw new Error(data.error || 'Failed to mark as arrived');
+                    }
+
+                    toast.success('✅ Vehicle marked as arrived at workshop!');
+                    fetchTaskDetails();
+                  } catch (error: any) {
+                    console.error('Error marking as arrived:', error);
+                    toast.error(`Failed to mark as arrived: ${error.message}`);
+                  } finally {
+                    setProcessing(false);
+                  }
+                }}
+                disabled={processing}
+                className="btn-secondary bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+              >
+                <MapPin className="w-5 h-5" />
+                {processing ? 'Marking...' : 'Arrived at Workshop'}
+              </button>
+            )}
             {canComplete && (
               <button
                 onClick={() => setShowCompleteModal(true)}
                 className="btn-primary bg-green-600 hover:bg-green-700 flex items-center gap-2"
               >
                 <CheckCircle className="w-5 h-5" />
-                Deliver to Workshop
+                Complete Delivery
               </button>
             )}
           </div>
@@ -430,6 +422,9 @@ export default function PickupTaskDetailPage() {
 
         {/* Status Banner */}
         <div className={`p-4 rounded-lg border-l-4 ${
+          task.status === 'ON_THE_WAY' ? 'bg-blue-50 border-blue-500' :
+          task.status === 'VEHICLE_IN_TRANSIT' ? 'bg-purple-50 border-purple-500' :
+          task.status === 'VEHICLE_DROPPED_AT_WORKSHOP' ? 'bg-green-50 border-green-500' :
           task.status === 'IN_PROGRESS' ? 'bg-blue-50 border-blue-500' :
           task.status === 'ACCEPTED' || task.status === 'ASSIGNED_TO_WORKSHOP' ? 'bg-yellow-50 border-yellow-500' :
           'bg-green-50 border-green-500'

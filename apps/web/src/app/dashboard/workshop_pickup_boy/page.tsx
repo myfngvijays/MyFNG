@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Truck, MapPin, Camera, Navigation, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import toast from 'react-hot-toast';
 
 export default function WorkshopPickupBoyDashboard() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -177,7 +178,36 @@ export default function WorkshopPickupBoyDashboard() {
                   </div>
                   <div className="flex gap-2">
                     <button 
-                      onClick={() => window.open(`https://maps.google.com/?q=${task.customer_lat},${task.customer_lng}`, '_blank')}
+                      onClick={async () => {
+                        // Open Google Maps
+                        if (task.customer_lat && task.customer_lng) {
+                          window.open(`https://maps.google.com/?q=${task.customer_lat},${task.customer_lng}`, '_blank');
+                        }
+                        
+                        // Update lead status to ON_THE_WAY
+                        try {
+                          const response = await fetch(`/api/pickup/${task.id}/navigate`, {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                              latitude: task.customer_lat,
+                              longitude: task.customer_lng
+                            })
+                          });
+                          
+                          if (response.ok) {
+                            toast.success('Status updated to ON_THE_WAY');
+                            fetchPickupData(); // Refresh tasks
+                          } else {
+                            const data = await response.json();
+                            console.error('Failed to update status:', data.error);
+                          }
+                        } catch (error) {
+                          console.error('Error updating status:', error);
+                        }
+                      }}
                       className="btn btn-outline text-sm flex-1"
                       disabled={!task.customer_lat || !task.customer_lng}
                     >
