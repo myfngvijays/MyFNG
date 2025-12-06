@@ -87,11 +87,12 @@ export async function GET(request: Request) {
         updated_at,
         assigned_mechanic_id,
         qc_status,
+        mechanic_completed_at,
         mechanic:assigned_mechanic_id(id, full_name, profile_image),
         pickup_boy:assigned_pickup_boy_id(id, full_name, profile_image),
         extra_charges:lead_extra_charges(id, status),
         media:mechanic_media(id, media_category),
-        mechanic_jobs:mechanic_jobs(mechanic_status, started_at, completed_at)
+        mechanic_jobs!mechanic_jobs_lead_id_fkey(mechanic_status, started_at, completed_at)
       `, { count: 'exact' })
       .eq('workshop_id', workshopId)
       .not('status', 'in', '(REJECTED,CANCELLED)');
@@ -130,6 +131,28 @@ export async function GET(request: Request) {
         { error: 'Failed to fetch jobs', details: jobsError.message },
         { status: 500 }
       );
+    }
+
+    // Fetch mechanic_jobs separately for all leads to ensure we get the status
+    const leadIds = (jobs || []).map((j: any) => j.id);
+    let mechanicJobsMap: Record<string, any> = {};
+    
+    if (leadIds.length > 0) {
+      const { data: mechanicJobs, error: mjError } = await supabase
+        .from('mechanic_jobs')
+        .select('lead_id, mechanic_status, started_at, completed_at')
+        .in('lead_id', leadIds);
+      
+      if (!mjError && mechanicJobs) {
+        mechanicJobsMap = mechanicJobs.reduce((acc: any, mj: any) => {
+          acc[mj.lead_id] = mj;
+          return acc;
+        }, {});
+      }
+      
+      if (mjError) {
+        console.error('Error fetching mechanic_jobs:', mjError);
+      }
     }
 
     // Transform data to include computed fields
@@ -174,18 +197,58 @@ export async function GET(request: Request) {
       const extraWorkPending = (job.extra_charges || []).some((ec: any) => ec.status === 'PENDING');
 
       // Get mechanic_status from mechanic_jobs (if exists)
-      const mechanicJob = Array.isArray(job.mechanic_jobs) && job.mechanic_jobs.length > 0 
-        ? job.mechanic_jobs[0] 
-        : null;
+      // First try from the joined query, then fallback to separate fetch
+      let mechanicJob = null;
+      if (Array.isArray(job.mechanic_jobs) && job.mechanic_jobs.length > 0) {
+        mechanicJob = job.mechanic_jobs[0];
+      } else if (mechanicJobsMap[job.id]) {
+        // Fallback to separately fetched data
+        mechanicJob = mechanicJobsMap[job.id];
+      }
+      
       const mechanicStatus = mechanicJob?.mechanic_status || null;
+
+      // Debug logging for status determination
+      if (job.lead_number === 'L-18431112' || job.id === 'b1e78531-265e-4a60-868c-fa2a83c3e740') {
+        console.log('Status debug for', job.lead_number, {
+          lead_status: job.status,
+          mechanic_status: mechanicStatus,
+          mechanic_job: mechanicJob,
+          mechanic_jobs_array: job.mechanic_jobs
+        });
+      }
 
       // Determine display status: prioritize mechanic_status over lead status
       let displayStatus = job.status;
-      if (mechanicStatus === 'IN_PROGRESS' && job.status !== 'IN_PROGRESS') {
+      
+      // If lead status is already WORK_COMPLETED or QC_PENDING, use it directly
+      if (job.status === 'WORK_COMPLETED' || job.status === 'QC_PENDING') {
+        displayStatus = job.status;
+      } else if (mechanicStatus === 'IN_PROGRESS' && job.status !== 'IN_PROGRESS') {
         displayStatus = 'IN_PROGRESS';
-      } else if (mechanicStatus === 'COMPLETED' && job.status === 'WORK_COMPLETED') {
-        // If mechanic completed, show WORK_COMPLETED status (not COMPLETED)
+      } else if (mechanicStatus === 'COMPLETED') {
+        // If mechanic completed, show WORK_COMPLETED status regardless of current lead status
+        // This ensures supervisor sees the correct status even if lead.status hasn't updated yet
         displayStatus = 'WORK_COMPLETED';
+        
+        // Debug log
+        if (job.lead_number === 'L-18431112' || job.id === 'b1e78531-265e-4a60-868c-fa2a83c3e740') {
+          console.log('Setting displayStatus to WORK_COMPLETED for', job.lead_number, {
+            original_status: job.status,
+            mechanic_status: mechanicStatus,
+            display_status: displayStatus,
+            mechanic_job_found: !!mechanicJob
+          });
+        }
+      }
+      
+      // Additional check: if mechanic_completed_at is set, status should be WORK_COMPLETED
+      // This handles cases where mechanic completed but status wasn't updated
+      if (job.mechanic_completed_at && displayStatus !== 'WORK_COMPLETED' && displayStatus !== 'QC_PENDING') {
+        displayStatus = 'WORK_COMPLETED';
+        if (job.lead_number === 'L-18431112' || job.id === 'b1e78531-265e-4a60-868c-fa2a83c3e740') {
+          console.log('Setting displayStatus to WORK_COMPLETED based on mechanic_completed_at for', job.lead_number);
+        }
       }
 
       // Mask phone number (show only last 4 digits)

@@ -54,13 +54,24 @@ export async function POST(
 
     // Verify lead is in a valid status for completion
     // Allow multiple statuses: IN_PROGRESS, MECHANIC_WORKING, VEHICLE_DROPPED_AT_WORKSHOP
-    const allowedStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'VEHICLE_DROPPED_AT_WORKSHOP'];
+    // Also allow if already WORK_COMPLETED (idempotent operation)
+    const allowedStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'VEHICLE_DROPPED_AT_WORKSHOP', 'WORK_COMPLETED'];
     if (!allowedStatuses.includes(lead.status)) {
       return NextResponse.json({ 
         error: 'Job must be in progress to mark complete',
         current_status: lead.status,
         allowed_statuses: allowedStatuses
       }, { status: 400 });
+    }
+
+    // If already WORK_COMPLETED, just return success (idempotent)
+    if (lead.status === 'WORK_COMPLETED') {
+      return NextResponse.json({
+        success: true,
+        message: 'Job already completed',
+        lead: lead,
+        status: 'WORK_COMPLETED'
+      }, { status: 200 });
     }
 
     // Check if required images are uploaded
@@ -109,16 +120,60 @@ export async function POST(
       updateData.qc_status = 'PENDING';
     }
 
+    // Update the lead status to WORK_COMPLETED
+    // Only update if status is in allowed pre-completion states (not already WORK_COMPLETED or later)
     const { data: updatedLead, error: updateError } = await supabase
       .from('service_leads')
       .update(updateData)
       .eq('id', leadId)
+      .in('status', ['IN_PROGRESS', 'MECHANIC_WORKING', 'VEHICLE_DROPPED_AT_WORKSHOP']) // Only update from these statuses
       .select()
       .single();
 
     if (updateError) {
       console.error('Error completing job:', updateError);
+      // Check if the error is because status was already changed
+      const { data: currentLead } = await supabase
+        .from('service_leads')
+        .select('status')
+        .eq('id', leadId)
+        .single();
+      
+      if (currentLead?.status === 'WORK_COMPLETED') {
+        // Status was already updated, return success
+        return NextResponse.json({
+          success: true,
+          message: 'Job already completed',
+          lead: currentLead,
+          status: 'WORK_COMPLETED'
+        }, { status: 200 });
+      }
+      
       return NextResponse.json({ error: 'Failed to complete job', details: updateError.message }, { status: 500 });
+    }
+
+    // Double-check that the update actually happened
+    if (!updatedLead) {
+      // Status might have been changed by another process, fetch current status
+      const { data: currentLead } = await supabase
+        .from('service_leads')
+        .select('status')
+        .eq('id', leadId)
+        .single();
+      
+      if (currentLead?.status === 'WORK_COMPLETED') {
+        return NextResponse.json({
+          success: true,
+          message: 'Job already completed',
+          lead: currentLead,
+          status: 'WORK_COMPLETED'
+        }, { status: 200 });
+      }
+      
+      return NextResponse.json({ 
+        error: 'Failed to complete job - status may have been changed',
+        current_status: currentLead?.status 
+      }, { status: 500 });
     }
 
     // Log status change in lead_status_history

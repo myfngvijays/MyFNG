@@ -107,8 +107,13 @@ export default function SupervisorJobDetailPage() {
               
               if (mechanicStatus === 'IN_PROGRESS') {
                 displayStatus = 'IN_PROGRESS';
-              } else if (mechanicStatus === 'COMPLETED' && (prevLead.status === 'QC_PENDING' || prevLead.status === 'WORK_COMPLETED')) {
-                displayStatus = 'COMPLETED';
+              } else if (mechanicStatus === 'COMPLETED') {
+                // If mechanic completed, show WORK_COMPLETED status
+                if (prevLead.status === 'WORK_COMPLETED' || prevLead.status === 'QC_PENDING') {
+                  displayStatus = prevLead.status; // Use actual status if already updated
+                } else {
+                  displayStatus = 'WORK_COMPLETED'; // Force display as WORK_COMPLETED
+                }
               }
               
               return {
@@ -235,9 +240,14 @@ export default function SupervisorJobDetailPage() {
         if (mechanicJob.mechanic_status === 'IN_PROGRESS' && data.status !== 'IN_PROGRESS') {
           // Update the displayed status to reflect mechanic is working
           data.display_status = 'IN_PROGRESS';
-        } else if (mechanicJob.mechanic_status === 'COMPLETED' && (data.status === 'QC_PENDING' || data.status === 'WORK_COMPLETED')) {
-          // If mechanic completed, show COMPLETED status for QC purposes
-          data.display_status = 'COMPLETED';
+        } else if (mechanicJob.mechanic_status === 'COMPLETED') {
+          // If mechanic completed, show WORK_COMPLETED status (regardless of current lead status)
+          // This ensures supervisor sees the correct status even if lead.status hasn't updated yet
+          if (data.status === 'WORK_COMPLETED' || data.status === 'QC_PENDING') {
+            data.display_status = data.status; // Use actual status if already updated
+          } else {
+            data.display_status = 'WORK_COMPLETED'; // Force display as WORK_COMPLETED
+          }
         }
       }
 

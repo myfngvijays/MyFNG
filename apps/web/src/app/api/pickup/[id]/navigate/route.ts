@@ -57,6 +57,16 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
+    // Prevent overwriting WORK_COMPLETED or later statuses
+    const protectedStatuses = ['WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
+    if (protectedStatuses.includes(lead.status)) {
+      return NextResponse.json({ 
+        error: 'Cannot update status - work already completed',
+        current_status: lead.status,
+        message: 'Mechanic has already completed the work. Status cannot be changed.'
+      }, { status: 400 });
+    }
+
     // Note: Allow navigation even if pickup_required is not explicitly set
     // This allows flexibility for pickup boys to navigate to any assigned task
 

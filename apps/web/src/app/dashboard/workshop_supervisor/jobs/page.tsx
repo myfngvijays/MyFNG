@@ -87,10 +87,26 @@ function SupervisorJobsContent() {
           table: 'service_leads'
         },
         () => {
+          console.log('service_leads changed, refreshing jobs...');
           fetchJobs(true);
         }
       )
-      .subscribe();
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_jobs'
+        },
+        (payload) => {
+          console.log('mechanic_jobs changed, refreshing jobs...', payload);
+          // Refresh jobs when mechanic status changes
+          fetchJobs(true);
+        }
+      )
+      .subscribe((status) => {
+        console.log('Real-time subscription status:', status);
+      });
 
     return () => {
       channel.unsubscribe();

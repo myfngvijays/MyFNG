@@ -47,7 +47,7 @@ export default function SendBackModal({
   const [selectedReasons, setSelectedReasons] = useState<string[]>([]);
   const [customReason, setCustomReason] = useState('');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
-  const [priority, setPriority] = useState<'NORMAL' | 'HIGH' | 'URGENT'>('NORMAL');
+  const [priority, setPriority] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'>('MEDIUM');
   const [loading, setLoading] = useState(false);
 
   function toggleReason(reason: string) {
@@ -170,8 +170,8 @@ Please address all issues and resubmit.
           supervisor_id: supervisorId,
           lead_id: leadId,
           action_type: 'SENT_BACK_TO_MECHANIC',
-          action_description: `Job sent back to ${currentMechanicName}`,
           action_data: {
+            mechanic_name: currentMechanicName,
             reasons: allReasons,
             instructions: additionalInstructions,
             priority: priority
@@ -248,8 +248,8 @@ Please address all issues and resubmit.
             <label className="block text-sm font-semibold text-gray-700 mb-3">
               Priority Level *
             </label>
-            <div className="grid grid-cols-3 gap-3">
-              {['NORMAL', 'HIGH', 'URGENT'].map((p) => (
+            <div className="grid grid-cols-4 gap-3">
+              {['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map((p) => (
                 <button
                   key={p}
                   onClick={() => setPriority(p as any)}
@@ -259,7 +259,9 @@ Please address all issues and resubmit.
                         ? 'bg-red-100 border-red-500 text-red-700'
                         : p === 'HIGH'
                         ? 'bg-orange-100 border-orange-500 text-orange-700'
-                        : 'bg-blue-100 border-blue-500 text-blue-700'
+                        : p === 'MEDIUM'
+                        ? 'bg-blue-100 border-blue-500 text-blue-700'
+                        : 'bg-gray-100 border-gray-500 text-gray-700'
                       : 'bg-gray-50 border-gray-300 text-gray-600 hover:border-gray-400'
                   }`}
                 >

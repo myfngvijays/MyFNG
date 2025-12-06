@@ -62,6 +62,16 @@ export async function POST(
       }, { status: 400 });
     }
 
+    // Prevent overwriting WORK_COMPLETED or later statuses
+    const protectedStatuses = ['WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
+    if (protectedStatuses.includes(lead.status)) {
+      return NextResponse.json({ 
+        error: 'Cannot update status - work already completed',
+        current_status: lead.status,
+        message: 'Mechanic has already completed the work. Status cannot be changed.'
+      }, { status: 400 });
+    }
+
     // Verify current status is VEHICLE_IN_TRANSIT
     if (lead.pickup_status !== 'VEHICLE_IN_TRANSIT' && lead.status !== 'VEHICLE_IN_TRANSIT') {
       return NextResponse.json({ 

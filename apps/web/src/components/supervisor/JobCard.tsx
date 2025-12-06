@@ -160,7 +160,9 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
       {/* Status Row */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor()}`}>
-          {job.status.replace(/_/g, ' ')}
+          {job.status === 'WORK_COMPLETED' ? 'Mechanic Work Completed' : 
+           job.status === 'QC_PENDING' ? 'QC Pending' :
+           job.status.replace(/_/g, ' ')}
         </span>
         
         {job.mechanic && (
@@ -237,19 +239,9 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
           View Details
         </button>
 
-        {/* QC Review Button - Show when status is WORK_COMPLETED */}
-        {job.status === 'WORK_COMPLETED' && (
-          <button
-            onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
-            className="btn bg-purple-600 hover:bg-purple-700 text-white text-sm flex items-center gap-2"
-          >
-            <Eye className="w-4 h-4" />
-            QC Review
-          </button>
-        )}
-
-        {/* QC Review Button - Also show for QC_PENDING status */}
-        {job.status === 'QC_PENDING' && job.qc_status === 'PENDING' && (
+        {/* QC Review Button - Show when status is WORK_COMPLETED or QC_PENDING and QC is pending */}
+        {((job.status === 'WORK_COMPLETED' && job.qc_status === 'PENDING') || 
+          (job.status === 'QC_PENDING' && job.qc_status === 'PENDING')) && (
           <button
             onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
             className="btn bg-purple-600 hover:bg-purple-700 text-white text-sm flex items-center gap-2"

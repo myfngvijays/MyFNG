@@ -55,6 +55,16 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
+    // Prevent overwriting WORK_COMPLETED or later statuses
+    const protectedStatuses = ['WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
+    if (protectedStatuses.includes(lead.status)) {
+      return NextResponse.json({ 
+        error: 'Cannot update status - work already completed',
+        current_status: lead.status,
+        message: 'Mechanic has already completed the work. Status cannot be changed.'
+      }, { status: 400 });
+    }
+
     // Verify pickup status is VEHICLE_IN_TRANSIT or VEHICLE_DROPPED_AT_WORKSHOP
     // Allow both statuses - VEHICLE_IN_TRANSIT means still driving, VEHICLE_DROPPED_AT_WORKSHOP means arrived
     if (lead.pickup_status !== 'VEHICLE_IN_TRANSIT' && lead.pickup_status !== 'VEHICLE_DROPPED_AT_WORKSHOP') {
