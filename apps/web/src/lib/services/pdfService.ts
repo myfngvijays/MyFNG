@@ -43,14 +43,21 @@ export async function downloadInvoicePDF(invoiceId: string, invoiceNumber: strin
       throw new Error('Failed to generate PDF');
     }
 
-    const blob = await response.blob();
+    const htmlContent = await response.text();
+    
+    // Create a blob from HTML content
+    const blob = new Blob([htmlContent], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
+    
+    // Create download link
     const link = document.createElement('a');
     link.href = url;
     link.download = `Invoice-${invoiceNumber}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    
+    // Clean up
     URL.revokeObjectURL(url);
   } catch (error) {
     console.error('Error downloading PDF:', error);
@@ -62,11 +69,21 @@ export async function downloadInvoicePDF(invoiceId: string, invoiceNumber: strin
  * Print invoice
  */
 export function printInvoice(invoiceId: string) {
-  const printWindow = window.open(`/api/billing/invoices/${invoiceId}/generate-pdf`, '_blank');
+  const printUrl = `/api/billing/invoices/${invoiceId}/generate-pdf`;
+  const printWindow = window.open(printUrl, '_blank');
+  
   if (printWindow) {
     printWindow.onload = () => {
-      printWindow.print();
+      setTimeout(() => {
+        printWindow.print();
+      }, 500); // Small delay to ensure content is loaded
     };
+  } else {
+    // Fallback: if popup blocked, open in same window
+    window.location.href = printUrl;
+    setTimeout(() => {
+      window.print();
+    }, 1000);
   }
 }
 

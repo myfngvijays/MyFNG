@@ -10,6 +10,8 @@ import {
 } from '@/lib/utils/invoiceUtils';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -47,39 +49,60 @@ export async function POST(
     }
 
     const leadId = params.id;
+    
+    if (!leadId) {
+      return NextResponse.json({ error: 'Lead ID is required' }, { status: 400 });
+    }
 
-    // Get lead details with customer and workshop info
+    console.log('[Generate Invoice API] Fetching lead:', leadId);
+
+    // Get lead details first (without join to avoid RLS issues)
     const { data: lead, error: leadError } = await supabase
       .from('service_leads')
-      .select(`
-        *,
-        workshop:workshops!workshop_id(
-          id,
-          name,
-          address,
-          city,
-          state,
-          state_code,
-          phone,
-          email,
-          gst_number
-        ),
-        customer:users_login!customer_id(
-          id,
-          name,
-          email,
-          phone,
-          address,
-          city,
-          state,
-          state_code
-        )
-      `)
+      .select('*')
       .eq('id', leadId)
-      .single();
+      .maybeSingle();
 
-    if (leadError || !lead) {
-      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    if (leadError) {
+      console.error('[Generate Invoice API] Lead fetch error:', {
+        error: leadError,
+        code: leadError.code,
+        message: leadError.message,
+        details: leadError.details,
+        hint: leadError.hint,
+        leadId
+      });
+      return NextResponse.json({ 
+        error: 'Failed to fetch lead', 
+        details: leadError.message,
+        code: leadError.code,
+        leadId 
+      }, { status: 500 });
+    }
+
+    if (!lead) {
+      console.error('[Generate Invoice API] Lead not found:', leadId);
+      return NextResponse.json({ 
+        error: 'Lead not found', 
+        leadId 
+      }, { status: 404 });
+    }
+
+    // Fetch workshop details separately if workshop_id exists
+    let workshop: any = null;
+    if (lead.workshop_id) {
+      const { data: workshopData, error: workshopError } = await supabase
+        .from('workshops')
+        .select('id, name, address, city, state, state_code, phone, email, gst_number, bank_name, bank_account_name, bank_account_number, bank_ifsc, bank_branch')
+        .eq('id', lead.workshop_id)
+        .maybeSingle();
+      
+      if (workshopError) {
+        console.error('[Generate Invoice API] Workshop fetch error:', workshopError);
+        // Don't fail the request if workshop fetch fails, just log it
+      } else {
+        workshop = workshopData;
+      }
     }
 
     // Verify lead is ready for billing - allow READY_FOR_DELIVERY for advisor
@@ -104,13 +127,59 @@ export async function POST(
       .from('invoices')
       .select('*')
       .eq('lead_id', leadId)
-      .single();
+      .maybeSingle();
 
-    if (existingInvoice) {
+    // Check if regeneration is requested (via query param or header)
+    const requestUrl = new URL(request.url);
+    const regenerate = requestUrl.searchParams.get('regenerate') === 'true' || 
+                       request.headers.get('x-regenerate') === 'true';
+
+    if (existingInvoice && !regenerate) {
       return NextResponse.json({ 
-        error: 'Invoice already exists for this lead',
+        error: 'Invoice already exists for this lead. Use regenerate=true to regenerate.',
         invoice: existingInvoice
       }, { status: 400 });
+    }
+
+    // If regenerating, delete the old invoice first
+    if (existingInvoice && regenerate) {
+      console.log('[Generate Invoice API] Regenerating invoice, deleting old invoice:', existingInvoice.id);
+      
+      // Delete related records first (if any)
+      await supabase
+        .from('payment_transactions')
+        .delete()
+        .eq('invoice_id', existingInvoice.id);
+      
+      await supabase
+        .from('invoice_reviews')
+        .delete()
+        .eq('invoice_id', existingInvoice.id);
+      
+      await supabase
+        .from('invoice_sharing_logs')
+        .delete()
+        .eq('invoice_id', existingInvoice.id);
+      
+      // Delete the invoice
+      const { error: deleteError } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', existingInvoice.id);
+      
+      if (deleteError) {
+        console.error('[Generate Invoice API] Error deleting old invoice:', deleteError);
+        return NextResponse.json({ 
+          error: 'Failed to delete existing invoice',
+          details: deleteError.message
+        }, { status: 500 });
+      }
+      
+      // Also clear invoice_id from service_leads
+      await supabase
+        .from('service_leads')
+        .update({ invoice_id: null })
+        .eq('id', leadId);
     }
 
     // Fetch pricing items from lead_pricing_items table
@@ -119,6 +188,123 @@ export async function POST(
       .select('*')
       .eq('lead_id', leadId)
       .eq('status', 'ACTIVE');
+
+    // If no pricing items, fetch from workshop_service_pricing based on service_type_ids
+    let workshopPricingTotal = 0;
+    if ((!pricingItems || pricingItems.length === 0) && lead.workshop_id && lead.service_type_ids) {
+      try {
+        // Parse service_type_ids (can be JSON string or array)
+        let serviceTypeIds: string[] = [];
+        if (typeof lead.service_type_ids === 'string') {
+          try {
+            serviceTypeIds = JSON.parse(lead.service_type_ids);
+          } catch {
+            // If not JSON, try as comma-separated string
+            serviceTypeIds = lead.service_type_ids.split(',').map((id: string) => id.trim());
+          }
+        } else if (Array.isArray(lead.service_type_ids)) {
+          serviceTypeIds = lead.service_type_ids;
+        }
+
+        if (serviceTypeIds.length > 0) {
+          console.log('[Generate Invoice API] Fetching workshop pricing for service types:', serviceTypeIds);
+          
+          // Fetch workshop-specific pricing for these service types
+          const { data: workshopPricing, error: pricingError } = await supabase
+            .from('workshop_service_pricing')
+            .select(`
+              *,
+              service_type:service_types(id, name)
+            `)
+            .eq('workshop_id', lead.workshop_id)
+            .in('service_type_id', serviceTypeIds)
+            .eq('is_active', true);
+
+          if (pricingError) {
+            console.error('[Generate Invoice API] Error fetching workshop pricing:', pricingError);
+          } else if (workshopPricing && workshopPricing.length > 0) {
+            workshopPricingTotal = workshopPricing.reduce((sum, item) => 
+              sum + parseFloat(item.custom_price || '0'), 0);
+            console.log('[Generate Invoice API] Found workshop pricing:', {
+              count: workshopPricing.length,
+              total: workshopPricingTotal,
+              items: workshopPricing.map(p => ({
+                service_type_id: p.service_type_id,
+                price: p.custom_price,
+                service_name: p.service_type?.name
+              }))
+            });
+          } else {
+            console.warn('[Generate Invoice API] No workshop pricing found for service types:', serviceTypeIds);
+          }
+        }
+
+        // Also fetch pricing for subservices/addons if they exist
+        if (lead.subservice_ids) {
+          let subserviceIds: string[] = [];
+          if (typeof lead.subservice_ids === 'string') {
+            try {
+              subserviceIds = JSON.parse(lead.subservice_ids);
+            } catch {
+              subserviceIds = lead.subservice_ids.split(',').map((id: string) => id.trim());
+            }
+          } else if (Array.isArray(lead.subservice_ids)) {
+            subserviceIds = lead.subservice_ids;
+          }
+
+          if (subserviceIds.length > 0) {
+            console.log('[Generate Invoice API] Fetching workshop addon pricing for:', subserviceIds);
+            
+            const { data: addonPricing, error: addonError } = await supabase
+              .from('workshop_service_addons_pricing')
+              .select(`
+                *,
+                addon:service_addons(id, name, price)
+              `)
+              .eq('workshop_id', lead.workshop_id)
+              .in('service_addon_id', subserviceIds)
+              .eq('is_active', true);
+
+            if (addonError) {
+              console.error('[Generate Invoice API] Error fetching addon pricing:', addonError);
+            } else if (addonPricing && addonPricing.length > 0) {
+              const addonTotal = addonPricing.reduce((sum, item) => 
+                sum + parseFloat(item.custom_price || '0'), 0);
+              workshopPricingTotal += addonTotal;
+              console.log('[Generate Invoice API] Found addon pricing:', {
+                count: addonPricing.length,
+                total: addonTotal,
+                items: addonPricing.map(p => ({
+                  addon_id: p.service_addon_id,
+                  custom_price: p.custom_price,
+                  default_price: p.addon?.price,
+                  addon_name: p.addon?.name
+                }))
+              });
+            } else {
+              // Fallback to default addon prices if workshop pricing doesn't exist
+              const { data: defaultAddons } = await supabase
+                .from('service_addons')
+                .select('id, name, price')
+                .in('id', subserviceIds)
+                .eq('is_active', true);
+
+              if (defaultAddons && defaultAddons.length > 0) {
+                const defaultAddonTotal = defaultAddons.reduce((sum, addon) => 
+                  sum + parseFloat(addon.price || '0'), 0);
+                workshopPricingTotal += defaultAddonTotal;
+                console.log('[Generate Invoice API] Using default addon prices:', {
+                  count: defaultAddons.length,
+                  total: defaultAddonTotal
+                });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[Generate Invoice API] Error processing service_type_ids:', error);
+      }
+    }
 
     // Get all approved extra charges
     const { data: extraCharges } = await supabase
@@ -138,18 +324,78 @@ export async function POST(
       .single();
 
     // Calculate base amount from pricing items
-    const baseAmount = pricingItems?.reduce((sum, item) => sum + parseFloat(item.final_price || '0'), 0) || 
-                       parseFloat(lead.estimated_amount || '0');
+    const pricingItemsTotal = pricingItems?.reduce((sum, item) => sum + parseFloat(item.final_price || '0'), 0) || 0;
+    const estimatedAmount = parseFloat(lead.estimated_amount || '0');
+    const estimatedCost = parseFloat(lead.estimated_cost || '0');
+    const actualAmount = parseFloat(lead.actual_amount || '0');
+    const finalAmountFromLead = parseFloat(lead.final_amount || '0');
+    const totalPriceFromLead = parseFloat(lead.total_price || '0');
+    
+    // Use pricing items first, then workshop pricing, then check all possible amount fields
+    // Priority: pricingItems > workshopPricing > estimated_amount > estimated_cost > actual_amount > final_amount > total_price
+    const baseAmount = pricingItemsTotal > 0 
+      ? pricingItemsTotal 
+      : workshopPricingTotal > 0
+        ? workshopPricingTotal
+        : estimatedAmount > 0 
+          ? estimatedAmount 
+          : estimatedCost > 0
+            ? estimatedCost
+            : actualAmount > 0
+              ? actualAmount
+              : finalAmountFromLead > 0 
+                ? finalAmountFromLead 
+                : totalPriceFromLead > 0 
+                  ? totalPriceFromLead 
+                  : 0;
+    
+    console.log('[Generate Invoice API] Amount calculation:', {
+      pricingItemsCount: pricingItems?.length || 0,
+      pricingItemsTotal,
+      workshopPricingTotal,
+      estimatedAmount,
+      estimatedCost,
+      actualAmount,
+      finalAmountFromLead,
+      totalPriceFromLead,
+      baseAmount,
+      leadId,
+      workshopId: lead.workshop_id,
+      serviceTypeIds: lead.service_type_ids
+    });
+    
+    // Warn if no pricing data found
+    if (baseAmount === 0) {
+      console.warn('[Generate Invoice API] ⚠️ No pricing data found for lead. Invoice will be generated with ₹0.00 amounts.');
+      console.warn('[Generate Invoice API] Please ensure lead has pricing items, estimated_amount, estimated_cost, actual_amount, final_amount, or total_price set.');
+    }
     
     const extraChargesTotal = extraCharges?.reduce((sum, charge) => sum + parseFloat(charge.amount || '0'), 0) || 0;
     const partsTotal = jobCard?.job_card_parts?.reduce((sum: number, part: any) => 
       sum + parseFloat(part.total_price || '0'), 0) || 0;
     
+    // Also check labor_charges from job_card (workshop-wise pricing)
+    const laborChargesFromJobCard = parseFloat(jobCard?.labor_charges || '0');
+    
+    // If baseAmount is 0 but labor_charges exists, use it
+    const finalBaseAmount = baseAmount > 0 ? baseAmount : (laborChargesFromJobCard > 0 ? laborChargesFromJobCard : 0);
+    
     const discount = parseFloat(lead.discount_amount || '0');
     const couponCode = lead.coupon_code || null;
 
-    // Calculate subtotal
-    const subtotal = baseAmount + extraChargesTotal + partsTotal - discount;
+    // Calculate subtotal (base amount + parts + extra charges - discount)
+    const subtotal = finalBaseAmount + extraChargesTotal + partsTotal - discount;
+    
+    console.log('[Generate Invoice API] Subtotal calculation:', {
+      baseAmount,
+      laborChargesFromJobCard,
+      finalBaseAmount,
+      extraChargesTotal,
+      partsTotal,
+      partsCount: jobCard?.job_card_parts?.length || 0,
+      discount,
+      subtotal
+    });
 
     // Get customer address details (used for both tax calculation and invoice display)
     const customerAddress = lead.customer?.address || lead.customer_address || '';
@@ -159,8 +405,8 @@ export async function POST(
     const customerPincode = lead.customer?.pincode || lead.customer_pincode || '';
 
     // Determine place of supply and tax type
-    const workshopState = lead.workshop?.state || 'Maharashtra';
-    const workshopStateCode = lead.workshop?.state_code || '27';
+    const workshopState = workshop?.state || 'Maharashtra';
+    const workshopStateCode = workshop?.state_code || '27';
 
     const { placeOfSupply, stateCode, useIGST } = getPlaceOfSupply(
       customerState,
@@ -182,6 +428,14 @@ export async function POST(
     const finalAmountBeforeRound = subtotal + totalTax;
     const finalAmount = roundOff(finalAmountBeforeRound);
     const roundOffAmount = finalAmount - finalAmountBeforeRound;
+    
+    console.log('[Generate Invoice API] Final amount calculation:', {
+      subtotal,
+      totalTax,
+      finalAmountBeforeRound,
+      finalAmount,
+      roundOffAmount
+    });
 
     // Generate invoice number
     const invoiceNumber = generateInvoiceNumber();
@@ -245,11 +499,11 @@ export async function POST(
     dueDate.setDate(dueDate.getDate() + 7); // 7 days from invoice date
 
     // Get workshop bank details (if available)
-    const bankName = lead.workshop?.bank_name || 'HDFC Bank';
-    const bankAccountName = lead.workshop?.bank_account_name || lead.workshop?.name || 'MyFNG Autocare Pvt. Ltd.';
-    const bankAccountNumber = lead.workshop?.bank_account_number || '123456789012';
-    const bankIFSC = lead.workshop?.bank_ifsc || 'HDFC0001234';
-    const bankBranch = lead.workshop?.bank_branch || `${lead.workshop?.city || 'Kamothe'}, Navi Mumbai`;
+    const bankName = workshop?.bank_name || 'HDFC Bank';
+    const bankAccountName = workshop?.bank_account_name || workshop?.name || 'MyFNG Autocare Pvt. Ltd.';
+    const bankAccountNumber = workshop?.bank_account_number || '123456789012';
+    const bankIFSC = workshop?.bank_ifsc || 'HDFC0001234';
+    const bankBranch = workshop?.bank_branch || `${workshop?.city || 'Kamothe'}, Navi Mumbai`;
 
     // Get warranty info from job card
     const warrantyInfo = {
@@ -275,10 +529,10 @@ export async function POST(
         payment_terms: 'Due on Receipt',
         
         // Amounts
-        base_amount: baseAmount,
+        base_amount: finalBaseAmount,
         extra_charges: extraChargesTotal,
         parts_cost: partsTotal,
-        labour_cost: baseAmount, // Base service is labour
+        labour_cost: finalBaseAmount, // Base service is labour (or labor_charges from job_card)
         sub_total: subtotal,
         
         // Discounts
@@ -300,6 +554,7 @@ export async function POST(
         
         // Final
         final_amount: finalAmount,
+        total_amount: finalAmount, // Alias for final_amount (some schemas use total_amount)
         amount_in_words: amountInWords,
         
         // Place of Supply
@@ -423,7 +678,7 @@ export async function POST(
         metadata: {
           invoice_id: invoice.id,
           invoice_number: invoiceNumber,
-          base_amount: baseAmount,
+          base_amount: finalBaseAmount,
           extra_charges: extraChargesTotal,
           discount: discount,
           tax_amount: totalTax,
@@ -468,7 +723,7 @@ export async function POST(
           invoice_id: invoice.id,
           invoice_number: invoiceNumber,
           final_amount: finalAmount,
-          base_amount: baseAmount,
+          base_amount: finalBaseAmount,
           extra_charges: extraChargesTotal,
           parts_cost: partsTotal,
           total_tax: totalTax,

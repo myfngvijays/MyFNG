@@ -5,6 +5,38 @@ const nextConfig = {
   
   images: {
     unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'logos-world.net',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.carlogos.org',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '1000logos.net',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn.worldvectorlogo.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'upload.wikimedia.org',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.icons8.com',
+        pathname: '/**',
+      },
+    ],
   },
   
   // Force environment variables to be available

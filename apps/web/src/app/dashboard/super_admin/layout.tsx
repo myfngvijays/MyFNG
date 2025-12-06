@@ -21,7 +21,8 @@ import {
   MapPin,
   AlertTriangle,
   History,
-  FileCheck
+  FileCheck,
+  Car
 } from 'lucide-react';
 
 const navigationItems = [
@@ -66,6 +67,12 @@ const navigationItems = [
     href: '/dashboard/super_admin/inventory/zones',
     icon: MapPin,
     description: 'Manage Zones'
+  },
+  {
+    name: 'Car Brands',
+    href: '/dashboard/super_admin/brands',
+    icon: Car,
+    description: 'Manage Car Brand Logos'
   },
   {
     name: 'Users',

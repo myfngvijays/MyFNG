@@ -993,8 +993,8 @@ export default function SupervisorJobDetailPage() {
           </div>
         </div>
 
-        {/* Section 9: Invoice Section - Show when car is ready for delivery or completed */}
-        {['COMPLETED', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
+        {/* Section 9: Invoice Section - Show when car is ready for billing, delivery or completed */}
+        {['COMPLETED', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
           <InvoiceSection lead={lead} onUpdate={fetchJobDetails} />
         )}
 

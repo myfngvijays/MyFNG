@@ -4,27 +4,43 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
+import BookingForm from '@/components/landing/BookingForm';
+import LiveStats from '@/components/landing/LiveStats';
+import AIFeatureBadge from '@/components/landing/AIFeatureBadge';
+import TrustBadges from '@/components/landing/TrustBadges';
+import DynamicFOMO from '@/components/landing/DynamicFOMO';
 import { 
   MessageSquare, 
   Zap, 
   CheckCircle, 
   Star, 
   ChevronRight, 
-  Camera, 
   Bot, 
   ArrowRight, 
   Shield, 
   Clock, 
   MapPin, 
   Activity, 
-  Car
+  Car,
+  Users,
+  Award,
+  TrendingUp,
+  Heart,
+  HelpCircle,
+  Quote,
+  Loader2,
+  Sparkles,
+  Cpu,
+  Radio,
+  AlertCircle,
+  Droplets
 } from 'lucide-react';
 import Image from 'next/image';
 
 export default function HomePage() {
-  const [plateNumber, setPlateNumber] = useState('');
   const [activeCarType, setActiveCarType] = useState<'hatchback' | 'sedan' | 'suv'>('sedan');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isBookingFormOpen, setIsBookingFormOpen] = useState(false);
 
   // Pricing Data based on Car Type
   const pricingData = {
@@ -33,512 +49,199 @@ export default function HomePage() {
     suv: { basic: '₹3,499', premium: '₹6,499', comprehensive: '₹10,999' }
   };
 
+  // Brand Logos - Fetch from database
+  const [brandLogos, setBrandLogos] = useState<Array<{ name: string; logo: string }>>([]);
+  const [brandsLoading, setBrandsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchBrands() {
+      try {
+        const response = await fetch('/api/super_admin/car-brands?active_only=true');
+        if (response.ok) {
+          const result = await response.json();
+          const brands = (result.data || []).map((brand: any) => ({
+            name: brand.name,
+            logo: brand.logo_url,
+          }));
+          setBrandLogos(brands);
+        } else {
+          // Fallback to empty array if API fails
+          setBrandLogos([]);
+        }
+      } catch (error) {
+        console.error('Error fetching brands:', error);
+        setBrandLogos([]);
+      } finally {
+        setBrandsLoading(false);
+      }
+    }
+    fetchBrands();
+  }, []);
+
   return (
     <div className="min-h-screen bg-white font-poppins text-text-body selection:bg-brand-primary/20">
       <Navbar />
 
       {/* 1. Hero Section: AI-Powered & Futuristic */}
-      <section className="relative pt-32 pb-24 overflow-hidden bg-[#000510] text-white">
-        {/* Background Effects */}
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-brand-primary/20 rounded-full blur-[100px] -mr-20 -mt-20 animate-pulse"></div>
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-brand-secondary/30 rounded-full blur-[100px] -ml-20 -mb-20"></div>
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
+      <section className="relative pt-32 pb-24 overflow-hidden">
+        {/* Animated Gradient Background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 animate-gradient" style={{backgroundSize: '200% 200%'}}></div>
+        
+        {/* Floating Orbs */}
+        <div className="absolute top-20 right-20 w-72 h-72 bg-blue-500/30 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-20 left-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-float" style={{animationDelay: '1s'}}></div>
+        <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-cyan-500/20 rounded-full blur-3xl animate-float" style={{animationDelay: '2s'}}></div>
+        
+        {/* Grid Pattern */}
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5"></div>
 
         <div className="container mx-auto px-4 relative z-10">
           <div className="flex flex-col lg:flex-row items-center gap-16">
             
             {/* Left Content */}
             <div className="lg:w-1/2 text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-md border border-white/10 rounded-full text-brand-fng text-sm font-semibold mb-6 animate-fade-in-up">
-                <Bot className="w-4 h-4" />
-                Powered by Advanced AI Technology
+              {/* AI Badge */}
+              <div className="mb-6 flex justify-center lg:justify-start">
+                <AIFeatureBadge text="Powered by Advanced AI Technology" />
               </div>
               
-              <h1 className="text-5xl lg:text-7xl font-bold mb-6 leading-tight tracking-tight animate-fade-in-up-delay-100">
-                Book Your <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-fng to-cyan-400">
-                  AI-Powered
+              <h1 className="text-5xl lg:text-7xl font-bold mb-6 leading-tight tracking-tight animate-fade-in-up text-white">
+                India's First <br />
+                <span className="relative inline-block">
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 neon-text">
+                    AI-Powered
+                  </span>
                 </span> <br />
                 Car Service 🚗⚡
               </h1>
               
-              <p className="text-lg text-gray-300 mb-10 max-w-xl mx-auto lg:mx-0 leading-relaxed animate-fade-in-up-delay-200">
-                Get ready to experience hassle-free car maintenance with MY FNG. 
-                Our AI chatbot understands your car better than you do - book services directly without any employee interaction. 
-                <span className="text-white font-semibold">100% transparent pricing</span> powered by AI.
+              <p className="text-lg text-gray-200 mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed animate-fade-in-up" style={{animationDelay: '0.2s'}}>
+                Experience the future of car care with our <span className="text-white font-semibold">AI-powered diagnostics</span> and instant service booking. 
+                No waiting, no hassle - just smart car care.
               </p>
 
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start animate-fade-in-up-delay-300">
+              {/* Key Features */}
+              <div className="grid grid-cols-2 gap-3 mb-8 animate-fade-in-up" style={{animationDelay: '0.3s'}}>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <Cpu className="w-4 h-4 text-cyan-400" />
+                  <span>AI Diagnostics</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <Shield className="w-4 h-4 text-cyan-400" />
+                  <span>100% Transparent</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <Clock className="w-4 h-4 text-cyan-400" />
+                  <span>24/7 Available</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <Radio className="w-4 h-4 text-cyan-400" />
+                  <span>Live Tracking</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start animate-fade-in-up" style={{animationDelay: '0.4s'}}>
                 <button 
                   onClick={() => setIsChatOpen(true)}
-                  className="btn bg-brand-primary hover:bg-brand-primary-hover text-white text-lg px-8 py-4 rounded-xl shadow-lg shadow-brand-primary/30 flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1"
+                  className="group btn bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white text-lg px-8 py-4 rounded-xl shadow-lg shadow-blue-500/50 flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1 hover:shadow-2xl hover:shadow-blue-500/60 ai-glow"
                 >
-                  <MessageSquare className="w-5 h-5" />
-                  Book Service with AI
+                  <Bot className="w-5 h-5 group-hover:animate-bounce" />
+                  Talk to AI Assistant
                 </button>
-                
-                <div className="flex items-center bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-1 pr-2">
-                  <div className="px-3 text-gray-400">
-                    <Camera className="w-5 h-5" />
-                  </div>
-                  <input 
-                    type="text" 
-                    placeholder="Scan Number Plate" 
-                    className="bg-transparent border-none text-white placeholder-gray-500 focus:ring-0 text-sm w-40 sm:w-48"
-                    value={plateNumber}
-                    onChange={(e) => setPlateNumber(e.target.value)}
+                <button 
+                  onClick={() => setIsBookingFormOpen(true)}
+                  className="btn glass hover:bg-white/20 border border-white/20 text-white text-lg px-8 py-4 rounded-xl flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1"
+                >
+                  <Car className="w-5 h-5" />
+                  Quick Book
+                </button>
+              </div>
+
+              {/* Live Indicator - Dynamic FOMO */}
+              <DynamicFOMO />
+            </div>
+
+            {/* Right Visual: AI Dashboard Card */}
+            <div className="lg:w-1/2 relative animate-fade-in-up" style={{animationDelay: '0.6s'}}>
+              <div className="relative">
+                {/* Main Image */}
+                <div className="relative z-10 rounded-3xl overflow-hidden shadow-2xl ai-glow">
+                  <img 
+                    src="https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000" 
+                    alt="Futuristic Car" 
+                    className="w-full object-cover h-[500px]"
                   />
-                  <button className="bg-white/10 hover:bg-white/20 p-2 rounded-lg transition">
-                    <ArrowRight className="w-4 h-4 text-brand-fng" />
-                  </button>
+                  {/* Overlay Gradient */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
                 </div>
-              </div>
-
-              <div className="mt-8 flex items-center justify-center lg:justify-start gap-6 text-sm text-gray-400 animate-fade-in-up-delay-400">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  AI Assistant Online
-                </div>
-                <div className="flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-brand-fng" />
-                  100% Transparent Pricing
-                </div>
-              </div>
-            </div>
-
-            {/* Right Visual: AI Analysis Card */}
-            <div className="lg:w-1/2 relative animate-fade-in-up-delay-500">
-              <div className="relative z-10">
-                <img 
-                  src="https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000" 
-                  alt="Futuristic Car" 
-                  className="rounded-3xl shadow-2xl border border-white/10 w-full object-cover h-[500px]"
-                />
                 
-                {/* Overlay: AI Car Analysis */}
-                <div className="absolute -bottom-10 -left-10 bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-2xl shadow-2xl max-w-xs w-full hidden md:block">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-white font-bold flex items-center gap-2">
-                      <Activity className="w-5 h-5 text-brand-fng" /> AI Car Analysis
-                    </h3>
-                    <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">Live</span>
+                {/* AI Analysis Card - Floating */}
+                <div className="absolute -bottom-6 -left-6 glass p-6 rounded-2xl shadow-2xl max-w-xs w-full animate-float border border-white/20">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-white font-bold">AI Analysis</h3>
+                      <p className="text-xs text-gray-400">Diagnostic Report</p>
+                    </div>
                   </div>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex justify-between text-xs text-gray-300 mb-1">
-                        <span>Engine Health</span>
-                        <span className="text-white font-bold">85%</span>
-                      </div>
-                      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 w-[85%]"></div>
-                      </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400">Engine Health</span>
+                      <span className="text-green-400 font-semibold">98%</span>
                     </div>
-                    
-                    <div>
-                      <div className="flex justify-between text-xs text-gray-300 mb-1">
-                        <span>Service Due</span>
-                        <span className="text-white font-bold">60%</span>
-                      </div>
-                      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full bg-yellow-500 w-[60%]"></div>
-                      </div>
+                    <div className="w-full bg-gray-700 rounded-full h-2">
+                      <div className="bg-gradient-to-r from-green-400 to-green-500 h-2 rounded-full animate-progress" style={{width: '98%'}}></div>
                     </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400">Service Due</span>
+                      <span className="text-orange-400 font-semibold">500 km</span>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-2">
+                      <div className="bg-gradient-to-r from-orange-400 to-orange-500 h-2 rounded-full animate-progress" style={{width: '65%'}}></div>
+                    </div>
+                  </div>
+                </div>
 
-                    <div className="bg-brand-primary/20 rounded-lg p-3 flex items-center gap-3 mt-2">
-                      <Clock className="w-8 h-8 text-brand-fng" />
-                      <div>
-                        <p className="text-xs text-gray-300">Next Service</p>
-                        <p className="text-white font-bold">in 15 days</p>
-                      </div>
-                    </div>
-                    
-                    <button className="w-full py-2 text-xs font-bold text-brand-fng border border-brand-fng/30 rounded-lg hover:bg-brand-fng/10 transition">
-                      View Full Report
-                    </button>
+                {/* Quick Stats - Top Right */}
+                <div className="absolute -top-6 -right-6 glass p-4 rounded-xl shadow-xl animate-bounce-in border border-white/20">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-white mb-1">12 min</div>
+                    <div className="text-xs text-gray-400">Avg Response</div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* 2. How It Works */}
-      <section className="py-20 bg-gray-50">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">How It Works</span>
-            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">Hassle-Free Car Maintenance with MY FNG AI</h2>
-            <p className="text-gray-600 mt-4 max-w-2xl mx-auto">
-              Experience the future of car servicing. Our AI chatbot books your service directly - no employee needed. 
-              Complete transparency in pricing and real-time tracking.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            <StepCard 
-              number="01" 
-              title="Chat with MY FNG AI" 
-              desc="Simply chat with our AI assistant - no employee interaction needed. Our AI understands your car model, service history, and recommends the perfect service package."
-            />
-            <StepCard 
-              number="02" 
-              title="Transparent AI Pricing" 
-              desc="Get instant, transparent pricing based on your car model and location. No hidden charges - our AI ensures complete pricing transparency."
-            />
-            <StepCard 
-              number="03" 
-              title="Hassle-Free Service" 
-              desc="Book your service directly through AI chatbot. Real-time tracking, AI-powered quality checks, and instant updates throughout the process."
-            />
+          {/* Trust Badges */}
+          <div className="mt-16 animate-fade-in-up" style={{animationDelay: '0.8s'}}>
+            <TrustBadges />
           </div>
         </div>
       </section>
 
-      {/* 3. AI-Powered Pricing */}
-      <section className="py-20 bg-white">
+      {/* Live Stats Section */}
+      <section className="py-16 bg-gradient-to-br from-gray-50 to-white">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">AI-Powered Pricing</span>
-            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">Transparent Pricing - No Hidden Charges</h2>
-            <p className="text-gray-600 mt-4">
-              Our AI analyzes your car model and recommends the perfect service package. 
-              <span className="font-semibold text-brand-secondary">100% transparent pricing</span> - see exactly what you pay for.
-            </p>
-            
-            {/* Car Type Selector */}
-            <div className="inline-flex bg-gray-100 p-1.5 rounded-full mt-8">
-              {['hatchback', 'sedan', 'suv'].map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setActiveCarType(type as any)}
-                  className={`px-6 py-2 rounded-full text-sm font-bold transition-all capitalize ${
-                    activeCarType === type 
-                      ? 'bg-brand-primary text-white shadow-md' 
-                      : 'text-gray-500 hover:text-gray-800'
-                  }`}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto items-center">
-            {/* Basic Package */}
-            <PricingCard 
-              title="Basic Care"
-              price={pricingData[activeCarType].basic}
-              time="2-3 hours"
-              features={[
-                'AI-powered engine diagnostics',
-                'Oil & filter change',
-                'Basic car wash',
-                'Tire pressure check',
-                'Battery health scan'
-              ]}
-              activeCar={activeCarType}
-            />
-
-            {/* Premium Package - Highlighted */}
-            <div className="relative transform md:-translate-y-4">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-brand-primary text-white px-4 py-1 rounded-full text-xs font-bold shadow-lg z-10">
-                MOST POPULAR
-              </div>
-              <PricingCard 
-                title="Premium Care"
-                price={pricingData[activeCarType].premium}
-                save="Save ₹1,000"
-                time="4-5 hours"
-                isPremium={true}
-                features={[
-                  'Complete AI health analysis',
-                  'Premium oil & filter change',
-                  'Deep interior & exterior cleaning',
-                  'AC service & sanitization',
-                  'Brake system inspection',
-                  'Wheel alignment check'
-                ]}
-                activeCar={activeCarType}
-              />
-            </div>
-
-            {/* Comprehensive Package */}
-            <PricingCard 
-              title="Comprehensive Care"
-              price={pricingData[activeCarType].comprehensive}
-              save="Save ₹2,000"
-              time="6-8 hours"
-              features={[
-                'Advanced AI predictive analysis',
-                'Synthetic oil & premium filters',
-                'Paint protection & ceramic coating',
-                'Complete engine detailing',
-                'Suspension system check',
-                'Electrical system diagnosis',
-                'Interior protection treatment'
-              ]}
-              activeCar={activeCarType}
-            />
-          </div>
-          
-          <div className="text-center mt-12">
-            <Link href="/services" className="btn btn-primary text-lg px-10 py-4 rounded-xl inline-flex items-center gap-2">
-              Book Service Now <ArrowRight className="w-5 h-5" />
-            </Link>
-            <p className="text-sm text-gray-500 mt-4">
-              Or chat with our AI assistant for instant booking - <span className="font-semibold">no employee needed!</span>
+            <AIFeatureBadge text="Real-Time Analytics" />
+            <h2 className="text-4xl font-bold mt-4 mb-4 text-brand-secondary">Trusted by Thousands</h2>
+            <p className="text-gray-600 max-w-2xl mx-auto">
+              Join India's fastest-growing AI-powered car service platform
             </p>
           </div>
+          <LiveStats />
         </div>
       </section>
 
-      {/* 4. Live Service Tracking Timeline */}
-      <section className="py-20 bg-gray-900 text-white relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5"></div>
-        
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="flex flex-col lg:flex-row gap-16">
-            <div className="lg:w-1/2">
-              <span className="text-brand-fng font-bold tracking-wider uppercase text-sm">Live Service Tracking</span>
-              <h2 className="text-4xl font-bold mt-2 mb-6">Real-Time AI Service Monitoring</h2>
-              <p className="text-gray-400 mb-10">
-                Watch your car's service journey unfold in real-time with AI-powered updates, photos, and quality checks.
-              </p>
-
-              {/* Timeline */}
-              <div className="space-y-8 border-l-2 border-gray-700 ml-3 pl-8 relative">
-                <TimelineItem 
-                  time="09:30 AM"
-                  title="Vehicle Pickup"
-                  desc="AI detected optimal traffic window for pickup"
-                  status="completed"
-                />
-                <TimelineItem 
-                  time="10:15 AM"
-                  title="AI Diagnosis"
-                  desc="Advanced scanning: AI identified 3 maintenance items"
-                  status="completed"
-                />
-                 <TimelineItem 
-                  time="11:00 AM"
-                  title="Service in Progress"
-                  desc="Expert technicians at work. AI monitoring quality."
-                  status="active"
-                />
-                <TimelineItem 
-                  time="02:30 PM"
-                  title="AI Quality Check"
-                  desc="Automated quality verification pending"
-                  status="pending"
-                />
-                <TimelineItem 
-                  time="03:15 PM"
-                  title="Ready for Delivery"
-                  desc="AI will optimize delivery route"
-                  status="pending"
-                />
-              </div>
-            </div>
-
-            {/* Live Updates Card */}
-            <div className="lg:w-1/2">
-              <div className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6 sticky top-24">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="font-bold text-xl">Live Updates</h3>
-                  <span className="bg-red-500/20 text-red-400 text-xs px-2 py-1 rounded-full animate-pulse">● Live</span>
-                </div>
-
-                <div className="space-y-4">
-                  <LiveUpdateCard 
-                    title="Engine Oil Change"
-                    status="Completed"
-                    desc="Premium synthetic oil installed. AI verified quality."
-                    color="green"
-                  />
-                  <LiveUpdateCard 
-                    title="Brake System Check"
-                    status="In Progress"
-                    desc="AI analyzing brake pad wear. Est: 30 mins."
-                    color="yellow"
-                  />
-                  <LiveUpdateCard 
-                    title="Car Wash & Detailing"
-                    status="Pending"
-                    desc="Scheduled after mechanical work completion."
-                    color="gray"
-                  />
-                </div>
-
-                <div className="mt-6 pt-6 border-t border-white/10">
-                  <p className="text-sm text-gray-400 mb-2">Live Location</p>
-                  <div className="flex items-center gap-3 text-white font-medium">
-                    <MapPin className="w-5 h-5 text-brand-fng" />
-                    Elite Auto Care, Bandra West
-                  </div>
-                  <div className="h-32 bg-gray-800 rounded-xl mt-4 w-full relative overflow-hidden">
-                     <div className="absolute inset-0 bg-gray-700 opacity-50"></div>
-                     <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-xs">
-                       [Map Placeholder]
-                     </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 5. Trusted Workshops */}
-      <section className="py-20 bg-gray-50">
-        <div className="container mx-auto px-4 text-center mb-12">
-          <h2 className="text-4xl font-bold text-brand-secondary">How Can I Find a MY FNG Service Center Near Me?</h2>
-          <p className="text-gray-600 mt-4">
-            Our AI-powered platform connects you to premium workshops across Mumbai. 
-            <span className="font-semibold text-brand-secondary">AI continuously monitors</span> and rates workshop performance for quality assurance.
-          </p>
-        </div>
-
-        <div className="container mx-auto px-4 grid md:grid-cols-3 gap-8">
-          <WorkshopCard 
-            name="Elite Auto Care"
-            location="Bandra West"
-            rating="4.9"
-            services="156 Services"
-            image="https://images.unsplash.com/photo-1625047509248-ec889cbff17f?auto=format&fit=crop&q=80&w=400"
-          />
-          <WorkshopCard 
-            name="Tech Motors Hub"
-            location="Andheri East"
-            rating="4.8"
-            services="203 Services"
-            image="https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&fit=crop&q=80&w=400"
-          />
-          <WorkshopCard 
-            name="Premium Auto Solutions"
-            location="Juhu"
-            rating="4.9"
-            services="187 Services"
-            image="https://images.unsplash.com/photo-1503376763036-066120622c74?auto=format&fit=crop&q=80&w=400"
-          />
-        </div>
-        
-        {/* Stats */}
-        <div className="container mx-auto px-4 mt-20 border-t border-gray-200 pt-12">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            <StatBox number="10,000+" label="Cars Serviced" />
-            <StatBox number="4.9" label="Average Rating" />
-            <StatBox number="50+" label="Partner Workshops" />
-            <StatBox number="99.5%" label="Customer Satisfaction" />
-          </div>
-        </div>
-      </section>
-
-      {/* 6. RSA Section with AI Theme */}
-      <section className="py-20 bg-gradient-to-br from-brand-secondary via-[#001530] to-[#000510] text-white relative overflow-hidden">
-        {/* Background Effects */}
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-red-600/20 rounded-full blur-[100px] -mr-20 -mt-20 animate-pulse"></div>
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
-        
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="flex flex-col lg:flex-row items-center gap-16">
-            <div className="lg:w-1/2">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-red-500/20 backdrop-blur-md border border-red-500/30 rounded-full text-red-300 text-sm font-semibold mb-6">
-                <Activity className="w-4 h-4 animate-pulse" />
-                24/7 AI-POWERED EMERGENCY DISPATCH
-              </div>
-              
-              <h2 className="text-4xl lg:text-5xl font-bold mb-6">
-                Stuck on the Road? <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-300">
-                  AI Sends Help Instantly
-                </span>
-              </h2>
-              
-              <p className="text-lg text-gray-300 mb-8 leading-relaxed">
-                India's fastest AI-dispatched Roadside Assistance. Our system automatically locates 
-                the nearest recovery vehicle. <span className="text-white font-semibold">Average arrival: 28 minutes.</span>
-              </p>
-
-              <div className="grid grid-cols-2 gap-4 mb-8">
-                <RSAService icon={<Car className="w-5 h-5" />} title="Towing" />
-                <RSAService icon={<Zap className="w-5 h-5" />} title="Jumpstart" />
-                <RSAService icon={<Shield className="w-5 h-5" />} title="Flat Tyre" />
-                <RSAService icon={<Activity className="w-5 h-5" />} title="Lockout" />
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-4">
-                <button className="bg-red-600 hover:bg-red-700 text-white text-lg font-bold py-4 px-8 rounded-xl shadow-lg shadow-red-600/30 transition transform hover:-translate-y-1 flex items-center justify-center gap-3">
-                  <MessageSquare className="w-5 h-5" />
-                  Call 1800-MY-FNG
-                </button>
-                <Link href="/roadside-assistance" className="bg-white/10 hover:bg-white/20 border border-white/20 text-white text-lg font-bold py-4 px-8 rounded-xl backdrop-blur-md transition flex items-center justify-center gap-3">
-                  <MapPin className="w-5 h-5" />
-                  Share Location
-                </Link>
-              </div>
-            </div>
-
-            <div className="lg:w-1/2 w-full">
-              {/* RSA Tracking Card */}
-              <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-2xl">
-                <div className="flex justify-between items-center mb-6">
-                  <div>
-                    <p className="text-xs text-gray-400">RSA Request #RSA-2024-882</p>
-                    <p className="font-bold text-lg">Battery Jumpstart - Honda City</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-gray-400">ETA</p>
-                    <p className="font-bold text-brand-fng text-xl">12 min</p>
-                  </div>
-                </div>
-                
-                <div className="space-y-4 relative">
-                  <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-white/20"></div>
-
-                  <div className="relative pl-10">
-                    <div className="absolute left-0 top-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center border-2 border-white z-10">
-                      <CheckCircle className="w-3 h-3 text-white" />
-                    </div>
-                    <p className="font-semibold text-sm">Request Received</p>
-                    <p className="text-xs text-gray-400">Just now • AI analyzing location</p>
-                  </div>
-                  
-                  <div className="relative pl-10">
-                    <div className="absolute left-0 top-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center border-2 border-white z-10">
-                      <Car className="w-3 h-3 text-white" />
-                    </div>
-                    <p className="font-semibold text-sm">Nearest Vehicle Assigned</p>
-                    <p className="text-xs text-gray-400">30 sec ago • Driver: Rajesh</p>
-                  </div>
-
-                  <div className="relative pl-10">
-                    <div className="absolute left-0 top-1 w-6 h-6 bg-brand-fng rounded-full flex items-center justify-center border-2 border-white z-10 animate-pulse">
-                      <MapPin className="w-3 h-3 text-white" />
-                    </div>
-                    <p className="font-semibold text-sm text-brand-fng">En Route</p>
-                    <p className="text-xs text-gray-400">Live • 2.5 km away</p>
-                    <div className="h-24 bg-gray-800 rounded-lg mt-2 relative overflow-hidden">
-                      <div className="absolute inset-0 bg-gray-700 opacity-50"></div>
-                      <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-xs">
-                        [Live Map Tracking]
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 7. Car Service Types Section */}
+      {/* 2. Our Services */}
       <section className="py-20 bg-white">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">Complete Car Care</span>
-            <h2 className="text-4xl font-bold mt-2 mb-4 text-brand-secondary">What Services Does MY FNG Offer?</h2>
+            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">Our Services</span>
+            <h2 className="text-4xl font-bold mt-2 mb-4 text-brand-secondary">Complete Car Care Solutions</h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
               From periodic maintenance to complex repairs - our AI chatbot recommends the perfect service for your car. 
               <span className="font-semibold text-brand-secondary">100% transparent pricing</span> with no hidden charges.
@@ -594,21 +297,409 @@ export default function HomePage() {
               desc="High-precision body work"
               features={['Dent Removal', 'Color Matching', 'Paint Protection', 'Quality Check']}
             />
-            <ServiceTypeCard 
-              icon={<Zap className="w-8 h-8" />}
-              title="Clutch Service"
-              desc="Expert clutch repair and replacement"
-              features={['Clutch Inspection', 'Plate Replacement', 'Cable Adjustment', 'Warranty']}
-            />
           </div>
 
           <div className="text-center mt-12">
-            <Link href="/services" className="btn btn-primary text-lg px-10 py-4 rounded-xl">
-              Explore All Services <ArrowRight className="w-5 h-5 ml-2" />
+            <Link href="/services" className="btn btn-primary text-lg px-10 py-4 rounded-xl inline-flex items-center gap-2">
+              Explore All Services <ArrowRight className="w-5 h-5" />
             </Link>
           </div>
         </div>
       </section>
+
+      {/* 3. Brands We Serve - Horizontal Scrolling */}
+      <section className="py-20 bg-gray-50">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">Brands We Serve</span>
+            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">We Service All Major Car Brands</h2>
+            <p className="text-gray-600 mt-4">
+              From Maruti to Mercedes, we've got you covered
+            </p>
+          </div>
+
+          <div className="relative overflow-hidden py-4">
+            {brandsLoading ? (
+              <div className="flex justify-center items-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-brand-primary" />
+              </div>
+            ) : brandLogos.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <Car className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p>No brands available. Please add brands from admin panel.</p>
+              </div>
+            ) : (
+              <div className="flex gap-6 animate-scroll-horizontal">
+                {/* Brand logos with images */}
+                {brandLogos.map((brand, idx) => (
+                  <div key={`brand-1-${idx}`} className="flex items-center justify-center min-w-[140px] h-28 bg-white rounded-xl shadow-md hover:shadow-xl transition-all p-5 border border-gray-100 flex-shrink-0 group relative">
+                    <img 
+                      src={brand.logo} 
+                      alt={brand.name} 
+                      className="object-contain w-full h-full max-w-[120px] max-h-[70px] group-hover:scale-110 transition-transform"
+                      loading="eager"
+                      onError={(e) => {
+                        // Fallback: show brand name if image fails
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent && !parent.querySelector('.brand-fallback')) {
+                          const fallback = document.createElement('span');
+                          fallback.className = 'brand-fallback text-sm font-bold text-gray-700 text-center px-3';
+                          fallback.textContent = brand.name;
+                          parent.appendChild(fallback);
+                        }
+                      }}
+                    />
+                    {/* Always show brand name below logo */}
+                    <span className="absolute -bottom-6 left-0 right-0 text-xs font-semibold text-gray-600 text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      {brand.name}
+                    </span>
+                  </div>
+                ))}
+                {/* Duplicate for seamless loop */}
+                {brandLogos.map((brand, idx) => (
+                  <div key={`brand-2-${idx}`} className="flex items-center justify-center min-w-[140px] h-28 bg-white rounded-xl shadow-md hover:shadow-xl transition-all p-5 border border-gray-100 flex-shrink-0 group relative">
+                    <img 
+                      src={brand.logo} 
+                      alt={brand.name} 
+                      className="object-contain w-full h-full max-w-[120px] max-h-[70px] group-hover:scale-110 transition-transform"
+                      loading="eager"
+                      onError={(e) => {
+                        // Fallback: show brand name if image fails
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent && !parent.querySelector('.brand-fallback')) {
+                          const fallback = document.createElement('span');
+                          fallback.className = 'brand-fallback text-sm font-bold text-gray-700 text-center px-3';
+                          fallback.textContent = brand.name;
+                          parent.appendChild(fallback);
+                        }
+                      }}
+                    />
+                    {/* Always show brand name below logo */}
+                    <span className="absolute -bottom-6 left-0 right-0 text-xs font-semibold text-gray-600 text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      {brand.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* 4. How MY FNG Works */}
+      <section className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">How It Works</span>
+            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">Hassle-Free Car Maintenance with MY FNG AI</h2>
+            <p className="text-gray-600 mt-4 max-w-2xl mx-auto">
+              Experience the future of car servicing. Our AI chatbot books your service directly - no employee needed. 
+              Complete transparency in pricing and real-time tracking.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <StepCard 
+              number="01" 
+              title="Chat with MY FNG AI" 
+              desc="Simply chat with our AI assistant - no employee interaction needed. Our AI understands your car model, service history, and recommends the perfect service package."
+            />
+            <StepCard 
+              number="02" 
+              title="Transparent AI Pricing" 
+              desc="Get instant, transparent pricing based on your car model and location. No hidden charges - our AI ensures complete pricing transparency."
+            />
+            <StepCard 
+              number="03" 
+              title="Hassle-Free Service" 
+              desc="Book your service directly through AI chatbot. Real-time tracking, AI-powered quality checks, and instant updates throughout the process."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* 5. Why Choose MY FNG */}
+      <section className="py-20 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">Why Choose Us</span>
+            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">Why Choose MY FNG?</h2>
+            <p className="text-gray-600 mt-4 max-w-2xl mx-auto">
+              Experience the difference with our AI-powered platform and premium service quality
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <WhyChooseCard 
+              icon={<Bot className="w-8 h-8" />}
+              title="AI-Powered Booking"
+              desc="Book services directly through our AI chatbot - no employee interaction needed"
+            />
+            <WhyChooseCard 
+              icon={<Shield className="w-8 h-8" />}
+              title="100% Transparent Pricing"
+              desc="No hidden charges. See exactly what you pay for with upfront pricing"
+            />
+            <WhyChooseCard 
+              icon={<Clock className="w-8 h-8" />}
+              title="Quick Service"
+              desc="Fast turnaround times with real-time tracking and updates"
+            />
+            <WhyChooseCard 
+              icon={<Award className="w-8 h-8" />}
+              title="Quality Assured"
+              desc="AI-powered quality checks and certified technicians"
+            />
+            <WhyChooseCard 
+              icon={<Users className="w-8 h-8" />}
+              title="Expert Technicians"
+              desc="Trained professionals with years of experience"
+            />
+            <WhyChooseCard 
+              icon={<TrendingUp className="w-8 h-8" />}
+              title="Real-Time Updates"
+              desc="Track your service progress with live updates and photos"
+            />
+            <WhyChooseCard 
+              icon={<Heart className="w-8 h-8" />}
+              title="Customer First"
+              desc="Dedicated support team available 24/7 for your assistance"
+            />
+            <WhyChooseCard 
+              icon={<CheckCircle className="w-8 h-8" />}
+              title="Warranty Guaranteed"
+              desc="All services come with warranty and quality guarantee"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Emergency Roadside Assistance Section - High Impact */}
+      <section className="relative py-24 overflow-hidden">
+        {/* Dramatic Background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-red-950 via-orange-950 to-red-900"></div>
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
+        
+        {/* Animated Elements */}
+        <div className="absolute top-0 left-0 w-96 h-96 bg-orange-500/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-red-500/20 rounded-full blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
+
+        <div className="container mx-auto px-4 relative z-10">
+          <div className="max-w-5xl mx-auto">
+            {/* Emergency Badge */}
+            <div className="flex justify-center mb-6">
+              <div className="inline-flex items-center gap-3 glass px-6 py-3 rounded-full border border-red-500/30 animate-pulse-glow">
+                <div className="relative flex items-center">
+                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                  <div className="absolute w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
+                </div>
+                <span className="text-white font-bold text-sm">24/7 EMERGENCY SUPPORT</span>
+              </div>
+            </div>
+
+            <h2 className="text-5xl lg:text-6xl font-bold text-center text-white mb-6 animate-fade-in-up">
+              Stuck on the Road? <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-400">
+                We're Just a Tap Away!
+              </span>
+            </h2>
+
+            <p className="text-xl text-gray-300 text-center mb-12 max-w-3xl mx-auto animate-fade-in-up" style={{animationDelay: '0.2s'}}>
+              Car breakdown? Flat tire? Battery dead? Our AI-powered roadside assistance reaches you in <span className="text-white font-bold">under 30 minutes</span>. 
+              Available 24/7 across India.
+            </p>
+
+            {/* RSA Services Grid */}
+            <div className="grid md:grid-cols-3 gap-6 mb-12">
+              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.3s'}}>
+                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
+                  <Zap className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-2">Jump Start</h3>
+                <p className="text-gray-400 text-sm">Battery dead? We'll get you started in minutes</p>
+              </div>
+
+              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.4s'}}>
+                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
+                  <Car className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-2">Towing Service</h3>
+                <p className="text-gray-400 text-sm">Vehicle won't start? We'll tow it to safety</p>
+              </div>
+
+              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.5s'}}>
+                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
+                  <Shield className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-2">Flat Tire Fix</h3>
+                <p className="text-gray-400 text-sm">Puncture? We'll change or repair on the spot</p>
+              </div>
+
+              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.6s'}}>
+                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
+                  <Droplets className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-2">Fuel Delivery</h3>
+                <p className="text-gray-400 text-sm">Out of fuel? Emergency fuel delivery</p>
+              </div>
+
+              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.7s'}}>
+                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
+                  <MapPin className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-2">Live GPS Tracking</h3>
+                <p className="text-gray-400 text-sm">Track our technician in real-time</p>
+              </div>
+
+              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.8s'}}>
+                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
+                  <Clock className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-2">Quick Response</h3>
+                <p className="text-gray-400 text-sm">Average arrival time: 25 minutes</p>
+              </div>
+            </div>
+
+            {/* Emergency CTA */}
+            <div className="text-center animate-fade-in-up" style={{animationDelay: '0.9s'}}>
+              <Link
+                href="/roadside-assistance"
+                className="inline-flex items-center gap-3 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white text-xl font-bold px-12 py-5 rounded-2xl shadow-2xl shadow-red-500/50 transition-all transform hover:-translate-y-1 hover:shadow-3xl animate-pulse-glow"
+              >
+                <Radio className="w-6 h-6 animate-pulse" />
+                Request Emergency Help
+                <ArrowRight className="w-6 h-6" />
+              </Link>
+              <p className="text-gray-400 mt-4 text-sm">
+                Available in 50+ cities across India • 24/7 Support
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 6. From Our Blogs */}
+      <section className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">Latest Updates</span>
+            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">From Our Blogs</h2>
+            <p className="text-gray-600 mt-4">
+              Stay updated with car maintenance tips, industry news, and expert advice
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <BlogCard 
+              title="5 Essential Car Maintenance Tips for Monsoon"
+              excerpt="Protect your car during rainy season with these expert tips..."
+              date="Dec 15, 2024"
+              image="https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&q=80&w=400"
+            />
+            <BlogCard 
+              title="How AI is Revolutionizing Car Service Industry"
+              excerpt="Discover how artificial intelligence is transforming car maintenance..."
+              date="Dec 10, 2024"
+              image="https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=400"
+            />
+            <BlogCard 
+              title="Understanding Your Car's Service Schedule"
+              excerpt="Learn when and why your car needs regular servicing..."
+              date="Dec 5, 2024"
+              image="https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2?auto=format&fit=crop&q=80&w=400"
+            />
+          </div>
+
+          <div className="text-center mt-12">
+            <Link href="/blog" className="btn btn-outline text-lg px-10 py-4 rounded-xl">
+              Read All Blogs <ArrowRight className="w-5 h-5 ml-2" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* 7. What People Say - Testimonials */}
+      <section className="py-20 bg-gray-50">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">Testimonials</span>
+            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">What People Say About Us</h2>
+            <p className="text-gray-600 mt-4">
+              Real feedback from our satisfied customers
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <TestimonialCard 
+              name="Rajesh Kumar"
+              location="Mumbai"
+              rating={5}
+              text="Best car service experience! The AI chatbot made booking so easy. Transparent pricing and excellent service quality."
+              vehicle="Honda City"
+            />
+            <TestimonialCard 
+              name="Priya Sharma"
+              location="Navi Mumbai"
+              rating={5}
+              text="MY FNG saved me so much time. Real-time updates and professional service. Highly recommended!"
+              vehicle="Maruti Swift"
+            />
+            <TestimonialCard 
+              name="Amit Patel"
+              location="Thane"
+              rating={5}
+              text="Amazing service! The AI-powered booking was seamless and the technicians were very professional."
+              vehicle="Hyundai Creta"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* 8. Frequently Asked Questions */}
+      <section className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <span className="text-brand-primary font-bold tracking-wider uppercase text-sm">FAQ</span>
+            <h2 className="text-4xl font-bold mt-2 text-brand-secondary">Frequently Asked Questions</h2>
+            <p className="text-gray-600 mt-4">
+              Got questions? We've got answers
+            </p>
+          </div>
+
+          <div className="max-w-3xl mx-auto space-y-4">
+            <FAQItem 
+              question="How does AI-powered booking work?"
+              answer="Simply chat with our AI assistant, provide your vehicle details, and get instant transparent pricing. Book your service directly without any employee interaction."
+            />
+            <FAQItem 
+              question="Is the pricing really transparent?"
+              answer="Yes! Our AI shows you exactly what you'll pay upfront. No hidden charges, no surprises. You see the complete breakdown before booking."
+            />
+            <FAQItem 
+              question="How long does a typical service take?"
+              answer="Service duration varies by type. Basic service takes 2-3 hours, premium service takes 4-5 hours, and comprehensive service takes 6-8 hours."
+            />
+            <FAQItem 
+              question="Do you provide warranty on services?"
+              answer="Yes, all our services come with warranty. Labour warranty is typically 1 month or 1,000 km, and parts warranty varies by component."
+            />
+            <FAQItem 
+              question="Can I track my service in real-time?"
+              answer="Absolutely! You'll receive real-time updates, photos, and live tracking throughout the service process via our AI-powered platform."
+            />
+            <FAQItem 
+              question="What car brands do you service?"
+              answer="We service all major car brands including Maruti Suzuki, Hyundai, Tata, Mahindra, Honda, Toyota, Ford, Volkswagen, BMW, Mercedes-Benz, Audi, and many more."
+            />
+          </div>
+        </div>
+      </section>
+
+
 
       {/* Floating Chatbot (Always Visible) */}
       <div className="fixed bottom-6 right-6 z-50">
@@ -676,6 +767,11 @@ export default function HomePage() {
       )}
 
       <Footer />
+
+      {/* Booking Form Modal */}
+      {isBookingFormOpen && (
+        <BookingForm onClose={() => setIsBookingFormOpen(false)} />
+      )}
     </div>
   );
 }
@@ -839,6 +935,78 @@ function ServiceTypeCard({ icon, title, desc, features }: { icon: React.ReactNod
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function WhyChooseCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-100 hover:shadow-xl hover:border-brand-primary/30 transition group text-center">
+      <div className="mb-4 bg-brand-primary/10 w-16 h-16 rounded-xl flex items-center justify-center text-brand-primary group-hover:bg-brand-primary group-hover:text-white transition-colors mx-auto">
+        {icon}
+      </div>
+      <h3 className="text-lg font-bold mb-2 text-brand-secondary">{title}</h3>
+      <p className="text-gray-600 text-sm">{desc}</p>
+    </div>
+  );
+}
+
+function BlogCard({ title, excerpt, date, image }: { title: string; excerpt: string; date: string; image: string }) {
+  return (
+    <Link href="/blog" className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition group">
+      <div className="h-48 relative overflow-hidden">
+        <Image src={image} alt={title} fill className="object-cover group-hover:scale-105 transition duration-500" />
+      </div>
+      <div className="p-6">
+        <p className="text-xs text-gray-500 mb-2">{date}</p>
+        <h3 className="text-lg font-bold text-brand-secondary mb-2 group-hover:text-brand-primary transition">{title}</h3>
+        <p className="text-gray-600 text-sm">{excerpt}</p>
+        <div className="mt-4 flex items-center gap-2 text-brand-primary text-sm font-semibold">
+          Read More <ArrowRight className="w-4 h-4" />
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function TestimonialCard({ name, location, rating, text, vehicle }: { name: string; location: string; rating: number; text: string; vehicle: string }) {
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+      <div className="flex items-center gap-1 mb-4">
+        {Array.from({ length: rating }).map((_, i) => (
+          <Star key={i} className="w-5 h-5 text-yellow-400 fill-yellow-400" />
+        ))}
+      </div>
+      <Quote className="w-8 h-8 text-brand-primary/20 mb-4" />
+      <p className="text-gray-700 mb-6 italic">{text}</p>
+      <div className="border-t border-gray-100 pt-4">
+        <p className="font-bold text-gray-900">{name}</p>
+        <p className="text-sm text-gray-500">{location} • {vehicle}</p>
+      </div>
+    </div>
+  );
+}
+
+function FAQItem({ question, answer }: { question: string; answer: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  return (
+    <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full p-6 flex items-center justify-between text-left hover:bg-gray-50 transition"
+      >
+        <div className="flex items-center gap-4 flex-1">
+          <HelpCircle className="w-6 h-6 text-brand-primary flex-shrink-0" />
+          <span className="font-bold text-gray-900">{question}</span>
+        </div>
+        <ChevronRight className={`w-5 h-5 text-gray-400 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="px-6 pb-6 pt-0 border-t border-gray-100">
+          <p className="text-gray-600 mt-4">{answer}</p>
+        </div>
+      )}
     </div>
   );
 }

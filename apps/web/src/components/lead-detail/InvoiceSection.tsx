@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { FileText, Download, Printer, Send, CheckCircle, Clock } from 'lucide-react';
+import { FileText, Download, Printer, Send, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 interface InvoiceSectionProps {
@@ -66,6 +66,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     fetchInvoice();
@@ -134,6 +135,38 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
   }
 
+  async function regenerateInvoice() {
+    if (!confirm('Are you sure you want to regenerate this invoice? This will create a new invoice with updated amounts.')) {
+      return;
+    }
+
+    setRegenerating(true);
+    try {
+      // Use the new billing API route with regenerate parameter
+      const response = await fetch(`/api/billing/leads/${lead.id}/generate-invoice?regenerate=true`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to regenerate invoice');
+      }
+
+      const data = await response.json();
+      setInvoice(data.invoice);
+      alert('✅ Invoice regenerated successfully!');
+      onUpdate?.();
+    } catch (error: any) {
+      console.error('Error regenerating invoice:', error);
+      alert(`Failed to regenerate invoice: ${error.message}`);
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   async function printInvoice() {
     if (!invoice) {
       alert('Invoice not found');
@@ -141,12 +174,26 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
 
     try {
-      const { printInvoice } = await import('@/lib/services/pdfService');
-      printInvoice(invoice.id);
+      // Open PDF in new window and trigger print dialog
+      const printUrl = `/api/billing/invoices/${invoice.id}/generate-pdf`;
+      const printWindow = window.open(printUrl, '_blank');
+      
+      if (printWindow) {
+        printWindow.onload = () => {
+          setTimeout(() => {
+            printWindow.print();
+          }, 500); // Small delay to ensure content is loaded
+        };
+      } else {
+        // Fallback: if popup blocked, open in same window
+        window.location.href = printUrl;
+        setTimeout(() => {
+          window.print();
+        }, 1000);
+      }
     } catch (error: any) {
       console.error('Error printing invoice:', error);
-      // Fallback to window.print()
-      window.print();
+      alert(`Failed to print invoice: ${error.message}`);
     }
   }
 
@@ -157,8 +204,29 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
 
     try {
-      const { downloadInvoicePDF } = await import('@/lib/services/pdfService');
-      await downloadInvoicePDF(invoice.id, invoice.invoice_number);
+      const response = await fetch(`/api/billing/invoices/${invoice.id}/generate-pdf`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+
+      const htmlContent = await response.text();
+      
+      // Create a blob from HTML content
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      
+      // Create download link
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Invoice-${invoice.invoice_number}.html`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up
+      URL.revokeObjectURL(url);
+      
       alert('✅ Invoice download started!');
     } catch (error: any) {
       console.error('Error downloading invoice:', error);
@@ -212,7 +280,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
   }
 
-  const canGenerateInvoice = ['READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status);
+  const canGenerateInvoice = ['QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status);
 
   return (
     <div className="card">
@@ -238,7 +306,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
             </button>
           ) : (
             <p className="text-sm text-gray-500">
-              Invoice can only be generated when lead status is READY_FOR_DELIVERY, DELIVERED, or CLOSED
+              Invoice can only be generated when lead status is QC_APPROVED, READY_FOR_BILLING, READY_FOR_DELIVERY, DELIVERED, or CLOSED
             </p>
           )}
         </div>
@@ -437,6 +505,14 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-3">
+            <button
+              onClick={regenerateInvoice}
+              disabled={regenerating}
+              className="btn btn-secondary flex-1"
+            >
+              <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
+              {regenerating ? 'Regenerating...' : 'Regenerate'}
+            </button>
             <button
               onClick={printInvoice}
               className="btn btn-outline flex-1"
