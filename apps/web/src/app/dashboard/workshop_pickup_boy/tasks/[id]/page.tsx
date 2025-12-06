@@ -54,12 +54,36 @@ export default function PickupTaskDetailPage() {
         return;
       }
 
-      setTask(leadData);
-
       // Check if OTP is already verified
+      let isOtpVerified = false;
       if (leadData.pickup_otp_verified_at) {
+        isOtpVerified = true;
         setOtpVerified(true);
       }
+
+      // Always check pickup_otps table for OTP (this is the primary source)
+      const { data: pickupOtpData } = await supabase
+        .from('pickup_otps')
+        .select('otp_code, is_verified, created_at')
+        .eq('lead_id', taskId)
+        .eq('otp_type', 'PICKUP')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // Merge OTP data from pickup_otps table (prefer this over service_leads.pickup_otp)
+      const finalOtpData = {
+        ...leadData,
+        pickup_otp: pickupOtpData?.otp_code || leadData.pickup_otp,
+        pickup_otp_verified_at: pickupOtpData?.is_verified ? (leadData.pickup_otp_verified_at || new Date().toISOString()) : leadData.pickup_otp_verified_at
+      };
+
+      if (pickupOtpData?.is_verified) {
+        isOtpVerified = true;
+        setOtpVerified(true);
+      }
+
+      setTask(finalOtpData);
 
       // Fetch photos
       const { data: photos } = await supabase
@@ -105,13 +129,20 @@ export default function PickupTaskDetailPage() {
       // Fixed OTP for testing (bypass mode)
       const otp = '123456';
 
-      // Update lead status
+      // Update lead status - don't change status if already ON_THE_WAY
+      const updateData: any = {
+        pickup_otp: otp,
+        updated_at: new Date().toISOString()
+      };
+
+      // Only update status if not already ON_THE_WAY
+      if (task.status !== 'ON_THE_WAY') {
+        updateData.status = 'ACCEPTED';
+      }
+
       const { error: updateError } = await supabase
         .from('service_leads')
-        .update({
-          pickup_otp: otp,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', taskId);
 
       if (updateError) throw updateError;
@@ -307,14 +338,41 @@ export default function PickupTaskDetailPage() {
     }
   }
 
-  const openGoogleMaps = () => {
+  const openGoogleMaps = async () => {
     if (!task) return;
-    const address = task.address || task.customer_address || task.pickup_address || '';
-    const city = task.city || '';
-    const pincode = task.pincode || '';
-    const fullAddress = `${address}, ${city}, ${pincode}`.trim();
-    const encodedAddress = encodeURIComponent(fullAddress);
-    window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
+    
+    // Call navigate API to update status to ON_THE_WAY and auto-generate OTP
+    try {
+      const response = await fetch(`/api/pickup/${taskId}/navigate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update status');
+      }
+
+      // Status updated and OTP generated, now open maps
+      const address = task.address || task.customer_address || task.pickup_address || '';
+      const city = task.city || '';
+      const pincode = task.pincode || '';
+      const fullAddress = `${address}, ${city}, ${pincode}`.trim();
+      const encodedAddress = encodeURIComponent(fullAddress);
+      window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
+      
+      // Refresh task details to get the updated OTP
+      fetchTaskDetails();
+      
+      toast.success('✅ Navigation started! OTP generated. You can now verify OTP.');
+    } catch (error: any) {
+      console.error('Error starting navigation:', error);
+      toast.error(`Failed to start navigation: ${error.message}`);
+    }
   };
 
   if (loading) {
@@ -338,8 +396,24 @@ export default function PickupTaskDetailPage() {
     );
   }
 
-  const canStart = (task.status === 'ACCEPTED' || task.status === 'ASSIGNED_TO_WORKSHOP') && !task.pickup_otp;
-  const canVerifyOTP = (task.status === 'ON_THE_WAY' || task.status === 'ACCEPTED' || task.status === 'ASSIGNED_TO_WORKSHOP') && task.pickup_otp && !otpVerified;
+  // Show Start Pickup button only if status is ACCEPTED or ASSIGNED_TO_WORKSHOP and OTP not generated
+  // Don't show if status is ON_THE_WAY (OTP will be auto-generated on navigate)
+  const canStart = (
+    (task.status === 'ACCEPTED' || task.status === 'ASSIGNED_TO_WORKSHOP') 
+    && !task.pickup_otp
+  );
+  
+  // Show Verify OTP button if:
+  // 1. Status is ON_THE_WAY, ACCEPTED, ASSIGNED_TO_WORKSHOP, or VEHICLE_IN_TRANSIT
+  // 2. OTP exists (either in service_leads.pickup_otp or pickup_otps table - already merged in fetchTaskDetails)
+  // 3. OTP is not yet verified
+  const hasOTP = !!task.pickup_otp;
+  const canVerifyOTP = (
+    task.status === 'ON_THE_WAY' || 
+    task.status === 'ACCEPTED' || 
+    task.status === 'ASSIGNED_TO_WORKSHOP' ||
+    task.status === 'VEHICLE_IN_TRANSIT'
+  ) && hasOTP && !otpVerified;
   const isInProgress = task.status === 'IN_PROGRESS' || task.status === 'VEHICLE_IN_TRANSIT';
   const canMarkArrived = task.status === 'VEHICLE_IN_TRANSIT' && otpVerified;
   const canComplete = (task.status === 'VEHICLE_DROPPED_AT_WORKSHOP' || task.status === 'VEHICLE_IN_TRANSIT') && otpVerified;

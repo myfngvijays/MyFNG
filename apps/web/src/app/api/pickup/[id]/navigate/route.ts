@@ -62,12 +62,16 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Update service_leads status to ON_THE_WAY
+    // Auto-generate OTP when navigate is clicked (testing mode: 123456)
+    const otp = '123456';
+
+    // Update service_leads status to ON_THE_WAY and generate OTP
     const { error: updateLeadError } = await supabase
       .from('service_leads')
       .update({
         status: 'ON_THE_WAY',
         pickup_status: 'ON_THE_WAY',
+        pickup_otp: otp, // Auto-generate OTP
         updated_at: now
       })
       .eq('id', leadId);
@@ -149,6 +153,30 @@ export async function POST(
         notes: 'Navigate button clicked'
       });
 
+    // Create OTP record in pickup_otps table
+    await supabase
+      .from('pickup_otps')
+      .insert({
+        lead_id: leadId,
+        otp_code: otp,
+        otp_type: 'PICKUP',
+        is_verified: false,
+        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes expiry
+        created_by: userProfile.id
+      });
+
+    // Create lead event for OTP generation
+    try {
+      await supabase.from('lead_events').insert({
+        lead_id: leadId,
+        event_type: 'PICKUP_STARTED',
+        event_description: `Pickup boy started navigation. OTP generated: ${otp} (testing mode)`,
+        created_by: userProfile.id,
+      });
+    } catch (eventError) {
+      console.error('Error creating lead event (non-critical):', eventError);
+    }
+
     // Create activity log
     await supabase
       .from('lead_activities')
@@ -156,20 +184,23 @@ export async function POST(
         lead_id: leadId,
         user_id: userProfile.id,
         activity_type: 'PICKUP_NAVIGATION_STARTED',
-        description: 'Pickup boy started navigation to pickup location',
+        description: 'Pickup boy started navigation to pickup location. OTP generated.',
         old_status: lead.status,
         new_status: 'ON_THE_WAY',
         metadata: { 
           latitude, 
           longitude,
-          pickup_address: lead.pickup_address || lead.customer_address
+          pickup_address: lead.pickup_address || lead.customer_address,
+          otp_generated: true,
+          otp: otp
         }
       });
 
     return NextResponse.json({
       success: true,
-      message: 'Status updated to ON_THE_WAY',
-      status: 'ON_THE_WAY'
+      message: 'Status updated to ON_THE_WAY. OTP generated.',
+      status: 'ON_THE_WAY',
+      otp: otp // Return OTP for testing
     }, { status: 200 });
 
   } catch (error: any) {
