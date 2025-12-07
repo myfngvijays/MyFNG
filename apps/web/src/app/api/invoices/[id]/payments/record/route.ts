@@ -113,12 +113,12 @@ export async function POST(
     
     // Create finance event
     await createFinanceEvent({
-      event_type: 'payment_received_manual',
-      entity_type: 'payment',
-      entity_id: payment.id,
-      actor_id: user.id,
-      actor_role: roleCode,
-      event_data: {
+      eventType: 'payment_received',
+      entityType: 'payment',
+      entityId: payment.id,
+      actorId: user.id,
+      actorRole: roleCode,
+      eventData: {
         payment_id: payment.id,
         invoice_id: invoiceId,
         lead_id: invoice.lead_id,

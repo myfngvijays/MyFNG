@@ -151,13 +151,13 @@ export async function POST(
 
     // Create finance event
     await createFinanceEvent({
-      event_type: 'refund_approved',
-      entity_type: 'refund',
-      entity_id: refundId,
-      actor_id: user.id,
-      actor_role: roleCode,
-      actor_name: userProfile.full_name,
-      event_data: {
+      eventType: 'refund_approved',
+      entityType: 'refund',
+      entityId: refundId,
+      actorId: user.id,
+      actorRole: roleCode,
+      actorName: userProfile?.full_name,
+      eventData: {
         refund_id: refundId,
         lead_id: refund.lead_id,
         amount: refund.amount,

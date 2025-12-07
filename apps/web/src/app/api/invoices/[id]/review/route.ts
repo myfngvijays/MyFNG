@@ -194,12 +194,12 @@ export async function POST(
 
     // Create finance_event
     await createFinanceEvent({
-      event_type: review_status === 'APPROVED' ? 'invoice_approved' : 'invoice_rejected',
-      entity_type: 'invoice',
-      entity_id: invoiceId,
-      actor_id: user.id,
-      actor_role: roleCode,
-      event_data: {
+      eventType: review_status === 'APPROVED' ? 'invoice_approved' : 'invoice_rejected',
+      entityType: 'invoice',
+      entityId: invoiceId,
+      actorId: user.id,
+      actorRole: roleCode,
+      eventData: {
         invoice_id: invoiceId,
         invoice_number: invoice.invoice_number,
         lead_id: invoice.lead_id,

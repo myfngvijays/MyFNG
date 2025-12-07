@@ -32,9 +32,9 @@ export async function POST(request: NextRequest) {
       .gte('completed_at', `${settlement_date}T00:00:00`)
       .lte('completed_at', `${settlement_date}T23:59:59`);
 
-    const matched = [];
-    const unmatched = [];
-    const exceptions = [];
+    const matched: any[] = [];
+    const unmatched: any[] = [];
+    const exceptions: any[] = [];
 
     // Auto-match by transaction reference and amount
     for (const settlementTxn of settlement_data) {

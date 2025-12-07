@@ -88,11 +88,11 @@ export async function POST(request: NextRequest) {
 
     // Create finance event
     await createFinanceEvent({
-      event_type: 'payout_batch_created',
-      entity_type: 'payout',
-      entity_id: payout.id,
-      actor_id: user.id,
-      event_data: {
+      eventType: 'payout_created',
+      entityType: 'payout',
+      entityId: payout.id,
+      actorId: user.id,
+      eventData: {
         payout_id: payout.id,
         workshop_id,
         amount: calculation.net_amount,

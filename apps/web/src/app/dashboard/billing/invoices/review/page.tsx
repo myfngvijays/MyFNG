@@ -157,7 +157,7 @@ export default function InvoiceReviewDashboard() {
                     </div>
                     <div>
                       <p className="text-gray-600">Workshop: <span className="font-medium text-gray-900">{invoice.workshop.name}</span></p>
-                      <p className="text-gray-600">Amount: <span className="font-bold text-green-600">₹{parseFloat(invoice.total_amount).toLocaleString()}</span></p>
+                      <p className="text-gray-600">Amount: <span className="font-bold text-green-600">₹{parseFloat(invoice.total_amount.toString()).toLocaleString()}</span></p>
                     </div>
                   </div>
 

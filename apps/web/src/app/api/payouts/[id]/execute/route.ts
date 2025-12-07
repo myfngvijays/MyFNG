@@ -71,12 +71,12 @@ export async function POST(
 
     // Create finance event
     await createFinanceEvent({
-      event_type: 'payout_executed',
-      entity_type: 'payout',
-      entity_id: payoutId,
-      actor_id: user.id,
-      actor_role: roleCode,
-      event_data: {
+      eventType: 'payout_executed',
+      entityType: 'payout',
+      entityId: payoutId,
+      actorId: user.id,
+      actorRole: roleCode,
+      eventData: {
         payout_id: payoutId,
         workshop_id: payout.workshop_id,
         amount: payout.net_amount_after_tax,

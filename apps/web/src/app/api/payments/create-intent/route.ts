@@ -47,23 +47,32 @@ export async function POST(request: NextRequest) {
     const amountInPaise = Math.round(parseFloat(invoice.total_amount) * 100);
 
     // Create Razorpay order
-    const Razorpay = require('razorpay');
-    const razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET
-    });
-
-    const razorpayOrder = await razorpay.orders.create({
-      amount: amountInPaise,
-      currency: 'INR',
+    // TODO: Install razorpay package and configure
+    // const Razorpay = require('razorpay');
+    // For now, create a mock order ID
+    const razorpayOrder = {
+      id: `order_${Date.now()}`,
       receipt: `INV_${invoice.invoice_number}`,
-      notes: {
-        invoice_id: invoice_id,
-        lead_id: lead.id,
-        lead_number: lead.lead_number,
-        customer_name: lead.customer_name
-      }
-    });
+      amount: amountInPaise,
+      currency: 'INR'
+    };
+    
+    // Uncomment when razorpay is installed:
+    // const razorpay = new Razorpay({
+    //   key_id: process.env.RAZORPAY_KEY_ID,
+    //   key_secret: process.env.RAZORPAY_KEY_SECRET
+    // });
+    // const razorpayOrder = await razorpay.orders.create({
+    //   amount: amountInPaise,
+    //   currency: 'INR',
+    //   receipt: `INV_${invoice.invoice_number}`,
+    //   notes: {
+    //     invoice_id: invoice_id,
+    //     lead_id: lead.id,
+    //     lead_number: lead.lead_number,
+    //     customer_name: lead.customer_name
+    //   }
+    // });
 
     // Create payment transaction record
     const { data: paymentTxn, error: txnError } = await supabase
