@@ -61,13 +61,15 @@ export default function QCReviewPage() {
 
       const supabase = createClient();
 
-      // Fetch lead details
+      // Fetch lead details with service type and sub-service names
       const { data: leadData, error: leadError } = await supabase
         .from('service_leads')
         .select(`
           *,
           mechanic:assigned_mechanic_id(id, full_name, profile_image),
-          supervisor:assigned_supervisor_id(id, full_name)
+          supervisor:assigned_supervisor_id(id, full_name),
+          service_type_details:service_type(name),
+          sub_service_details:sub_service(name)
         `)
         .eq('id', jobId)
         .single();
@@ -85,7 +87,20 @@ export default function QCReviewPage() {
         setMechanic(mechanicData);
       }
 
-      // Fetch photos from lead_media table
+      // Fetch photos from mechanic_job_photos table (primary source)
+      const { data: jobPhotosData, error: jobPhotosError } = await supabase
+        .from('mechanic_job_photos')
+        .select('*')
+        .eq('lead_id', jobId)
+        .order('timestamp', { ascending: false });
+
+      if (!jobPhotosError && jobPhotosData) {
+        setBeforePhotos(jobPhotosData.filter(p => p.photo_category === 'before'));
+        setAfterPhotos(jobPhotosData.filter(p => p.photo_category === 'after'));
+        setDuringPhotos(jobPhotosData.filter(p => p.photo_category === 'during'));
+      }
+
+      // Also try fetching from lead_media table as fallback
       const { data: photosData, error: photosError } = await supabase
         .from('lead_media')
         .select('*')
@@ -93,12 +108,23 @@ export default function QCReviewPage() {
         .order('created_at', { ascending: false });
 
       if (!photosError && photosData) {
-        setBeforePhotos(photosData.filter(p => p.category === 'BEFORE'));
-        setAfterPhotos(photosData.filter(p => p.category === 'AFTER'));
-        setDuringPhotos(photosData.filter(p => p.category === 'PROGRESS' || p.category === 'DURING'));
+        const beforeFromLeadMedia = photosData.filter(p => p.category === 'BEFORE');
+        const afterFromLeadMedia = photosData.filter(p => p.category === 'AFTER');
+        const duringFromLeadMedia = photosData.filter(p => p.category === 'PROGRESS' || p.category === 'DURING');
+        
+        // Merge with existing photos if any
+        if (beforeFromLeadMedia.length > 0) {
+          setBeforePhotos(prev => [...prev, ...beforeFromLeadMedia]);
+        }
+        if (afterFromLeadMedia.length > 0) {
+          setAfterPhotos(prev => [...prev, ...afterFromLeadMedia]);
+        }
+        if (duringFromLeadMedia.length > 0) {
+          setDuringPhotos(prev => [...prev, ...duringFromLeadMedia]);
+        }
       }
 
-      // Also try fetching from mechanic_media table as fallback
+      // Also try fetching from mechanic_media table as additional fallback
       const { data: mechanicMediaData, error: mechanicMediaError } = await supabase
         .from('mechanic_media')
         .select('*')
@@ -314,14 +340,30 @@ export default function QCReviewPage() {
         <div className="card">
           <h3 className="text-lg font-semibold mb-3">Service Details</h3>
           <div className="space-y-2">
-            {lead.service_type_names && lead.service_type_names.length > 0 ? (
-              lead.service_type_names.map((serviceName: string, index: number) => (
-                <div key={index} className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                  <p className="text-gray-700 font-medium">{serviceName}</p>
+            {/* Display Service Type */}
+            {lead.service_type_details?.name && (
+              <div className="flex items-start gap-2">
+                <span className="w-2 h-2 bg-blue-500 rounded-full mt-2"></span>
+                <div>
+                  <p className="text-gray-900 font-semibold">Service Type:</p>
+                  <p className="text-gray-700">{lead.service_type_details.name}</p>
                 </div>
-              ))
-            ) : (
+              </div>
+            )}
+            
+            {/* Display Sub-Service */}
+            {lead.sub_service_details?.name && (
+              <div className="flex items-start gap-2">
+                <span className="w-2 h-2 bg-green-500 rounded-full mt-2"></span>
+                <div>
+                  <p className="text-gray-900 font-semibold">Sub-Service:</p>
+                  <p className="text-gray-700">{lead.sub_service_details.name}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Fallback: Display service_type ID if names not available */}
+            {!lead.service_type_details?.name && !lead.sub_service_details?.name && (
               <p className="text-gray-700">{lead.service_type || 'General Service'}</p>
             )}
           </div>

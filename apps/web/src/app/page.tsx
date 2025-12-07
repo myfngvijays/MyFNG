@@ -33,7 +33,8 @@ import {
   Cpu,
   Radio,
   AlertCircle,
-  Droplets
+  Droplets,
+  Calendar
 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -155,6 +156,13 @@ export default function HomePage() {
                   <Car className="w-5 h-5" />
                   Quick Book
                 </button>
+                <Link
+                  href="/book-service"
+                  className="btn glass hover:bg-white/20 border border-white/20 text-white text-lg px-8 py-4 rounded-xl flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1"
+                >
+                  <Calendar className="w-5 h-5" />
+                  Traditional Booking
+                </Link>
               </div>
 
               {/* Live Indicator - Dynamic FOMO */}

@@ -173,7 +173,16 @@ export async function POST(
 
     const jobResult = updatedJob[0];
 
-    // If status is COMPLETED, also update service_leads
+    // Get current lead status for history
+    const { data: currentLead } = await supabase
+      .from('service_leads')
+      .select('status')
+      .eq('id', leadId)
+      .single();
+
+    const oldLeadStatus = currentLead?.status || 'UNKNOWN';
+
+    // Update service_leads based on mechanic job status
     if (status === 'COMPLETED') {
       await supabase
         .from('service_leads')
@@ -189,13 +198,60 @@ export async function POST(
         .from('lead_status_history')
         .insert({
           lead_id: leadId,
-          old_status: 'IN_PROGRESS',
+          old_status: oldLeadStatus,
           new_status: 'WORK_COMPLETED',
           changed_by: userProfile.id,
           changed_at: now,
           reason: 'Mechanic completed the job',
           notes: notes || 'Job completed by mechanic'
         });
+    } else if (status === 'HOLD') {
+      // Update service_leads to ON_HOLD when mechanic puts job on hold
+      await supabase
+        .from('service_leads')
+        .update({
+          status: 'ON_HOLD',
+          updated_at: now
+        })
+        .eq('id', leadId);
+
+      // Create status history
+      await supabase
+        .from('lead_status_history')
+        .insert({
+          lead_id: leadId,
+          old_status: oldLeadStatus,
+          new_status: 'ON_HOLD',
+          changed_by: userProfile.id,
+          changed_at: now,
+          reason: 'Mechanic put job on hold',
+          notes: notes || 'Job put on hold by mechanic'
+        });
+    } else if (status === 'IN_PROGRESS') {
+      // Update service_leads to IN_PROGRESS when mechanic starts/resumes work
+      if (oldLeadStatus !== 'IN_PROGRESS') {
+        await supabase
+          .from('service_leads')
+          .update({
+            status: 'IN_PROGRESS',
+            mechanic_started_at: currentJob.started_at || now,
+            updated_at: now
+          })
+          .eq('id', leadId);
+
+        // Create status history
+        await supabase
+          .from('lead_status_history')
+          .insert({
+            lead_id: leadId,
+            old_status: oldLeadStatus,
+            new_status: 'IN_PROGRESS',
+            changed_by: userProfile.id,
+            changed_at: now,
+            reason: oldLeadStatus === 'ON_HOLD' ? 'Mechanic resumed work from hold' : 'Mechanic started work',
+            notes: notes || (oldLeadStatus === 'ON_HOLD' ? 'Work resumed' : 'Work started')
+          });
+      }
     }
 
     // Create activity log

@@ -91,6 +91,7 @@ export default function MechanicJobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [activeChecklistItem, setActiveChecklistItem] = useState<string | null>(null);
   
   // Form states
   const [workNotes, setWorkNotes] = useState('');
@@ -1432,12 +1433,18 @@ export default function MechanicJobDetailPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {categoryItems.map((item, idx) => (
+                            {categoryItems.map((item, idx) => {
+                              // Determine if this item should be blurred
+                              const hasActiveItem = categoryItems.some(i => i.status === 'IN_PROGRESS' || (i.status !== 'COMPLETED' && activeChecklistItem === i.id));
+                              const isThisItemActive = activeChecklistItem === item.id;
+                              const shouldBlur = hasActiveItem && !isThisItemActive && item.status !== 'COMPLETED';
+                              
+                              return (
                               <tr 
                                 key={item.id} 
                                 className={`border-b border-gray-100 hover:bg-gray-50 transition ${
                                   item.status === 'COMPLETED' ? 'bg-green-50/30' : ''
-                                }`}
+                                } ${shouldBlur ? 'opacity-30 blur-[2px] pointer-events-none' : ''}`}
                               >
                                 {/* Checkbox */}
                                 <td className="py-3 px-2">
@@ -1447,9 +1454,12 @@ export default function MechanicJobDetailPage() {
                                     onChange={(e) => {
                                       const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
                                       
-                                      // If checking a box in a different category, set that category as active
-                                      if (e.target.checked && activeCategory !== category) {
-                                        setActiveCategory(category);
+                                      // If checking a box, set this item as active
+                                      if (e.target.checked) {
+                                        setActiveChecklistItem(item.id);
+                                        if (activeCategory !== category) {
+                                          setActiveCategory(category);
+                                        }
                                       }
                                       
                                       updateChecklistItem(item.id, newStatus, item.notes || '', item.remark || '');
@@ -1459,6 +1469,11 @@ export default function MechanicJobDetailPage() {
                                         i.id === item.id ? { ...i, status: newStatus } : i
                                       );
                                       setChecklist(updatedChecklist);
+                                      
+                                      // When item completes, clear active item (unblur all)
+                                      if (newStatus === 'COMPLETED') {
+                                        setActiveChecklistItem(null);
+                                      }
                                       
                                       // Check if all items in category are completed
                                       const updatedCategoryItems = updatedChecklist.filter(i => i.category === category);
@@ -1524,7 +1539,8 @@ export default function MechanicJobDetailPage() {
                                   </span>
                                 </td>
                               </tr>
-                            ))}
+                            );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -1545,18 +1561,38 @@ export default function MechanicJobDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {checklist.map((item) => (
+                    {checklist.map((item) => {
+                      // Determine if this item should be blurred
+                      const hasActiveItem = checklist.some(i => i.status === 'IN_PROGRESS' || (i.status !== 'COMPLETED' && activeChecklistItem === i.id));
+                      const isThisItemActive = activeChecklistItem === item.id;
+                      const shouldBlur = hasActiveItem && !isThisItemActive && item.status !== 'COMPLETED';
+                      
+                      return (
                       <tr 
                         key={item.id} 
                         className={`border-b border-gray-100 hover:bg-gray-50 transition ${
                           item.status === 'COMPLETED' ? 'bg-green-50/30' : ''
-                        }`}
+                        } ${shouldBlur ? 'opacity-30 blur-[2px] pointer-events-none' : ''}`}
                       >
                         <td className="py-3 px-2">
                           <input
                             type="checkbox"
                             checked={item.status === 'COMPLETED'}
-                            onChange={(e) => updateChecklistItem(item.id, e.target.checked ? 'COMPLETED' : 'PENDING', item.notes || '', item.remark || '')}
+                            onChange={(e) => {
+                              const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
+                              
+                              // Set this item as active when checked
+                              if (e.target.checked) {
+                                setActiveChecklistItem(item.id);
+                              }
+                              
+                              updateChecklistItem(item.id, newStatus, item.notes || '', item.remark || '');
+                              
+                              // When completed, clear active item (unblur all)
+                              if (newStatus === 'COMPLETED') {
+                                setActiveChecklistItem(null);
+                              }
+                            }}
                             className="w-5 h-5 cursor-pointer"
                           />
                         </td>
@@ -1599,7 +1635,8 @@ export default function MechanicJobDetailPage() {
                           </span>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
