@@ -4,8 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 /**
- * GET /api/refunds
- * Get refund requests with filters
+ * GET /api/chargebacks
+ * Get chargeback cases with filters
  */
 export async function GET(request: NextRequest) {
   try {
@@ -17,14 +17,15 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const status = searchParams.get('status') || 'PENDING';
+    const status = searchParams.get('status') || 'RECEIVED';
 
     let query = supabase
-      .from('refund_requests')
+      .from('chargeback_cases')
       .select(`
         *,
-        lead:service_leads!inner(lead_number, customer_name),
-        invoice:invoices(invoice_number, total_amount)
+        payment:payment_transactions(*),
+        invoice:invoices(invoice_number),
+        lead:service_leads(lead_number, customer_name)
       `)
       .order('created_at', { ascending: false });
 
@@ -32,19 +33,19 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
 
-    const { data: refunds, error } = await query;
+    const { data: cases, error } = await query;
 
     if (error) {
-      console.error('Error fetching refunds:', error);
+      console.error('Error fetching chargebacks:', error);
       return NextResponse.json({ 
-        error: 'Failed to fetch refunds',
+        error: 'Failed to fetch chargebacks',
         details: error.message
       }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      refunds: refunds || []
+      cases: cases || []
     });
 
   } catch (error: any) {
@@ -54,3 +55,4 @@ export async function GET(request: NextRequest) {
     }, { status: 500 });
   }
 }
+

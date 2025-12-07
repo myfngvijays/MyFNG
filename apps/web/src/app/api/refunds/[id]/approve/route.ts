@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/refunds/[id]/approve
- * Approve and process refund
+ * Approve and process refund request
  */
 export async function POST(
   request: NextRequest,
@@ -87,12 +87,14 @@ export async function POST(
       // TODO: Integrate with payment gateway refund API
       // For now, mark as completed
       
+      const refundTxnId = `REF-${Date.now()}`;
+      
       await supabase
         .from('refund_requests')
         .update({
           status: 'COMPLETED',
           refund_date: now,
-          refund_reference: `REF-${Date.now()}`
+          refund_reference: refundTxnId
         })
         .eq('id', refundId);
 
@@ -100,11 +102,11 @@ export async function POST(
       const { data: payment } = await supabase
         .from('payment_transactions')
         .select('*')
-        .eq('invoice_id', refund.lead?.invoice_id)
+        .eq('invoice_id', refund.invoice_id)
         .eq('status', 'SUCCESS')
         .order('completed_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (payment) {
         await supabase
@@ -113,7 +115,7 @@ export async function POST(
             refund_status: 'COMPLETED',
             refund_amount: refund.amount,
             refunded_at: now,
-            refund_txn_id: `REF-${Date.now()}`
+            refund_txn_id: refundTxnId
           })
           .eq('id', payment.id);
       }
@@ -129,7 +131,7 @@ export async function POST(
             amount: -refund.amount,
             reference_type: 'refund',
             reference_id: refundId,
-            reference_number: `REF-${Date.now()}`,
+            reference_number: refundTxnId,
             description: `Refund for lead ${refund.lead?.lead_number}`,
             posted_by: user.id
           },
@@ -140,7 +142,7 @@ export async function POST(
             amount: refund.amount,
             reference_type: 'refund',
             reference_id: refundId,
-            reference_number: `REF-${Date.now()}`,
+            reference_number: refundTxnId,
             description: `Refund for lead ${refund.lead?.lead_number}`,
             posted_by: user.id
           }
@@ -154,6 +156,7 @@ export async function POST(
       entity_id: refundId,
       actor_id: user.id,
       actor_role: roleCode,
+      actor_name: userProfile.full_name,
       event_data: {
         refund_id: refundId,
         lead_id: refund.lead_id,
