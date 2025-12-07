@@ -1,297 +1,179 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useEffect, useState } from 'react';
+import { DollarSign, TrendingUp, Clock, CheckCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
-export default function PayoutsDashboard() {
-  const [activeTab, setActiveTab] = useState<'calculate' | 'batches' | 'history'>('batches');
+export default function PayoutDashboard() {
   const [payouts, setPayouts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [workshopId, setWorkshopId] = useState('');
-  const [periodStart, setPeriodStart] = useState('');
-  const [periodEnd, setPeriodEnd] = useState('');
-  const [calculation, setCalculation] = useState<any>(null);
-
-  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('PENDING');
 
   useEffect(() => {
-    if (activeTab === 'batches') {
-      fetchPayouts();
-    }
-  }, [activeTab]);
+    fetchPayouts();
+  }, [filter]);
 
   const fetchPayouts = async () => {
     setLoading(true);
     try {
-      const { data } = await supabase
-        .from('workshop_payouts')
-        .select(`
-          *,
-          workshop:workshops(id, name)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      setPayouts(data || []);
+      // This endpoint needs to be created or use existing
+      const response = await fetch(`/api/payouts?status=${filter}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setPayouts(data.payouts || []);
+      }
     } catch (error) {
-      console.error('Error fetching payouts:', error);
+      toast.error('Failed to load payouts');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCalculate = async () => {
-    if (!workshopId || !periodStart || !periodEnd) {
-      alert('Please fill all fields');
-      return;
-    }
-
-    setLoading(true);
+  const executePayout = async (payoutId: string) => {
     try {
-      const res = await fetch('/api/payouts/calculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workshop_id: workshopId,
-          period_start: periodStart,
-          period_end: periodEnd,
-          commission_percentage: 15.00,
-          tds_percentage: 0,
-        }),
+      const response = await fetch(`/api/payouts/${payoutId}/execute`, {
+        method: 'POST'
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setCalculation(data.payout_calculation);
-      } else {
-        alert(data.error || 'Failed to calculate payout');
-      }
-    } catch (error) {
-      alert('Failed to calculate payout');
-    } finally {
-      setLoading(false);
-    }
-  };
+      const data = await response.json();
 
-  const handleCreateBatch = async () => {
-    if (!calculation) {
-      alert('Please calculate payout first');
-      return;
-    }
-
-    if (!confirm('Create payout batch?')) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch('/api/payouts/batch/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(calculation),
-      });
-
-      if (res.ok) {
-        alert('Payout batch created! Awaiting approval.');
-        setCalculation(null);
-        setActiveTab('batches');
+      if (data.success) {
+        toast.success('Payout executed successfully');
         fetchPayouts();
       } else {
-        const data = await res.json();
-        alert(data.error || 'Failed to create batch');
+        toast.error(data.error || 'Failed to execute payout');
       }
     } catch (error) {
-      alert('Failed to create batch');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleApprove = async (payoutId: string) => {
-    if (!confirm('Approve this payout batch?')) return;
-
-    try {
-      const res = await fetch(`/api/payouts/batch/${payoutId}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approval_notes: 'Approved via dashboard' }),
-      });
-
-      if (res.ok) {
-        alert('Payout approved!');
-        fetchPayouts();
-      } else {
-        alert('Failed to approve payout');
-      }
-    } catch (error) {
-      alert('Failed to approve payout');
-    }
-  };
-
-  const handleExecute = async (payoutId: string) => {
-    const bankTxnId = prompt('Enter bank transaction ID:');
-    if (!bankTxnId) return;
-
-    if (!confirm('Execute payout transfer?')) return;
-
-    try {
-      const res = await fetch(`/api/payouts/batch/${payoutId}/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bank_transaction_id: bankTxnId,
-          payment_date: new Date().toISOString(),
-        }),
-      });
-
-      if (res.ok) {
-        alert('Payout executed successfully!');
-        fetchPayouts();
-      } else {
-        alert('Failed to execute payout');
-      }
-    } catch (error) {
-      alert('Failed to execute payout');
+      toast.error('Error executing payout');
     }
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Payout Management</h1>
-        <p className="text-gray-600 mt-1">Calculate, approve, and execute workshop payouts</p>
-      </div>
+    <div className="p-6">
+      <h1 className="text-3xl font-bold mb-6">Workshop Payouts</h1>
 
-      {/* Tabs */}
-      <div className="border-b">
-        <div className="flex space-x-4">
-          {['calculate', 'batches', 'history'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab as any)}
-              className={`px-4 py-2 border-b-2 ${
-                activeTab === tab
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600'
-              }`}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Content */}
-      {activeTab === 'calculate' ? (
-        <div className="bg-white p-6 rounded-lg shadow space-y-4">
-          <h2 className="text-xl font-bold">Calculate Payout</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Workshop ID</label>
-              <input
-                type="text"
-                value={workshopId}
-                onChange={(e) => setWorkshopId(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
-                placeholder="Enter workshop UUID"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Period Start</label>
-              <input
-                type="date"
-                value={periodStart}
-                onChange={(e) => setPeriodStart(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Period End</label>
-              <input
-                type="date"
-                value={periodEnd}
-                onChange={(e) => setPeriodEnd(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
-              />
-            </div>
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-6 mb-6">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center gap-3 mb-2">
+            <Clock className="w-8 h-8 text-yellow-600" />
+            <h3 className="font-semibold">Pending</h3>
           </div>
-          <button
-            onClick={handleCalculate}
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Calculating...' : 'Calculate Payout'}
-          </button>
-
-          {calculation && (
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-bold mb-2">Calculation Result</h3>
-              <div className="space-y-2 text-sm">
-                <p>Total Invoices: {calculation.total_invoices}</p>
-                <p>Total Amount: ₹{calculation.total_invoice_amount.toLocaleString()}</p>
-                <p>Commission: ₹{calculation.commission_amount.toLocaleString()}</p>
-                <p>Net Payout: ₹{calculation.net_payout_amount.toLocaleString()}</p>
-              </div>
-              <button
-                onClick={handleCreateBatch}
-                className="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-              >
-                Create Payout Batch
-              </button>
-            </div>
-          )}
+          <p className="text-3xl font-bold">{payouts.filter(p => p.status === 'PENDING').length}</p>
         </div>
-      ) : activeTab === 'batches' ? (
-        <div className="space-y-4">
-          {loading ? (
-            <div className="text-center py-12">Loading...</div>
-          ) : payouts.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">No payouts found</div>
-          ) : (
-            payouts.map((payout) => (
-              <div key={payout.id} className="bg-white p-4 rounded-lg shadow">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-medium">{payout.workshop?.name || 'Workshop'}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Period: {new Date(payout.payout_period_start).toLocaleDateString()} - {new Date(payout.payout_period_end).toLocaleDateString()}
-                    </p>
-                    <p className="text-lg font-bold mt-2">₹{parseFloat(payout.amount || '0').toLocaleString()}</p>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Status: <span className={`font-medium ${
-                        payout.status === 'PENDING' ? 'text-orange-600' :
-                        payout.status === 'APPROVED' ? 'text-blue-600' :
-                        payout.status === 'COMPLETED' ? 'text-green-600' : 'text-gray-600'
-                      }`}>{payout.status}</span>
-                    </p>
-                  </div>
-                  <div className="flex space-x-2">
-                    {payout.status === 'PENDING' && (
-                      <button
-                        onClick={() => handleApprove(payout.id)}
-                        className="px-3 py-1 bg-green-600 text-white rounded text-sm"
-                      >
-                        Approve
-                      </button>
-                    )}
-                    {payout.status === 'APPROVED' && (
-                      <button
-                        onClick={() => handleExecute(payout.id)}
-                        className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
-                      >
-                        Execute
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center gap-3 mb-2">
+            <TrendingUp className="w-8 h-8 text-blue-600" />
+            <h3 className="font-semibold">Approved</h3>
+          </div>
+          <p className="text-3xl font-bold">{payouts.filter(p => p.status === 'APPROVED').length}</p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center gap-3 mb-2">
+            <CheckCircle className="w-8 h-8 text-green-600" />
+            <h3 className="font-semibold">Completed</h3>
+          </div>
+          <p className="text-3xl font-bold">{payouts.filter(p => p.status === 'COMPLETED').length}</p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center gap-3 mb-2">
+            <DollarSign className="w-8 h-8 text-purple-600" />
+            <h3 className="font-semibold">Total Amount</h3>
+          </div>
+          <p className="text-2xl font-bold">
+            ₹{payouts.reduce((sum, p) => sum + parseFloat(p.net_amount_after_tax || 0), 0).toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-4 mb-6">
+        {['PENDING', 'APPROVED', 'COMPLETED', 'FAILED'].map(status => (
+          <button
+            key={status}
+            onClick={() => setFilter(status)}
+            className={`px-4 py-2 rounded-lg font-medium ${
+              filter === status
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 hover:bg-gray-200'
+            }`}
+          >
+            {status}
+          </button>
+        ))}
+      </div>
+
+      {/* Payouts List */}
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      ) : payouts.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg">
+          <p className="text-gray-600">No payouts found</p>
         </div>
       ) : (
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-xl font-bold mb-4">Payout History</h2>
-          <p className="text-gray-600">View completed payouts here.</p>
+        <div className="grid gap-4">
+          {payouts.map(payout => (
+            <div key={payout.id} className="bg-white p-6 rounded-lg border shadow-sm">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="font-bold text-lg">{payout.workshop?.name || 'Workshop'}</h3>
+                    <span className={`px-3 py-1 rounded-full text-sm ${
+                      payout.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                      payout.status === 'APPROVED' ? 'bg-blue-100 text-blue-800' :
+                      payout.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {payout.status}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 text-sm mb-4">
+                    <div>
+                      <p className="text-gray-600">Period</p>
+                      <p className="font-medium">
+                        {new Date(payout.payout_period_start).toLocaleDateString()} - {new Date(payout.payout_period_end).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Jobs</p>
+                      <p className="font-medium">{payout.total_jobs}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Net Amount</p>
+                      <p className="font-bold text-green-600">₹{parseFloat(payout.net_amount_after_tax).toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  {payout.calculation_breakdown && (
+                    <div className="p-3 bg-gray-50 rounded text-sm">
+                      <p><strong>Gross:</strong> ₹{parseFloat(payout.calculation_breakdown.gross_amount).toLocaleString()}</p>
+                      <p><strong>Commission ({payout.calculation_breakdown.commission_percentage}%):</strong> -₹{parseFloat(payout.calculation_breakdown.commission_amount).toLocaleString()}</p>
+                      <p><strong>TDS ({payout.tds_percentage}%):</strong> -₹{parseFloat(payout.tds_amount).toLocaleString()}</p>
+                    </div>
+                  )}
+                </div>
+
+                {payout.status === 'APPROVED' && (
+                  <button
+                    onClick={() => {
+                      if (confirm('Execute payout?')) {
+                        executePayout(payout.id);
+                      }
+                    }}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                  >
+                    Execute
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
-
