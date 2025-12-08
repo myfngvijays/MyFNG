@@ -99,9 +99,15 @@ export async function POST(
       'AFTER_ENGINE_BAY', 'AFTER_OLD_PARTS', 'AFTER_NEW_PARTS', 'AFTER_ODOMETER'
     ];
 
-    if (!validPhotoTypes.includes(photoType as string)) {
+    // Allow predefined types OR dynamic parts-specific format (e.g., "oil filter - Old Part Removed")
+    const isPredefinedType = validPhotoTypes.includes(photoType as string);
+    const photoTypeStr = String(photoType);
+    const isDynamicPartsType = photoTypeStr.includes('-') && photoTypeStr.length < 200;
+    
+    if (!isPredefinedType && !isDynamicPartsType) {
       return NextResponse.json({ 
-        error: 'Invalid photo type' 
+        error: 'Invalid photo type. Use predefined types or parts-specific format (e.g., "oil filter - Old Part Removed")',
+        provided_type: photoType
       }, { status: 400 });
     }
 

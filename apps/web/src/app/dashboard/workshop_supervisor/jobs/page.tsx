@@ -97,8 +97,48 @@ function SupervisorJobsContent() {
           schema: 'public',
           table: 'mechanic_jobs'
         },
+        (payload) => {
+          // Refresh when mechanic_jobs changes (e.g., mechanic completes, puts on hold)
+          console.log('🔄 Mechanic job updated:', payload);
+          // Add small delay to ensure database commit is complete
+          setTimeout(() => {
+            fetchJobs(true);
+          }, 100);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'service_checklists'
+        },
         () => {
-          // Refresh when mechanic_jobs changes (e.g., mechanic completes)
+          // Refresh when checklist is updated (e.g., mechanic ticks items)
+          fetchJobs(true);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_job_photos'
+        },
+        () => {
+          // Refresh when photos are uploaded
+          fetchJobs(true);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_media'
+        },
+        () => {
+          // Refresh when media is uploaded
           fetchJobs(true);
         }
       )
@@ -171,6 +211,11 @@ function SupervisorJobsContent() {
       const result = await response.json();
 
       if (result.success) {
+        // Debug: Check if any job has ON_HOLD status
+        const holdJobs = result.data.jobs.filter((j: any) => j.status === 'ON_HOLD' || j.status === 'HOLD');
+        if (holdJobs.length > 0) {
+          console.log('📋 Jobs with HOLD status:', holdJobs.map((j: any) => ({ id: j.id, status: j.status })));
+        }
         setJobs(result.data.jobs);
         setTotal(result.data.pagination.total);
         setTotalPages(result.data.pagination.totalPages);

@@ -127,9 +127,16 @@ export default function SupervisorJobDetailPage() {
               if (!prevLead) return prevLead;
               let displayStatus = prevLead.status;
               
-              if (mechanicStatus === 'IN_PROGRESS') {
+              // Priority 1: If mechanic put job on HOLD, show HOLD
+              if (mechanicStatus === 'HOLD' || mechanicStatus === 'ON_HOLD') {
+                displayStatus = 'HOLD';
+              }
+              // Priority 2: If mechanic is working, show IN_PROGRESS
+              else if (mechanicStatus === 'IN_PROGRESS') {
                 displayStatus = 'IN_PROGRESS';
-              } else if (mechanicStatus === 'COMPLETED' && (prevLead.status === 'COMPLETED' || prevLead.status === 'QC_PENDING' || prevLead.status === 'WORK_COMPLETED')) {
+              }
+              // Priority 3: If mechanic completed, show COMPLETED
+              else if (mechanicStatus === 'COMPLETED' && (prevLead.status === 'COMPLETED' || prevLead.status === 'QC_PENDING' || prevLead.status === 'WORK_COMPLETED')) {
                 displayStatus = 'COMPLETED';
               } else if (mechanicStatus === 'COMPLETED') {
                 // If mechanic completed, always show COMPLETED regardless of current status
@@ -151,11 +158,62 @@ export default function SupervisorJobDetailPage() {
         {
           event: '*',
           schema: 'public',
+          table: 'service_checklists',
+          filter: `lead_id=eq.${jobId}`
+        },
+        () => {
+          // Refresh when checklist is updated (e.g., mechanic ticks items)
+          fetchJobDetails();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_job_photos',
+          filter: `lead_id=eq.${jobId}`
+        },
+        () => {
+          // Refresh when photos are uploaded
+          fetchJobDetails();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_media',
+          filter: `lead_id=eq.${jobId}`
+        },
+        () => {
+          // Refresh when media is uploaded
+          fetchJobDetails();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_parts_usage',
+          filter: `lead_id=eq.${jobId}`
+        },
+        () => {
+          // Refresh when parts are added/updated
+          fetchJobDetails();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
           table: 'lead_extra_charges',
           filter: `lead_id=eq.${jobId}`
         },
         () => {
-          console.log('Extra charges updated, refreshing...');
           fetchJobDetails();
         }
       )
@@ -257,7 +315,10 @@ export default function SupervisorJobDetailPage() {
         (data as any).mechanic_started_at = mechanicJob.started_at;
         
         // Override lead status based on mechanic_status - prioritize mechanic_status over lead status
-        if (mechanicJob.mechanic_status === 'IN_PROGRESS') {
+        if (mechanicJob.mechanic_status === 'HOLD' || mechanicJob.mechanic_status === 'ON_HOLD') {
+          // If mechanic put job on HOLD, show HOLD
+          data.display_status = 'HOLD';
+        } else if (mechanicJob.mechanic_status === 'IN_PROGRESS') {
           // Update the displayed status to reflect mechanic is working
           data.display_status = 'IN_PROGRESS';
         } else if (mechanicJob.mechanic_status === 'COMPLETED') {
@@ -576,6 +637,7 @@ export default function SupervisorJobDetailPage() {
       'QC_APPROVED': 'bg-green-100 text-green-700',
       'QC_FAILED': 'bg-red-100 text-red-700',
       'HOLD': 'bg-orange-100 text-orange-700',
+      'ON_HOLD': 'bg-orange-100 text-orange-700', // Support both for backward compatibility
       'COMPLETED': 'bg-teal-100 text-teal-700',
       'READY_FOR_DELIVERY': 'bg-indigo-100 text-indigo-700',
       'DELIVERED': 'bg-purple-100 text-purple-700',
@@ -663,6 +725,8 @@ export default function SupervisorJobDetailPage() {
                  (lead.display_status || lead.status) === 'MECHANIC_WORKING' ? 'Mechanic Working' :
                  (lead.display_status || lead.status) === 'IN_PROGRESS' ? 'In Progress' :
                  (lead.display_status || lead.status) === 'VEHICLE_DROPPED_AT_WORKSHOP' ? 'Vehicle at Workshop' :
+                 (lead.display_status || lead.status) === 'HOLD' ? 'HOLD' :
+                 (lead.display_status || lead.status) === 'ON_HOLD' ? 'HOLD' :
                  (lead.display_status || lead.status).replace(/_/g, ' ')}
               </span>
             </div>

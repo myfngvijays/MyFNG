@@ -61,20 +61,69 @@ export default function QCReviewPage() {
 
       const supabase = createClient();
 
-      // Fetch lead details with service type and sub-service names
+      // Fetch lead details
       const { data: leadData, error: leadError } = await supabase
         .from('service_leads')
         .select(`
           *,
           mechanic:assigned_mechanic_id(id, full_name, profile_image),
-          supervisor:assigned_supervisor_id(id, full_name),
-          service_type_details:service_type(name),
-          sub_service_details:sub_service(name)
+          supervisor:assigned_supervisor_id(id, full_name)
         `)
         .eq('id', jobId)
         .single();
 
       if (leadError) throw leadError;
+      
+      // Fetch service type names from service_types table (using service_type_ids JSONB)
+      if (leadData?.service_type_ids) {
+        try {
+          let serviceTypeIds = leadData.service_type_ids;
+          
+          // Parse if it's a string
+          if (typeof serviceTypeIds === 'string') {
+            serviceTypeIds = JSON.parse(serviceTypeIds);
+          }
+          
+          // Ensure it's an array and has data
+          if (Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
+            const { data: serviceTypes } = await supabase
+              .from('service_types')
+              .select('id, name')
+              .in('id', serviceTypeIds);
+            
+            leadData.service_type_names = serviceTypes?.map(st => st.name) || [];
+          }
+        } catch (e) {
+          console.error('Error parsing service_type_ids:', e);
+          leadData.service_type_names = [];
+        }
+      }
+      
+      // Fetch sub-service names from service_addons table (using subservice_ids JSONB)
+      if (leadData?.subservice_ids) {
+        try {
+          let subserviceIds = leadData.subservice_ids;
+          
+          // Parse if it's a string
+          if (typeof subserviceIds === 'string') {
+            subserviceIds = JSON.parse(subserviceIds);
+          }
+          
+          // Ensure it's an array and has data
+          if (Array.isArray(subserviceIds) && subserviceIds.length > 0) {
+            const { data: subservices } = await supabase
+              .from('service_addons')
+              .select('id, name')
+              .in('id', subserviceIds);
+            
+            leadData.subservice_names = subservices?.map(ss => ss.name) || [];
+          }
+        } catch (e) {
+          console.error('Error parsing subservice_ids:', e);
+          leadData.subservice_names = [];
+        }
+      }
+      
       setLead(leadData);
 
       // Fetch mechanic details
@@ -92,12 +141,15 @@ export default function QCReviewPage() {
         .from('mechanic_job_photos')
         .select('*')
         .eq('lead_id', jobId)
-        .order('timestamp', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (!jobPhotosError && jobPhotosData) {
-        setBeforePhotos(jobPhotosData.filter(p => p.photo_category === 'before'));
-        setAfterPhotos(jobPhotosData.filter(p => p.photo_category === 'after'));
-        setDuringPhotos(jobPhotosData.filter(p => p.photo_category === 'during'));
+        const before = jobPhotosData.filter(p => p.photo_category === 'before');
+        const after = jobPhotosData.filter(p => p.photo_category === 'after');
+        const during = jobPhotosData.filter(p => p.photo_category === 'during');
+        setBeforePhotos(before);
+        setAfterPhotos(after);
+        setDuringPhotos(during);
       }
 
       // Also try fetching from lead_media table as fallback
@@ -108,9 +160,15 @@ export default function QCReviewPage() {
         .order('created_at', { ascending: false });
 
       if (!photosError && photosData) {
-        const beforeFromLeadMedia = photosData.filter(p => p.category === 'BEFORE');
-        const afterFromLeadMedia = photosData.filter(p => p.category === 'AFTER');
-        const duringFromLeadMedia = photosData.filter(p => p.category === 'PROGRESS' || p.category === 'DURING');
+        const beforeFromLeadMedia = photosData
+          .filter(p => p.category === 'BEFORE')
+          .map(p => ({ ...p, photo_url: p.file_url })); // Map file_url to photo_url
+        const afterFromLeadMedia = photosData
+          .filter(p => p.category === 'AFTER')
+          .map(p => ({ ...p, photo_url: p.file_url }));
+        const duringFromLeadMedia = photosData
+          .filter(p => p.category === 'PROGRESS' || p.category === 'DURING')
+          .map(p => ({ ...p, photo_url: p.file_url }));
         
         // Merge with existing photos if any
         if (beforeFromLeadMedia.length > 0) {
@@ -132,9 +190,15 @@ export default function QCReviewPage() {
         .order('uploaded_at', { ascending: false });
 
       if (!mechanicMediaError && mechanicMediaData) {
-        const beforeFromMechanic = mechanicMediaData.filter(p => p.media_category === 'BEFORE');
-        const afterFromMechanic = mechanicMediaData.filter(p => p.media_category === 'AFTER');
-        const duringFromMechanic = mechanicMediaData.filter(p => p.media_category === 'PROGRESS' || p.media_category === 'DURING');
+        const beforeFromMechanic = mechanicMediaData
+          .filter(p => p.media_category === 'BEFORE')
+          .map(p => ({ ...p, photo_url: p.media_url })); // Map media_url to photo_url
+        const afterFromMechanic = mechanicMediaData
+          .filter(p => p.media_category === 'AFTER')
+          .map(p => ({ ...p, photo_url: p.media_url }));
+        const duringFromMechanic = mechanicMediaData
+          .filter(p => p.media_category === 'PROGRESS' || p.media_category === 'DURING')
+          .map(p => ({ ...p, photo_url: p.media_url }));
         
         // Merge with existing photos if any
         if (beforeFromMechanic.length > 0) {
@@ -340,30 +404,42 @@ export default function QCReviewPage() {
         <div className="card">
           <h3 className="text-lg font-semibold mb-3">Service Details</h3>
           <div className="space-y-2">
-            {/* Display Service Type */}
-            {lead.service_type_details?.name && (
+            {/* Display Service Types */}
+            {lead.service_type_names && lead.service_type_names.length > 0 && (
               <div className="flex items-start gap-2">
                 <span className="w-2 h-2 bg-blue-500 rounded-full mt-2"></span>
                 <div>
-                  <p className="text-gray-900 font-semibold">Service Type:</p>
-                  <p className="text-gray-700">{lead.service_type_details.name}</p>
+                  <p className="text-gray-900 font-semibold">Service Types:</p>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {lead.service_type_names.map((name: string, idx: number) => (
+                      <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
             
-            {/* Display Sub-Service */}
-            {lead.sub_service_details?.name && (
+            {/* Display Sub-Services/Addons */}
+            {lead.subservice_names && lead.subservice_names.length > 0 && (
               <div className="flex items-start gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full mt-2"></span>
                 <div>
-                  <p className="text-gray-900 font-semibold">Sub-Service:</p>
-                  <p className="text-gray-700">{lead.sub_service_details.name}</p>
+                  <p className="text-gray-900 font-semibold">Add-ons / Sub-Services:</p>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {lead.subservice_names.map((name: string, idx: number) => (
+                      <span key={idx} className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Fallback: Display service_type ID if names not available */}
-            {!lead.service_type_details?.name && !lead.sub_service_details?.name && (
+            {/* Fallback: Display raw service_type if names not available */}
+            {(!lead.service_type_names || lead.service_type_names.length === 0) && !lead.subservice_names && (
               <p className="text-gray-700">{lead.service_type || 'General Service'}</p>
             )}
           </div>
@@ -386,13 +462,15 @@ export default function QCReviewPage() {
             {beforePhotos.length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
                 {beforePhotos.slice(0, 4).map((photo: any) => (
-                  <img
-                    key={photo.id}
-                    src={photo.photo_url}
-                    alt="Before"
-                    className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90"
-                    onClick={() => window.open(photo.photo_url, '_blank')}
-                  />
+                  <div key={photo.id} className="relative">
+                    <img
+                      src={photo.photo_url || photo.file_url || photo.media_url}
+                      alt="Before"
+                      className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90"
+                      onClick={() => window.open(photo.photo_url || photo.file_url || photo.media_url, '_blank')}
+                    />
+                    <p className="text-xs text-gray-500 mt-1 truncate">{photo.photo_type}</p>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -412,13 +490,15 @@ export default function QCReviewPage() {
             {duringPhotos.length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
                 {duringPhotos.slice(0, 4).map((photo: any) => (
-                  <img
-                    key={photo.id}
-                    src={photo.photo_url}
-                    alt="During"
-                    className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90"
-                    onClick={() => window.open(photo.photo_url, '_blank')}
-                  />
+                  <div key={photo.id} className="relative">
+                    <img
+                      src={photo.photo_url || photo.file_url || photo.media_url}
+                      alt="During"
+                      className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90"
+                      onClick={() => window.open(photo.photo_url || photo.file_url || photo.media_url, '_blank')}
+                    />
+                    <p className="text-xs text-gray-500 mt-1 truncate">{photo.photo_type}</p>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -438,13 +518,15 @@ export default function QCReviewPage() {
             {afterPhotos.length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
                 {afterPhotos.slice(0, 4).map((photo: any) => (
-                  <img
-                    key={photo.id}
-                    src={photo.photo_url}
-                    alt="After"
-                    className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90"
-                    onClick={() => window.open(photo.photo_url, '_blank')}
-                  />
+                  <div key={photo.id} className="relative">
+                    <img
+                      src={photo.photo_url || photo.file_url || photo.media_url}
+                      alt="After"
+                      className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90"
+                      onClick={() => window.open(photo.photo_url || photo.file_url || photo.media_url, '_blank')}
+                    />
+                    <p className="text-xs text-gray-500 mt-1 truncate">{photo.photo_type}</p>
+                  </div>
                 ))}
               </div>
             ) : (

@@ -262,7 +262,14 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
     try {
       const formData = new FormData();
       formData.append('file', photo.file);
-      formData.append('photoType', photo.type);
+      
+      // For parts-specific photos, use dynamic label as photo_type
+      // For general photos, use fixed type
+      const photoType = photo.partId && photo.partName 
+        ? `${photo.partName} - ${photo.type === 'DURING_PART_REMOVAL' ? 'Old Part Removed' : 'New Part Installed'}`
+        : photo.type;
+      
+      formData.append('photoType', photoType);
       const category = photo.type.startsWith('AFTER_') ? 'after' : 'during';
       formData.append('photoCategory', category);
       if (photo.partId) {

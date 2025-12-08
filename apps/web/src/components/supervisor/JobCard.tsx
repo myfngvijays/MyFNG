@@ -83,6 +83,7 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
       case 'IN_PROGRESS':
         return 'bg-green-100 text-green-700';
       case 'HOLD':
+      case 'ON_HOLD':
         return 'bg-orange-100 text-orange-700';
       case 'COMPLETED':
       case 'WORK_COMPLETED':
@@ -100,6 +101,14 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
       default:
         return 'bg-gray-100 text-gray-700';
     }
+  };
+
+  // Format status display text
+  const getStatusDisplay = () => {
+    if (job.status === 'ON_HOLD') {
+      return 'HOLD';
+    }
+    return job.status.replace(/_/g, ' ');
   };
 
   // Priority Badge
@@ -160,7 +169,7 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
       {/* Status Row */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor()}`}>
-          {job.status.replace(/_/g, ' ')}
+          {getStatusDisplay()}
         </span>
         
         {job.mechanic && (

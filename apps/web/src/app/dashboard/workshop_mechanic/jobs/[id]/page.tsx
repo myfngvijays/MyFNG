@@ -127,7 +127,6 @@ export default function MechanicJobDetailPage() {
             filter: `lead_id=eq.${leadId}`
           },
           (payload) => {
-            console.log('Job updated in real-time:', payload);
             fetchJobDetails();
           }
         )
@@ -140,7 +139,6 @@ export default function MechanicJobDetailPage() {
             filter: `lead_id=eq.${leadId}`
           },
           (payload) => {
-            console.log('Checklist updated in real-time:', payload);
             fetchJobDetails();
           }
         )
@@ -153,7 +151,6 @@ export default function MechanicJobDetailPage() {
             filter: `id=eq.${leadId}`
           },
           (payload) => {
-            console.log('Lead status updated in real-time:', payload);
             // If status changed to IN_PROGRESS (sent back), refresh immediately
             if (payload.new && payload.new.status === 'IN_PROGRESS') {
               fetchJobDetails();
@@ -169,12 +166,10 @@ export default function MechanicJobDetailPage() {
             filter: `lead_id=eq.${leadId}`
           },
           (payload) => {
-            console.log('Media updated in real-time:', payload);
             fetchJobDetails();
           }
         )
         .subscribe((status) => {
-          console.log('Job detail realtime subscription status:', status);
         });
 
       // Cleanup on unmount
@@ -195,7 +190,6 @@ export default function MechanicJobDetailPage() {
     const supabase = createClient();
 
     try {
-      console.log('Fetching job details for lead_id:', leadId);
       
       // Get job details
       const { data: jobData, error: jobError } = await supabase
@@ -223,7 +217,6 @@ export default function MechanicJobDetailPage() {
         console.error('Error fetching job from mechanic_jobs:', jobError);
       }
 
-      console.log('Job data received:', jobData);
 
       if (jobData) {
         // Parse service_type_ids if it's a string (JSONB from Supabase)
@@ -318,17 +311,20 @@ export default function MechanicJobDetailPage() {
           
           setChecklist(items);
           
+          
           // Auto-set active category to first incomplete category
           const categories = Array.from(new Set(items.map((item: ChecklistItem) => item.category).filter(Boolean))) as string[];
-          const firstIncompleteCategory = categories.find((cat: string) => {
-            const categoryItems = items.filter((item: ChecklistItem) => item.category === cat);
-            return categoryItems.some((item: ChecklistItem) => item.status !== 'COMPLETED');
-          });
-          if (firstIncompleteCategory && !activeCategory) {
-            setActiveCategory(firstIncompleteCategory);
-          }
+          // REMOVED: Auto-activate first incomplete category
+          // User requirement: Initially ALL categories should be open (no blur)
+          // Category becomes active only when first checkbox is ticked
+          // const firstIncompleteCategory = categories.find((cat: string) => {
+          //   const categoryItems = items.filter((item: ChecklistItem) => item.category === cat);
+          //   return categoryItems.some((item: ChecklistItem) => item.status !== 'COMPLETED');
+          // });
+          // if (firstIncompleteCategory && !activeCategory) {
+          //   setActiveCategory(firstIncompleteCategory);
+          // }
         } else {
-          console.log('No checklist found for lead_id:', leadId, 'mechanic_id:', jobData.mechanic_id);
           
           // Auto-generate checklist if it doesn't exist
           // Try to get service type from multiple sources
@@ -373,7 +369,6 @@ export default function MechanicJobDetailPage() {
               }
               
               if (serviceTypeName) {
-                console.log('Auto-generating checklist for service type:', serviceTypeName);
                 
                 // Call API endpoint to generate checklist
                 try {
@@ -387,7 +382,6 @@ export default function MechanicJobDetailPage() {
                   const result = await response.json();
                   
                   if (response.ok && result.checklist) {
-                    console.log('Checklist generated successfully');
                     
                     // Parse checklist items
                     let items = result.checklist.checklist_items;
@@ -403,15 +397,17 @@ export default function MechanicJobDetailPage() {
                     if (items && items.length > 0) {
                       setChecklist(items);
                       
-                      // Auto-set active category
-                      const categories = Array.from(new Set(items.map((item: ChecklistItem) => item.category).filter(Boolean))) as string[];
-                      const firstIncompleteCategory = categories.find((cat: string) => {
-                        const categoryItems = items.filter((item: ChecklistItem) => item.category === cat);
-                        return categoryItems.some((item: ChecklistItem) => item.status !== 'COMPLETED');
-                      });
-                      if (firstIncompleteCategory && !activeCategory) {
-                        setActiveCategory(firstIncompleteCategory);
-                      }
+                      // REMOVED: Auto-set active category
+                      // User requirement: Initially ALL categories should be open (no blur)
+                      // Category becomes active only when first checkbox is ticked
+                      // const categories = Array.from(new Set(items.map((item: ChecklistItem) => item.category).filter(Boolean))) as string[];
+                      // const firstIncompleteCategory = categories.find((cat: string) => {
+                      //   const categoryItems = items.filter((item: ChecklistItem) => item.category === cat);
+                      //   return categoryItems.some((item: ChecklistItem) => item.status !== 'COMPLETED');
+                      // });
+                      // if (firstIncompleteCategory && !activeCategory) {
+                      //   setActiveCategory(firstIncompleteCategory);
+                      // }
                       return; // Exit early since we got the checklist
                     } else {
                       // If checklist was created but has no items, wait a bit and refetch
@@ -427,16 +423,11 @@ export default function MechanicJobDetailPage() {
                   console.error('Error calling generate-checklist API:', error);
                 }
               } else {
-                console.log('Service type name not found, cannot auto-generate checklist', {
-                  service_type_ids: serviceTypeIds,
-                  service_type: legacyServiceType
-                });
               }
             } catch (error) {
               console.error('Error in auto-generate checklist:', error);
             }
           } else {
-            console.log('No service type information found for this lead');
           }
           
           setChecklist([]);
@@ -532,7 +523,6 @@ export default function MechanicJobDetailPage() {
   }
 
   async function updateJobStatus(newStatus: string) {
-    console.log('Updating job status to:', newStatus);
     
     if (!job || !leadId) {
       console.error('No job or leadId available');
@@ -583,7 +573,6 @@ export default function MechanicJobDetailPage() {
       }
 
       const result = await response.json();
-      console.log('Status updated successfully:', result);
       
       // Refresh job details to show updates
       await fetchJobDetails();
@@ -618,7 +607,6 @@ export default function MechanicJobDetailPage() {
       }
 
       const result = await response.json();
-      console.log('Checklist updated successfully:', result);
       
       // Update local state
     const updatedChecklist = checklist.map(item =>
@@ -725,7 +713,6 @@ export default function MechanicJobDetailPage() {
       }
 
       const result = await response.json();
-      console.log('Notes saved successfully:', result);
       alert('Work notes saved successfully!');
     } catch (error) {
       console.error('Error saving work notes:', error);
@@ -815,7 +802,6 @@ export default function MechanicJobDetailPage() {
       }
 
       const result = await response.json();
-      console.log('Part updated successfully:', result);
       
       // Refresh job details to show updated parts
       await fetchJobDetails();
@@ -1372,41 +1358,114 @@ export default function MechanicJobDetailPage() {
               </div>
             ) : (
               /* Group by category if categories exist */
-              checklist.some(item => item.category) ? (
+              (() => {
+                const hasCategories = checklist.some(item => item.category);
+                
+                return hasCategories ? (
               <div className="space-y-4">
-                {Array.from(new Set(checklist.map(item => item.category).filter(Boolean))).map((category) => {
-                  if (!category) return null;
-                  const categoryItems = checklist.filter(item => item.category === category);
-                  if (categoryItems.length === 0) return null;
+                {(() => {
+                  const allCategories = Array.from(new Set(checklist.map(item => item.category).filter(Boolean)));
                   
-                  const allCompleted = categoryItems.every(item => item.status === 'COMPLETED');
-                  const isActive = activeCategory === category;
-                  // Lock other categories if a category is active and not completed
-                  // But allow completed categories to be unlocked
-                  const isLocked = activeCategory !== null && activeCategory !== category && !allCompleted;
-                  
-                  // Allow clicking on category header to activate it (if not locked)
-                  const canActivate = !isLocked && (activeCategory === null || allCompleted || activeCategory === category);
                   
                   return (
+                    <>
+                      {/* Category Summary Banner - Shows all categories */}
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-blue-800">Categories:</span>
+                          {allCategories.map((cat) => {
+                            const items = checklist.filter(item => item.category === cat);
+                            const completed = items.filter(item => item.status === 'COMPLETED').length;
+                            const isActive = activeCategory === cat;
+                            const allDone = items.every(item => item.status === 'COMPLETED');
+                            return (
+                              <span
+                                key={cat}
+                                className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                  isActive ? 'bg-blue-600 text-white' :
+                                  allDone ? 'bg-green-500 text-white' :
+                                  'bg-white text-blue-700 border border-blue-300'
+                                }`}
+                              >
+                                {cat} ({completed}/{items.length})
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      
+                      {/* Render all categories */}
+                      {allCategories.map((category) => {
+                    if (!category) return null;
+                    const categoryItems = checklist.filter(item => item.category === category);
+                    if (categoryItems.length === 0) {
+                      return null;
+                    }
+                    
+                    const allCompleted = categoryItems.every(item => item.status === 'COMPLETED');
+                    const isActive = activeCategory === category;
+                    
+                    // Category blur logic:
+                    // - If no active category: all categories are open (not blurred)
+                    // - If active category exists: blur all OTHER categories EXCEPT completed ones
+                    // - Completed categories are never blurred (can always be re-opened)
+                    // - Mechanic can click on any category header to switch (freedom to choose)
+                    const shouldBlurCategory = activeCategory !== null && activeCategory !== category && !allCompleted;
+                    
+                  
+                  // IMPORTANT: Always render all categories, just apply blur styling
+                  // Mechanic can click on ANY category header to switch (freedom to choose)
+                  return (
                     <div 
-                      key={category} 
-                      className={`border rounded-lg p-4 transition-all ${
-                        isLocked ? 'opacity-50 pointer-events-none bg-gray-50' : 
-                        isActive ? 'border-blue-500 bg-blue-50' : 
-                        'border-gray-200 bg-white'
+                      key={category}
+                      data-category-name={category}
+                      className={`border rounded-lg p-4 transition-all relative ${
+                        shouldBlurCategory ? 'opacity-50 blur-sm bg-gray-50' : 
+                        isActive ? 'border-blue-500 bg-blue-50 shadow-md' : 
+                        allCompleted ? 'border-green-300 bg-green-50' :
+                        'border-gray-200 bg-white hover:border-gray-300'
                       }`}
+                      style={{
+                        // Ensure blurred categories are still visible
+                        display: 'block',
+                        visibility: 'visible'
+                      }}
                     >
+                      {/* Clickable Header - Always on top */}
                       <div 
-                        className="flex items-center justify-between mb-3 cursor-pointer"
-                        onClick={() => {
-                          // Allow activating category if not locked
-                          if (!isLocked && (activeCategory === null || allCompleted)) {
-                            setActiveCategory(category || null);
-                          }
+                        className={`flex items-center justify-between mb-3 ${
+                          shouldBlurCategory 
+                            ? 'cursor-pointer hover:opacity-80 hover:bg-gray-100 rounded px-2 py-1 -mx-2 -mt-1' 
+                            : 'cursor-pointer hover:bg-blue-50 rounded px-2 py-1 -mx-2 -mt-1'
+                        } transition-all`}
+                        onClick={(e) => {
+                          // Stop event propagation to prevent any parent handlers
+                          e.stopPropagation();
+                          e.preventDefault();
+                          
+                          // Mechanic has FREEDOM to choose ANY category by clicking header
+                          // Clicking on blurred category header switches to that category
+                          const clickedCategory = String(category);
+                          setActiveCategory(clickedCategory);
+                        }}
+                        onMouseDown={(e) => {
+                          // Prevent any default behavior
+                          e.stopPropagation();
+                        }}
+                        style={{
+                          // Ensure header is always clickable and above table
+                          pointerEvents: 'auto',
+                          position: 'relative',
+                          zIndex: 20,
+                          userSelect: 'none'
                         }}
                       >
-                        <h3 className={`text-lg font-semibold ${canActivate ? 'text-gray-700 hover:text-blue-600' : 'text-gray-500'}`}>
+                        <h3 className={`text-lg font-semibold ${
+                          shouldBlurCategory ? 'text-gray-400' : 
+                          isActive ? 'text-blue-700 hover:text-blue-800' : 
+                          allCompleted ? 'text-green-700' :
+                          'text-gray-700 hover:text-blue-600'
+                        }`}>
                           {category} ({categoryItems.length})
                         </h3>
                         {allCompleted && (
@@ -1422,7 +1481,8 @@ export default function MechanicJobDetailPage() {
                       </div>
                       
                       {/* Table-like layout for compact display */}
-                      <div className="overflow-x-auto">
+                      {/* When blurred, disable interaction with items (only header clickable) */}
+                      <div className={`overflow-x-auto ${shouldBlurCategory ? 'pointer-events-none' : ''}`}>
                         <table className="w-full">
                           <thead>
                             <tr className="border-b border-gray-200">
@@ -1434,32 +1494,28 @@ export default function MechanicJobDetailPage() {
                           </thead>
                           <tbody>
                             {categoryItems.map((item, idx) => {
-                              // Determine if this item should be blurred
-                              const hasActiveItem = categoryItems.some(i => i.status === 'IN_PROGRESS' || (i.status !== 'COMPLETED' && activeChecklistItem === i.id));
-                              const isThisItemActive = activeChecklistItem === item.id;
-                              const shouldBlur = hasActiveItem && !isThisItemActive && item.status !== 'COMPLETED';
-                              
+                              // No item-level blur - category-level blur only
                               return (
                               <tr 
                                 key={item.id} 
-                                className={`border-b border-gray-100 hover:bg-gray-50 transition ${
+                                className={`border-b border-gray-100 transition ${
+                                  shouldBlurCategory ? '' : 'hover:bg-gray-50'
+                                } ${
                                   item.status === 'COMPLETED' ? 'bg-green-50/30' : ''
-                                } ${shouldBlur ? 'opacity-30 blur-[2px] pointer-events-none' : ''}`}
+                                }`}
                               >
                                 {/* Checkbox */}
                                 <td className="py-3 px-2">
                                   <input
                                     type="checkbox"
                                     checked={item.status === 'COMPLETED'}
+                                    disabled={shouldBlurCategory}
                                     onChange={(e) => {
                                       const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
                                       
-                                      // If checking a box, set this item as active
-                                      if (e.target.checked) {
-                                        setActiveChecklistItem(item.id);
-                                        if (activeCategory !== category) {
-                                          setActiveCategory(category);
-                                        }
+                                      // Set this category as active when first checkbox is checked
+                                      if (e.target.checked && activeCategory !== category) {
+                                        setActiveCategory(category);
                                       }
                                       
                                       updateChecklistItem(item.id, newStatus, item.notes || '', item.remark || '');
@@ -1470,27 +1526,25 @@ export default function MechanicJobDetailPage() {
                                       );
                                       setChecklist(updatedChecklist);
                                       
-                                      // When item completes, clear active item (unblur all)
-                                      if (newStatus === 'COMPLETED') {
-                                        setActiveChecklistItem(null);
-                                      }
-                                      
-                                      // Check if all items in category are completed
+                                      // Check if all items in THIS category are completed
                                       const updatedCategoryItems = updatedChecklist.filter(i => i.category === category);
                                       const allDone = updatedCategoryItems.every(i => i.status === 'COMPLETED');
                                       
+                                      // When category completes, unlock all categories (set activeCategory to null)
                                       if (allDone && activeCategory === category) {
-                                        // Find next incomplete category
-                                        const categories = Array.from(new Set(updatedChecklist.map(i => i.category).filter(Boolean)));
-                                        const nextCategory = categories.find(cat => {
-                                          const items = updatedChecklist.filter(i => i.category === cat);
-                                          return items.some(i => i.status !== 'COMPLETED');
-                                        });
-                                        setActiveCategory(nextCategory || null);
+                                        setActiveCategory(null);
+                                      }
+                                      
+                                      // If unchecking and this was the active category, check if any items are still checked
+                                      // If no items are checked in this category, make it inactive (allow switching)
+                                      if (!e.target.checked && activeCategory === category) {
+                                        const hasAnyChecked = updatedCategoryItems.some(i => i.status === 'COMPLETED');
+                                        if (!hasAnyChecked) {
+                                          setActiveCategory(null);
+                                        }
                                       }
                                     }}
-                                    disabled={isLocked}
-                                    className="w-5 h-5 cursor-pointer disabled:cursor-not-allowed"
+                                    className="w-5 h-5 cursor-pointer"
                                   />
                                 </td>
                                 
@@ -1515,6 +1569,7 @@ export default function MechanicJobDetailPage() {
                                   <input
                                     type="text"
                                     value={item.remark || ''}
+                                    disabled={shouldBlurCategory}
                                     onChange={(e) => {
                                       const updatedChecklist = checklist.map(i =>
                                         i.id === item.id ? { ...i, remark: e.target.value } : i
@@ -1523,8 +1578,9 @@ export default function MechanicJobDetailPage() {
                                     }}
                                     onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
                                     placeholder="Enter remark..."
-                                    disabled={isLocked}
-                                    className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    className={`w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                      shouldBlurCategory ? 'bg-gray-100 cursor-not-allowed' : ''
+                                    }`}
                                   />
                                 </td>
                                 
@@ -1546,7 +1602,10 @@ export default function MechanicJobDetailPage() {
                       </div>
                     </div>
                   );
-                })}
+                  })}
+                    </>
+                  );
+                })()}
               </div>
             ) : (
               /* Fallback: No categories - show table format */
@@ -1562,17 +1621,14 @@ export default function MechanicJobDetailPage() {
                   </thead>
                   <tbody>
                     {checklist.map((item) => {
-                      // Determine if this item should be blurred
-                      const hasActiveItem = checklist.some(i => i.status === 'IN_PROGRESS' || (i.status !== 'COMPLETED' && activeChecklistItem === i.id));
-                      const isThisItemActive = activeChecklistItem === item.id;
-                      const shouldBlur = hasActiveItem && !isThisItemActive && item.status !== 'COMPLETED';
-                      
+                      // No categories - no blur logic needed
+                      // Mechanic can freely work on any item
                       return (
                       <tr 
                         key={item.id} 
                         className={`border-b border-gray-100 hover:bg-gray-50 transition ${
                           item.status === 'COMPLETED' ? 'bg-green-50/30' : ''
-                        } ${shouldBlur ? 'opacity-30 blur-[2px] pointer-events-none' : ''}`}
+                        }`}
                       >
                         <td className="py-3 px-2">
                           <input
@@ -1580,18 +1636,7 @@ export default function MechanicJobDetailPage() {
                             checked={item.status === 'COMPLETED'}
                             onChange={(e) => {
                               const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
-                              
-                              // Set this item as active when checked
-                              if (e.target.checked) {
-                                setActiveChecklistItem(item.id);
-                              }
-                              
                               updateChecklistItem(item.id, newStatus, item.notes || '', item.remark || '');
-                              
-                              // When completed, clear active item (unblur all)
-                              if (newStatus === 'COMPLETED') {
-                                setActiveChecklistItem(null);
-                              }
                             }}
                             className="w-5 h-5 cursor-pointer"
                           />
@@ -1640,7 +1685,8 @@ export default function MechanicJobDetailPage() {
                   </tbody>
                 </table>
               </div>
-            )
+            );
+            })()
             )}
           </div>
         )}

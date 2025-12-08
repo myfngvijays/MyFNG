@@ -295,8 +295,20 @@ export async function GET(request: Request) {
       // IMPORTANT: Check COMPLETED FIRST before IN_PROGRESS to prevent override
       let displayStatus = job.status;
       
-      // Priority 1: If mechanic completed, show COMPLETED (unless QC approved)
-      if (mechanicStatus === 'COMPLETED') {
+      // Priority 1: If mechanic put job on HOLD, show HOLD/ON_HOLD
+      if (mechanicStatus === 'HOLD' || mechanicStatus === 'ON_HOLD') {
+        displayStatus = 'HOLD'; // Use HOLD for display consistency
+        // Debug log for HOLD status
+        if (job.lead_number === 'L-80741031') {
+          console.log('🔍 API: Found HOLD for', job.lead_number, {
+            mechanicStatus,
+            jobStatus: job.status,
+            displayStatus
+          });
+        }
+      }
+      // Priority 2: If mechanic completed, show COMPLETED (unless QC approved)
+      else if (mechanicStatus === 'COMPLETED') {
         // If mechanic completed, check QC status
         if (job.qc_status === 'APPROVED' || job.status === 'READY_FOR_BILLING' || job.status === 'QC_APPROVED') {
           // QC already approved - show READY_FOR_BILLING or QC_APPROVED
@@ -307,12 +319,12 @@ export async function GET(request: Request) {
           displayStatus = 'COMPLETED';
         }
       } 
-      // Priority 2: If mechanic is working (but not completed), show IN_PROGRESS
+      // Priority 3: If mechanic is working (but not completed), show IN_PROGRESS
       else if (mechanicStatus === 'IN_PROGRESS' && job.status !== 'IN_PROGRESS') {
         // Only show IN_PROGRESS if mechanic is working AND hasn't completed yet
         displayStatus = 'IN_PROGRESS';
       } 
-      // Priority 3: If status is READY_FOR_BILLING but mechanic hasn't completed, keep it
+      // Priority 4: If status is READY_FOR_BILLING but mechanic hasn't completed, keep it
       else if (job.status === 'READY_FOR_BILLING' && (!mechanicStatus || mechanicStatus !== 'COMPLETED')) {
         displayStatus = 'READY_FOR_BILLING';
       }
