@@ -13,7 +13,7 @@ export default function ServiceTypePricingPage() {
   // Car Class State
   const [selectedClass, setSelectedClass] = useState<string>('DEFAULT');
   const [selectedZone, setSelectedZone] = useState<string>('');
-  const [availableClasses] = useState<string[]>(['DEFAULT', 'Hatchback', 'Sedan', 'SUV', 'Luxury', 'MUV']);
+  const [availableClasses, setAvailableClasses] = useState<string[]>(['DEFAULT']);
 
   const [serviceTypes, setServiceTypes] = useState<any[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
@@ -27,7 +27,33 @@ export default function ServiceTypePricingPage() {
   useEffect(() => {
     fetchWorkshops();
     fetchZones();
+    fetchCarClasses();
   }, []);
+
+  const fetchCarClasses = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('car_models')
+        .select('class')
+        .eq('is_active', true);
+      
+      if (error) throw error;
+      
+      // Get unique classes and filter out null/empty values
+      const uniqueClasses = [...new Set(
+        (data || [])
+          .map((item: any) => item.class)
+          .filter((cls: string | null) => cls && cls.trim() !== '')
+      )].sort();
+      
+      // Add DEFAULT at the beginning
+      setAvailableClasses(['DEFAULT', ...uniqueClasses]);
+    } catch (error) {
+      console.error('Error fetching car classes:', error);
+      // Fallback to default classes if fetch fails
+      setAvailableClasses(['DEFAULT', 'Hatchback', 'Sedan', 'SUV', 'Luxury', 'MUV']);
+    }
+  };
 
   // Filter workshops by zone when zone changes
   useEffect(() => {

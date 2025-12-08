@@ -62,23 +62,57 @@ export default function BookServicePage() {
   const [cities, setCities] = useState<any[]>([]);
   const [makes, setMakes] = useState<string[]>([]);
   const [models, setModels] = useState<any[]>([]);
+  const [allCarModels, setAllCarModels] = useState<any[]>([]); // All models for search
   const [serviceTypes, setServiceTypes] = useState<any[]>([]);
   const [serviceAddons, setServiceAddons] = useState<any[]>([]);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [loadingPickupLocation, setLoadingPickupLocation] = useState(false);
   const [optionsLoaded, setOptionsLoaded] = useState(false);
+  
+  // Car search autocomplete
+  const [carSearchQuery, setCarSearchQuery] = useState('');
+  const [carSearchSuggestions, setCarSearchSuggestions] = useState<any[]>([]);
+  const [showCarSuggestions, setShowCarSuggestions] = useState(false);
+  const [selectedCarModel, setSelectedCarModel] = useState<any>(null);
+  
+  // Price calculation
+  const [estimatedPrice, setEstimatedPrice] = useState<number | null>(null);
 
   // Fetch options on mount
   useEffect(() => {
     fetchOptionsData();
   }, []);
 
-  // Fetch models when make changes
+  // Fetch all car models for search on mount
   useEffect(() => {
-    if (formData.vehicle_make) {
-      fetchModels(formData.vehicle_make);
+    fetchAllCarModels();
+  }, []);
+
+  // Calculate price when mobile number is entered and services are selected
+  useEffect(() => {
+    if (formData.customer_phone && formData.customer_phone.length === 10) {
+      calculatePrice();
+    } else {
+      setEstimatedPrice(null);
     }
-  }, [formData.vehicle_make]);
+  }, [formData.customer_phone, formData.service_types, formData.service_addons, serviceTypes, serviceAddons]);
+
+  // Filter car suggestions based on search query
+  useEffect(() => {
+    if (carSearchQuery.length > 0) {
+      const query = carSearchQuery.toLowerCase();
+      const filtered = allCarModels.filter((car: any) => 
+        car.make.toLowerCase().includes(query) || 
+        car.model_name.toLowerCase().includes(query) ||
+        `${car.make} ${car.model_name}`.toLowerCase().includes(query)
+      ).slice(0, 10); // Limit to 10 suggestions
+      setCarSearchSuggestions(filtered);
+      setShowCarSuggestions(true);
+    } else {
+      setCarSearchSuggestions([]);
+      setShowCarSuggestions(false);
+    }
+  }, [carSearchQuery, allCarModels]);
 
   async function fetchOptionsData() {
     try {
@@ -194,6 +228,39 @@ export default function BookServicePage() {
     }
   }
 
+  async function fetchAllCarModels() {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('car_models')
+        .select('id, make, model_name, variant')
+        .eq('is_active', true)
+        .order('make')
+        .order('model_name');
+      
+      if (!error && data && data.length > 0) {
+        setAllCarModels(data);
+        console.log('🚗 All car models loaded:', data.length);
+      } else {
+        console.warn('⚠️ No car models found, using fallback');
+        // Fallback data
+        const fallbackModels = [
+          { id: 'a0000001-0001-0001-0001-000000000001', make: 'Maruti Suzuki', model_name: 'Swift', variant: 'VXI' },
+          { id: 'a0000001-0001-0001-0001-000000000002', make: 'Maruti Suzuki', model_name: 'Baleno', variant: 'Sigma' },
+          { id: 'a0000001-0001-0001-0001-000000000003', make: 'Maruti Suzuki', model_name: 'WagonR', variant: 'LXI' },
+          { id: 'a0000001-0001-0001-0001-000000000004', make: 'Maruti Suzuki', model_name: 'Dzire', variant: 'VXI' },
+          { id: 'b0000002-0002-0002-0002-000000000001', make: 'Hyundai', model_name: 'i20', variant: 'Magna' },
+          { id: 'b0000002-0002-0002-0002-000000000002', make: 'Hyundai', model_name: 'Creta', variant: 'E' },
+          { id: 'c0000003-0003-0003-0003-000000000001', make: 'Tata', model_name: 'Nexon', variant: 'XM' },
+        ];
+        setAllCarModels(fallbackModels);
+      }
+    } catch (error) {
+      console.error('Error fetching all car models:', error);
+      setAllCarModels([]);
+    }
+  }
+
   async function fetchModels(make: string) {
     try {
       const supabase = createClient();
@@ -241,6 +308,39 @@ export default function BookServicePage() {
     } catch (error) {
       console.error('Error fetching models:', error);
       setModels([]);
+    }
+  }
+
+  function calculatePrice() {
+    let total = 0;
+    
+    // Add service type prices
+    formData.service_types.forEach(serviceId => {
+      const service = serviceTypes.find(s => s.id === serviceId);
+      if (service && service.base_price) {
+        total += service.base_price;
+      }
+    });
+    
+    // Add addon prices
+    formData.service_addons.forEach(addonId => {
+      const addon = serviceAddons.find(a => a.id === addonId);
+      if (addon && addon.price) {
+        total += addon.price;
+      }
+    });
+    
+    setEstimatedPrice(total > 0 ? total : null);
+  }
+
+  function handleCarSelect(car: any) {
+    setSelectedCarModel(car);
+    setCarSearchQuery(`${car.make} ${car.model_name}`);
+    setShowCarSuggestions(false);
+    updateFormData('vehicle_make', car.make);
+    updateFormData('model_id', car.id);
+    if (car.variant) {
+      updateFormData('vehicle_variant', car.variant);
     }
   }
 
@@ -924,6 +1024,27 @@ export default function BookServicePage() {
                       {errors.customer_phone && (
                         <p className="text-red-500 text-sm mt-1">{errors.customer_phone}</p>
                       )}
+                      
+                      {/* Price Display after mobile number */}
+                      {formData.customer_phone && formData.customer_phone.length === 10 && estimatedPrice && (
+                        <div className="mt-3 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4 animate-fade-in">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <DollarSign className="w-5 h-5 text-green-600" />
+                              <span className="text-sm font-medium text-green-800">Estimated Price:</span>
+                            </div>
+                            <span className="text-2xl font-bold text-green-600">
+                              ₹{estimatedPrice.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                          {formData.service_types.length > 0 && (
+                            <p className="text-xs text-green-700 mt-2">
+                              Based on {formData.service_types.length} service{formData.service_types.length > 1 ? 's' : ''} 
+                              {formData.service_addons.length > 0 && ` + ${formData.service_addons.length} addon${formData.service_addons.length > 1 ? 's' : ''}`}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -1091,44 +1212,75 @@ export default function BookServicePage() {
                       )}
                     </div>
 
-                    <div>
+                    <div className="md:col-span-2 relative">
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Vehicle Make <span className="text-red-500">*</span>
+                        Car Make & Model <span className="text-red-500">*</span>
                       </label>
-                      <select
-                        value={formData.vehicle_make}
-                        onChange={(e) => updateFormData('vehicle_make', e.target.value)}
-                        className={`w-full px-4 py-4 border-2 rounded-xl focus:ring-4 focus:ring-orange-500/20 transition-all ${
-                          errors.vehicle_make ? 'border-red-500' : 'border-gray-200 focus:border-orange-500'
-                        }`}
-                      >
-                        <option value="">Select Brand</option>
-                        {makes.map(make => (
-                          <option key={make} value={make}>{make}</option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <Car className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                          type="text"
+                          value={carSearchQuery}
+                          onChange={(e) => {
+                            setCarSearchQuery(e.target.value);
+                            if (!e.target.value) {
+                              setSelectedCarModel(null);
+                              updateFormData('vehicle_make', '');
+                              updateFormData('model_id', '');
+                            }
+                          }}
+                          onFocus={() => {
+                            if (carSearchQuery.length > 0) {
+                              setShowCarSuggestions(true);
+                            }
+                          }}
+                          onBlur={() => {
+                            // Delay hiding suggestions to allow click
+                            setTimeout(() => setShowCarSuggestions(false), 200);
+                          }}
+                          className={`w-full pl-12 pr-4 py-4 border-2 rounded-xl focus:ring-4 focus:ring-orange-500/20 transition-all ${
+                            errors.vehicle_make ? 'border-red-500' : 
+                            selectedCarModel ? 'border-green-500 bg-green-50' : 
+                            'border-gray-200 focus:border-orange-500'
+                          }`}
+                          placeholder="Search by make or model (e.g., Maruti Swift, Hyundai Creta)"
+                        />
+                        {selectedCarModel && (
+                          <CheckCircle className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
+                        )}
+                      </div>
+                      
+                      {/* Autocomplete Suggestions */}
+                      {showCarSuggestions && carSearchSuggestions.length > 0 && (
+                        <div className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                          {carSearchSuggestions.map((car: any) => (
+                            <button
+                              key={car.id}
+                              type="button"
+                              onClick={() => handleCarSelect(car)}
+                              className="w-full px-4 py-3 text-left hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-semibold text-gray-900">{car.make}</p>
+                                  <p className="text-sm text-gray-600">{car.model_name} {car.variant ? `(${car.variant})` : ''}</p>
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-gray-400" />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {carSearchQuery && carSearchSuggestions.length === 0 && showCarSuggestions && (
+                        <div className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl p-4 text-center text-gray-500">
+                          No matches found. Try a different search term.
+                        </div>
+                      )}
+                      
                       {errors.vehicle_make && (
                         <p className="text-red-500 text-sm mt-1">{errors.vehicle_make}</p>
                       )}
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Model
-                      </label>
-                      <select
-                        value={formData.model_id}
-                        onChange={(e) => updateFormData('model_id', e.target.value)}
-                        disabled={!formData.vehicle_make}
-                        className="w-full px-4 py-4 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:ring-4 focus:ring-orange-500/20 transition-all disabled:bg-gray-50"
-                      >
-                        <option value="">Select Model</option>
-                        {models.map(model => (
-                          <option key={model.id} value={model.id}>
-                            {model.model_name} {model.variant ? `(${model.variant})` : ''}
-                          </option>
-                        ))}
-                      </select>
                     </div>
 
                     <div>
