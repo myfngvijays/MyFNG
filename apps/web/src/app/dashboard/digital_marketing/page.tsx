@@ -79,7 +79,7 @@ export default function DigitalMarketingDashboard() {
         totalImpressions: mockCampaigns.reduce((sum, c) => sum + c.impressions, 0),
         totalClicks: mockCampaigns.reduce((sum, c) => sum + c.clicks, 0),
         clickThroughRate: mockCampaigns.length > 0 
-          ? (mockCampaigns.reduce((sum, c) => sum + c.clicks, 0) / mockCampaigns.reduce((sum, c) => sum + c.impressions, 0) * 100).toFixed(2)
+          ? parseFloat((mockCampaigns.reduce((sum, c) => sum + c.clicks, 0) / mockCampaigns.reduce((sum, c) => sum + c.impressions, 0) * 100).toFixed(2))
           : 0,
         totalSpent: mockCampaigns.reduce((sum, c) => sum + c.spent, 0),
         loading: false
