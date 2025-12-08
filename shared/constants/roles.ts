@@ -20,6 +20,7 @@ export enum UserRole {
   COMPANY_MECHANIC_RSA = 'COMPANY_MECHANIC_RSA',
   COMPANY_VAN_TECHNICIAN = 'COMPANY_VAN_TECHNICIAN',
   COMPANY_VAN_DRIVER = 'COMPANY_VAN_DRIVER',
+  DIGITAL_MARKETING = 'DIGITAL_MARKETING',
   CUSTOMER = 'CUSTOMER',
 }
 
@@ -40,6 +41,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.COMPANY_MECHANIC_RSA]: 'Company Mechanic (RSA)',
   [UserRole.COMPANY_VAN_TECHNICIAN]: 'Company Van Technician',
   [UserRole.COMPANY_VAN_DRIVER]: 'Company Van Driver',
+  [UserRole.DIGITAL_MARKETING]: 'Digital Marketing',
   [UserRole.CUSTOMER]: 'Customer',
 };
 
@@ -60,6 +62,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
   [UserRole.COMPANY_MECHANIC_RSA]: 'Company-registered mechanic for RSA jobs',
   [UserRole.COMPANY_VAN_TECHNICIAN]: 'Technician for Service at Home operations',
   [UserRole.COMPANY_VAN_DRIVER]: 'Driver for service vans',
+  [UserRole.DIGITAL_MARKETING]: 'Manages marketing campaigns, analytics, lead generation, and promotional activities',
   [UserRole.CUSTOMER]: 'End user booking services',
 };
 
@@ -67,7 +70,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
 export const ROLE_HIERARCHY = {
   admin_roles: [UserRole.SUPER_ADMIN, UserRole.SUB_ADMIN],
   manager_roles: [UserRole.LEAD_MANAGER, UserRole.RSA_MANAGER, UserRole.HOME_SERVICE_MANAGER],
-  internal_staff: [UserRole.TELECALLER, UserRole.CUSTOMER_SERVICE_EXECUTIVE, UserRole.AUDITOR, UserRole.ACCOUNTS_TEAM],
+  internal_staff: [UserRole.TELECALLER, UserRole.CUSTOMER_SERVICE_EXECUTIVE, UserRole.AUDITOR, UserRole.ACCOUNTS_TEAM, UserRole.DIGITAL_MARKETING],
   workshop_staff: [UserRole.WORKSHOP_ADMIN, UserRole.WORKSHOP_SUPERVISOR, UserRole.WORKSHOP_MECHANIC, UserRole.WORKSHOP_PICKUP_BOY],
   company_field_staff: [UserRole.COMPANY_MECHANIC_RSA, UserRole.COMPANY_VAN_TECHNICIAN, UserRole.COMPANY_VAN_DRIVER],
   customers: [UserRole.CUSTOMER],
@@ -91,6 +94,7 @@ export const ROLE_PERMISSIONS = {
   [UserRole.COMPANY_MECHANIC_RSA]: ['view_rsa_tasks', 'update_job_status', 'upload_photos'],
   [UserRole.COMPANY_VAN_TECHNICIAN]: ['view_home_service_tasks', 'update_job_status', 'upload_photos'],
   [UserRole.COMPANY_VAN_DRIVER]: ['view_home_service_tasks', 'update_delivery_status'],
+  [UserRole.DIGITAL_MARKETING]: ['manage_campaigns', 'view_analytics', 'manage_promotions', 'track_leads', 'manage_content'],
   [UserRole.CUSTOMER]: ['create_booking', 'view_my_bookings', 'track_service'],
 };
 

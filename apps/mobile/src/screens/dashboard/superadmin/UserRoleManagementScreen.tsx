@@ -28,6 +28,7 @@ const AVAILABLE_ROLES = [
   { code: 'PICKUP_BOY', name: 'Pickupboy/Driver', icon: 'car-pickup', color: COLORS.green },
   { code: 'RSA_MANAGER', name: 'RSA Manager', icon: 'car-emergency', color: COLORS.red },
   { code: 'AUDITOR', name: 'Quality Auditor', icon: 'shield-check', color: COLORS.indigo },
+  { code: 'DIGITAL_MARKETING', name: 'Digital Marketing', icon: 'bullhorn', color: COLORS.purple },
   { code: 'CUSTOMER', name: 'Customer', icon: 'account', color: COLORS.gray },
 ];
 

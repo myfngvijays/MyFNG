@@ -4,28 +4,34 @@ import { useState, useEffect } from 'react';
 import { AlertCircle, Users } from 'lucide-react';
 
 export default function DynamicFOMO() {
-  const [activeUsers, setActiveUsers] = useState(2847);
-  const [slotsLeft, setSlotsLeft] = useState(3);
+  // Initialize with fixed values to avoid hydration mismatch
+  const [activeUsers, setActiveUsers] = useState(550); // Middle of 400-700 range
+  const [slotsLeft, setSlotsLeft] = useState(20);
   const [lastUpdate, setLastUpdate] = useState('');
 
   useEffect(() => {
-    // Update active users every 3-5 seconds (fluctuate between 2800-2900)
+    // Initialize with random value in desired range only on client
+    setActiveUsers(Math.floor(Math.random() * 300) + 400);
+    
+    // Update active users every 3-5 seconds (fluctuate between 400-700)
     const userInterval = setInterval(() => {
-      const change = Math.floor(Math.random() * 20) - 10; // -10 to +10
+      const change = Math.floor(Math.random() * 30) - 15; // -15 to +15
       setActiveUsers(prev => {
         const newValue = prev + change;
-        return Math.max(2800, Math.min(2900, newValue)); // Keep between 2800-2900
+        return Math.max(400, Math.min(700, newValue)); // Keep between 400-700
       });
       setLastUpdate('now');
     }, Math.random() * 2000 + 3000); // Random between 3-5 seconds
 
-    // Update slots left every 8-15 seconds (decrease slowly)
+    // Update slots left every 5-10 seconds (fluctuate around 20)
     const slotsInterval = setInterval(() => {
       setSlotsLeft(prev => {
-        if (prev <= 1) return Math.floor(Math.random() * 2) + 4; // Reset to 4-5
-        return prev - 1;
+        const change = Math.floor(Math.random() * 5) - 2; // -2 to +2
+        const newValue = prev + change;
+        // Keep slots between 15-25 (centered around 20)
+        return Math.max(15, Math.min(25, newValue));
       });
-    }, Math.random() * 7000 + 8000); // Random between 8-15 seconds
+    }, Math.random() * 5000 + 5000); // Random between 5-10 seconds
 
     // Update "last update" indicator
     const updateInterval = setInterval(() => {

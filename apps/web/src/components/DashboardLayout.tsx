@@ -28,7 +28,9 @@ import {
   DollarSign,
   Clock,
   AlertTriangle,
-  Star
+  Star,
+  Megaphone,
+  BarChart3
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -198,6 +200,14 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/cse/callbacks', icon: <Clock className="w-5 h-5" />, label: 'Callbacks' },
         { href: '/dashboard/cse/ratings', icon: <Star className="w-5 h-5" />, label: 'Ratings' },
         { href: '/dashboard/cse/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
+      ],
+      'DIGITAL_MARKETING': [
+        { href: '/dashboard/digital_marketing', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/digital_marketing/campaigns', icon: <Megaphone className="w-5 h-5" />, label: 'Campaigns' },
+        { href: '/dashboard/digital_marketing/analytics', icon: <BarChart3 className="w-5 h-5" />, label: 'Analytics' },
+        { href: '/dashboard/digital_marketing/content', icon: <FileText className="w-5 h-5" />, label: 'Content' },
+        { href: '/dashboard/digital_marketing/leads', icon: <Users className="w-5 h-5" />, label: 'Leads' },
+        { href: '/dashboard/digital_marketing/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
       ],
     };
 

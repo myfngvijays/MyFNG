@@ -780,6 +780,7 @@ export default function HomePage() {
       {isBookingFormOpen && (
         <BookingForm onClose={() => setIsBookingFormOpen(false)} />
       )}
+
     </div>
   );
 }

@@ -15,6 +15,7 @@ const AVAILABLE_ROLES = [
   { code: 'PICKUP_BOY', name: 'Pickupboy/Driver', color: 'green' },
   { code: 'RSA_MANAGER', name: 'RSA Manager', color: 'red' },
   { code: 'AUDITOR', name: 'Quality Auditor', color: 'indigo' },
+  { code: 'DIGITAL_MARKETING', name: 'Digital Marketing', color: 'pink' },
   { code: 'CUSTOMER', name: 'Customer', color: 'gray' },
 ];
 

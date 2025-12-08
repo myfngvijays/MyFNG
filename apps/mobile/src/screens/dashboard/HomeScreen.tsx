@@ -24,6 +24,8 @@ export default function HomeScreen() {
         return renderLeadManagerDashboard();
       case 'CUSTOMER':
         return renderCustomerDashboard();
+      case 'DIGITAL_MARKETING':
+        return renderDigitalMarketingDashboard();
       default:
         return renderDefaultDashboard();
     }
@@ -234,6 +236,36 @@ export default function HomeScreen() {
           status="IN_PROGRESS"
           serviceType="General Service"
         />
+      </View>
+    </>
+  );
+
+  const renderDigitalMarketingDashboard = () => (
+    <>
+      <View style={styles.quickAction}>
+        <Text style={styles.quickActionTitle}>📱 Digital Marketing</Text>
+        <Text style={styles.quickActionText}>Manage campaigns & track analytics</Text>
+      </View>
+
+      <View style={styles.statsGrid}>
+        <View style={styles.statRow}>
+          <StatCard title="Total Leads" value="0" color={COLORS.primary} />
+          <StatCard title="Campaigns" value="0" color={COLORS.warning} />
+        </View>
+        <View style={styles.statRow}>
+          <StatCard title="Impressions" value="0" color={COLORS.info} />
+          <StatCard title="Clicks" value="0" color={COLORS.success} />
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <TouchableOpacity style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>Create Campaign</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>View Analytics</Text>
+        </TouchableOpacity>
       </View>
     </>
   );

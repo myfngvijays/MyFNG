@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Save, Search, Store, Loader2, Car, MapPin, Copy } from 'lucide-react';
+import { Save, Search, Store, Loader2, Car, MapPin, Copy, Building2 } from 'lucide-react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 export default function ServiceTypePricingPage() {
@@ -9,10 +9,12 @@ export default function ServiceTypePricingPage() {
   const [filteredWorkshops, setFilteredWorkshops] = useState<any[]>([]);
   const [selectedWorkshop, setSelectedWorkshop] = useState<string>('');
   const [zones, setZones] = useState<any[]>([]);
+  const [cities, setCities] = useState<any[]>([]);
   
   // Car Class State
   const [selectedClass, setSelectedClass] = useState<string>('DEFAULT');
   const [selectedZone, setSelectedZone] = useState<string>('');
+  const [selectedCity, setSelectedCity] = useState<string>('');
   const [availableClasses, setAvailableClasses] = useState<string[]>(['DEFAULT']);
 
   const [serviceTypes, setServiceTypes] = useState<any[]>([]);
@@ -55,39 +57,58 @@ export default function ServiceTypePricingPage() {
     }
   };
 
-  // Filter workshops by zone when zone changes
+  // Fetch cities when zone changes
   useEffect(() => {
     if (selectedZone) {
-      const filtered = workshops.filter(w => w.zone_id === selectedZone);
-      setFilteredWorkshops(filtered);
-      // Reset workshop and class selection when zone changes
+      fetchCitiesByZone(selectedZone);
+      // Reset city, workshop and class selection when zone changes
+      setSelectedCity('');
       setSelectedWorkshop('');
       setSelectedClass('DEFAULT');
       setServiceTypes([]);
       setPrices({});
     } else {
+      setCities([]);
+      setSelectedCity('');
       setFilteredWorkshops([]);
       setSelectedWorkshop('');
       setSelectedClass('DEFAULT');
       setServiceTypes([]);
       setPrices({});
     }
-  }, [selectedZone, workshops]);
+  }, [selectedZone]);
 
-  // Reset workshop when class changes
+  // Filter workshops by zone and city
   useEffect(() => {
-    if (selectedZone && selectedClass) {
+    if (selectedZone) {
+      let filtered = workshops.filter(w => w.zone_id === selectedZone);
+      if (selectedCity) {
+        // Match by city name (workshops have city as string, not city_id)
+        const selectedCityName = cities.find(c => c.id === selectedCity)?.name;
+        if (selectedCityName) {
+          filtered = filtered.filter(w => w.city?.toLowerCase() === selectedCityName.toLowerCase());
+        }
+      }
+      setFilteredWorkshops(filtered);
+    } else {
+      setFilteredWorkshops([]);
+    }
+  }, [selectedZone, selectedCity, workshops, cities]);
+
+  // Reset workshop when city or class changes
+  useEffect(() => {
+    if (selectedZone && (selectedCity || selectedClass)) {
       setSelectedWorkshop('');
       setServiceTypes([]);
       setPrices({});
     }
-  }, [selectedClass]);
+  }, [selectedCity, selectedClass]);
 
-  // Fetch pricing when workshop, class, or zone changes
+  // Fetch pricing when workshop, class, zone, or city changes
   useEffect(() => {
     if (selectedWorkshop && selectedWorkshop !== 'ALL' && selectedZone && selectedClass) {
       // Individual workshop mode - fetch pricing data
-      fetchPricingData(selectedWorkshop, selectedClass, selectedZone);
+      fetchPricingData(selectedWorkshop, selectedClass, selectedZone, selectedCity);
     } else if (selectedWorkshop === 'ALL' && selectedZone && selectedClass) {
       // Bulk mode - just fetch service types without pricing (user will set prices)
       fetchServiceTypesForBulkMode();
@@ -95,7 +116,7 @@ export default function ServiceTypePricingPage() {
       setServiceTypes([]);
       setPrices({});
     }
-  }, [selectedWorkshop, selectedClass, selectedZone]);
+  }, [selectedWorkshop, selectedClass, selectedZone, selectedCity]);
 
   const fetchWorkshops = async () => {
     try {
@@ -113,6 +134,20 @@ export default function ServiceTypePricingPage() {
       setZones(data || []);
     } catch (error) {
       console.error('Error fetching zones:', error);
+    }
+  };
+
+  const fetchCitiesByZone = async (zoneId: string) => {
+    try {
+      const { data } = await supabase
+        .from('cities')
+        .select('*')
+        .eq('zone_id', zoneId)
+        .eq('is_active', true)
+        .order('name');
+      setCities(data || []);
+    } catch (error) {
+      console.error('Error fetching cities:', error);
     }
   };
 
@@ -135,7 +170,7 @@ export default function ServiceTypePricingPage() {
     }
   };
 
-  const fetchPricingData = async (workshopId: string, vehicleClass: string, zoneId: string) => {
+  const fetchPricingData = async (workshopId: string, vehicleClass: string, zoneId: string, cityId?: string) => {
     setLoading(true);
     try {
       // 1. Fetch All Service Types
@@ -145,7 +180,7 @@ export default function ServiceTypePricingPage() {
         .eq('is_active', true)
         .order('name');
 
-      // 2. Fetch Existing Overrides for this Workshop, Class, and Zone
+      // 2. Fetch Existing Overrides for this Workshop, Class, Zone, and City
       let query = supabase
         .from('workshop_service_pricing')
         .select('service_type_id, custom_price')
@@ -155,6 +190,12 @@ export default function ServiceTypePricingPage() {
         query = query.is('class', null);
       } else {
         query = query.eq('class', vehicleClass);
+      }
+
+      if (cityId) {
+        query = query.eq('city_id', cityId);
+      } else {
+        query = query.is('city_id', null);
       }
 
       if (zoneId) {
@@ -196,7 +237,8 @@ export default function ServiceTypePricingPage() {
         service_type_id: serviceTypeId,
         custom_price: price,
         class: selectedClass === 'DEFAULT' ? null : selectedClass,
-        zone_id: selectedZone || null
+        zone_id: selectedZone || null,
+        city_id: selectedCity || null
       }));
 
       if (upsertData.length === 0) {
@@ -216,6 +258,12 @@ export default function ServiceTypePricingPage() {
         delQuery = delQuery.is('class', null);
       } else {
         delQuery = delQuery.eq('class', selectedClass);
+      }
+      
+      if (selectedCity) {
+        delQuery = delQuery.eq('city_id', selectedCity);
+      } else {
+        delQuery = delQuery.is('city_id', null);
       }
       
       if (selectedZone) {
@@ -248,8 +296,12 @@ export default function ServiceTypePricingPage() {
       return;
     }
 
+    const locationText = selectedCity 
+      ? `${cities.find(c => c.id === selectedCity)?.name || 'City'} in ${zones.find(z => z.id === selectedZone)?.name || 'Zone'}`
+      : `${zones.find(z => z.id === selectedZone)?.name || 'Zone'}`;
+
     const confirmed = confirm(
-      `Are you sure you want to apply these service prices to ALL ${filteredWorkshops.length} workshops in this zone?`
+      `Are you sure you want to apply these service prices to ALL ${filteredWorkshops.length} workshops in ${locationText}?`
     );
     if (!confirmed) return;
 
@@ -267,12 +319,13 @@ export default function ServiceTypePricingPage() {
             service_type_id: serviceTypeId,
             custom_price: prices[serviceTypeId],
             class: selectedClass === 'DEFAULT' ? null : selectedClass,
-            zone_id: selectedZone
+            zone_id: selectedZone || null,
+            city_id: selectedCity || null
           });
         });
       });
 
-      // Delete existing entries for all workshops in this zone
+      // Delete existing entries for all workshops in this scope
       for (const workshopId of workshopIds) {
         let delQuery = supabase.from('workshop_service_pricing')
           .delete()
@@ -285,7 +338,18 @@ export default function ServiceTypePricingPage() {
           delQuery = delQuery.eq('class', selectedClass);
         }
         
+        if (selectedCity) {
+          delQuery = delQuery.eq('city_id', selectedCity);
+        } else {
+          delQuery = delQuery.is('city_id', null);
+        }
+        
+        if (selectedZone) {
         delQuery = delQuery.eq('zone_id', selectedZone);
+        } else {
+          delQuery = delQuery.is('zone_id', null);
+        }
+        
         await delQuery;
       }
 
@@ -313,14 +377,14 @@ export default function ServiceTypePricingPage() {
     st.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const isBulkMode = selectedWorkshop === 'ALL' && selectedZone;
+  const isBulkMode = selectedWorkshop === 'ALL' && selectedZone && selectedClass;
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Service Type Pricing</h1>
-          <p className="text-gray-500">Override service prices by Zone, Workshop & Car Class</p>
+          <p className="text-gray-500">Override service prices by Zone, City, Workshop & Car Class</p>
         </div>
         <div className="flex gap-2">
           {isBulkMode && (
@@ -344,8 +408,8 @@ export default function ServiceTypePricingPage() {
         </div>
       </div>
 
-      {/* Controls: Zone → Class → Workshop */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {/* Controls: Zone → City → Class → Workshop */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         {/* Zone Selector - FIRST */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
           <label className="block text-sm font-medium text-gray-700 mb-2">1. Select Zone *</label>
@@ -364,9 +428,28 @@ export default function ServiceTypePricingPage() {
           </div>
         </div>
 
-        {/* Class Selector - SECOND */}
+        {/* City Selector - SECOND */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-2">2. Select Car Class *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">2. Select City (Optional)</label>
+          <div className="relative">
+            <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <select 
+              className="w-full pl-10 p-3 border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
+              value={selectedCity}
+              onChange={(e) => setSelectedCity(e.target.value)}
+              disabled={!selectedZone}
+            >
+              <option value="">All Cities in Zone</option>
+              {cities.map(city => (
+                <option key={city.id} value={city.id}>{city.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Class Selector - THIRD */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <label className="block text-sm font-medium text-gray-700 mb-2">3. Select Car Class *</label>
           <div className="relative">
             <Car className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             <select 
@@ -383,9 +466,9 @@ export default function ServiceTypePricingPage() {
           </div>
         </div>
 
-        {/* Workshop Selector - THIRD */}
+        {/* Workshop Selector - FOURTH */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-2">3. Select Workshop</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">4. Select Workshop</label>
           <div className="relative">
             <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             <select 
@@ -398,7 +481,7 @@ export default function ServiceTypePricingPage() {
               {selectedZone && selectedClass && (
                 <>
                   <option value="ALL" className="font-semibold bg-blue-50">
-                    📋 All Workshops in Zone ({filteredWorkshops.length})
+                    📋 All Workshops {selectedCity ? `in ${cities.find(c => c.id === selectedCity)?.name}` : `in Zone`} ({filteredWorkshops.length})
                   </option>
                   {filteredWorkshops.map(w => (
                     <option key={w.id} value={w.id}>{w.name} ({w.city})</option>
@@ -414,7 +497,10 @@ export default function ServiceTypePricingPage() {
       {isBulkMode && (
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-sm text-blue-800">
-            <strong>Bulk Mode:</strong> Set prices below and click "Apply to All Workshops" to update all {filteredWorkshops.length} workshops in this zone for {selectedClass === 'DEFAULT' ? 'all classes' : selectedClass} at once.
+            <strong>Bulk Mode:</strong> Set prices below and click "Apply to All Workshops" to update all {filteredWorkshops.length} workshops 
+            {selectedCity ? ` in ${cities.find(c => c.id === selectedCity)?.name}` : ''} 
+            {selectedCity ? '' : ` in ${zones.find(z => z.id === selectedZone)?.name || 'Zone'}`} 
+            {' '}for {selectedClass === 'DEFAULT' ? 'all classes' : selectedClass} at once.
             Or select a specific workshop to update individual pricing.
           </p>
         </div>
@@ -446,6 +532,7 @@ export default function ServiceTypePricingPage() {
             <div className="text-sm text-gray-500">
               Editing rates for: <span className="font-bold text-brand-primary">
                 {zones.find(z => z.id === selectedZone)?.name || 'Zone'} 
+                {selectedCity && ` / ${cities.find(c => c.id === selectedCity)?.name || 'City'}`}
                 {' / '}
                 {selectedClass === 'DEFAULT' ? 'All Classes' : selectedClass}
                 {' / '}
