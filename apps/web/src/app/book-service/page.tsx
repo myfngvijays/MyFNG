@@ -213,6 +213,7 @@ export default function BookServicePage() {
 
   async function fetchCarModels() {
     try {
+      console.log('🚗 Fetching car models from database...');
       const supabase = createClient();
       const { data: modelsData, error } = await supabase
         .from('car_models')
@@ -222,13 +223,16 @@ export default function BookServicePage() {
         .order('model_name');
       
       if (error) {
-        console.error('Error fetching car models:', error);
+        console.error('❌ Error fetching car models:', error);
+        console.error('Error details:', { message: error.message, code: error.code, details: error.details });
         setCarModels([]);
       } else {
+        console.log(`✅ Car models fetched successfully: ${modelsData?.length || 0} models`);
         setCarModels(modelsData || []);
       }
     } catch (error) {
-      console.error('Error fetching car models:', error);
+      console.error('❌ Exception fetching car models:', error);
+      setCarModels([]);
     }
   }
 
@@ -784,22 +788,6 @@ export default function BookServicePage() {
               }),
             });
 
-            // Check HTTP status first
-            if (!verifyResponse.ok) {
-              const errorData = await verifyResponse.json().catch(() => ({ message: 'Unknown error' }));
-              console.error('Payment verification HTTP error:', verifyResponse.status, errorData);
-              
-              if (verifyResponse.status >= 500) {
-                // Server error - retry might help
-                toast.error('Server error during payment verification. Please contact support with your payment details.');
-              } else if (verifyResponse.status >= 400) {
-                // Client error or verification failed
-                toast.error(errorData.message || 'Payment verification failed. Please contact support.');
-              }
-              setIsProcessingPayment(false);
-              return;
-            }
-
             const verifyData = await verifyResponse.json();
 
             if (verifyData.verified) {
@@ -817,13 +805,12 @@ export default function BookServicePage() {
                 setIsSubmitting(false);
               }
             } else {
-              // This should not happen if HTTP status is checked above, but kept as fallback
-              toast.error(verifyData.message || 'Payment verification failed. Please contact support.');
+              toast.error('Payment verification failed. Please contact support.');
               setIsProcessingPayment(false);
             }
           } catch (error: any) {
-            console.error('Payment verification network error:', error);
-            toast.error('Network error during payment verification. Please check your connection and contact support.');
+            console.error('Payment verification error:', error);
+            toast.error('Payment verification failed. Please contact support.');
             setIsProcessingPayment(false);
           }
         },

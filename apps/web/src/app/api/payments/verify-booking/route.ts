@@ -29,11 +29,9 @@ export async function POST(request: Request) {
     const isValid = expectedSignature === signature;
 
     if (!isValid) {
-      // Signature mismatch - possible tampering or incorrect data
       return NextResponse.json({
         verified: false,
-        message: 'Payment signature verification failed',
-        error: 'INVALID_SIGNATURE',
+        message: 'Invalid signature',
       }, { status: 400 });
     }
 
@@ -47,24 +45,19 @@ export async function POST(request: Request) {
     });
 
     if (!razorpayResponse.ok) {
-      // Razorpay API error - return 502 Bad Gateway to indicate external service error
       return NextResponse.json({
         verified: false,
         message: 'Failed to fetch payment details from Razorpay',
-        error: 'RAZORPAY_API_ERROR',
-      }, { status: 502 });
+      }, { status: 500 });
     }
 
     const paymentDetails = await razorpayResponse.json();
 
     // Check if payment is captured or authorized
     if (paymentDetails.status !== 'captured' && paymentDetails.status !== 'authorized') {
-      // Payment exists but not in valid status - return 400 Bad Request
       return NextResponse.json({
         verified: false,
-        message: `Payment not completed. Status: ${paymentDetails.status}`,
-        error: 'PAYMENT_NOT_COMPLETED',
-        payment_status: paymentDetails.status,
+        message: `Payment status: ${paymentDetails.status}`,
       }, { status: 400 });
     }
 
@@ -80,12 +73,10 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error('Error verifying payment:', error);
-    return NextResponse.json({
-      verified: false,
-      message: 'Internal server error during payment verification',
-      error: 'SERVER_ERROR',
-      details: error.message,
-    }, { status: 500 });
+    return NextResponse.json(
+      { verified: false, error: error.message },
+      { status: 500 }
+    );
   }
 }
 
