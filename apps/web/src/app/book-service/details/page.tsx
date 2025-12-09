@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-export default function BookingDetailsPage() {
+function BookingDetailsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
@@ -303,5 +303,23 @@ export default function BookingDetailsPage() {
 
       <Footer />
     </div>
+  );
+}
+
+export default function BookingDetailsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/30">
+        <Navbar />
+        <div className="container mx-auto px-4 pt-32 pb-16">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <Loader2 className="w-8 h-8 animate-spin text-brand-primary" />
+          </div>
+        </div>
+        <Footer />
+      </div>
+    }>
+      <BookingDetailsContent />
+    </Suspense>
   );
 }
