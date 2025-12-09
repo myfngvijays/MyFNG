@@ -648,8 +648,11 @@ export default function SupervisorJobDetailPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_supervisor">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-primary" />
+        <div className="flex items-center justify-center min-h-[300px] sm:min-h-[400px]">
+          <div className="text-center">
+            <Loader2 className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 animate-spin text-brand-primary mx-auto mb-3 sm:mb-4" />
+            <p className="text-gray-600 text-xs sm:text-sm md:text-base">Loading job details...</p>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -658,9 +661,9 @@ export default function SupervisorJobDetailPage() {
   if (error || !lead) {
     return (
       <DashboardLayout role="workshop_supervisor">
-        <div className="card bg-red-50 border-red-200">
-          <p className="text-red-600">Error loading job details</p>
-          <button onClick={() => router.back()} className="btn btn-primary mt-3">
+        <div className="card bg-red-50 border-red-200 p-4 sm:p-5 md:p-6">
+          <p className="text-red-600 text-sm sm:text-base">Error loading job details</p>
+          <button onClick={() => router.back()} className="btn btn-primary mt-3 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
             Go Back
           </button>
         </div>
@@ -672,42 +675,44 @@ export default function SupervisorJobDetailPage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6 p-3 sm:p-4 md:p-5 lg:p-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
             <button
               onClick={() => router.back()}
-              className="btn btn-outline flex items-center gap-2"
+              className="btn btn-outline flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2"
             >
-              <ArrowLeft className="w-4 h-4" />
-              Back
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Back</span>
             </button>
-            <div>
-              <h1 className="text-3xl font-bold text-text-heading">{lead.lead_number}</h1>
-              <p className="text-sm text-gray-600 mt-1">Job Details & Progress</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading truncate">{lead.lead_number}</h1>
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Job Details & Progress</p>
             </div>
           </div>
           
           {/* Quick Actions */}
-          <div className="flex gap-2">
+          <div className="flex gap-1.5 sm:gap-2">
             {lead.mechanic && (
               <button
                 onClick={() => setShowSendBack(true)}
-                className="btn bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2"
+                className="btn bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2"
               >
-                <ArrowLeftCircle className="w-4 h-4" />
-                Send Back
+                <ArrowLeftCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Send Back</span>
+                <span className="sm:hidden">Back</span>
               </button>
             )}
             
             {lead.media && lead.media.length > 0 && (
               <button
                 onClick={() => setShowPhotoValidation(true)}
-                className="btn btn-primary flex items-center gap-2"
+                className="btn btn-primary flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2"
               >
-                <ImageIcon className="w-4 h-4" />
-                Validate Photos
+                <ImageIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Validate Photos</span>
+                <span className="sm:hidden">Photos</span>
               </button>
             )}
           </div>
@@ -715,11 +720,11 @@ export default function SupervisorJobDetailPage() {
 
         {/* Section 1: Job Summary */}
         <div className="card">
-          <h2 className="text-xl font-semibold mb-4">Job Summary</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Job Summary</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <div>
-              <p className="text-sm text-gray-600">Status</p>
-              <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold mt-1 ${getStatusColor(lead.display_status || lead.status)}`}>
+              <p className="text-xs sm:text-sm text-gray-600">Status</p>
+              <span className={`inline-block px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold mt-0.5 sm:mt-1 ${getStatusColor(lead.display_status || lead.status)}`}>
                 {(lead.display_status || lead.status) === 'WORK_COMPLETED' ? 'Mechanic Work Completed' :
                  (lead.display_status || lead.status) === 'QC_PENDING' ? 'QC Pending' :
                  (lead.display_status || lead.status) === 'MECHANIC_WORKING' ? 'Mechanic Working' :
@@ -731,48 +736,48 @@ export default function SupervisorJobDetailPage() {
               </span>
             </div>
             <div>
-              <p className="text-sm text-gray-600">SLA Status</p>
-              <span className={`inline-block px-3 py-1 rounded-lg border text-sm font-semibold mt-1 ${getSLAColor(lead.sla_status)}`}>
+              <p className="text-xs sm:text-sm text-gray-600">SLA Status</p>
+              <span className={`inline-block px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg border text-[10px] sm:text-xs md:text-sm font-semibold mt-0.5 sm:mt-1 ${getSLAColor(lead.sla_status)}`}>
                 {lead.sla_status}
               </span>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Priority</p>
-              <p className="font-semibold mt-1">{lead.priority}</p>
+              <p className="text-xs sm:text-sm text-gray-600">Priority</p>
+              <p className="font-semibold mt-0.5 sm:mt-1 text-xs sm:text-sm md:text-base">{lead.priority}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Created</p>
-              <p className="font-semibold mt-1">{new Date(lead.created_at).toLocaleDateString()}</p>
+              <p className="text-xs sm:text-sm text-gray-600">Created</p>
+              <p className="font-semibold mt-0.5 sm:mt-1 text-xs sm:text-sm md:text-base">{new Date(lead.created_at).toLocaleDateString()}</p>
             </div>
           </div>
         </div>
 
         {/* Section 2: Customer & Vehicle */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
           <div className="card">
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <User className="w-5 h-5" />
+            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+              <User className="w-4 h-4 sm:w-5 sm:h-5" />
               Customer Details
             </h3>
-            <div className="space-y-2">
-              <p><span className="text-gray-600">Name:</span> <strong>{lead.customer_name}</strong></p>
-              <p><span className="text-gray-600">Phone:</span> <strong>{lead.customer_phone}</strong></p>
+            <div className="space-y-1.5 sm:space-y-2">
+              <p className="text-xs sm:text-sm"><span className="text-gray-600">Name:</span> <strong>{lead.customer_name}</strong></p>
+              <p className="text-xs sm:text-sm"><span className="text-gray-600">Phone:</span> <strong>{lead.customer_phone}</strong></p>
               {lead.customer_email && (
-                <p><span className="text-gray-600">Email:</span> {lead.customer_email}</p>
+                <p className="text-xs sm:text-sm"><span className="text-gray-600">Email:</span> {lead.customer_email}</p>
               )}
             </div>
           </div>
 
           <div className="card">
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <Car className="w-5 h-5" />
+            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+              <Car className="w-4 h-4 sm:w-5 sm:h-5" />
               Vehicle Details
             </h3>
-            <div className="space-y-2">
-              <p><span className="text-gray-600">Number:</span> <strong>{lead.vehicle_number}</strong></p>
-              <p><span className="text-gray-600">Make/Model:</span> {lead.vehicle_make} {lead.vehicle_model}</p>
+            <div className="space-y-1.5 sm:space-y-2">
+              <p className="text-xs sm:text-sm"><span className="text-gray-600">Number:</span> <strong>{lead.vehicle_number}</strong></p>
+              <p className="text-xs sm:text-sm"><span className="text-gray-600">Make/Model:</span> {lead.vehicle_make} {lead.vehicle_model}</p>
               {lead.vehicle_year && (
-                <p><span className="text-gray-600">Year:</span> {lead.vehicle_year}</p>
+                <p className="text-xs sm:text-sm"><span className="text-gray-600">Year:</span> {lead.vehicle_year}</p>
               )}
             </div>
           </div>
@@ -780,59 +785,60 @@ export default function SupervisorJobDetailPage() {
 
         {/* Section 3: Service Details */}
         <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Package className="w-5 h-5" />
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+            <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
+              <Package className="w-4 h-4 sm:w-5 sm:h-5" />
               Service Request
             </h3>
             {/* Show edit button only if mechanic hasn't started work yet */}
             {(!lead.mechanic || lead.status === 'ACCEPTED' || lead.status === 'VEHICLE_DROPPED_AT_WORKSHOP') && (
               <button
                 onClick={() => setShowServicePackageModal(true)}
-                className="btn btn-outline flex items-center gap-2 text-sm"
+                className="btn btn-outline flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 self-start sm:self-auto"
               >
-                <Edit className="w-4 h-4" />
-                Change Package
+                <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Change Package</span>
+                <span className="sm:hidden">Change</span>
               </button>
             )}
           </div>
           
           {/* Service Types */}
           {lead.service_type_names && lead.service_type_names.length > 0 ? (
-            <div className="mb-4">
-              <p className="text-sm text-gray-600 mb-2 font-medium">Service Types:</p>
-              <div className="flex flex-wrap gap-2">
+            <div className="mb-3 sm:mb-4">
+              <p className="text-xs sm:text-sm text-gray-600 mb-1.5 sm:mb-2 font-medium">Service Types:</p>
+              <div className="flex flex-wrap gap-1.5 sm:gap-2">
               {lead.service_type_names.map((serviceName: string, index: number) => (
                   <span
                     key={index}
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
+                    className="inline-flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-100 text-blue-800 rounded-full text-[10px] sm:text-xs md:text-sm font-medium"
                   >
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-500 rounded-full"></span>
                     {serviceName}
                   </span>
               ))}
               </div>
             </div>
           ) : (
-            <div className="mb-4">
-            <p className="text-gray-700">{lead.service_type || 'General Service'}</p>
+            <div className="mb-3 sm:mb-4">
+            <p className="text-xs sm:text-sm md:text-base text-gray-700">{lead.service_type || 'General Service'}</p>
             </div>
           )}
 
           {/* Service Addons */}
           {lead.service_addon_names && lead.service_addon_names.length > 0 && (
-            <div className="mb-4">
-              <p className="text-sm text-gray-600 mb-2 font-medium">Service Addons:</p>
-              <div className="flex flex-wrap gap-2">
+            <div className="mb-3 sm:mb-4">
+              <p className="text-xs sm:text-sm text-gray-600 mb-1.5 sm:mb-2 font-medium">Service Addons:</p>
+              <div className="flex flex-wrap gap-1.5 sm:gap-2">
                 {lead.service_addon_names.map((addon: any, index: number) => (
                   <span
                     key={index}
-                    className="inline-flex items-center gap-2 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium"
+                    className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-0.5 sm:py-1 bg-green-100 text-green-800 rounded-full text-[10px] sm:text-xs md:text-sm font-medium"
                   >
-                    <Package className="w-3 h-3" />
+                    <Package className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                     {addon.name}
                     {addon.price && (
-                      <span className="text-xs font-semibold">(₹{addon.price.toLocaleString()})</span>
+                      <span className="text-[9px] sm:text-xs font-semibold">(₹{addon.price.toLocaleString()})</span>
                     )}
                   </span>
                 ))}
@@ -841,13 +847,13 @@ export default function SupervisorJobDetailPage() {
           )}
 
           {lead.problem_description && (
-            <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-600 font-semibold">Problem Description:</p>
-              <p className="text-sm text-gray-700 mt-1">{lead.problem_description}</p>
+            <div className="mt-2 sm:mt-3 p-2 sm:p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs sm:text-sm text-gray-600 font-semibold">Problem Description:</p>
+              <p className="text-xs sm:text-sm text-gray-700 mt-0.5 sm:mt-1">{lead.problem_description}</p>
             </div>
           )}
           {lead.issue_description && (
-            <p className="text-sm text-gray-600 mt-2">{lead.issue_description}</p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-1.5 sm:mt-2">{lead.issue_description}</p>
           )}
         </div>
 
@@ -894,24 +900,24 @@ export default function SupervisorJobDetailPage() {
         {/* Section 6: Extra Charges */}
         {pendingExtraCharges.length > 0 && (
           <div className="card bg-orange-50 border-orange-200">
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-orange-600" />
+            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+              <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
               Pending Extra Work Approvals
             </h3>
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {pendingExtraCharges.map((charge: any) => (
-                <div key={charge.id} className="bg-white p-4 rounded-lg border border-orange-200">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-semibold">{charge.description}</p>
-                      <p className="text-2xl font-bold text-brand-primary mt-1">
+                <div key={charge.id} className="bg-white p-3 sm:p-4 rounded-lg border border-orange-200">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm sm:text-base">{charge.description}</p>
+                      <p className="text-xl sm:text-2xl font-bold text-brand-primary mt-0.5 sm:mt-1">
                         ₹{charge.amount.toLocaleString()}
                       </p>
-                      <p className="text-sm text-gray-600 mt-1">{charge.reason}</p>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{charge.reason}</p>
                     </div>
                     <button
                       onClick={() => setSelectedExtraCharge(charge)}
-                      className="btn bg-orange-600 hover:bg-orange-700 text-white text-sm"
+                      className="btn bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
                     >
                       Review
                     </button>
@@ -925,19 +931,19 @@ export default function SupervisorJobDetailPage() {
         {/* Section 6: Media */}
         {lead.media && lead.media.length > 0 && (
           <div className="card">
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <ImageIcon className="w-5 h-5" />
+            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+              <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               Media ({lead.media.length})
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
               {lead.media.map((item: any) => (
                 <div key={item.id} className="relative">
                   <img
                     src={item.file_url}
                     alt={item.media_type}
-                    className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-90"
+                    className="w-full h-24 sm:h-28 md:h-32 object-cover rounded-lg cursor-pointer hover:opacity-90"
                   />
-                  <span className="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                  <span className="absolute top-1 sm:top-2 left-1 sm:left-2 bg-black bg-opacity-70 text-white text-[9px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
                     {item.media_type}
                   </span>
                 </div>
@@ -949,9 +955,9 @@ export default function SupervisorJobDetailPage() {
         {/* Section 7: Mechanic Parts Assignment */}
         {lead.mechanic && (
           <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <Package className="w-5 h-5" />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
+              <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
+                <Package className="w-4 h-4 sm:w-5 sm:h-5" />
                 Mechanic Parts Assignment ({parts.length})
               </h3>
               <button
@@ -960,36 +966,36 @@ export default function SupervisorJobDetailPage() {
                   setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
                   setShowAddPartModal(true);
                 }}
-                className="btn btn-primary flex items-center gap-2"
+                className="btn btn-primary flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 self-start sm:self-auto"
               >
-                <Package className="w-4 h-4" />
+                <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 Add Part
               </button>
             </div>
 
             {parts.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Package className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                <p>No parts assigned yet</p>
+              <div className="text-center py-6 sm:py-8 text-gray-500">
+                <Package className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-1.5 sm:mb-2 opacity-30" />
+                <p className="text-xs sm:text-sm">No parts assigned yet</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {parts.map((part) => (
-                  <div key={part.id} className="p-4 border rounded-lg bg-gray-50">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <p className="font-semibold text-lg">{part.part_name}</p>
+                  <div key={part.id} className="p-3 sm:p-4 border rounded-lg bg-gray-50">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm sm:text-base md:text-lg">{part.part_name}</p>
                         {part.part_code && (
-                          <p className="text-sm text-gray-600">Code: {part.part_code}</p>
+                          <p className="text-xs sm:text-sm text-gray-600 mt-0.5">Code: {part.part_code}</p>
                         )}
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                           Quantity: {part.quantity || 0}
                         </p>
                         {part.notes && (
-                          <p className="text-sm text-gray-600 mt-1">{part.notes}</p>
+                          <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{part.notes}</p>
                         )}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-1.5 sm:gap-2 self-start">
                         <button
                           onClick={() => {
                             setEditingPart(part);
@@ -1001,13 +1007,13 @@ export default function SupervisorJobDetailPage() {
                             });
                             setShowAddPartModal(true);
                           }}
-                          className="btn btn-outline text-sm"
+                          className="btn btn-outline text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => deletePart(part.id)}
-                          className="btn bg-red-500 hover:bg-red-600 text-white text-sm"
+                          className="btn bg-red-500 hover:bg-red-600 text-white text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5"
                         >
                           Delete
                         </button>
@@ -1022,34 +1028,34 @@ export default function SupervisorJobDetailPage() {
 
         {/* Section 8: Internal Notes */}
         <div className="card bg-blue-50 border-blue-200">
-          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-blue-600" />
+          <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+            <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
             Internal Supervisor Notes
           </h3>
           <textarea
             value={internalNotes}
             onChange={(e) => setInternalNotes(e.target.value)}
             placeholder="Add your private notes here... (visible only to supervisors and admins)"
-            className="input w-full"
+            className="input w-full text-xs sm:text-sm"
             rows={4}
           />
-          <div className="flex items-center justify-between mt-3">
-            <p className="text-xs text-gray-600">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mt-2 sm:mt-3">
+            <p className="text-[10px] sm:text-xs text-gray-600">
               These notes are internal and not visible to mechanics or customers
             </p>
             <button
               onClick={saveInternalNotes}
               disabled={savingNotes}
-              className="btn btn-primary flex items-center gap-2"
+              className="btn btn-primary flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
             >
               {savingNotes ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>
                   Saving...
                 </>
               ) : (
                 <>
-                  <Save className="w-4 h-4" />
+                  <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   Save Notes
                 </>
               )}
@@ -1065,45 +1071,49 @@ export default function SupervisorJobDetailPage() {
         {/* Section 8: Status Management */}
         {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS' || lead.status === 'INSPECTED' || lead.status === 'QC_PENDING' || lead.status === 'COMPLETED' || lead.status === 'WORK_COMPLETED') && (
           <div className="card bg-purple-50 border-purple-200">
-            <h3 className="text-lg font-semibold mb-3">Change Job Status</h3>
-            <p className="text-sm text-gray-600 mb-4">
+            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3">Change Job Status</h3>
+            <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
               Update the job status based on your inspection and validation
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
               {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS') && (
                 <button
                   onClick={() => changeJobStatus('IN_PROGRESS')}
-                  className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
+                  className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
-                  <CheckCircle className="w-4 h-4" />
-                  Mark as IN PROGRESS
+                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Mark as IN PROGRESS</span>
+                  <span className="sm:hidden">IN PROGRESS</span>
                 </button>
               )}
               {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS') && (
                 <button
                   onClick={() => changeJobStatus('INSPECTED')}
-                  className="btn bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center gap-2"
+                  className="btn bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
-                  <CheckCircle className="w-4 h-4" />
-                  Mark as INSPECTED
+                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Mark as INSPECTED</span>
+                  <span className="sm:hidden">INSPECTED</span>
                 </button>
               )}
               {(lead.status === 'INSPECTED' || lead.status === 'WORK_COMPLETED' || lead.status === 'QC_PENDING') && (
                 <button
                   onClick={() => changeJobStatus('QC_APPROVED')}
-                  className="btn bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-2"
+                  className="btn bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
-                  <CheckCircle className="w-4 h-4" />
-                  QC APPROVED
+                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">QC APPROVED</span>
+                  <span className="sm:hidden">QC OK</span>
                 </button>
               )}
               {lead.status === 'QC_APPROVED' && (
                 <button
                   onClick={() => changeJobStatus('READY_FOR_DELIVERY')}
-                  className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
+                  className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
-                  <Package className="w-4 h-4" />
-                  READY FOR DELIVERY
+                  <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">READY FOR DELIVERY</span>
+                  <span className="sm:hidden">Ready</span>
                 </button>
               )}
             </div>
@@ -1113,17 +1123,17 @@ export default function SupervisorJobDetailPage() {
         {/* Section 9: QC Section */}
         {lead.status === 'COMPLETED' && lead.qc_status === 'PENDING' && !showQC && (
           <div className="card bg-purple-50 border-purple-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-purple-600" />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
                   Quality Control Required
                 </h3>
-                <p className="text-sm text-gray-600 mt-1">This job is ready for quality inspection</p>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">This job is ready for quality inspection</p>
               </div>
               <button
                 onClick={() => setShowQC(true)}
-                className="btn bg-purple-600 hover:bg-purple-700 text-white"
+                className="btn bg-purple-600 hover:bg-purple-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
               >
                 Perform QC
               </button>
@@ -1146,17 +1156,17 @@ export default function SupervisorJobDetailPage() {
         {/* Section 10: Activity Timeline */}
         {lead.events && lead.events.length > 0 && (
           <div className="card">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <History className="w-5 h-5" />
+            <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+              <History className="w-4 h-4 sm:w-5 sm:h-5" />
               Activity Timeline
             </h3>
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {lead.events.slice(0, 10).map((event: any) => (
-                <div key={event.id} className="flex gap-3 pb-3 border-b border-gray-200 last:border-0">
-                  <div className="flex-shrink-0 w-2 h-2 rounded-full bg-brand-primary mt-2"></div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{event.event_description}</p>
-                    <p className="text-xs text-gray-500 mt-1">
+                <div key={event.id} className="flex gap-2 sm:gap-3 pb-2 sm:pb-3 border-b border-gray-200 last:border-0">
+                  <div className="flex-shrink-0 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-brand-primary mt-1.5 sm:mt-2"></div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium">{event.event_description}</p>
+                    <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
                       {new Date(event.created_at).toLocaleString()}
                       {event.created_by_user && ` • by ${event.created_by_user.full_name}`}
                     </p>
@@ -1251,10 +1261,10 @@ export default function SupervisorJobDetailPage() {
 
       {/* Add/Edit Part Modal */}
       {showAddPartModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <h2 className="text-lg sm:text-xl font-bold">
                 {editingPart ? 'Edit Part' : 'Add Part'}
               </h2>
               <button
@@ -1263,78 +1273,78 @@ export default function SupervisorJobDetailPage() {
                   setEditingPart(null);
                   setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
                 }}
-                className="btn btn-outline"
+                className="btn btn-outline p-1.5 sm:p-2"
               >
-                <XCircle className="w-5 h-5" />
+                <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">
+                <label className="block text-xs sm:text-sm font-medium mb-1">
                   Part Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={partForm.part_name}
                   onChange={(e) => setPartForm({ ...partForm, part_name: e.target.value })}
-                  className="input w-full"
+                  className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   placeholder="e.g., Oil Filter, Brake Pads"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Part Code</label>
+                <label className="block text-xs sm:text-sm font-medium mb-1">Part Code</label>
                 <input
                   type="text"
                   value={partForm.part_code}
                   onChange={(e) => setPartForm({ ...partForm, part_code: e.target.value })}
-                  className="input w-full"
+                  className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   placeholder="e.g., OF-12345"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">
+                <label className="block text-xs sm:text-sm font-medium mb-1">
                   Quantity Issued <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
                   value={partForm.quantity_issued}
                   onChange={(e) => setPartForm({ ...partForm, quantity_issued: parseInt(e.target.value) || 1 })}
-                  className="input w-full"
+                  className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   min="1"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Notes</label>
+                <label className="block text-xs sm:text-sm font-medium mb-1">Notes</label>
                 <textarea
                   value={partForm.part_notes}
                   onChange={(e) => setPartForm({ ...partForm, part_notes: e.target.value })}
-                  className="input w-full"
+                  className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   rows={3}
                   placeholder="Additional notes about this part..."
                 />
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button
                   onClick={() => {
                     setShowAddPartModal(false);
                     setEditingPart(null);
                     setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
                   }}
-                  className="btn btn-outline flex-1"
+                  className="btn btn-outline flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={savePart}
                   disabled={!partForm.part_name || partForm.quantity_issued < 1}
-                  className="btn btn-primary flex-1"
+                  className="btn btn-primary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
                   {editingPart ? 'Update' : 'Add'} Part
                 </button>

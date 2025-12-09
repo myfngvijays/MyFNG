@@ -90,3 +90,4 @@ console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
 1. Open browser console
 2. Check for error messages
 3. Share console output if issues persist
+

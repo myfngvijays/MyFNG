@@ -506,39 +506,39 @@ export default function CreateLeadPage() {
 
   return (
     <DashboardLayout role="telecaller">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-5 md:space-y-6 px-3 sm:px-4">
         {/* Success Message */}
         {successMessage && (
-          <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2">
-            <CheckCircle className="w-5 h-5" />
-            <span className="font-medium">{successMessage}</span>
+          <div className="bg-green-50 border border-green-200 text-green-800 px-3 sm:px-4 py-2 sm:py-3 rounded-lg flex items-center gap-1.5 sm:gap-2">
+            <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+            <span className="font-medium text-sm sm:text-base">{successMessage}</span>
           </div>
         )}
 
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-text-heading">Create New Lead</h1>
-          <p className="text-text-body mt-2">Fill in customer and vehicle details to create a lead</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Create New Lead</h1>
+          <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Fill in customer and vehicle details to create a lead</p>
         </div>
 
         {/* Progress Steps */}
         <div className="card">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between px-2 sm:px-0">
             {[1, 2, 3].map(num => (
               <div key={num} className="flex items-center">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                <div className={`w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center font-semibold text-sm sm:text-base ${
                   step >= num ? 'bg-brand-primary text-white' : 'bg-gray-200 text-gray-600'
                   }`}>
                   {step > num ? '✓' : num}
                   </div>
-                {num < 3 && <div className={`w-24 h-1 ${step > num ? 'bg-brand-primary' : 'bg-gray-200'}`} />}
+                {num < 3 && <div className={`w-12 sm:w-16 md:w-24 h-0.5 sm:h-1 ${step > num ? 'bg-brand-primary' : 'bg-gray-200'}`} />}
               </div>
             ))}
           </div>
-          <div className="flex justify-between mt-3">
-            <span className="text-sm font-medium">Customer</span>
-            <span className="text-sm font-medium">Vehicle</span>
-            <span className="text-sm font-medium">Service & Pickup</span>
+          <div className="flex justify-between mt-2 sm:mt-3 px-2 sm:px-0">
+            <span className="text-xs sm:text-sm font-medium text-center">Customer</span>
+            <span className="text-xs sm:text-sm font-medium text-center">Vehicle</span>
+            <span className="text-xs sm:text-sm font-medium text-center">Service & Pickup</span>
           </div>
         </div>
 
@@ -546,15 +546,15 @@ export default function CreateLeadPage() {
         <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="card">
           {/* Step 1: Customer Details */}
           {step === 1 && (
-            <div className="space-y-6">
-              <h2 className="text-xl font-bold text-text-heading flex items-center gap-2">
-                <User className="w-5 h-5" />
+            <div className="space-y-4 sm:space-y-5 md:space-y-6">
+              <h2 className="text-lg sm:text-xl font-bold text-text-heading flex items-center gap-1.5 sm:gap-2">
+                <User className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 Customer Details
               </h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Customer Name <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -562,16 +562,16 @@ export default function CreateLeadPage() {
                     name="customer_name"
                     value={formData.customer_name}
                     onChange={handleChange}
-                    className={`input ${errors.customer_name ? 'border-red-500' : ''}`}
+                    className={`input text-sm ${errors.customer_name ? 'border-red-500' : ''}`}
                     placeholder="Enter customer name"
                   />
                   {errors.customer_name && (
-                    <p className="mt-1 text-sm text-red-500">{errors.customer_name}</p>
+                    <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.customer_name}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Phone Number <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -579,17 +579,17 @@ export default function CreateLeadPage() {
                     name="customer_phone"
                     value={formData.customer_phone}
                     onChange={handleChange}
-                    className={`input ${errors.customer_phone ? 'border-red-500' : ''}`}
+                    className={`input text-sm ${errors.customer_phone ? 'border-red-500' : ''}`}
                     placeholder="10-digit mobile number"
                     maxLength={10}
                   />
                   {errors.customer_phone && (
-                    <p className="mt-1 text-sm text-red-500">{errors.customer_phone}</p>
+                    <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.customer_phone}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Alternate Phone
                   </label>
                   <input
@@ -597,14 +597,14 @@ export default function CreateLeadPage() {
                     name="customer_alternate_phone"
                     value={formData.customer_alternate_phone}
                     onChange={handleChange}
-                    className="input"
+                    className="input text-sm"
                     placeholder="Optional alternate number"
                     maxLength={10}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Email
                   </label>
                   <input
@@ -612,37 +612,37 @@ export default function CreateLeadPage() {
                     name="customer_email"
                     value={formData.customer_email}
                     onChange={handleChange}
-                    className="input"
+                    className="input text-sm"
                     placeholder="customer@example.com"
                   />
                 </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Address <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     name="customer_address"
                     value={formData.customer_address}
                     onChange={handleChange}
-                    className={`input ${errors.customer_address ? 'border-red-500' : ''}`}
+                    className={`input text-sm ${errors.customer_address ? 'border-red-500' : ''}`}
                     placeholder="Enter complete address"
                     rows={3}
                   />
                   {errors.customer_address && (
-                    <p className="mt-1 text-sm text-red-500">{errors.customer_address}</p>
+                    <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.customer_address}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     City <span className="text-red-500">*</span>
                   </label>
                   <select
                     name="city_id"
                     value={formData.city_id}
                     onChange={handleChange}
-                    className={`input ${errors.city_id ? 'border-red-500' : ''}`}
+                    className={`input text-sm ${errors.city_id ? 'border-red-500' : ''}`}
                   >
                     <option value="">Select City</option>
                     {cities.map(city => (
@@ -650,12 +650,12 @@ export default function CreateLeadPage() {
                     ))}
                   </select>
                   {errors.city_id && (
-                    <p className="mt-1 text-sm text-red-500">{errors.city_id}</p>
+                    <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.city_id}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Pincode
                   </label>
                   <input
@@ -663,7 +663,7 @@ export default function CreateLeadPage() {
                     name="pincode"
                     value={formData.pincode}
                     onChange={handleChange}
-                    className="input"
+                    className="input text-sm"
                     placeholder="Enter pincode"
                     maxLength={6}
                   />
@@ -674,15 +674,15 @@ export default function CreateLeadPage() {
 
           {/* Step 2: Vehicle Details */}
           {step === 2 && (
-            <div className="space-y-6">
-              <h2 className="text-xl font-bold text-text-heading flex items-center gap-2">
-                <Car className="w-5 h-5" />
+            <div className="space-y-4 sm:space-y-5 md:space-y-6">
+              <h2 className="text-lg sm:text-xl font-bold text-text-heading flex items-center gap-1.5 sm:gap-2">
+                <Car className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 Vehicle Details
               </h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Vehicle Number <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -690,27 +690,27 @@ export default function CreateLeadPage() {
                     name="vehicle_number"
                     value={formData.vehicle_number}
                     onChange={handleChange}
-                    className={`input uppercase ${errors.vehicle_number ? 'border-red-500' : ''}`}
+                    className={`input text-sm uppercase ${errors.vehicle_number ? 'border-red-500' : ''}`}
                     placeholder="MH12AB1234"
                     required
                   />
                   {errors.vehicle_number && (
-                    <p className="mt-1 text-sm text-red-500">{errors.vehicle_number}</p>
+                    <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.vehicle_number}</p>
                   )}
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-[10px] sm:text-xs text-gray-500">
                     Format: AA00BB0000 (e.g., MH12AB1234)
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Vehicle Make <span className="text-red-500">*</span>
                   </label>
                   <select
                     name="vehicle_make"
                     value={formData.vehicle_make}
                     onChange={handleChange}
-                    className={`input ${errors.vehicle_make ? 'border-red-500' : ''}`}
+                    className={`input text-sm ${errors.vehicle_make ? 'border-red-500' : ''}`}
                   >
                     <option value="">Select Make</option>
                     {makes.map(make => (
@@ -718,19 +718,19 @@ export default function CreateLeadPage() {
                     ))}
                   </select>
                   {errors.vehicle_make && (
-                    <p className="mt-1 text-sm text-red-500">{errors.vehicle_make}</p>
+                    <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.vehicle_make}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Vehicle Model <span className="text-red-500">*</span>
                   </label>
                   <select
                     name="model_id"
                     value={formData.model_id}
                     onChange={handleChange}
-                    className={`input ${errors.model_id ? 'border-red-500' : ''}`}
+                    className={`input text-sm ${errors.model_id ? 'border-red-500' : ''}`}
                     disabled={!formData.vehicle_make}
                   >
                     <option value="">Select Model</option>
@@ -741,12 +741,12 @@ export default function CreateLeadPage() {
                     ))}
                   </select>
                   {errors.model_id && (
-                    <p className="mt-1 text-sm text-red-500">{errors.model_id}</p>
+                    <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.model_id}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Variant
                   </label>
                   <input
@@ -754,13 +754,13 @@ export default function CreateLeadPage() {
                     name="vehicle_variant"
                     value={formData.vehicle_variant}
                     onChange={handleChange}
-                    className="input"
+                    className="input text-sm"
                     placeholder="e.g. VXI, ZXI"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Year
                   </label>
                   <input
@@ -768,7 +768,7 @@ export default function CreateLeadPage() {
                     name="vehicle_year"
                     value={formData.vehicle_year}
                     onChange={handleChange}
-                    className="input"
+                    className="input text-sm"
                     placeholder="2020"
                     min="1990"
                     max={new Date().getFullYear() + 1}
@@ -776,14 +776,14 @@ export default function CreateLeadPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Fuel Type <span className="text-red-500">*</span>
                   </label>
                   <select
                     name="vehicle_fuel_type"
                     value={formData.vehicle_fuel_type}
                     onChange={handleChange}
-                    className={`input ${errors.vehicle_fuel_type ? 'border-red-500' : ''}`}
+                    className={`input text-sm ${errors.vehicle_fuel_type ? 'border-red-500' : ''}`}
                   >
                     <option value="PETROL">Petrol</option>
                     <option value="DIESEL">Diesel</option>
@@ -792,12 +792,12 @@ export default function CreateLeadPage() {
                     <option value="HYBRID">Hybrid</option>
                   </select>
                   {errors.vehicle_fuel_type && (
-                    <p className="mt-1 text-sm text-red-500">{errors.vehicle_fuel_type}</p>
+                    <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.vehicle_fuel_type}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Odometer (KM)
                   </label>
                   <input
@@ -805,7 +805,7 @@ export default function CreateLeadPage() {
                     name="odometer_km"
                     value={formData.odometer_km}
                     onChange={handleChange}
-                    className="input"
+                    className="input text-sm"
                     placeholder="Current odometer reading"
                     min="0"
                   />
@@ -816,68 +816,69 @@ export default function CreateLeadPage() {
 
           {/* Step 3: Service Requirements & Pickup */}
           {step === 3 && (
-            <div className="space-y-6">
-              <h2 className="text-xl font-bold text-text-heading flex items-center gap-2">
-                <Wrench className="w-5 h-5" />
+            <div className="space-y-4 sm:space-y-5 md:space-y-6">
+              <h2 className="text-lg sm:text-xl font-bold text-text-heading flex items-center gap-1.5 sm:gap-2">
+                <Wrench className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 Service Requirements & Pickup
               </h2>
 
                 <div>
-                <label className="block text-sm font-medium text-text-body mb-3">
+                <label className="block text-xs sm:text-sm font-medium text-text-body mb-2 sm:mb-3">
                   Service Types <span className="text-red-500">*</span>
                 </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                   {serviceTypes.map(service => (
-                    <label key={service.id} className="flex items-start gap-3 p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <label key={service.id} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={formData.service_types.includes(service.id)}
                         onChange={(e) => handleMultiSelect('service_types', service.id, e.target.checked)}
-                        className="mt-1"
+                        className="mt-0.5 sm:mt-1 flex-shrink-0"
                       />
-                      <div>
-                        <div className="font-medium text-text-heading">{service.name}</div>
-                        <div className="text-sm text-text-body">{service.description}</div>
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm sm:text-base text-text-heading">{service.name}</div>
+                        <div className="text-xs sm:text-sm text-text-body">{service.description}</div>
                       </div>
                     </label>
                   ))}
                 </div>
                 {errors.service_types && (
-                  <p className="mt-2 text-sm text-red-500">{errors.service_types}</p>
+                  <p className="mt-2 text-xs sm:text-sm text-red-500">{errors.service_types}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-text-body mb-3">
+                <label className="block text-xs sm:text-sm font-medium text-text-body mb-2 sm:mb-3">
                   Service Add-ons (Optional)
                 </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                   {serviceAddons.map(addon => (
-                    <label key={addon.id} className="flex items-start gap-3 p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <label key={addon.id} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={formData.service_addons.includes(addon.id)}
                         onChange={(e) => handleMultiSelect('service_addons', addon.id, e.target.checked)}
-                        className="mt-1"
+                        className="mt-0.5 sm:mt-1 flex-shrink-0"
                       />
-                      <div className="flex-1">
-                        <div className="font-medium text-text-heading">{addon.name}</div>
-                        <div className="text-sm text-brand-primary">₹{addon.price}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm sm:text-base text-text-heading">{addon.name}</div>
+                        <div className="text-xs sm:text-sm text-brand-primary">₹{addon.price}</div>
                       </div>
                     </label>
                   ))}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-text-body mb-2">
-                  Payment Mode <span className="text-red-500">*</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
+                    Payment Mode <span className="text-red-500">*</span>
                   </label>
                   <select
                   name="payment_mode"
                   value={formData.payment_mode}
                     onChange={handleChange}
-                  className={`input ${errors.payment_mode ? 'border-red-500' : ''}`}
+                  className={`input text-sm ${errors.payment_mode ? 'border-red-500' : ''}`}
                   >
                   <option value="">Select Payment Mode</option>
                   <option value="PREPAID">Prepaid</option>
@@ -887,12 +888,12 @@ export default function CreateLeadPage() {
                   <option value="CARD">Card</option>
                   </select>
                 {errors.payment_mode && (
-                  <p className="mt-1 text-sm text-red-500">{errors.payment_mode}</p>
+                  <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.payment_mode}</p>
                   )}
                 </div>
 
                 <div>
-                <label className="block text-sm font-medium text-text-body mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                   Coupon Code
                 </label>
                 <input
@@ -900,35 +901,36 @@ export default function CreateLeadPage() {
                   name="coupon_code"
                   value={formData.coupon_code}
                   onChange={handleChange}
-                  className="input"
+                  className="input text-sm"
                   placeholder="Enter coupon code (if any)"
                 />
               </div>
+              </div>
 
-              <div className="grid grid-cols-1 gap-6">
+              <div className="grid grid-cols-1 gap-4 sm:gap-5 md:gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Description
                   </label>
                   <textarea
                     name="description"
                     value={formData.description}
                     onChange={handleChange}
-                    className="input"
+                    className="input text-sm"
                     placeholder="Brief description of service required"
                     rows={3}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-body mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Problem Description
                   </label>
                   <textarea
                     name="problem_description"
                     value={formData.problem_description}
                     onChange={handleChange}
-                    className="input"
+                    className="input text-sm"
                     placeholder="Detailed problem description from customer"
                     rows={3}
                   />
@@ -936,56 +938,57 @@ export default function CreateLeadPage() {
               </div>
 
               {/* Divider */}
-              <div className="border-t border-gray-200 my-6"></div>
+              <div className="border-t border-gray-200 my-4 sm:my-5 md:my-6"></div>
 
               {/* Pickup Section */}
-              <h3 className="text-lg font-semibold text-text-heading flex items-center gap-2">
-                <Calendar className="w-5 h-5" />
+              <h3 className="text-base sm:text-lg font-semibold text-text-heading flex items-center gap-1.5 sm:gap-2">
+                <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 Pickup & Additional Details
               </h3>
 
               <div>
-                <label className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg cursor-pointer">
+                <label className="flex items-center gap-2 p-3 sm:p-4 bg-blue-50 rounded-lg cursor-pointer">
                   <input
                     type="checkbox"
                     name="pickup_required"
                     checked={formData.pickup_required}
                     onChange={handleChange}
+                    className="flex-shrink-0"
                   />
-                  <span className="text-sm font-medium text-text-body">Customer requires vehicle pickup</span>
+                  <span className="text-xs sm:text-sm font-medium text-text-body">Customer requires vehicle pickup</span>
                   </label>
                 </div>
 
                 {formData.pickup_required && (
                   <>
                     <div>
-                    <label className="block text-sm font-medium text-text-body mb-2">
+                    <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                         Pickup Address
                       </label>
                     <textarea
                         name="pickup_address"
                         value={formData.pickup_address}
                         onChange={handleChange}
-                      className={`input ${errors.pickup_address ? 'border-red-500' : ''}`}
+                      className={`input text-sm ${errors.pickup_address ? 'border-red-500' : ''}`}
                       placeholder="Leave empty to use customer address"
                       rows={2}
                       />
                     {errors.pickup_address && (
-                      <p className="mt-1 text-sm text-red-500">{errors.pickup_address}</p>
+                      <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.pickup_address}</p>
                     )}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-text-body mb-2">
+                      <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                         Location (Latitude & Longitude)
                       </label>
-                      <div className="flex gap-4 items-center">
+                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-center">
                         <input
                           type="text"
                           name="customer_lat"
                           value={formData.customer_lat}
                           onChange={handleChange}
-                          className="input flex-1"
+                          className="input text-sm flex-1"
                           placeholder="Latitude"
                         />
                         <input
@@ -993,24 +996,25 @@ export default function CreateLeadPage() {
                           name="customer_lng"
                           value={formData.customer_lng}
                           onChange={handleChange}
-                          className="input flex-1"
+                          className="input text-sm flex-1"
                           placeholder="Longitude"
                         />
                         <button
                           type="button"
                           onClick={getCurrentLocation}
                           disabled={loadingLocation}
-                          className="btn btn-secondary flex items-center gap-2 whitespace-nowrap"
+                          className="btn btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5"
                         >
-                          <Navigation className="w-4 h-4" />
-                          {loadingLocation ? 'Getting...' : 'Get Location'}
+                          <Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          <span className="hidden sm:inline">{loadingLocation ? 'Getting...' : 'Get Location'}</span>
+                          <span className="sm:hidden">{loadingLocation ? 'Getting...' : 'Get'}</span>
                         </button>
                       </div>
                     </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-text-body mb-2">
+                      <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                         Preferred Pickup Time Start <span className="text-red-500">*</span>
                       </label>
                       <input
@@ -1018,15 +1022,15 @@ export default function CreateLeadPage() {
                         name="preferred_slot_start"
                         value={formData.preferred_slot_start}
                         onChange={handleChange}
-                        className={`input ${errors.preferred_slot_start ? 'border-red-500' : ''}`}
+                        className={`input text-sm ${errors.preferred_slot_start ? 'border-red-500' : ''}`}
                       />
                       {errors.preferred_slot_start && (
-                        <p className="mt-1 text-sm text-red-500">{errors.preferred_slot_start}</p>
+                        <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.preferred_slot_start}</p>
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-text-body mb-2">
+                      <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                         Preferred Pickup Time End <span className="text-red-500">*</span>
                       </label>
                       <input
@@ -1034,10 +1038,10 @@ export default function CreateLeadPage() {
                         name="preferred_slot_end"
                         value={formData.preferred_slot_end}
                         onChange={handleChange}
-                        className={`input ${errors.preferred_slot_end ? 'border-red-500' : ''}`}
+                        className={`input text-sm ${errors.preferred_slot_end ? 'border-red-500' : ''}`}
                       />
                       {errors.preferred_slot_end && (
-                        <p className="mt-1 text-sm text-red-500">{errors.preferred_slot_end}</p>
+                        <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.preferred_slot_end}</p>
                       )}
                     </div>
                     </div>
@@ -1045,14 +1049,14 @@ export default function CreateLeadPage() {
                 )}
 
                 <div>
-                <label className="block text-sm font-medium text-text-body mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                     Lead Priority
                   </label>
                   <select
                     name="lead_priority"
                     value={formData.lead_priority}
                     onChange={handleChange}
-                  className="input"
+                  className="input text-sm"
                   >
                   <option value="LOW">Low</option>
                   <option value="NORMAL">Normal</option>
@@ -1062,14 +1066,14 @@ export default function CreateLeadPage() {
                 </div>
 
                 <div>
-                <label className="block text-sm font-medium text-text-body mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
                   Additional Notes
                   </label>
                   <textarea
                     name="notes"
                     value={formData.notes}
                     onChange={handleChange}
-                  className="input"
+                  className="input text-sm"
                   placeholder="Any additional information or special instructions"
                   rows={4}
                   />
@@ -1078,12 +1082,12 @@ export default function CreateLeadPage() {
           )}
 
           {/* Navigation Buttons */}
-          <div className="flex justify-between mt-8 pt-6 border-t">
+          <div className="flex justify-between mt-6 sm:mt-7 md:mt-8 pt-4 sm:pt-5 md:pt-6 border-t gap-3">
             {step > 1 ? (
             <button
               type="button"
               onClick={prevStep}
-                className="btn btn-secondary"
+                className="btn btn-secondary text-xs sm:text-sm px-4 sm:px-5 py-2 sm:py-2.5"
             >
               Previous
             </button>
@@ -1095,19 +1099,19 @@ export default function CreateLeadPage() {
               <button
                 type="button"
                 onClick={nextStep}
-                className="btn btn-primary flex items-center gap-2"
+                className="btn btn-primary flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-4 sm:px-5 py-2 sm:py-2.5"
               >
                 Next
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             ) : (
               <button
                 type="submit"
                 disabled={loading}
-                className="btn btn-primary"
+                className="btn btn-primary text-xs sm:text-sm px-4 sm:px-5 py-2 sm:py-2.5 flex items-center gap-1.5 sm:gap-2"
               >
                 {loading ? 'Creating Lead...' : 'Create Lead'}
-                {!loading && <CheckCircle className="w-4 h-4 ml-2" />}
+                {!loading && <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
               </button>
             )}
           </div>

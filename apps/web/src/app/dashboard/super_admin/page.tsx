@@ -154,8 +154,8 @@ export default function SuperAdminDashboard() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
-          <p className="text-text-body">Loading Super Admin Dashboard...</p>
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary mx-auto mb-3 sm:mb-4"></div>
+          <p className="text-text-body text-xs sm:text-sm md:text-base">Loading Super Admin Dashboard...</p>
         </div>
       </div>
     );
@@ -164,33 +164,33 @@ export default function SuperAdminDashboard() {
   return (
     <div className="min-h-screen bg-background-grey">
       {/* Header */}
-      <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6">
-        <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🏆 Super Admin Control Panel</h1>
-        <p className="text-white font-medium mt-1">Ultimate System Control & Governance</p>
+      <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">🏆 Super Admin Control Panel</h1>
+        <p className="text-white font-medium text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">Ultimate System Control & Governance</p>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5 md:space-y-6">
         {/* System Status */}
-        <div className={`${globalMetrics.systemUptime > 99 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} border rounded-lg p-4 flex justify-between items-center`}>
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${globalMetrics.systemUptime > 99 ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
-            <span className={`font-semibold ${globalMetrics.systemUptime > 99 ? 'text-green-700' : 'text-red-700'}`}>
+        <div className={`${globalMetrics.systemUptime > 99 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} border rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0`}>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${globalMetrics.systemUptime > 99 ? 'bg-green-500' : 'bg-red-500'} animate-pulse flex-shrink-0`}></div>
+            <span className={`font-semibold text-xs sm:text-sm md:text-base ${globalMetrics.systemUptime > 99 ? 'text-green-700' : 'text-red-700'}`}>
               System Operational
             </span>
           </div>
-          <span className="text-sm text-gray-600">{globalMetrics.systemUptime}% Uptime</span>
+          <span className="text-xs sm:text-sm text-gray-600">{globalMetrics.systemUptime}% Uptime</span>
         </div>
 
         {/* Critical Alerts */}
         {alerts.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-xl font-bold text-gray-900">🚨 Critical Alerts</h2>
+          <div className="space-y-2 sm:space-y-3">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900">🚨 Critical Alerts</h2>
             {alerts.map((alert) => (
-              <div key={alert.id} className={`${alert.bg} border ${alert.border} rounded-lg p-4 flex items-start gap-3`}>
-                <AlertCircle className={`w-5 h-5 ${alert.color} mt-0.5`} />
-                <div className="flex-1">
-                  <h3 className={`font-semibold ${alert.color}`}>{alert.title}</h3>
-                  <p className="text-sm text-gray-600 mt-1">{alert.message}</p>
+              <div key={alert.id} className={`${alert.bg} border ${alert.border} rounded-lg p-3 sm:p-4 flex items-start gap-2 sm:gap-3`}>
+                <AlertCircle className={`w-4 h-4 sm:w-5 sm:h-5 ${alert.color} mt-0.5 flex-shrink-0`} />
+                <div className="flex-1 min-w-0">
+                  <h3 className={`font-semibold text-sm sm:text-base ${alert.color}`}>{alert.title}</h3>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{alert.message}</p>
                 </div>
               </div>
             ))}
@@ -199,8 +199,8 @@ export default function SuperAdminDashboard() {
 
         {/* Global Metrics */}
         <div>
-          <h2 className="text-xl font-bold text-text-heading mb-4">🌍 Global Metrics</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">🌍 Global Metrics</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             <MetricCard
               icon={<Phone className="w-6 h-6 text-brand-primary" />}
               label="Leads Today"
@@ -253,24 +253,24 @@ export default function SuperAdminDashboard() {
         </div>
 
         {/* Revenue */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold text-text-heading mb-4">💰 Revenue Overview</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+          <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">💰 Revenue Overview</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
             <div className="text-center">
-              <p className="text-sm text-text-body mb-1">Daily Revenue</p>
-              <p className="text-3xl font-bold text-green-600">
+              <p className="text-xs sm:text-sm text-text-body mb-1">Daily Revenue</p>
+              <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-green-600">
                 ₹{(globalMetrics.dailyRevenue / 1000).toFixed(1)}K
               </p>
             </div>
-            <div className="text-center border-x">
-              <p className="text-sm text-text-body mb-1">Total Revenue</p>
-              <p className="text-3xl font-bold text-brand-primary">
+            <div className="text-center border-x border-gray-200">
+              <p className="text-xs sm:text-sm text-text-body mb-1">Total Revenue</p>
+              <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-brand-primary">
                 ₹{(globalMetrics.totalRevenue / 100000).toFixed(1)}L
               </p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-text-body mb-1">Avg Rating</p>
-              <p className="text-3xl font-bold text-orange-600">
+              <p className="text-xs sm:text-sm text-text-body mb-1">Avg Rating</p>
+              <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-orange-600">
                 {globalMetrics.avgWorkshopRating}⭐
               </p>
             </div>
@@ -279,8 +279,8 @@ export default function SuperAdminDashboard() {
 
         {/* Department Performance */}
         <div>
-          <h2 className="text-xl font-bold text-text-heading mb-4">📊 Department Performance</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">📊 Department Performance</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             <DepartmentCard
               icon={<Phone className="w-6 h-6 text-brand-primary" />}
               title="Telecaller"
@@ -331,8 +331,8 @@ export default function SuperAdminDashboard() {
 
         {/* Quick Admin Actions */}
         <div>
-          <h2 className="text-xl font-bold text-text-heading mb-4">⚡ Super Admin Actions</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">⚡ Super Admin Actions</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
             <ActionButton href="/dashboard/super_admin/workshops" icon="🏪" label="Workshops" color="bg-brand-primary" />
             <ActionButton href="/dashboard/super_admin/users" icon="👥" label="Users" color="bg-brand-secondary" />
             <ActionButton href="/dashboard/super_admin/finance" icon="💰" label="Finance" color="bg-green-500" />
@@ -348,12 +348,12 @@ export default function SuperAdminDashboard() {
 
 function MetricCard({ icon, label, value, color }: any) {
   return (
-    <div className={`${color} border rounded-lg p-4`}>
-      <div className="flex items-center gap-3">
-        {icon}
-        <div>
-          <p className="text-2xl font-bold text-text-heading">{value}</p>
-          <p className="text-sm text-text-body">{label}</p>
+    <div className={`${color} border rounded-lg p-3 sm:p-4`}>
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex-shrink-0">{icon}</div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xl sm:text-2xl font-bold text-text-heading">{value}</p>
+          <p className="text-xs sm:text-sm text-text-body truncate">{label}</p>
         </div>
       </div>
     </div>
@@ -362,18 +362,18 @@ function MetricCard({ icon, label, value, color }: any) {
 
 function DepartmentCard({ icon, title, metrics }: any) {
   return (
-    <div className="bg-white rounded-lg shadow p-5">
-      <div className="flex items-center gap-3 mb-4 pb-3 border-b">
-        {icon}
-        <h3 className="font-bold text-text-heading">{title}</h3>
+    <div className="bg-white rounded-lg shadow p-4 sm:p-5">
+      <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 pb-2 sm:pb-3 border-b">
+        <div className="flex-shrink-0">{icon}</div>
+        <h3 className="font-bold text-sm sm:text-base text-text-heading truncate">{title}</h3>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 md:gap-4">
         {metrics.map((metric: any, index: number) => (
           <div key={index} className="text-center">
-            <p className={`text-lg font-bold ${metric.highlight ? 'text-green-600' : 'text-text-heading'}`}>
+            <p className={`text-base sm:text-lg font-bold ${metric.highlight ? 'text-green-600' : 'text-text-heading'}`}>
               {metric.value}
             </p>
-            <p className="text-xs text-text-body mt-1">{metric.label}</p>
+            <p className="text-[10px] sm:text-xs text-text-body mt-0.5 sm:mt-1">{metric.label}</p>
           </div>
         ))}
       </div>
@@ -385,10 +385,10 @@ function ActionButton({ href, icon, label, color }: any) {
   return (
     <a
       href={href}
-      className={`${color} hover:bg-brand-primary-hover text-white rounded-lg p-4 flex flex-col items-center justify-center gap-2 transition-all hover:scale-105 shadow-lg`}
+      className={`${color} hover:bg-brand-primary-hover text-white rounded-lg p-3 sm:p-4 flex flex-col items-center justify-center gap-1.5 sm:gap-2 transition-all hover:scale-105 shadow-lg`}
     >
-      <span className="text-3xl">{icon}</span>
-      <span className="font-semibold text-sm">{label}</span>
+      <span className="text-2xl sm:text-3xl">{icon}</span>
+      <span className="font-semibold text-xs sm:text-sm text-center">{label}</span>
     </a>
   );
 }

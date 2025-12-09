@@ -78,3 +78,4 @@ FROM pg_policies
 WHERE tablename IN ('cities', 'car_models', 'service_types', 'workshop_service_pricing')
   AND 'anon' = ANY(roles)
 GROUP BY tablename;
+

@@ -183,74 +183,74 @@ export default function Navbar() {
 
   return (
     <header className="fixed top-0 w-full bg-white/95 backdrop-blur-sm shadow-sm z-50">
-      <nav className="container mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <img src="/logo.png" alt="MyFNG Logo" className="h-10 w-auto" />
+      <nav className="container mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4">
+        <div className="flex items-center justify-between gap-2 sm:gap-4">
+          <Link href="/" className="flex items-center gap-1.5 sm:gap-2 md:gap-3 min-w-0 flex-shrink-0">
+            <img src="/logo.png" alt="MyFNG Logo" className="h-7 sm:h-8 md:h-10 w-auto flex-shrink-0" />
             
             {/* City Name Display */}
             {isDetecting ? (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
+              <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-500">
+                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin flex-shrink-0" />
                 <span className="hidden sm:inline">Detecting...</span>
               </div>
             ) : cityName ? (
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={handleCityClick}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-full border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all cursor-pointer group"
+                  className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-blue-50 rounded-full border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all cursor-pointer group"
                 >
-                  <MapPin className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-semibold text-blue-700">{cityName}</span>
-                  <ChevronDown className={`w-4 h-4 text-blue-600 transition-transform ${showCityDropdown ? 'rotate-180' : ''}`} />
+                  <MapPin className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm font-semibold text-blue-700 truncate max-w-[100px] sm:max-w-none">{cityName}</span>
+                  <ChevronDown className={`w-3 h-3 sm:w-4 sm:h-4 text-blue-600 transition-transform flex-shrink-0 ${showCityDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* City Dropdown */}
                 {showCityDropdown && (
-                  <div className="absolute top-full left-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
-                    <div className="p-4 border-b border-gray-200">
+                  <div className="absolute top-full left-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
+                    <div className="p-3 sm:p-4 border-b border-gray-200">
                       <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
                         <input
                           type="text"
                           placeholder="Search city..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           autoFocus
                         />
                       </div>
                     </div>
                     
-                    <div className="max-h-64 overflow-y-auto">
+                    <div className="max-h-48 sm:max-h-64 overflow-y-auto">
                       {loadingCities ? (
-                        <div className="p-8 text-center">
-                          <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto mb-2" />
-                          <p className="text-sm text-gray-500">Loading cities...</p>
+                        <div className="p-6 sm:p-8 text-center">
+                          <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin text-blue-600 mx-auto mb-2" />
+                          <p className="text-xs sm:text-sm text-gray-500">Loading cities...</p>
                         </div>
                       ) : filteredCities.length === 0 ? (
-                        <div className="p-8 text-center">
-                          <p className="text-sm text-gray-500">No cities found</p>
+                        <div className="p-6 sm:p-8 text-center">
+                          <p className="text-xs sm:text-sm text-gray-500">No cities found</p>
                         </div>
                       ) : (
-                        <div className="py-2">
+                        <div className="py-1 sm:py-2">
                           {filteredCities.map((city) => (
                             <button
                               key={city.id}
                               onClick={() => handleCitySelect(city)}
-                              className={`w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors ${
+                              className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-left hover:bg-blue-50 transition-colors ${
                                 cityName === city.name ? 'bg-blue-50 border-l-4 border-blue-600' : ''
                               }`}
                             >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="font-semibold text-gray-900">{city.name}</p>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold text-sm sm:text-base text-gray-900 truncate">{city.name}</p>
                                   {city.state && (
-                                    <p className="text-xs text-gray-500 mt-0.5">{city.state}</p>
+                                    <p className="text-xs text-gray-500 mt-0.5 truncate">{city.state}</p>
                                   )}
                                 </div>
                                 {cityName === city.name && (
-                                  <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-600 rounded-full flex-shrink-0"></div>
                                 )}
                               </div>
                             </button>
@@ -259,15 +259,15 @@ export default function Navbar() {
                       )}
                     </div>
                     
-                    <div className="p-3 border-t border-gray-200 bg-gray-50">
+                    <div className="p-2 sm:p-3 border-t border-gray-200 bg-gray-50">
                       <button
                         onClick={() => {
                           setShowCityDropdown(false);
                           detectLocation();
                         }}
-                        className="w-full text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center gap-2"
+                        className="w-full text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center gap-1.5 sm:gap-2"
                       >
-                        <MapPin className="w-4 h-4" />
+                        <MapPin className="w-3 h-3 sm:w-4 sm:h-4" />
                         Detect My Location Again
                       </button>
                     </div>
@@ -277,20 +277,21 @@ export default function Navbar() {
             ) : null}
           </Link>
           
-          <div className="hidden md:flex items-center gap-8">
-            <Link href="/services" className="text-text-body hover:text-brand-primary transition font-medium">Services</Link>
-            <Link href="/roadside-assistance" className="text-text-body hover:text-brand-primary transition font-medium">Roadside Assistance</Link>
-            <Link href="/ai-experience" className="text-text-body hover:text-brand-primary transition font-medium">AI Experience</Link>
-            <Link href="/contact" className="text-text-body hover:text-brand-primary transition font-medium">Contact</Link>
+          <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
+            <Link href="/services" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Services</Link>
+            <Link href="/roadside-assistance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
+            <Link href="/ai-experience" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">AI Experience</Link>
+            <Link href="/contact" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
           </div>
 
-          <div className="flex items-center gap-4">
-            <Link href="/login" className="hidden md:inline-flex items-center text-brand-primary font-semibold hover:text-brand-secondary transition">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
+            <Link href="/login" className="hidden lg:inline-flex items-center text-xs sm:text-sm md:text-base text-brand-primary font-semibold hover:text-brand-secondary transition whitespace-nowrap">
               Partner Login
             </Link>
-            <Link href="/customer/login" className="btn btn-primary">
-              Customer Login
-              <ArrowRight className="w-4 h-4" />
+            <Link href="/customer/login" className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 whitespace-nowrap">
+              <span className="hidden sm:inline">Customer Login</span>
+              <span className="sm:hidden">Login</span>
+              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
             </Link>
           </div>
         </div>

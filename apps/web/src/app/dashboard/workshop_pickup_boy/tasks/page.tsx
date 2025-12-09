@@ -225,8 +225,8 @@ export default function PickupTasksPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_pickup_boy">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -234,11 +234,11 @@ export default function PickupTasksPage() {
 
   return (
     <DashboardLayout role="workshop_pickup_boy">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
-          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🚚 My Pickup Tasks</h1>
-          <p className="text-white font-medium mt-1">Vehicle pickup and delivery assignments</p>
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">🚚 My Pickup Tasks</h1>
+          <p className="text-white font-medium text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">Vehicle pickup and delivery assignments</p>
         </div>
 
         {/* Filter Tabs */}
@@ -246,7 +246,7 @@ export default function PickupTasksPage() {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
                 filter === 'all'
                   ? 'bg-brand-primary text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -256,7 +256,7 @@ export default function PickupTasksPage() {
             </button>
             <button
               onClick={() => setFilter('scheduled')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
                 filter === 'scheduled'
                   ? 'bg-yellow-500 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -266,7 +266,7 @@ export default function PickupTasksPage() {
             </button>
             <button
               onClick={() => setFilter('in_transit')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
                 filter === 'in_transit'
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -276,7 +276,7 @@ export default function PickupTasksPage() {
             </button>
             <button
               onClick={() => setFilter('completed')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
                 filter === 'completed'
                   ? 'bg-green-500 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -289,17 +289,17 @@ export default function PickupTasksPage() {
 
         {/* Tasks List */}
         {tasks.length === 0 ? (
-          <div className="card text-center py-12">
-            <CheckCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No Tasks</h3>
-            <p className="text-gray-500">
+          <div className="card text-center py-8 sm:py-10 md:py-12">
+            <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">No Tasks</h3>
+            <p className="text-gray-500 text-sm sm:text-base">
               {filter === 'all' 
                 ? 'You have no active pickup tasks.' 
                 : `No tasks with status: ${filter}`}
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {tasks.map((task) => {
               const statusBadge = getStatusBadge(task.status, !!task.pickup_otp, !!task.pickup_otp_verified_at);
               return (
@@ -307,22 +307,22 @@ export default function PickupTasksPage() {
                   key={task.id} 
                   className="card hover:shadow-xl transition-all border-l-4 border-blue-500"
                 >
-                  <div className="space-y-4">
+                  <div className="space-y-3 sm:space-y-4">
                     {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="badge-blue text-lg">{task.lead_number}</span>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className="badge-blue text-sm sm:text-base md:text-lg">{task.lead_number}</span>
                         <span className={statusBadge.class}>{statusBadge.text}</span>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-600">Preferred Date & Time</p>
+                      <div className="text-left sm:text-right flex-shrink-0">
+                        <p className="text-xs sm:text-sm text-gray-600">Preferred Date & Time</p>
                         {(() => {
                           // Check for preferred_date (DATE column)
                           if (task.preferred_date) {
                             const date = new Date(task.preferred_date);
                             return (
                               <>
-                                <p className="font-semibold">
+                                <p className="font-semibold text-xs sm:text-sm">
                                   {date.toLocaleDateString('en-IN', { 
                                     weekday: 'short',
                                     year: 'numeric', 
@@ -331,7 +331,7 @@ export default function PickupTasksPage() {
                                   })}
                                 </p>
                                 {task.preferred_time_slot && (
-                                  <p className="text-sm text-gray-600">{task.preferred_time_slot}</p>
+                                  <p className="text-xs sm:text-sm text-gray-600">{task.preferred_time_slot}</p>
                                 )}
                               </>
                             );
@@ -342,7 +342,7 @@ export default function PickupTasksPage() {
                             const endDate = task.preferred_slot_end ? new Date(task.preferred_slot_end) : null;
                             return (
                               <>
-                                <p className="font-semibold">
+                                <p className="font-semibold text-xs sm:text-sm">
                                   {startDate.toLocaleDateString('en-IN', { 
                                     weekday: 'short',
                                     year: 'numeric', 
@@ -350,7 +350,7 @@ export default function PickupTasksPage() {
                                     day: 'numeric' 
                                   })}
                                 </p>
-                                <p className="text-sm text-gray-600">
+                                <p className="text-xs sm:text-sm text-gray-600">
                                   {startDate.toLocaleTimeString('en-IN', { 
                                     hour: '2-digit', 
                                     minute: '2-digit',
@@ -366,44 +366,44 @@ export default function PickupTasksPage() {
                             );
                           }
                           // No preferred date/time found
-                          return <p className="font-semibold text-gray-400">Not specified</p>;
+                          return <p className="font-semibold text-xs sm:text-sm text-gray-400">Not specified</p>;
                         })()}
                       </div>
                     </div>
 
                     {/* Customer & Vehicle Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-gray-500" />
-                          <span className="font-semibold">{task.customer_name}</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      <div className="space-y-1.5 sm:space-y-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                          <span className="font-semibold text-xs sm:text-sm truncate">{task.customer_name}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Phone className="w-4 h-4 text-gray-500" />
-                          <a href={`tel:${task.customer_phone}`} className="text-brand-primary hover:underline">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                          <a href={`tel:${task.customer_phone}`} className="text-brand-primary hover:underline text-xs sm:text-sm truncate">
                             {task.customer_phone}
                           </a>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Car className="w-4 h-4 text-gray-500" />
-                          <span>{task.vehicle_make} {task.vehicle_model} - {task.vehicle_number}</span>
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <Car className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                          <span className="text-xs sm:text-sm truncate">{task.vehicle_make} {task.vehicle_model} - {task.vehicle_number}</span>
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <div className="flex items-start gap-2">
-                          <MapPin className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">{task.address || 'Address not provided'}</p>
-                            {task.city && <p className="text-sm text-gray-600">{task.city}{task.pincode ? `, ${task.pincode}` : ''}</p>}
+                      <div className="space-y-1.5 sm:space-y-2">
+                        <div className="flex items-start gap-1.5 sm:gap-2">
+                          <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 mt-0.5 sm:mt-1 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs sm:text-sm font-medium truncate">{task.address || 'Address not provided'}</p>
+                            {task.city && <p className="text-xs sm:text-sm text-gray-600 truncate">{task.city}{task.pincode ? `, ${task.pincode}` : ''}</p>}
                           </div>
                         </div>
                         <button
                           onClick={() => openGoogleMaps(task)}
-                          className="btn-secondary bg-green-600 hover:bg-green-700 text-white text-sm flex items-center gap-2"
+                          className="btn-secondary bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 w-full"
                           disabled={!task.address && !task.city}
                         >
-                          <Navigation className="w-4 h-4" />
+                          <Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           Navigate
                         </button>
                       </div>
@@ -413,7 +413,7 @@ export default function PickupTasksPage() {
                     <div className="flex gap-2 pt-2 border-t">
                       <button
                         onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
-                        className="btn-primary flex-1"
+                        className="btn-primary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                       >
                         View Details
                       </button>

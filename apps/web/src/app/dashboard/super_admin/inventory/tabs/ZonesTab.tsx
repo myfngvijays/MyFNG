@@ -52,53 +52,54 @@ export default function ZonesTab() {
   };
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div className="relative max-w-md w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+    <div className="p-3 sm:p-4 md:p-6">
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
+        <div className="relative max-w-full sm:max-w-md w-full">
+          <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400" />
           <input
             type="text"
             placeholder="Search zones..."
-            className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-brand-primary/20 outline-none"
+            className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 border rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary/20 outline-none"
           />
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="btn btn-primary flex items-center gap-2"
+          className="btn btn-primary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
         >
-          <Plus className="w-4 h-4" />
-          Add Zone
+          <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <span className="hidden sm:inline">Add Zone</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </div>
 
       {loading ? (
-        <div className="flex justify-center p-12">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-primary" />
+        <div className="flex justify-center p-8 sm:p-10 md:p-12">
+          <Loader2 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 animate-spin text-brand-primary" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {zones.map((zone) => (
-            <div key={zone.id} className="border rounded-xl p-4 hover:shadow-md transition-shadow bg-white">
-              <div className="flex justify-between items-start mb-2">
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <Map className="w-6 h-6 text-blue-600" />
+            <div key={zone.id} className="border rounded-lg sm:rounded-xl p-3 sm:p-4 hover:shadow-md transition-shadow bg-white">
+              <div className="flex justify-between items-start mb-2 sm:mb-3">
+                <div className="p-1.5 sm:p-2 bg-blue-50 rounded-lg">
+                  <Map className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
                 </div>
                 <div className="flex gap-2">
                   <button className="text-gray-400 hover:text-brand-primary">
-                    <Edit className="w-4 h-4" />
+                    <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </button>
                 </div>
               </div>
-              <h3 className="font-semibold text-gray-900 mb-1">{zone.name}</h3>
-              <p className="text-sm text-gray-500 mb-4 line-clamp-2">{zone.description || 'No description'}</p>
+              <h3 className="font-semibold text-sm sm:text-base text-gray-900 mb-1">{zone.name}</h3>
+              <p className="text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4 line-clamp-2">{zone.description || 'No description'}</p>
               
-              <div className="flex justify-between items-center border-t pt-3">
-                <span className={`text-xs px-2 py-1 rounded-full ${
+              <div className="flex justify-between items-center border-t pt-2 sm:pt-3">
+                <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
                   zone.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                 }`}>
                   {zone.is_active ? 'Active' : 'Inactive'}
                 </span>
-                <span className="text-xs text-gray-400">
+                <span className="text-[10px] sm:text-xs text-gray-400">
                   Added {new Date(zone.created_at).toLocaleDateString()}
                 </span>
               </div>
@@ -106,10 +107,10 @@ export default function ZonesTab() {
           ))}
           
           {zones.length === 0 && (
-            <div className="col-span-full py-12 text-center text-gray-500 bg-gray-50 rounded-xl border border-dashed">
-              <Map className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-              <p>No zones defined yet.</p>
-              <button onClick={() => setShowModal(true)} className="text-brand-primary text-sm font-medium mt-2 hover:underline">
+            <div className="col-span-full py-8 sm:py-10 md:py-12 text-center text-gray-500 bg-gray-50 rounded-lg sm:rounded-xl border border-dashed">
+              <Map className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 mx-auto text-gray-300 mb-2 sm:mb-3" />
+              <p className="text-sm sm:text-base">No zones defined yet.</p>
+              <button onClick={() => setShowModal(true)} className="text-brand-primary text-xs sm:text-sm font-medium mt-1.5 sm:mt-2 hover:underline">
                 Add your first zone
               </button>
             </div>
@@ -119,40 +120,40 @@ export default function ZonesTab() {
 
       {/* Add Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold mb-4">Add New Zone</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
+            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Add New Zone</h2>
+            <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Zone Name</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Zone Name</label>
                 <input
                   required
                   value={formData.name}
                   onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full border rounded-lg p-2 text-sm"
+                  className="w-full border rounded-lg p-1.5 sm:p-2 text-xs sm:text-sm"
                   placeholder="e.g. North India Zone"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea
                   value={formData.description}
                   onChange={e => setFormData({...formData, description: e.target.value})}
-                  className="w-full border rounded-lg p-2 text-sm h-24 resize-none"
+                  className="w-full border rounded-lg p-1.5 sm:p-2 text-xs sm:text-sm h-24 resize-none"
                   placeholder="Regions covered..."
                 />
               </div>
-              <div className="flex justify-end gap-3 mt-6">
+              <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 border-t">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-xs sm:text-sm w-full sm:w-auto"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-brand-primary text-white rounded-lg text-sm hover:bg-brand-primary/90"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-brand-primary text-white rounded-lg text-xs sm:text-sm hover:bg-brand-primary/90 w-full sm:w-auto"
                 >
                   Create Zone
                 </button>

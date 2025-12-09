@@ -122,63 +122,65 @@ export default function TelecallerProfilePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-brand-primary" />
-        <p className="ml-3 text-text-body">Loading profile...</p>
+      <div className="flex items-center justify-center h-48 sm:h-64">
+        <Loader2 className="h-7 w-7 sm:h-8 sm:w-8 animate-spin text-brand-primary" />
+        <p className="ml-2 sm:ml-3 text-text-body text-xs sm:text-sm">Loading profile...</p>
       </div>
     );
   }
 
   if (!profile) {
     return (
-      <div className="text-center py-12 text-text-body">
-        <p>Profile not found</p>
+      <div className="text-center py-8 sm:py-10 md:py-12 text-text-body">
+        <p className="text-sm sm:text-base">Profile not found</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 p-6 max-w-4xl mx-auto">
+    <div className="space-y-4 sm:space-y-5 md:space-y-6 p-3 sm:p-4 md:p-6 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">My Profile</h1>
-            <p className="text-white font-medium mt-1">Manage your personal information</p>
+      <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">My Profile</h1>
+            <p className="text-white font-medium text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">Manage your personal information</p>
           </div>
           {!isEditing ? (
             <button
               onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-white text-brand-primary rounded-lg hover:bg-gray-100 transition-colors font-medium"
+              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-brand-primary rounded-lg hover:bg-gray-100 transition-colors font-medium text-xs sm:text-sm w-full sm:w-auto"
             >
-              <Edit2 className="w-4 h-4" />
-              Edit Profile
+              <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Edit Profile</span>
+              <span className="sm:hidden">Edit</span>
             </button>
           ) : (
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
               >
                 {saving ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                     Saving...
                   </>
                 ) : (
                   <>
-                    <Save className="w-4 h-4" />
-                    Save Changes
+                    <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Save Changes</span>
+                    <span className="sm:hidden">Save</span>
                   </>
                 )}
               </button>
               <button
                 onClick={handleCancel}
                 disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50"
+                className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 text-xs sm:text-sm"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 Cancel
               </button>
             </div>
@@ -187,12 +189,12 @@ export default function TelecallerProfilePage() {
       </div>
 
       {/* Profile Card */}
-      <div className="card p-6">
-        <div className="flex flex-col md:flex-row gap-6">
+      <div className="card p-4 sm:p-5 md:p-6">
+        <div className="flex flex-col md:flex-row gap-4 sm:gap-5 md:gap-6">
           {/* Profile Image */}
-          <div className="flex flex-col items-center space-y-4">
+          <div className="flex flex-col items-center space-y-3 sm:space-y-4">
             <div className="relative">
-              <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
                 {formData.profile_image ? (
                   <Image
                     src={formData.profile_image}
@@ -202,12 +204,12 @@ export default function TelecallerProfilePage() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <User className="w-16 h-16 text-gray-400" />
+                  <User className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400" />
                 )}
               </div>
               {isEditing && (
-                <label className="absolute bottom-0 right-0 p-2 bg-brand-primary text-white rounded-full cursor-pointer hover:bg-brand-secondary transition-colors">
-                  <Camera className="w-4 h-4" />
+                <label className="absolute bottom-0 right-0 p-1.5 sm:p-2 bg-brand-primary text-white rounded-full cursor-pointer hover:bg-brand-secondary transition-colors">
+                  <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <input
                     type="file"
                     accept="image/*"
@@ -218,7 +220,7 @@ export default function TelecallerProfilePage() {
               )}
             </div>
             <div className="text-center">
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-medium ${
                 profile.is_active
                   ? 'bg-green-100 text-green-800'
                   : 'bg-red-100 text-red-800'
@@ -229,11 +231,11 @@ export default function TelecallerProfilePage() {
           </div>
 
           {/* Profile Details */}
-          <div className="flex-1 space-y-4">
+          <div className="flex-1 space-y-3 sm:space-y-4">
             {/* Full Name */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                <User className="w-4 h-4 inline mr-1" />
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1" />
                 Full Name
               </label>
               {isEditing ? (
@@ -241,28 +243,28 @@ export default function TelecallerProfilePage() {
                   type="text"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="form-input w-full"
+                  className="form-input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   placeholder="Enter your full name"
                 />
               ) : (
-                <p className="text-lg font-semibold text-text-heading">{profile.full_name}</p>
+                <p className="text-base sm:text-lg font-semibold text-text-heading">{profile.full_name}</p>
               )}
             </div>
 
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                <Mail className="w-4 h-4 inline mr-1" />
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1" />
                 Email Address
               </label>
-              <p className="text-text-body">{profile.email}</p>
-              <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+              <p className="text-sm sm:text-base text-text-body">{profile.email}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">Email cannot be changed</p>
             </div>
 
             {/* Phone */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                <Phone className="w-4 h-4 inline mr-1" />
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1" />
                 Phone Number
               </label>
               {isEditing ? (
@@ -270,18 +272,18 @@ export default function TelecallerProfilePage() {
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="form-input w-full"
+                  className="form-input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   placeholder="Enter your phone number"
                 />
               ) : (
-                <p className="text-text-body">{profile.phone || 'Not provided'}</p>
+                <p className="text-sm sm:text-base text-text-body">{profile.phone || 'Not provided'}</p>
               )}
             </div>
 
             {/* Department */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                <Building className="w-4 h-4 inline mr-1" />
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                <Building className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1" />
                 Department
               </label>
               {isEditing ? (
@@ -289,11 +291,11 @@ export default function TelecallerProfilePage() {
                   type="text"
                   value={formData.department}
                   onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                  className="form-input w-full"
+                  className="form-input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   placeholder="Enter your department"
                 />
               ) : (
-                <p className="text-text-body">{profile.department || 'Not specified'}</p>
+                <p className="text-sm sm:text-base text-text-body">{profile.department || 'Not specified'}</p>
               )}
             </div>
           </div>
@@ -301,27 +303,27 @@ export default function TelecallerProfilePage() {
       </div>
 
       {/* Additional Information */}
-      <div className="card p-6">
-        <h2 className="text-xl font-bold text-text-heading mb-4">Account Information</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="card p-4 sm:p-5 md:p-6">
+        <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">Account Information</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <p className="text-sm font-medium text-gray-700">Role</p>
-            <p className="text-text-body font-semibold mt-1">
+            <p className="text-xs sm:text-sm font-medium text-gray-700">Role</p>
+            <p className="text-sm sm:text-base text-text-body font-semibold mt-0.5 sm:mt-1">
               {profile.role?.role_name || 'N/A'}
             </p>
           </div>
           <div>
-            <p className="text-sm font-medium text-gray-700">Role Code</p>
-            <p className="text-text-body font-semibold mt-1">
+            <p className="text-xs sm:text-sm font-medium text-gray-700">Role Code</p>
+            <p className="text-sm sm:text-base text-text-body font-semibold mt-0.5 sm:mt-1">
               {profile.role?.role_code || 'N/A'}
             </p>
           </div>
           <div>
-            <p className="text-sm font-medium text-gray-700">
-              <Calendar className="w-4 h-4 inline mr-1" />
+            <p className="text-xs sm:text-sm font-medium text-gray-700 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               Member Since
             </p>
-            <p className="text-text-body mt-1">
+            <p className="text-sm sm:text-base text-text-body mt-0.5 sm:mt-1">
               {new Date(profile.created_at).toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'long',
@@ -331,8 +333,8 @@ export default function TelecallerProfilePage() {
           </div>
           {profile.last_login && (
             <div>
-              <p className="text-sm font-medium text-gray-700">Last Login</p>
-              <p className="text-text-body mt-1">
+              <p className="text-xs sm:text-sm font-medium text-gray-700">Last Login</p>
+              <p className="text-sm sm:text-base text-text-body mt-0.5 sm:mt-1">
                 {new Date(profile.last_login).toLocaleString('en-US', {
                   year: 'numeric',
                   month: 'short',
@@ -346,42 +348,42 @@ export default function TelecallerProfilePage() {
         </div>
 
         {profile.workshop && (
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <p className="text-sm font-medium text-gray-700 mb-2">
-              <Building className="w-4 h-4 inline mr-1" />
+          <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-200">
+            <p className="text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2 flex items-center gap-1">
+              <Building className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               Workshop Assignment
             </p>
-            <div className="bg-gray-50 p-3 rounded-lg">
-              <p className="font-semibold text-text-heading">{profile.workshop.name}</p>
-              <p className="text-sm text-text-body mt-1">{profile.workshop.address}</p>
-              <p className="text-sm text-text-body">{profile.workshop.city}</p>
+            <div className="bg-gray-50 p-2.5 sm:p-3 rounded-lg">
+              <p className="font-semibold text-sm sm:text-base text-text-heading">{profile.workshop.name}</p>
+              <p className="text-xs sm:text-sm text-text-body mt-0.5 sm:mt-1">{profile.workshop.address}</p>
+              <p className="text-xs sm:text-sm text-text-body">{profile.workshop.city}</p>
             </div>
           </div>
         )}
       </div>
 
       {/* Performance Stats (Optional) */}
-      <div className="card p-6">
-        <h2 className="text-xl font-bold text-text-heading mb-4">Quick Stats</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="text-center p-4 bg-blue-50 rounded-lg">
-            <p className="text-3xl font-bold text-brand-primary">--</p>
-            <p className="text-sm text-gray-600 mt-1">Total Calls</p>
+      <div className="card p-4 sm:p-5 md:p-6">
+        <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">Quick Stats</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg">
+            <p className="text-2xl sm:text-3xl font-bold text-brand-primary">--</p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Total Calls</p>
           </div>
-          <div className="text-center p-4 bg-green-50 rounded-lg">
-            <p className="text-3xl font-bold text-green-600">--</p>
-            <p className="text-sm text-gray-600 mt-1">Leads Created</p>
+          <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg">
+            <p className="text-2xl sm:text-3xl font-bold text-green-600">--</p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Leads Created</p>
           </div>
-          <div className="text-center p-4 bg-yellow-50 rounded-lg">
-            <p className="text-3xl font-bold text-yellow-600">--</p>
-            <p className="text-sm text-gray-600 mt-1">Follow-ups</p>
+          <div className="text-center p-3 sm:p-4 bg-yellow-50 rounded-lg">
+            <p className="text-2xl sm:text-3xl font-bold text-yellow-600">--</p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Follow-ups</p>
           </div>
-          <div className="text-center p-4 bg-purple-50 rounded-lg">
-            <p className="text-3xl font-bold text-purple-600">--</p>
-            <p className="text-sm text-gray-600 mt-1">Conversion Rate</p>
+          <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg">
+            <p className="text-2xl sm:text-3xl font-bold text-purple-600">--</p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Conversion Rate</p>
           </div>
         </div>
-        <p className="text-xs text-gray-500 text-center mt-3">
+        <p className="text-[10px] sm:text-xs text-gray-500 text-center mt-2 sm:mt-3">
           Stats will be available once performance metrics are implemented
         </p>
       </div>

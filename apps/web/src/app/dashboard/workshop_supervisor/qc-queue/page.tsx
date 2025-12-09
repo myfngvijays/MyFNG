@@ -294,8 +294,8 @@ export default function QCQueuePage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_supervisor">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -303,43 +303,43 @@ export default function QCQueuePage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
-          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">✅ Quality Check Queue</h1>
-          <p className="text-white font-medium mt-1">Review and approve completed jobs</p>
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">✅ Quality Check Queue</h1>
+          <p className="text-white font-medium text-sm sm:text-base mt-0.5 sm:mt-1">Review and approve completed jobs</p>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100">
-            <div className="flex items-center gap-3">
-              <Clock className="w-10 h-10 text-yellow-600" />
-              <div>
-                <p className="text-sm text-gray-600">Pending QC</p>
-                <p className="text-3xl font-bold text-gray-800">{jobs.length}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Clock className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-yellow-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Pending QC</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-800">{jobs.length}</p>
               </div>
             </div>
           </div>
 
           <div className="card bg-gradient-to-br from-green-50 to-green-100">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="w-10 h-10 text-green-600" />
-              <div>
-                <p className="text-sm text-gray-600">With Images</p>
-                <p className="text-3xl font-bold text-gray-800">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <CheckCircle className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-green-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">With Images</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-800">
                   {jobs.filter(j => j.before_images_count > 0 && j.after_images_count > 0).length}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="card bg-gradient-to-br from-red-50 to-red-100">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="w-10 h-10 text-red-600" />
-              <div>
-                <p className="text-sm text-gray-600">Missing Images</p>
-                <p className="text-3xl font-bold text-gray-800">
+          <div className="card bg-gradient-to-br from-red-50 to-red-100 sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <AlertCircle className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-red-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Missing Images</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-800">
                   {jobs.filter(j => j.before_images_count === 0 || j.after_images_count === 0).length}
                 </p>
               </div>
@@ -349,64 +349,64 @@ export default function QCQueuePage() {
 
         {/* Jobs List */}
         {jobs.length === 0 ? (
-          <div className="card text-center py-12">
-            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">All Clear!</h3>
-            <p className="text-gray-500">No jobs pending quality check.</p>
+          <div className="card text-center py-8 sm:py-10 md:py-12">
+            <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-green-500 mx-auto mb-3 sm:mb-4" />
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">All Clear!</h3>
+            <p className="text-gray-500 text-sm sm:text-base">No jobs pending quality check.</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {jobs.map((job) => (
               <div key={job.id} className="card hover:shadow-xl transition-shadow border-l-4 border-yellow-500">
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {/* Header */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="badge-blue text-lg">{job.lead_number}</span>
-                      <p className="text-sm text-gray-600 mt-1">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+                    <div className="min-w-0 flex-1">
+                      <span className="badge-blue text-sm sm:text-base md:text-lg">{job.lead_number}</span>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                         Completed: {new Date(job.mechanic_completed_at).toLocaleString()}
                       </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 w-full sm:w-auto">
                       <button
                         onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
-                        className="btn-secondary flex items-center gap-2"
+                        className="btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex-1 sm:flex-initial"
                       >
-                        <Eye className="w-4 h-4" />
+                        <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         Review
                       </button>
                     </div>
                   </div>
 
                   {/* Details Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-gray-500" />
-                        <span className="font-semibold">{job.customer_name}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                    <div className="space-y-1.5 sm:space-y-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                        <span className="font-semibold text-sm sm:text-base truncate">{job.customer_name}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Car className="w-4 h-4 text-gray-500" />
-                        <span>{job.vehicle_make} {job.vehicle_model} - {job.vehicle_number}</span>
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <Car className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                        <span className="text-xs sm:text-sm truncate">{job.vehicle_make} {job.vehicle_model} - {job.vehicle_number}</span>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-1.5 sm:space-y-2">
                       <div>
-                        <p className="text-sm text-gray-600">Mechanic:</p>
-                        <p className="font-semibold">{job.mechanic_name}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">Mechanic:</p>
+                        <p className="font-semibold text-sm sm:text-base truncate">{job.mechanic_name}</p>
                       </div>
-                      <div className="flex gap-4 text-sm">
+                      <div className="flex flex-wrap gap-3 sm:gap-4 text-xs sm:text-sm">
                         <div className={`flex items-center gap-1 ${
                           job.before_images_count > 0 ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          <Camera className="w-4 h-4" />
+                          <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                           Before: {job.before_images_count}
                         </div>
                         <div className={`flex items-center gap-1 ${
                           job.after_images_count > 0 ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          <Camera className="w-4 h-4" />
+                          <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                           After: {job.after_images_count}
                         </div>
                       </div>
@@ -415,9 +415,9 @@ export default function QCQueuePage() {
 
                   {/* Work Summary */}
                   {job.work_summary && (
-                    <div className="bg-gray-50 p-3 rounded">
-                      <p className="text-sm font-medium text-gray-700 mb-1">Work Summary:</p>
-                      <p className="text-sm text-gray-600">{job.work_summary}</p>
+                    <div className="bg-gray-50 p-2.5 sm:p-3 rounded">
+                      <p className="text-xs sm:text-sm font-medium text-gray-700 mb-0.5 sm:mb-1">Work Summary:</p>
+                      <p className="text-xs sm:text-sm text-gray-600">{job.work_summary}</p>
                     </div>
                   )}
 
@@ -425,9 +425,9 @@ export default function QCQueuePage() {
                   <div className="flex gap-2 pt-2 border-t">
                     <button
                       onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
-                      className="btn-primary flex-1 flex items-center justify-center gap-2"
+                      className="btn-primary flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                     >
-                      <Eye className="w-4 h-4" />
+                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       Review
                     </button>
                   </div>

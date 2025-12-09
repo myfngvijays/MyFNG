@@ -111,8 +111,11 @@ export default function InvoiceDetailPage() {
   if (loading) {
     return (
       <DashboardLayout role="billing">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-12 h-12 animate-spin text-brand-primary" />
+        <div className="flex items-center justify-center min-h-[300px] sm:min-h-[400px]">
+          <div className="text-center">
+            <Loader2 className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 animate-spin text-brand-primary mx-auto mb-3 sm:mb-4" />
+            <p className="text-gray-600 text-xs sm:text-sm md:text-base">Loading invoice details...</p>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -121,10 +124,10 @@ export default function InvoiceDetailPage() {
   if (!invoice) {
     return (
       <DashboardLayout role="billing">
-        <div className="card text-center py-12">
-          <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold mb-2">Invoice Not Found</h3>
-          <button onClick={() => router.push('/dashboard/billing')} className="btn-primary mt-4">
+        <div className="card text-center py-8 sm:py-10 md:py-12 px-4">
+          <XCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-red-500 mx-auto mb-2 sm:mb-3 md:mb-4" />
+          <h3 className="text-lg sm:text-xl font-semibold mb-1.5 sm:mb-2">Invoice Not Found</h3>
+          <button onClick={() => router.push('/dashboard/billing')} className="btn-primary mt-3 sm:mt-4 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
             Back to Billing
           </button>
         </div>
@@ -139,29 +142,29 @@ export default function InvoiceDetailPage() {
 
   return (
     <DashboardLayout role="billing">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6 p-3 sm:p-4 md:p-5 lg:p-6">
         {/* Header */}
-        <div className="bg-gradient-to-r from-brand-primary to-brand-secondary text-white p-6 rounded-lg shadow-lg">
-          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">Invoice Details</h1>
-          <p className="text-white font-medium mt-1">Invoice: {invoice.invoice_number}</p>
+        <div className="bg-gradient-to-r from-brand-primary to-brand-secondary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">Invoice Details</h1>
+          <p className="text-white font-medium mt-0.5 sm:mt-1 text-xs sm:text-sm md:text-base">Invoice: {invoice.invoice_number}</p>
         </div>
 
         {/* Invoice Summary */}
         <div className="card">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
             <div>
-              <p className="text-sm text-gray-600">Customer</p>
-              <p className="font-semibold text-lg">{invoice.lead?.customer_name}</p>
-              <p className="text-sm text-gray-500">{invoice.lead?.customer_phone}</p>
+              <p className="text-xs sm:text-sm text-gray-600">Customer</p>
+              <p className="font-semibold text-base sm:text-lg mt-0.5 sm:mt-1">{invoice.lead?.customer_name}</p>
+              <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">{invoice.lead?.customer_phone}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Vehicle</p>
-              <p className="font-semibold text-lg">{invoice.lead?.vehicle_number}</p>
+              <p className="text-xs sm:text-sm text-gray-600">Vehicle</p>
+              <p className="font-semibold text-base sm:text-lg mt-0.5 sm:mt-1">{invoice.lead?.vehicle_number}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Total Amount</p>
-              <p className="font-bold text-2xl text-green-600">₹{invoice.final_amount.toFixed(2)}</p>
-              <p className={`text-sm mt-1 ${isPaid ? 'text-green-600' : 'text-orange-600'}`}>
+              <p className="text-xs sm:text-sm text-gray-600">Total Amount</p>
+              <p className="font-bold text-xl sm:text-2xl text-green-600 mt-0.5 sm:mt-1">₹{invoice.final_amount.toFixed(2)}</p>
+              <p className={`text-xs sm:text-sm mt-0.5 sm:mt-1 ${isPaid ? 'text-green-600' : 'text-orange-600'}`}>
                 {isPaid ? 'Paid' : 'Pending'}
               </p>
             </div>
@@ -170,14 +173,14 @@ export default function InvoiceDetailPage() {
 
         {/* Status Badge */}
         <div className="card">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div>
-              <p className="text-sm text-gray-600">Status</p>
-              <p className="font-semibold text-lg capitalize">{invoice.status.replace('_', ' ')}</p>
+              <p className="text-xs sm:text-sm text-gray-600">Status</p>
+              <p className="font-semibold text-base sm:text-lg mt-0.5 sm:mt-1 capitalize">{invoice.status.replace('_', ' ')}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Payment Status</p>
-              <p className={`font-semibold text-lg ${isPaid ? 'text-green-600' : 'text-orange-600'}`}>
+              <p className="text-xs sm:text-sm text-gray-600">Payment Status</p>
+              <p className={`font-semibold text-base sm:text-lg mt-0.5 sm:mt-1 ${isPaid ? 'text-green-600' : 'text-orange-600'}`}>
                 {invoice.payment_status}
               </p>
             </div>
@@ -185,15 +188,16 @@ export default function InvoiceDetailPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {/* Review Invoice */}
           {canReview && (
             <button
               onClick={() => router.push(`/dashboard/billing/invoices/${invoiceId}/review`)}
-              className="btn-primary flex items-center justify-center gap-2"
+              className="btn-primary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5"
             >
-              <Eye className="w-4 h-4" />
-              Review Invoice
+              <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Review Invoice</span>
+              <span className="sm:hidden">Review</span>
             </button>
           )}
 
@@ -201,10 +205,11 @@ export default function InvoiceDetailPage() {
           {canSend && (
             <button
               onClick={handleSendInvoice}
-              className="btn-secondary bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
+              className="btn-secondary bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5"
             >
-              <Send className="w-4 h-4" />
-              Send Invoice
+              <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Send Invoice</span>
+              <span className="sm:hidden">Send</span>
             </button>
           )}
 
@@ -212,20 +217,22 @@ export default function InvoiceDetailPage() {
           {canCollectPayment && !isPaid && (
             <button
               onClick={() => router.push(`/dashboard/billing/invoices/${invoiceId}/payment`)}
-              className="btn-secondary bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-2"
+              className="btn-secondary bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5"
             >
-              <DollarSign className="w-4 h-4" />
-              Collect Payment
+              <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Collect Payment</span>
+              <span className="sm:hidden">Payment</span>
             </button>
           )}
 
           {/* View Customer Invoice */}
           <button
             onClick={() => window.open(`/invoice/${invoice.invoice_number}`, '_blank')}
-            className="btn-secondary flex items-center justify-center gap-2"
+            className="btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5"
           >
-            <FileText className="w-4 h-4" />
-            View Customer Invoice
+            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">View Customer Invoice</span>
+            <span className="sm:hidden">View</span>
           </button>
 
           {/* Download PDF */}
@@ -239,10 +246,11 @@ export default function InvoiceDetailPage() {
                 toast.error('Failed to download invoice');
               }
             }}
-            className="btn-secondary flex items-center justify-center gap-2"
+            className="btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5"
           >
-            <Download className="w-4 h-4" />
-            Download PDF
+            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Download PDF</span>
+            <span className="sm:hidden">Download</span>
           </button>
 
           {/* Print Invoice */}
@@ -255,10 +263,11 @@ export default function InvoiceDetailPage() {
                 window.print();
               }
             }}
-            className="btn-secondary flex items-center justify-center gap-2"
+            className="btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5"
           >
-            <Printer className="w-4 h-4" />
-            Print Invoice
+            <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Print Invoice</span>
+            <span className="sm:hidden">Print</span>
           </button>
         </div>
 
@@ -266,7 +275,7 @@ export default function InvoiceDetailPage() {
         <div className="flex justify-end">
           <button
             onClick={() => router.push('/dashboard/billing')}
-            className="btn-secondary"
+            className="btn-secondary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
           >
             Back to Billing Dashboard
           </button>

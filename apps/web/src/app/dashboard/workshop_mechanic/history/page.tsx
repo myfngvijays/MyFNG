@@ -206,8 +206,8 @@ export default function JobHistoryPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_mechanic">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -215,74 +215,74 @@ export default function JobHistoryPage() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-brand-heading">Job History</h1>
-            <p className="text-brand-textSecondary mt-1">Your completed jobs and performance</p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-brand-heading">Job History</h1>
+            <p className="text-brand-textSecondary text-xs sm:text-sm mt-0.5 sm:mt-1">Your completed jobs and performance</p>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-            <Download className="w-4 h-4" />
+          <button className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-xs sm:text-sm w-full sm:w-auto">
+            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             Export
           </button>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-white p-4 sm:p-5 md:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-brand-textSecondary">Total Completed</p>
-                <p className="text-2xl font-bold text-brand-heading mt-1">{stats.total_completed}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-brand-textSecondary">Total Completed</p>
+                <p className="text-xl sm:text-2xl font-bold text-brand-heading mt-0.5 sm:mt-1">{stats.total_completed}</p>
               </div>
-              <CheckCircle className="w-10 h-10 text-green-500" />
+              <CheckCircle className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-green-500 flex-shrink-0" />
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="bg-white p-4 sm:p-5 md:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-brand-textSecondary">Total Time</p>
-                <p className="text-2xl font-bold text-brand-heading mt-1">{formatDuration(stats.total_duration)}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-brand-textSecondary">Total Time</p>
+                <p className="text-xl sm:text-2xl font-bold text-brand-heading mt-0.5 sm:mt-1">{formatDuration(stats.total_duration)}</p>
               </div>
-              <Clock className="w-10 h-10 text-blue-500" />
+              <Clock className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-blue-500 flex-shrink-0" />
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="bg-white p-4 sm:p-5 md:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-brand-textSecondary">Avg Efficiency</p>
-                <p className="text-2xl font-bold text-brand-heading mt-1">{Math.round(stats.avg_efficiency)}%</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-brand-textSecondary">Avg Efficiency</p>
+                <p className="text-xl sm:text-2xl font-bold text-brand-heading mt-0.5 sm:mt-1">{Math.round(stats.avg_efficiency)}%</p>
               </div>
-              <CheckCircle className="w-10 h-10 text-purple-500" />
+              <CheckCircle className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-purple-500 flex-shrink-0" />
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="bg-white p-4 sm:p-5 md:p-6 rounded-lg border border-gray-200 sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-brand-textSecondary">On-Time</p>
-                <p className="text-2xl font-bold text-brand-heading mt-1">{stats.on_time_completion}%</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-brand-textSecondary">On-Time</p>
+                <p className="text-xl sm:text-2xl font-bold text-brand-heading mt-0.5 sm:mt-1">{stats.on_time_completion}%</p>
               </div>
-              <Calendar className="w-10 h-10 text-green-500" />
+              <Calendar className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-green-500 flex-shrink-0" />
             </div>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <div className="relative sm:col-span-2 lg:col-span-1">
+              <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
               <input
                 type="text"
                 placeholder="Search jobs..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
               />
             </div>
 
@@ -290,7 +290,7 @@ export default function JobHistoryPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent w-full"
             >
               <option value="ALL">All Status</option>
               <option value="COMPLETED">Completed</option>
@@ -301,7 +301,7 @@ export default function JobHistoryPage() {
             <select
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent w-full"
             >
               <option value="ALL">All Time</option>
               <option value="TODAY">Today</option>
@@ -316,41 +316,41 @@ export default function JobHistoryPage() {
                 setStatusFilter('ALL');
                 setDateFilter('ALL');
               }}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 w-full sm:w-auto"
             >
               Clear Filters
             </button>
           </div>
         </div>
 
-        {/* Job History Table */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        {/* Job History Table - Desktop */}
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden hidden lg:block">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Job Details
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Vehicle
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Priority
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Duration
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Efficiency
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Completed
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -358,55 +358,55 @@ export default function JobHistoryPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredJobs.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
-                      <XCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                      <p>No completed jobs found</p>
+                    <td colSpan={8} className="px-4 md:px-6 py-8 sm:py-10 md:py-12 text-center text-gray-500">
+                      <XCircle className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 mx-auto mb-2 sm:mb-3 text-gray-300" />
+                      <p className="text-sm sm:text-base">No completed jobs found</p>
                     </td>
                   </tr>
                 ) : (
                   filteredJobs.map((job) => (
                     <tr key={job.job_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-sm font-medium text-brand-heading">{job.lead_number}</div>
-                          <div className="text-sm text-gray-500">{job.customer_name}</div>
+                          <div className="text-xs sm:text-sm font-medium text-brand-heading">{job.lead_number}</div>
+                          <div className="text-xs sm:text-sm text-gray-500">{job.customer_name}</div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{job.vehicle_number}</div>
-                          <div className="text-sm text-gray-500">{job.vehicle_make} {job.vehicle_model}</div>
+                          <div className="text-xs sm:text-sm font-medium text-gray-900">{job.vehicle_number}</div>
+                          <div className="text-xs sm:text-sm text-gray-500">{job.vehicle_make} {job.vehicle_model}</div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(job.mechanic_status)}`}>
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
+                        <span className={`px-2 py-0.5 sm:py-1 inline-flex text-[10px] sm:text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(job.mechanic_status)}`}>
                           {job.mechanic_status.replace(/_/g, ' ')}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getPriorityBadgeClass(job.job_priority)}`}>
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
+                        <span className={`px-2 py-0.5 sm:py-1 inline-flex text-[10px] sm:text-xs leading-5 font-semibold rounded-full ${getPriorityBadgeClass(job.job_priority)}`}>
                           {job.job_priority}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
                         {formatDuration(job.actual_work_duration)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
                         <div className="flex items-center">
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-xs sm:text-sm font-medium text-gray-900">
                             {job.efficiency_score ? `${Math.round(job.efficiency_score)}%` : 'N/A'}
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
                         {job.completed_at ? new Date(job.completed_at).toLocaleDateString() : 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium">
                         <button
                           onClick={() => router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`)}
                           className="text-brand-primary hover:text-brand-primaryHover flex items-center gap-1"
                         >
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           View
                         </button>
                       </td>
@@ -416,6 +416,62 @@ export default function JobHistoryPage() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Job History Cards - Mobile */}
+        <div className="lg:hidden space-y-3">
+          {filteredJobs.length === 0 ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-8 sm:p-10 md:p-12 text-center">
+              <XCircle className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 mx-auto mb-2 sm:mb-3 text-gray-300" />
+              <p className="text-sm sm:text-base text-gray-500">No completed jobs found</p>
+            </div>
+          ) : (
+            filteredJobs.map((job) => (
+              <div key={job.job_id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-brand-heading mb-1">{job.lead_number}</div>
+                    <div className="text-sm text-gray-900 font-semibold truncate">{job.customer_name}</div>
+                  </div>
+                  <div className="flex flex-col gap-1 flex-shrink-0">
+                    <span className={`px-2 py-0.5 inline-flex text-[10px] font-semibold rounded-full ${getStatusBadgeClass(job.mechanic_status)}`}>
+                      {job.mechanic_status.replace(/_/g, ' ')}
+                    </span>
+                    <span className={`px-2 py-0.5 inline-flex text-[10px] font-semibold rounded-full ${getPriorityBadgeClass(job.job_priority)}`}>
+                      {job.job_priority}
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-2 text-xs sm:text-sm mb-3">
+                  <div>
+                    <span className="text-gray-500">Vehicle: </span>
+                    <span className="font-medium text-gray-900">{job.vehicle_number}</span>
+                  </div>
+                  <div className="text-gray-600">{job.vehicle_make} {job.vehicle_model}</div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-gray-500">Duration: </span>
+                      <span className="font-medium">{formatDuration(job.actual_work_duration)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Efficiency: </span>
+                      <span className="font-medium">{job.efficiency_score ? `${Math.round(job.efficiency_score)}%` : 'N/A'}</span>
+                    </div>
+                  </div>
+                  <div className="text-gray-500">
+                    Completed: {job.completed_at ? new Date(job.completed_at).toLocaleDateString() : 'N/A'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`)}
+                  className="text-brand-primary hover:text-brand-primaryHover flex items-center gap-1 text-xs sm:text-sm font-medium"
+                >
+                  <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  View Details
+                </button>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </DashboardLayout>

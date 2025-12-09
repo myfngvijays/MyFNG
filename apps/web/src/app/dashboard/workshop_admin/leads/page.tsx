@@ -264,8 +264,8 @@ export default function WorkshopLeadsPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_admin">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -273,71 +273,71 @@ export default function WorkshopLeadsPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-text-heading">Manage Leads</h1>
-            <p className="text-text-body mt-2">View and manage all service leads assigned to your workshop</p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Manage Leads</h1>
+            <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">View and manage all service leads assigned to your workshop</p>
           </div>
           <button
             onClick={() => fetchLeads()}
-            className="btn btn-outline flex items-center gap-2"
+            className="btn btn-outline flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
             disabled={actionLoading}
           >
-            <RefreshCw className={`w-4 h-4 ${actionLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${actionLoading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
           <div className="card">
-            <p className="text-sm text-gray-600">Total Leads</p>
-            <p className="text-2xl font-bold text-blue-600">{stats.total}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Total Leads</p>
+            <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.total}</p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-600">Assigned</p>
-            <p className="text-2xl font-bold text-yellow-600">{stats.assigned}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Assigned</p>
+            <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.assigned}</p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-600">Accepted</p>
-            <p className="text-2xl font-bold text-green-600">{stats.accepted}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Accepted</p>
+            <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.accepted}</p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-600">In Progress</p>
-            <p className="text-2xl font-bold text-purple-600">{stats.inProgress}</p>
+            <p className="text-xs sm:text-sm text-gray-600">In Progress</p>
+            <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.inProgress}</p>
           </div>
-          <div className="card">
-            <p className="text-sm text-gray-600">Completed</p>
-            <p className="text-2xl font-bold text-gray-600">{stats.completed}</p>
+          <div className="card sm:col-span-3 lg:col-span-1">
+            <p className="text-xs sm:text-sm text-gray-600">Completed</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-600">{stats.completed}</p>
           </div>
         </div>
 
         {/* Filters */}
         <div className="card">
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             {/* Search */}
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 <input
                   type="text"
                   placeholder="Search by lead number, customer, phone, vehicle..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                 />
               </div>
             </div>
 
             {/* Status Filter */}
-            <div className="flex items-center gap-2">
-              <Filter className="w-5 h-5 text-gray-400" />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" />
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as LeadStatus)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent w-full sm:w-auto"
               >
                 <option value="ALL">All Status</option>
                 <option value="ASSIGNED">Assigned</option>
@@ -349,11 +349,11 @@ export default function WorkshopLeadsPage() {
             </div>
 
             {/* Type Filter */}
-            <div>
+            <div className="w-full sm:w-auto">
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value as LeadType)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent w-full sm:w-auto"
               >
                 <option value="ALL">All Types</option>
                 <option value="NORMAL">Normal Service</option>
@@ -366,16 +366,16 @@ export default function WorkshopLeadsPage() {
 
         {/* Leads Grid */}
         {filteredLeads.length === 0 ? (
-          <div className="card text-center py-12">
-            <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">
+          <div className="card text-center py-8 sm:py-10 md:py-12">
+            <AlertCircle className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+            <p className="text-gray-500 text-sm sm:text-base">
               {searchQuery || statusFilter !== 'ALL' || typeFilter !== 'ALL'
                 ? 'No leads match your filters'
                 : 'No leads assigned yet'}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
             {filteredLeads.map((lead) => (
               <LeadCard
                 key={lead.id}
@@ -391,53 +391,53 @@ export default function WorkshopLeadsPage() {
 
       {/* Reject Modal */}
       {showRejectModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Reject Lead</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Reject Lead</h3>
             
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Rejection Reason <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
                   placeholder="Minimum 10 characters required..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                   rows={3}
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
                   {rejectReason.length}/10 characters minimum
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Additional Notes (Optional)
                 </label>
                 <textarea
                   value={rejectNotes}
                   onChange={(e) => setRejectNotes(e.target.value)}
                   placeholder="Any additional information..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                   rows={2}
                 />
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 border-t">
               <button
                 onClick={() => setShowRejectModal(false)}
                 disabled={actionLoading}
-                className="flex-1 btn btn-outline"
+                className="flex-1 btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
               >
                 Cancel
               </button>
               <button
                 onClick={submitRejection}
                 disabled={actionLoading || rejectReason.length < 10}
-                className="flex-1 btn bg-red-500 hover:bg-red-600 text-white"
+                className="flex-1 btn bg-red-500 hover:bg-red-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
               >
                 {actionLoading ? 'Rejecting...' : 'Reject Lead'}
               </button>

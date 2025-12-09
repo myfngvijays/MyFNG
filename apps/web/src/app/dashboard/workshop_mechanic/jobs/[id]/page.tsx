@@ -814,8 +814,8 @@ export default function MechanicJobDetailPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_mechanic">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -824,21 +824,23 @@ export default function MechanicJobDetailPage() {
   if (!job) {
     return (
       <DashboardLayout role="workshop_mechanic">
-        <div className="text-center py-12">
-          <p className="text-gray-500 text-xl mb-2">Job not found</p>
-          <p className="text-sm text-gray-400 mb-4">Lead ID: {leadId}</p>
-          <p className="text-sm text-gray-400 mb-4">
+        <div className="text-center py-8 sm:py-10 md:py-12 px-3 sm:px-4">
+          <p className="text-gray-500 text-base sm:text-lg md:text-xl mb-1.5 sm:mb-2">Job not found</p>
+          <p className="text-xs sm:text-sm text-gray-400 mb-2 sm:mb-3 md:mb-4">Lead ID: {leadId}</p>
+          <p className="text-xs sm:text-sm text-gray-400 mb-3 sm:mb-4">
             Check console for details or verify the mechanic_jobs entry exists for this lead.
           </p>
-          <button onClick={() => router.back()} className="btn btn-primary mt-4">
-            Go Back
-          </button>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="btn btn-outline mt-4 ml-2"
-          >
-            Refresh Page
-          </button>
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center">
+            <button onClick={() => router.back()} className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+              Go Back
+            </button>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+            >
+              Refresh Page
+            </button>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -930,24 +932,24 @@ export default function MechanicJobDetailPage() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button onClick={() => router.back()} className="btn btn-outline">
-              <ArrowLeft className="w-5 h-5" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
+            <button onClick={() => router.back()} className="btn btn-outline p-1.5 sm:p-2 flex-shrink-0">
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
-            <div>
-              <h1 className="text-3xl font-bold">{job.lead_number}</h1>
-              <p className="text-gray-600">Job Details</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold truncate">{job.lead_number}</h1>
+              <p className="text-gray-600 text-xs sm:text-sm">Job Details</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className={`px-4 py-2 rounded-lg font-semibold ${getStatusColor(job.mechanic_status)}`}>
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <span className={`px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm ${getStatusColor(job.mechanic_status)}`}>
               {job.mechanic_status.replace('_', ' ')}
             </span>
             {job.job_priority !== 'NORMAL' && (
-              <span className="px-4 py-2 rounded-lg font-semibold bg-red-100 text-red-800 border border-red-300">
+              <span className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold bg-red-100 text-red-800 border border-red-300 text-xs sm:text-sm">
                 {job.job_priority}
               </span>
             )}
@@ -955,13 +957,13 @@ export default function MechanicJobDetailPage() {
         </div>
 
         {/* SLA Timer */}
-        <div className="card bg-gradient-to-r from-orange-50 to-red-50 border-l-4 border-orange-500">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Clock className="w-8 h-8 text-orange-600" />
-              <div>
-                <p className="text-sm text-gray-600">SLA Remaining</p>
-                <p className="text-2xl font-bold">
+        <div className="card bg-gradient-to-r from-orange-50 to-red-50 border-l-4 border-orange-500 p-3 sm:p-4 md:p-5">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+              <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">SLA Remaining</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold">
                   {job.sla_remaining_minutes !== null && job.sla_remaining_minutes !== undefined ? (
                     job.sla_remaining_minutes < 0 ? (
                       <span className="text-red-600">Overdue by {Math.abs(job.sla_remaining_minutes)}m</span>
@@ -978,9 +980,9 @@ export default function MechanicJobDetailPage() {
                 </p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-600">Expected Completion</p>
-              <p className="font-semibold">
+            <div className="text-left sm:text-right w-full sm:w-auto">
+              <p className="text-xs sm:text-sm text-gray-600">Expected Completion</p>
+              <p className="font-semibold text-xs sm:text-sm">
                 {job.expected_completion_time ? (
                   new Date(job.expected_completion_time).toLocaleString()
                 ) : (
@@ -992,17 +994,18 @@ export default function MechanicJobDetailPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2 sm:gap-3">
           {canStartJob && (
             <button 
               onClick={async () => {
                 // Always call updateJobStatus - it will validate and show proper error
                 await updateJobStatus('IN_PROGRESS');
               }}
-              className="btn bg-blue-500 hover:bg-blue-600 text-white"
+              className="btn bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
             >
-              <PlayCircle className="w-5 h-5" />
-              Start Job
+              <PlayCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">Start Job</span>
+              <span className="sm:hidden">Start</span>
             </button>
           )}
           
@@ -1010,10 +1013,11 @@ export default function MechanicJobDetailPage() {
             <>
               <button 
                 onClick={() => updateJobStatus('HOLD')}
-                className="btn btn-outline"
+                className="btn btn-outline flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
               >
-                <PauseCircle className="w-5 h-5" />
-                Put on Hold
+                <PauseCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Put on Hold</span>
+                <span className="sm:hidden">Hold</span>
               </button>
 
               {canCompleteJob && (
@@ -1029,19 +1033,22 @@ export default function MechanicJobDetailPage() {
                       updateJobStatus('COMPLETED');
                     }
                   }}
-                  className={`btn text-white ${
+                  className={`btn text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 ${
                     job.checklist_completed && job.after_images_count >= job.min_after_images
                       ? 'bg-green-500 hover:bg-green-600'
                       : 'bg-gray-400 hover:bg-gray-500 cursor-not-allowed'
                   }`}
                   disabled={!job.checklist_completed || job.after_images_count < job.min_after_images}
                 >
-                  <CheckCircle className="w-5 h-5" />
-                  {!job.checklist_completed 
-                    ? 'Complete Checklist First'
-                    : job.after_images_count < job.min_after_images
-                    ? `Complete (${job.after_images_count}/${job.min_after_images} photos)`
-                    : 'Mark Completed'}
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="hidden sm:inline">
+                    {!job.checklist_completed 
+                      ? 'Complete Checklist First'
+                      : job.after_images_count < job.min_after_images
+                      ? `Complete (${job.after_images_count}/${job.min_after_images} photos)`
+                      : 'Mark Completed'}
+                  </span>
+                  <span className="sm:hidden">Complete</span>
                 </button>
               )}
             </>
@@ -1050,30 +1057,32 @@ export default function MechanicJobDetailPage() {
           {job.mechanic_status === 'HOLD' && (
             <button 
               onClick={() => updateJobStatus('IN_PROGRESS')}
-              className="btn bg-blue-500 hover:bg-blue-600 text-white"
+              className="btn bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
             >
-              <PlayCircle className="w-5 h-5" />
-              Resume Job
+              <PlayCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">Resume Job</span>
+              <span className="sm:hidden">Resume</span>
             </button>
           )}
 
           <button 
             onClick={() => setShowExtraWorkForm(true)}
-            className="btn bg-orange-500 hover:bg-orange-600 text-white"
+            className="btn bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
           >
-            <AlertTriangle className="w-5 h-5" />
-            Request Extra Work
+            <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="hidden sm:inline">Request Extra Work</span>
+            <span className="sm:hidden">Extra Work</span>
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-200">
-          <div className="flex gap-4">
+        <div className="border-b border-gray-200 overflow-x-auto">
+          <div className="flex gap-2 sm:gap-3 md:gap-4 min-w-max">
             {['overview', 'checklist', 'media', 'parts', 'notes'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 font-medium capitalize border-b-2 transition ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 font-medium capitalize border-b-2 transition whitespace-nowrap text-xs sm:text-sm ${
                   activeTab === tab
                     ? 'border-brand-primary text-brand-primary'
                     : 'border-transparent text-gray-600 hover:text-gray-900'
@@ -1087,41 +1096,41 @@ export default function MechanicJobDetailPage() {
 
         {/* Tab Content */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
             {/* Job Summary */}
-            <div className="card">
-              <h2 className="text-xl font-bold mb-4">Job Summary</h2>
-              <div className="space-y-3">
+            <div className="card p-3 sm:p-4 md:p-5">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Job Summary</h2>
+              <div className="space-y-2 sm:space-y-3">
                 <div>
-                  <p className="text-sm text-gray-600">Assigned At</p>
-                  <p className="font-semibold">{new Date(job.assigned_at).toLocaleString()}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">Assigned At</p>
+                  <p className="font-semibold text-xs sm:text-sm">{new Date(job.assigned_at).toLocaleString()}</p>
                 </div>
                 {job.started_at && (
                   <div>
-                    <p className="text-sm text-gray-600">Started At</p>
-                    <p className="font-semibold">{new Date(job.started_at).toLocaleString()}</p>
+                    <p className="text-xs sm:text-sm text-gray-600">Started At</p>
+                    <p className="font-semibold text-xs sm:text-sm">{new Date(job.started_at).toLocaleString()}</p>
                   </div>
                 )}
                 <div>
-                  <p className="text-sm text-gray-600">Service Types</p>
-                  <div className="flex flex-wrap gap-2 mt-1">
+                  <p className="text-xs sm:text-sm text-gray-600">Service Types</p>
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-1">
                     {serviceTypeNames.length > 0 ? (
                       serviceTypeNames.map((name, idx) => (
-                        <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                        <span key={idx} className="px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-100 text-blue-800 rounded-full text-xs sm:text-sm">
                           {name}
                         </span>
                       ))
                     ) : (
-                      <span className="text-gray-400 text-sm">No service types</span>
+                      <span className="text-gray-400 text-xs sm:text-sm">No service types</span>
                     )}
                   </div>
                 </div>
                 {serviceAddonNames.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-sm font-semibold text-gray-700 mb-2">Service Addons</p>
-                    <div className="flex flex-wrap gap-2">
+                  <div className="mt-2 sm:mt-3">
+                    <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Service Addons</p>
+                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
                       {serviceAddonNames.map((name, idx) => (
-                        <span key={idx} className="px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-sm font-medium border border-green-200">
+                        <span key={idx} className="px-2 sm:px-3 py-0.5 sm:py-1.5 bg-green-100 text-green-800 rounded-full text-xs sm:text-sm font-medium border border-green-200">
                           {name}
                         </span>
                       ))}
@@ -1132,71 +1141,71 @@ export default function MechanicJobDetailPage() {
             </div>
 
             {/* Customer & Vehicle */}
-            <div className="card">
-              <h2 className="text-xl font-bold mb-4">Customer & Vehicle</h2>
-              <div className="space-y-3">
+            <div className="card p-3 sm:p-4 md:p-5">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Customer & Vehicle</h2>
+              <div className="space-y-2 sm:space-y-3">
                 <div>
-                  <p className="text-sm text-gray-600">Customer</p>
-                  <p className="font-semibold">{job.customer_name}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">Customer</p>
+                  <p className="font-semibold text-xs sm:text-sm">{job.customer_name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Vehicle</p>
-                  <p className="font-semibold">{job.vehicle_number}</p>
-                  <p className="text-sm">{job.vehicle_make} {job.vehicle_model} {job.vehicle_variant}</p>
-                  <p className="text-sm text-gray-600">Year: {job.vehicle_year} | Fuel: {job.fuel_type}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">Vehicle</p>
+                  <p className="font-semibold text-xs sm:text-sm">{job.vehicle_number}</p>
+                  <p className="text-xs sm:text-sm">{job.vehicle_make} {job.vehicle_model} {job.vehicle_variant}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">Year: {job.vehicle_year} | Fuel: {job.fuel_type}</p>
                 </div>
                 {job.odometer_reading > 0 && (
                   <div>
-                    <p className="text-sm text-gray-600">Odometer Reading</p>
-                    <p className="font-semibold">{job.odometer_reading} km</p>
+                    <p className="text-xs sm:text-sm text-gray-600">Odometer Reading</p>
+                    <p className="font-semibold text-xs sm:text-sm">{job.odometer_reading} km</p>
                   </div>
                 )}
                 {job.problem_description && (
                   <div>
-                    <p className="text-sm text-gray-600">Customer Complaint</p>
-                    <p className="text-sm bg-yellow-50 p-3 rounded border border-yellow-200">{job.problem_description}</p>
+                    <p className="text-xs sm:text-sm text-gray-600">Customer Complaint</p>
+                    <p className="text-xs sm:text-sm bg-yellow-50 p-2 sm:p-3 rounded border border-yellow-200">{job.problem_description}</p>
                   </div>
                 )}
               </div>
             </div>
 
             {/* Progress Status */}
-            <div className="card col-span-full">
-              <h2 className="text-xl font-bold mb-4">Progress Status</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                <div className="text-center p-4 bg-yellow-50 rounded-lg border-2 border-yellow-300">
-                  <Camera className="w-8 h-8 mx-auto mb-2 text-yellow-600" />
-                  <p className="text-sm text-gray-600">Progress Images</p>
-                  <p className="text-2xl font-bold text-yellow-700">
+            <div className="card col-span-full p-3 sm:p-4 md:p-5">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Progress Status</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
+                <div className="text-center p-3 sm:p-4 bg-yellow-50 rounded-lg border-2 border-yellow-300">
+                  <Camera className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 mx-auto mb-1.5 sm:mb-2 text-yellow-600" />
+                  <p className="text-xs sm:text-sm text-gray-600">Progress Images</p>
+                  <p className="text-xl sm:text-2xl font-bold text-yellow-700">
                     {job.progress_images_count} / {job.min_progress_images}
                   </p>
                 </div>
-                <div className={`text-center p-4 rounded-lg border-2 ${
+                <div className={`text-center p-3 sm:p-4 rounded-lg border-2 ${
                   job.after_images_count >= job.min_after_images 
                     ? 'bg-green-50 border-green-300' 
                     : 'bg-green-50 border-green-300'
                 }`}>
-                  <Camera className="w-8 h-8 mx-auto mb-2 text-green-600" />
-                  <p className="text-sm text-gray-600">After Images</p>
-                  <p className={`text-2xl font-bold ${
+                  <Camera className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 mx-auto mb-1.5 sm:mb-2 text-green-600" />
+                  <p className="text-xs sm:text-sm text-gray-600">After Images</p>
+                  <p className={`text-xl sm:text-2xl font-bold ${
                     job.after_images_count >= job.min_after_images ? 'text-green-700' : 'text-green-700'
                   }`}>
                     {job.after_images_count} / {job.min_after_images}
                   </p>
                   {job.after_images_count < job.min_after_images && (
-                    <p className="text-xs text-red-600 mt-1 font-semibold">
+                    <p className="text-[10px] sm:text-xs text-red-600 mt-0.5 sm:mt-1 font-semibold">
                       {job.min_after_images - job.after_images_count} more needed
                     </p>
                   )}
                 </div>
-                <div className={`text-center p-4 rounded-lg border-2 ${
+                <div className={`text-center p-3 sm:p-4 rounded-lg border-2 sm:col-span-2 md:col-span-1 ${
                   job.checklist_completed 
                     ? 'bg-green-50 border-green-300' 
                     : 'bg-purple-50 border-purple-300'
                 }`}>
-                  <CheckCircle className="w-8 h-8 mx-auto mb-2 text-purple-600" />
-                  <p className="text-sm text-gray-600">Checklist</p>
-                  <p className={`text-2xl font-bold ${
+                  <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 mx-auto mb-1.5 sm:mb-2 text-purple-600" />
+                  <p className="text-xs sm:text-sm text-gray-600">Checklist</p>
+                  <p className={`text-xl sm:text-2xl font-bold ${
                     job.checklist_completed ? 'text-green-700' : 'text-red-700'
                   }`}>
                     {job.checklist_completed ? '✓' : '✗'}
@@ -1206,43 +1215,43 @@ export default function MechanicJobDetailPage() {
 
               {/* Detailed Requirements Section */}
               {canStartJob && (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 border-2 border-blue-300">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <AlertTriangle className="w-6 h-6 text-orange-600" />
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 sm:p-4 md:p-5 border-2 border-blue-300">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-800 mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                    <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600 flex-shrink-0" />
                     Before Starting Job - Required Actions
                   </h3>
-                  <div className="space-y-3">
-                    <div className={`p-3 rounded-lg border-2 ${
+                  <div className="space-y-2 sm:space-y-3">
+                    <div className={`p-2.5 sm:p-3 rounded-lg border-2 ${
                       job.before_images_count >= 6
                         ? 'bg-green-50 border-green-300'
                         : 'bg-orange-50 border-orange-300'
                     }`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+                        <div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-1">
                           {job.before_images_count >= 6 ? (
-                            <CheckCircle className="w-6 h-6 text-green-600" />
+                            <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-0.5" />
                           ) : (
-                            <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-sm">1</span>
+                            <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-xs sm:text-sm flex-shrink-0 mt-0.5">1</span>
                           )}
-                          <div className="flex-1">
-                            <p className="font-semibold text-gray-800">Upload Before Inspection Photos</p>
-                            <p className="text-sm text-gray-600 mt-1">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-800 text-xs sm:text-sm">Upload Before Inspection Photos</p>
+                            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                               Required: 6 photos (Front, Rear, Left, Right, Dashboard, Engine Bay)
                             </p>
-                            <p className="text-xs text-gray-500 mt-1">
+                            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
                               Current: {job.before_images_count} / 6 uploaded
                             </p>
                             {missingBeforePhotos.length > 0 && (
-                              <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
-                                <p className="text-xs font-semibold text-red-800 mb-1">⚠️ Missing Required Photo Types:</p>
+                              <div className="mt-1.5 sm:mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                                <p className="text-[10px] sm:text-xs font-semibold text-red-800 mb-0.5 sm:mb-1">⚠️ Missing Required Photo Types:</p>
                                 <div className="flex flex-wrap gap-1">
                                   {missingBeforePhotos.map((type) => (
-                                    <span key={type} className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded">
+                                    <span key={type} className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-red-100 text-red-700 rounded">
                                       {type.replace('BEFORE_', '').replace('_', ' ')}
                                     </span>
                                   ))}
                                 </div>
-                                <p className="text-xs text-red-600 mt-1">
+                                <p className="text-[10px] sm:text-xs text-red-600 mt-0.5 sm:mt-1">
                                   Please upload these specific photos with correct types in the "Manage" tab.
                                 </p>
                               </div>
@@ -1255,7 +1264,7 @@ export default function MechanicJobDetailPage() {
                               e.preventDefault();
                               router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
                             }}
-                            className="btn btn-primary text-sm px-4 py-2 flex-shrink-0 cursor-pointer"
+                            className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex-shrink-0 cursor-pointer w-full sm:w-auto"
                           >
                             Upload Photos
                           </button>
@@ -1267,27 +1276,27 @@ export default function MechanicJobDetailPage() {
               )}
 
               {job.mechanic_status === 'IN_PROGRESS' && (
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-5 border-2 border-green-300 mt-4">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <CheckCircle className="w-6 h-6 text-green-600" />
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-3 sm:p-4 md:p-5 border-2 border-green-300 mt-3 sm:mt-4">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-800 mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0" />
                     Before Completing Job - Required Actions
                   </h3>
-                  <div className="space-y-3">
-                    <div className={`p-3 rounded-lg border-2 ${
+                  <div className="space-y-2 sm:space-y-3">
+                    <div className={`p-2.5 sm:p-3 rounded-lg border-2 ${
                       job.checklist_completed
                         ? 'bg-green-50 border-green-300'
                         : 'bg-orange-50 border-orange-300'
                     }`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+                        <div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-1">
                           {job.checklist_completed ? (
-                            <CheckCircle className="w-6 h-6 text-green-600" />
+                            <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-0.5" />
                           ) : (
-                            <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-sm">1</span>
+                            <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-xs sm:text-sm flex-shrink-0 mt-0.5">1</span>
                           )}
-                          <div>
-                            <p className="font-semibold text-gray-800">Complete Service Checklist</p>
-                            <p className="text-sm text-gray-600 mt-1">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-800 text-xs sm:text-sm">Complete Service Checklist</p>
+                            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                               All checklist items must be marked as completed
                             </p>
                           </div>
@@ -1295,7 +1304,7 @@ export default function MechanicJobDetailPage() {
                         {!job.checklist_completed && (
                           <button
                             onClick={() => setActiveTab('checklist')}
-                            className="btn-primary text-sm px-4 py-2"
+                            className="btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 cursor-pointer w-full sm:w-auto"
                           >
                             View Checklist
                           </button>
@@ -1303,24 +1312,24 @@ export default function MechanicJobDetailPage() {
                       </div>
                     </div>
 
-                    <div className={`p-3 rounded-lg border-2 ${
+                    <div className={`p-2.5 sm:p-3 rounded-lg border-2 ${
                       job.after_images_count >= job.min_after_images
                         ? 'bg-green-50 border-green-300'
                         : 'bg-orange-50 border-orange-300'
                     }`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+                        <div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-1">
                           {job.after_images_count >= job.min_after_images ? (
-                            <CheckCircle className="w-6 h-6 text-green-600" />
+                            <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-0.5" />
                           ) : (
-                            <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-sm">2</span>
+                            <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-xs sm:text-sm flex-shrink-0 mt-0.5">2</span>
                           )}
-                          <div>
-                            <p className="font-semibold text-gray-800">Upload After Service Photos</p>
-                            <p className="text-sm text-gray-600 mt-1">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-800 text-xs sm:text-sm">Upload After Service Photos</p>
+                            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                               Required: {job.min_after_images} photos (Front, Rear, Left, Right, Engine Bay, Old Parts)
                             </p>
-                            <p className="text-xs text-gray-500 mt-1">
+                            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
                               Current: {job.after_images_count} / {job.min_after_images} uploaded
                             </p>
                           </div>
@@ -1331,7 +1340,7 @@ export default function MechanicJobDetailPage() {
                         e.preventDefault();
                         router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
                       }}
-                      className="btn btn-primary text-sm px-4 py-2 cursor-pointer"
+                      className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 cursor-pointer w-full sm:w-auto"
                           >
                             Upload Photos
                           </button>
@@ -1346,15 +1355,15 @@ export default function MechanicJobDetailPage() {
         )}
 
         {activeTab === 'checklist' && (
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">Service Checklist</h2>
+          <div className="card p-3 sm:p-4 md:p-5">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <h2 className="text-lg sm:text-xl font-bold">Service Checklist</h2>
             </div>
             
             {checklist.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <p className="mb-4">No checklist available for this job.</p>
-                <p className="text-sm">Checklist will be automatically generated when a mechanic is assigned.</p>
+              <div className="text-center py-6 sm:py-8 text-gray-500">
+                <p className="mb-2 sm:mb-4 text-xs sm:text-sm">No checklist available for this job.</p>
+                <p className="text-xs sm:text-sm">Checklist will be automatically generated when a mechanic is assigned.</p>
               </div>
             ) : (
               /* Group by category if categories exist */
@@ -1370,9 +1379,9 @@ export default function MechanicJobDetailPage() {
                   return (
                     <>
                       {/* Category Summary Banner - Shows all categories */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-semibold text-blue-800">Categories:</span>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 sm:p-3 mb-3 sm:mb-4">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <span className="text-xs sm:text-sm font-semibold text-blue-800">Categories:</span>
                           {allCategories.map((cat) => {
                             const items = checklist.filter(item => item.category === cat);
                             const completed = items.filter(item => item.status === 'COMPLETED').length;
@@ -1381,7 +1390,7 @@ export default function MechanicJobDetailPage() {
                             return (
                               <span
                                 key={cat}
-                                className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium ${
                                   isActive ? 'bg-blue-600 text-white' :
                                   allDone ? 'bg-green-500 text-white' :
                                   'bg-white text-blue-700 border border-blue-300'
@@ -1419,7 +1428,7 @@ export default function MechanicJobDetailPage() {
                     <div 
                       key={category}
                       data-category-name={category}
-                      className={`border rounded-lg p-4 transition-all relative ${
+                      className={`border rounded-lg p-3 sm:p-4 transition-all relative ${
                         shouldBlurCategory ? 'opacity-50 blur-sm bg-gray-50' : 
                         isActive ? 'border-blue-500 bg-blue-50 shadow-md' : 
                         allCompleted ? 'border-green-300 bg-green-50' :
@@ -1433,7 +1442,7 @@ export default function MechanicJobDetailPage() {
                     >
                       {/* Clickable Header - Always on top */}
                       <div 
-                        className={`flex items-center justify-between mb-3 ${
+                        className={`flex items-center justify-between mb-2 sm:mb-3 ${
                           shouldBlurCategory 
                             ? 'cursor-pointer hover:opacity-80 hover:bg-gray-100 rounded px-2 py-1 -mx-2 -mt-1' 
                             : 'cursor-pointer hover:bg-blue-50 rounded px-2 py-1 -mx-2 -mt-1'
@@ -1460,7 +1469,7 @@ export default function MechanicJobDetailPage() {
                           userSelect: 'none'
                         }}
                       >
-                        <h3 className={`text-lg font-semibold ${
+                        <h3 className={`text-base sm:text-lg font-semibold ${
                           shouldBlurCategory ? 'text-gray-400' : 
                           isActive ? 'text-blue-700 hover:text-blue-800' : 
                           allCompleted ? 'text-green-700' :
@@ -1480,16 +1489,16 @@ export default function MechanicJobDetailPage() {
                         )}
                       </div>
                       
-                      {/* Table-like layout for compact display */}
+                      {/* Table-like layout for compact display - Desktop */}
                       {/* When blurred, disable interaction with items (only header clickable) */}
-                      <div className={`overflow-x-auto ${shouldBlurCategory ? 'pointer-events-none' : ''}`}>
+                      <div className={`hidden lg:block overflow-x-auto ${shouldBlurCategory ? 'pointer-events-none' : ''}`}>
                         <table className="w-full">
                           <thead>
                             <tr className="border-b border-gray-200">
                               <th className="text-left py-2 px-2 w-12">✓</th>
-                              <th className="text-left py-2 px-3 font-semibold text-sm text-gray-700">Point Name</th>
-                              <th className="text-left py-2 px-3 font-semibold text-sm text-gray-700">Remark</th>
-                              <th className="text-center py-2 px-3 font-semibold text-sm text-gray-700 w-32">Status</th>
+                              <th className="text-left py-2 px-3 font-semibold text-xs sm:text-sm text-gray-700">Point Name</th>
+                              <th className="text-left py-2 px-3 font-semibold text-xs sm:text-sm text-gray-700">Remark</th>
+                              <th className="text-center py-2 px-3 font-semibold text-xs sm:text-sm text-gray-700 w-32">Status</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1505,7 +1514,7 @@ export default function MechanicJobDetailPage() {
                                 }`}
                               >
                                 {/* Checkbox */}
-                                <td className="py-3 px-2">
+                                <td className="py-2 sm:py-3 px-2">
                                   <input
                                     type="checkbox"
                                     checked={item.status === 'COMPLETED'}
@@ -1544,20 +1553,20 @@ export default function MechanicJobDetailPage() {
                                         }
                                       }
                                     }}
-                                    className="w-5 h-5 cursor-pointer"
+                                    className="w-4 h-4 sm:w-5 sm:h-5 cursor-pointer"
                                   />
                                 </td>
                                 
                                 {/* Point Name */}
-                                <td className="py-3 px-3">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`font-medium text-sm ${
+                                <td className="py-2 sm:py-3 px-2 sm:px-3">
+                                  <div className="flex items-center gap-1.5 sm:gap-2">
+                                    <span className={`font-medium text-xs sm:text-sm ${
                                       item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
                                     }`}>
                                       {item.name}
                                     </span>
                                     {item.mandatory && (
-                                      <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs rounded font-semibold">
+                                      <span className="px-1.5 sm:px-2 py-0.5 bg-red-100 text-red-800 text-[10px] sm:text-xs rounded font-semibold">
                                         Required
                                       </span>
                                     )}
@@ -1565,7 +1574,7 @@ export default function MechanicJobDetailPage() {
                                 </td>
                                 
                                 {/* Remark Input */}
-                                <td className="py-3 px-3">
+                                <td className="py-2 sm:py-3 px-2 sm:px-3">
                                   <input
                                     type="text"
                                     value={item.remark || ''}
@@ -1578,15 +1587,15 @@ export default function MechanicJobDetailPage() {
                                     }}
                                     onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
                                     placeholder="Enter remark..."
-                                    className={`w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                    className={`w-full px-2 sm:px-3 py-1 sm:py-1.5 border border-gray-300 rounded text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                       shouldBlurCategory ? 'bg-gray-100 cursor-not-allowed' : ''
                                     }`}
                                   />
                                 </td>
                                 
                                 {/* Status */}
-                                <td className="py-3 px-3 text-center">
-                                  <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${
+                                <td className="py-2 sm:py-3 px-2 sm:px-3 text-center">
+                                  <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold whitespace-nowrap ${
                                     item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
                                     item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
                                     'bg-gray-100 text-gray-600'
@@ -1600,6 +1609,86 @@ export default function MechanicJobDetailPage() {
                           </tbody>
                         </table>
                       </div>
+
+                      {/* Mobile Cards View */}
+                      <div className={`lg:hidden space-y-2 sm:space-y-3 ${shouldBlurCategory ? 'pointer-events-none opacity-50' : ''}`}>
+                        {categoryItems.map((item) => (
+                          <div 
+                            key={item.id}
+                            className={`border rounded-lg p-2.5 sm:p-3 transition ${
+                              item.status === 'COMPLETED' ? 'bg-green-50/30 border-green-200' : 'bg-white border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2 sm:gap-3">
+                              <input
+                                type="checkbox"
+                                checked={item.status === 'COMPLETED'}
+                                disabled={shouldBlurCategory}
+                                onChange={(e) => {
+                                  const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
+                                  if (e.target.checked && activeCategory !== category) {
+                                    setActiveCategory(category);
+                                  }
+                                  updateChecklistItem(item.id, newStatus, item.notes || '', item.remark || '');
+                                  const updatedChecklist = checklist.map(i =>
+                                    i.id === item.id ? { ...i, status: newStatus } : i
+                                  );
+                                  setChecklist(updatedChecklist);
+                                  const updatedCategoryItems = updatedChecklist.filter(i => i.category === category);
+                                  const allDone = updatedCategoryItems.every(i => i.status === 'COMPLETED');
+                                  if (allDone && activeCategory === category) {
+                                    setActiveCategory(null);
+                                  }
+                                  if (!e.target.checked && activeCategory === category) {
+                                    const hasAnyChecked = updatedCategoryItems.some(i => i.status === 'COMPLETED');
+                                    if (!hasAnyChecked) {
+                                      setActiveCategory(null);
+                                    }
+                                  }
+                                }}
+                                className="w-4 h-4 sm:w-5 sm:h-5 cursor-pointer mt-0.5 flex-shrink-0"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                                  <span className={`font-medium text-xs sm:text-sm ${
+                                    item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
+                                  }`}>
+                                    {item.name}
+                                  </span>
+                                  {item.mandatory && (
+                                    <span className="px-1.5 sm:px-2 py-0.5 bg-red-100 text-red-800 text-[10px] sm:text-xs rounded font-semibold">
+                                      Required
+                                    </span>
+                                  )}
+                                  <span className={`ml-auto px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold ${
+                                    item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                                    item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {item.status === 'COMPLETED' ? 'COMPLETE' : 'PENDING'}
+                                  </span>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={item.remark || ''}
+                                  disabled={shouldBlurCategory}
+                                  onChange={(e) => {
+                                    const updatedChecklist = checklist.map(i =>
+                                      i.id === item.id ? { ...i, remark: e.target.value } : i
+                                    );
+                                    setChecklist(updatedChecklist);
+                                  }}
+                                  onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
+                                  placeholder="Enter remark..."
+                                  className={`w-full px-2 sm:px-3 py-1 sm:py-1.5 border border-gray-300 rounded text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                    shouldBlurCategory ? 'bg-gray-100 cursor-not-allowed' : ''
+                                  }`}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   );
                   })}
@@ -1609,57 +1698,59 @@ export default function MechanicJobDetailPage() {
               </div>
             ) : (
               /* Fallback: No categories - show table format */
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-2 px-2 w-12">✓</th>
-                      <th className="text-left py-2 px-3 font-semibold text-sm text-gray-700">Point Name</th>
-                      <th className="text-left py-2 px-3 font-semibold text-sm text-gray-700">Remark</th>
-                      <th className="text-center py-2 px-3 font-semibold text-sm text-gray-700 w-32">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {checklist.map((item) => {
-                      // No categories - no blur logic needed
-                      // Mechanic can freely work on any item
-                      return (
-                      <tr 
-                        key={item.id} 
-                        className={`border-b border-gray-100 hover:bg-gray-50 transition ${
-                          item.status === 'COMPLETED' ? 'bg-green-50/30' : ''
-                        }`}
-                      >
-                        <td className="py-3 px-2">
-                          <input
-                            type="checkbox"
-                            checked={item.status === 'COMPLETED'}
-                            onChange={(e) => {
-                              const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
-                              updateChecklistItem(item.id, newStatus, item.notes || '', item.remark || '');
-                            }}
-                            className="w-5 h-5 cursor-pointer"
-                          />
-                        </td>
-                        <td className="py-3 px-3">
-                          <div className="flex items-center gap-2">
-                            <span className={`font-medium text-sm ${
-                              item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
-                            }`}>
-                              {item.name}
-                            </span>
-                            {item.mandatory && (
-                              <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs rounded font-semibold">
-                                Required
+              <>
+                {/* Desktop Table */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-2 w-12">✓</th>
+                        <th className="text-left py-2 px-3 font-semibold text-xs sm:text-sm text-gray-700">Point Name</th>
+                        <th className="text-left py-2 px-3 font-semibold text-xs sm:text-sm text-gray-700">Remark</th>
+                        <th className="text-center py-2 px-3 font-semibold text-xs sm:text-sm text-gray-700 w-32">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {checklist.map((item) => {
+                        // No categories - no blur logic needed
+                        // Mechanic can freely work on any item
+                        return (
+                        <tr 
+                          key={item.id} 
+                          className={`border-b border-gray-100 hover:bg-gray-50 transition ${
+                            item.status === 'COMPLETED' ? 'bg-green-50/30' : ''
+                          }`}
+                        >
+                          <td className="py-2 sm:py-3 px-2">
+                            <input
+                              type="checkbox"
+                              checked={item.status === 'COMPLETED'}
+                              onChange={(e) => {
+                                const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
+                                updateChecklistItem(item.id, newStatus, item.notes || '', item.remark || '');
+                              }}
+                              className="w-4 h-4 sm:w-5 sm:h-5 cursor-pointer"
+                            />
+                          </td>
+                          <td className="py-2 sm:py-3 px-2 sm:px-3">
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <span className={`font-medium text-xs sm:text-sm ${
+                                item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
+                              }`}>
+                                {item.name}
                               </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-3">
-                          <input
-                            type="text"
-                            value={item.remark || ''}
-                            onChange={(e) => {
+                              {item.mandatory && (
+                                <span className="px-1.5 sm:px-2 py-0.5 bg-red-100 text-red-800 text-[10px] sm:text-xs rounded font-semibold">
+                                  Required
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 sm:py-3 px-2 sm:px-3">
+                            <input
+                              type="text"
+                              value={item.remark || ''}
+                              onChange={(e) => {
                               const updatedChecklist = checklist.map(i =>
                                 i.id === item.id ? { ...i, remark: e.target.value } : i
                               );
@@ -1667,11 +1758,11 @@ export default function MechanicJobDetailPage() {
                             }}
                             onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
                             placeholder="Enter remark..."
-                            className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-2 sm:px-3 py-1 sm:py-1.5 border border-gray-300 rounded text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
                         </td>
-                        <td className="py-3 px-3 text-center">
-                          <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${
+                        <td className="py-2 sm:py-3 px-2 sm:px-3 text-center">
+                          <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold whitespace-nowrap ${
                             item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
                             item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
                             'bg-gray-100 text-gray-600'
@@ -1685,6 +1776,65 @@ export default function MechanicJobDetailPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Cards View - No Categories */}
+              <div className="lg:hidden space-y-2 sm:space-y-3">
+                {checklist.map((item) => (
+                  <div 
+                    key={item.id}
+                    className={`border rounded-lg p-2.5 sm:p-3 transition ${
+                      item.status === 'COMPLETED' ? 'bg-green-50/30 border-green-200' : 'bg-white border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2 sm:gap-3">
+                      <input
+                        type="checkbox"
+                        checked={item.status === 'COMPLETED'}
+                        onChange={(e) => {
+                          const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
+                          updateChecklistItem(item.id, newStatus, item.notes || '', item.remark || '');
+                        }}
+                        className="w-4 h-4 sm:w-5 sm:h-5 cursor-pointer mt-0.5 flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                          <span className={`font-medium text-xs sm:text-sm ${
+                            item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
+                          }`}>
+                            {item.name}
+                          </span>
+                          {item.mandatory && (
+                            <span className="px-1.5 sm:px-2 py-0.5 bg-red-100 text-red-800 text-[10px] sm:text-xs rounded font-semibold">
+                              Required
+                            </span>
+                          )}
+                          <span className={`ml-auto px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold ${
+                            item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                            item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {item.status === 'COMPLETED' ? 'COMPLETE' : 'PENDING'}
+                          </span>
+                        </div>
+                        <input
+                          type="text"
+                          value={item.remark || ''}
+                          onChange={(e) => {
+                            const updatedChecklist = checklist.map(i =>
+                              i.id === item.id ? { ...i, remark: e.target.value } : i
+                            );
+                            setChecklist(updatedChecklist);
+                          }}
+                          onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
+                          placeholder="Enter remark..."
+                          className="w-full px-2 sm:px-3 py-1 sm:py-1.5 border border-gray-300 rounded text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              </>
             );
             })()
             )}
@@ -1692,21 +1842,21 @@ export default function MechanicJobDetailPage() {
         )}
 
         {activeTab === 'media' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-5 md:space-y-6">
             {/* Category Dropdown */}
-            <div className="card">
-              <h2 className="text-xl font-bold mb-4">Upload Media</h2>
-              <div className="space-y-4">
-                <div className="flex gap-4 items-end">
+            <div className="card p-3 sm:p-4 md:p-5">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Upload Media</h2>
+              <div className="space-y-3 sm:space-y-4">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-end">
                   <div className="flex-1">
-                    <label className="block text-sm font-medium mb-2">Category</label>
+                    <label className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Category</label>
                     <select
                       value={selectedCategory}
                       onChange={(e) => {
                         setSelectedCategory(e.target.value);
                         setSelectedPhotoType('');
                       }}
-                      className="input w-full"
+                      className="input w-full text-xs sm:text-sm"
                     >
                       <option value="PROGRESS">Work in Progress</option>
                       <option value="PARTS_USED">Parts Used</option>
@@ -1716,8 +1866,8 @@ export default function MechanicJobDetailPage() {
 
                 {/* PROGRESS Category - During Service Upload */}
                 {selectedCategory === 'PROGRESS' && job && job.id && (
-                  <div className="card border-2 border-orange-300">
-                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <div className="card border-2 border-orange-300 p-3 sm:p-4 md:p-5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                       <Camera className="w-6 h-6 text-orange-600" />
                       Work in Progress Photos
                     </h2>
@@ -1733,17 +1883,17 @@ export default function MechanicJobDetailPage() {
 
                 {/* EXTRA_WORK_PROOF Category */}
                 {selectedCategory === 'EXTRA_WORK_PROOF' && (
-                  <div className="card border-2 border-purple-300">
-                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                      <Camera className="w-6 h-6 text-purple-600" />
+                  <div className="card border-2 border-purple-300 p-3 sm:p-4 md:p-5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                      <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 flex-shrink-0" />
                       Extra Work Proof
                     </h2>
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
                       Upload photos as proof of extra work performed (e.g., additional repairs, part replacements).
                     </p>
                     <div>
-                      <label className="btn btn-primary cursor-pointer">
-                        <Upload className="w-5 h-5" />
+                      <label className="btn btn-primary cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+                        <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
                         {uploadingMedia ? 'Uploading...' : 'Upload Proof Photos'}
                         <input
                           type="file"
@@ -1760,17 +1910,17 @@ export default function MechanicJobDetailPage() {
 
                 {/* DAMAGE_FOUND Category */}
                 {selectedCategory === 'DAMAGE_FOUND' && (
-                  <div className="card border-2 border-red-300">
-                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                      <Camera className="w-6 h-6 text-red-600" />
+                  <div className="card border-2 border-red-300 p-3 sm:p-4 md:p-5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                      <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0" />
                       Damage Found
                     </h2>
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
                       Upload photos of any damages or issues found during inspection or service.
                     </p>
                     <div>
-                      <label className="btn btn-primary cursor-pointer">
-                        <Upload className="w-5 h-5" />
+                      <label className="btn btn-primary cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+                        <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
                         {uploadingMedia ? 'Uploading...' : 'Upload Damage Photos'}
                         <input
                           type="file"
@@ -1787,9 +1937,9 @@ export default function MechanicJobDetailPage() {
 
                 {/* PARTS_USED Category */}
                 {selectedCategory === 'PARTS_USED' && job && job.id && (
-                  <div className="card border-2 border-indigo-300">
-                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                      <Camera className="w-6 h-6 text-indigo-600" />
+                  <div className="card border-2 border-indigo-300 p-3 sm:p-4 md:p-5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                      <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 flex-shrink-0" />
                       Parts Used Photos
                     </h2>
                     <PartsUsedUpload
@@ -1805,24 +1955,24 @@ export default function MechanicJobDetailPage() {
             </div>
 
             {/* Media Grid */}
-            <div className="card">
-              <h2 className="text-xl font-bold mb-4">Other Media ({media.length})</h2>
-              <p className="text-sm text-gray-600 mb-4">
+            <div className="card p-3 sm:p-4 md:p-5">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Other Media ({media.length})</h2>
+              <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
                 General media uploads (not used for before/after inspection validation)
               </p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
                 {media.map((item) => (
                   <div key={item.id} className="border rounded-lg overflow-hidden group relative">
                     {/* Image or Video */}
                     {item.media_type === 'VIDEO' || item.file_url.match(/\.(mp4|webm|ogg|mov)$/i) ? (
-                      <div className="relative w-full h-48 bg-black">
+                      <div className="relative w-full h-32 sm:h-40 md:h-48 bg-black">
                         <video 
                           src={item.file_url} 
-                          className="w-full h-48 object-contain"
+                          className="w-full h-32 sm:h-40 md:h-48 object-contain"
                           controls
                           preload="metadata"
                         />
-                        <div className="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-1 rounded">
+                        <div className="absolute top-1 sm:top-2 right-1 sm:right-2 bg-red-600 text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
                           VIDEO
                         </div>
                       </div>
@@ -1834,33 +1984,33 @@ export default function MechanicJobDetailPage() {
                         <img 
                           src={item.file_url} 
                           alt="Job media" 
-                          className="w-full h-48 object-cover group-hover:opacity-90 transition-opacity" 
+                          className="w-full h-32 sm:h-40 md:h-48 object-cover group-hover:opacity-90 transition-opacity" 
                         />
                         <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
-                          <Camera className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <Camera className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
                       </div>
                     )}
                     
-                    <div className="p-2 bg-gray-50">
-                      <p className="text-xs font-semibold text-blue-600">
+                    <div className="p-1.5 sm:p-2 bg-gray-50">
+                      <p className="text-[10px] sm:text-xs font-semibold text-blue-600">
                         {item.media_category.replace(/_/g, ' ')}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-[10px] sm:text-xs text-gray-500">
                         {new Date(item.uploaded_at || item.created_at).toLocaleString()}
                       </p>
                       {item.caption && (
-                        <p className="text-xs text-gray-700 mt-1">{item.caption}</p>
+                        <p className="text-[10px] sm:text-xs text-gray-700 mt-0.5 sm:mt-1">{item.caption}</p>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
               {media.length === 0 && (
-                <div className="text-center text-gray-500 py-12 bg-gray-50 rounded-lg">
-                  <Camera className="w-16 h-16 mx-auto mb-3 text-gray-400" />
-                  <p className="font-medium">No media uploaded yet</p>
-                  <p className="text-sm mt-1">Upload photos or videos to document your work</p>
+                <div className="text-center text-gray-500 py-8 sm:py-10 md:py-12 bg-gray-50 rounded-lg">
+                  <Camera className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 mx-auto mb-2 sm:mb-3 text-gray-400" />
+                  <p className="font-medium text-xs sm:text-sm">No media uploaded yet</p>
+                  <p className="text-xs sm:text-sm mt-0.5 sm:mt-1">Upload photos or videos to document your work</p>
                 </div>
               )}
             </div>
@@ -1868,34 +2018,34 @@ export default function MechanicJobDetailPage() {
         )}
 
         {activeTab === 'parts' && (
-          <div className="card">
-            <h2 className="text-xl font-bold mb-4">Parts Management</h2>
-            <div className="space-y-3">
+          <div className="card p-3 sm:p-4 md:p-5">
+            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Parts Management</h2>
+            <div className="space-y-2 sm:space-y-3">
               {parts.map((part) => (
-                <div key={part.id} className="p-4 border rounded-lg">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <p className="font-semibold text-lg">{part.part_name}</p>
+                <div key={part.id} className="p-3 sm:p-4 border rounded-lg">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-base sm:text-lg">{part.part_name}</p>
                       {part.part_code && (
-                        <p className="text-sm text-gray-600">Code: {part.part_code}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">Code: {part.part_code}</p>
                       )}
-                      <p className="text-sm text-gray-600 mt-1">
+                      <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                         Quantity Assigned: {part.quantity || 0} {part.unit || 'piece'}
                       </p>
                       {part.unit_price && (
-                        <p className="text-sm text-gray-600">
+                        <p className="text-xs sm:text-sm text-gray-600">
                           Unit Price: ₹{part.unit_price.toFixed(2)}
                           {part.total_price && ` | Total: ₹${part.total_price.toFixed(2)}`}
                         </p>
                       )}
                       {part.supplier && (
-                        <p className="text-sm text-gray-600">Supplier: {part.supplier}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">Supplier: {part.supplier}</p>
                       )}
                     </div>
                   </div>
                   {part.notes && (
-                    <div className="mt-3 pt-3 border-t">
-                      <p className="text-sm text-gray-600">
+                    <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t">
+                      <p className="text-xs sm:text-sm text-gray-600">
                         <strong>Notes:</strong> {part.notes}
                       </p>
                     </div>
@@ -1903,15 +2053,15 @@ export default function MechanicJobDetailPage() {
                 </div>
               ))}
               {parts.length === 0 && (
-                <div className="text-center py-8">
-                  <Package className="w-16 h-16 mx-auto mb-3 text-gray-400" />
-                  <p className="text-gray-500 font-medium mb-2">No parts assigned for this job</p>
-                  <p className="text-sm text-gray-400 mb-4">
+                <div className="text-center py-6 sm:py-8">
+                  <Package className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 mx-auto mb-2 sm:mb-3 text-gray-400" />
+                  <p className="text-gray-500 font-medium mb-1.5 sm:mb-2 text-xs sm:text-sm">No parts assigned for this job</p>
+                  <p className="text-xs sm:text-sm text-gray-400 mb-3 sm:mb-4">
                     Parts are assigned by Admin/Supervisor. Contact them to request parts for this job.
                   </p>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
-                    <p className="text-sm text-blue-800 font-semibold mb-1">💡 How to request parts:</p>
-                    <ul className="text-xs text-blue-700 text-left space-y-1 list-disc list-inside">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 max-w-md mx-auto">
+                    <p className="text-xs sm:text-sm text-blue-800 font-semibold mb-1">💡 How to request parts:</p>
+                    <ul className="text-[10px] sm:text-xs text-blue-700 text-left space-y-0.5 sm:space-y-1 list-disc list-inside">
                       <li>Contact your Supervisor or Admin</li>
                       <li>Use "Request Extra Work" button if additional parts are needed</li>
                       <li>Parts will appear here once assigned</li>
@@ -1924,20 +2074,20 @@ export default function MechanicJobDetailPage() {
         )}
 
         {activeTab === 'notes' && (
-          <div className="card">
-            <h2 className="text-xl font-bold mb-4">Work Notes</h2>
+          <div className="card p-3 sm:p-4 md:p-5">
+            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Work Notes</h2>
             <textarea
               value={workNotes}
               onChange={(e) => setWorkNotes(e.target.value)}
-              rows={10}
-              className="input w-full"
+              rows={8}
+              className="input w-full text-xs sm:text-sm"
               placeholder="Add your work notes, observations, complications, hidden damage found, etc..."
             />
             <button 
               onClick={saveWorkNotes}
-              className="btn btn-primary mt-4"
+              className="btn btn-primary mt-3 sm:mt-4 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
             >
-              <Save className="w-5 h-5" />
+              <Save className="w-4 h-4 sm:w-5 sm:h-5" />
               Save Notes
             </button>
           </div>
@@ -1945,70 +2095,70 @@ export default function MechanicJobDetailPage() {
 
         {/* Extra Work Request Modal */}
         {showExtraWorkForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold">Request Additional Work</h2>
-                <button onClick={() => setShowExtraWorkForm(false)} className="btn btn-outline">
-                  <X className="w-5 h-5" />
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-3 sm:mb-4">
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold">Request Additional Work</h2>
+                <button onClick={() => setShowExtraWorkForm(false)} className="btn btn-outline p-1.5 sm:p-2">
+                  <X className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               </div>
               
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Issue Found</label>
+                  <label className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Issue Found</label>
                   <textarea
                     value={extraWorkForm.issue_description}
                     onChange={(e) => setExtraWorkForm({ ...extraWorkForm, issue_description: e.target.value })}
                     rows={4}
-                    className="input w-full"
+                    className="input w-full text-xs sm:text-sm"
                     placeholder="Describe the issue you found..."
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Additional Work Required</label>
+                  <label className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Additional Work Required</label>
                   <textarea
                     value={extraWorkForm.additional_work_required}
                     onChange={(e) => setExtraWorkForm({ ...extraWorkForm, additional_work_required: e.target.value })}
                     rows={4}
-                    className="input w-full"
+                    className="input w-full text-xs sm:text-sm"
                     placeholder="What additional work is needed?"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Estimated Cost (Optional)</label>
+                  <label className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Estimated Cost (Optional)</label>
                   <input
                     type="number"
                     value={extraWorkForm.estimated_cost}
                     onChange={(e) => setExtraWorkForm({ ...extraWorkForm, estimated_cost: e.target.value })}
-                    className="input w-full"
+                    className="input w-full text-xs sm:text-sm"
                     placeholder="Enter estimated cost"
                     min="0"
                     step="0.01"
                   />
                 </div>
 
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-sm text-yellow-800">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-yellow-800">
                     <strong>Note:</strong> Please upload proof images in the Media tab before submitting this request.
                     Your job status will change to "Waiting for Approval" until the admin reviews this request.
                   </p>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                   <button
                     onClick={submitExtraWorkRequest}
                     disabled={!extraWorkForm.issue_description || !extraWorkForm.additional_work_required}
-                    className="btn btn-primary flex-1"
+                    className="btn btn-primary flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   >
-                    <Send className="w-5 h-5" />
+                    <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                     Submit Request
                   </button>
-                  <button onClick={() => setShowExtraWorkForm(false)} className="btn btn-outline">
+                  <button onClick={() => setShowExtraWorkForm(false)} className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
                     Cancel
                   </button>
                 </div>
@@ -2019,22 +2169,22 @@ export default function MechanicJobDetailPage() {
 
         {/* Extra Work Requests List */}
         {extraWorkRequests.length > 0 && (
-          <div className="card">
-            <h2 className="text-xl font-bold mb-4">Extra Work Requests</h2>
-            <div className="space-y-3">
+          <div className="card p-3 sm:p-4 md:p-5">
+            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Extra Work Requests</h2>
+            <div className="space-y-2 sm:space-y-3">
               {extraWorkRequests.map((request) => (
-                <div key={request.id} className="p-4 border rounded-lg">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <p className="font-semibold">{request.issue_description}</p>
-                      <p className="text-sm text-gray-600 mt-1">{request.additional_work_required}</p>
+                <div key={request.id} className="p-3 sm:p-4 border rounded-lg">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm sm:text-base">{request.issue_description}</p>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{request.additional_work_required}</p>
                       {request.estimated_cost && (
-                        <p className="text-sm font-medium text-green-600 mt-2">
+                        <p className="text-xs sm:text-sm font-medium text-green-600 mt-1 sm:mt-2">
                           Estimated: ₹{request.estimated_cost}
                         </p>
                       )}
                     </div>
-                    <span className={`px-3 py-1 rounded text-sm ml-4 ${
+                    <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded text-xs sm:text-sm ml-0 sm:ml-4 ${
                       request.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
                       request.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
                       'bg-yellow-100 text-yellow-800'
@@ -2043,13 +2193,13 @@ export default function MechanicJobDetailPage() {
                     </span>
                   </div>
                   {request.review_notes && (
-                    <div className="pt-3 border-t">
-                      <p className="text-sm text-gray-600">
+                    <div className="pt-2 sm:pt-3 border-t">
+                      <p className="text-xs sm:text-sm text-gray-600">
                         <strong>Review Notes:</strong> {request.review_notes}
                       </p>
                     </div>
                   )}
-                  <div className="pt-2 border-t mt-2 text-xs text-gray-500">
+                  <div className="pt-1.5 sm:pt-2 border-t mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-gray-500">
                     Requested: {new Date(request.created_at).toLocaleString()}
                   </div>
                 </div>
@@ -2062,33 +2212,33 @@ export default function MechanicJobDetailPage() {
       {/* Image Zoom Modal */}
       {zoomedMedia && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-2 sm:p-3 md:p-4"
           onClick={() => setZoomedMedia(null)}
         >
           <div className="relative max-w-7xl max-h-full" onClick={(e) => e.stopPropagation()}>
             {/* Close Button */}
             <button
               onClick={() => setZoomedMedia(null)}
-              className="absolute -top-12 right-0 text-white hover:text-gray-300 transition-colors"
+              className="absolute -top-8 sm:-top-10 md:-top-12 right-0 sm:right-2 text-white hover:text-gray-300 transition-colors p-1 sm:p-2"
             >
-              <X className="w-8 h-8" />
+              <X className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />
             </button>
             
             {/* Image */}
             <img 
               src={zoomedMedia.file_url} 
               alt="Zoomed media"
-              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+              className="max-w-full max-h-[85vh] sm:max-h-[90vh] object-contain rounded-lg shadow-2xl"
             />
             
             {/* Info Bar */}
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent text-white p-4 rounded-b-lg">
-              <p className="font-semibold">{zoomedMedia.media_category.replace(/_/g, ' ')}</p>
-              <p className="text-sm text-gray-300">
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent text-white p-2 sm:p-3 md:p-4 rounded-b-lg">
+              <p className="font-semibold text-xs sm:text-sm md:text-base">{zoomedMedia.media_category.replace(/_/g, ' ')}</p>
+              <p className="text-[10px] sm:text-xs md:text-sm text-gray-300">
                 {new Date(zoomedMedia.uploaded_at || zoomedMedia.created_at).toLocaleString()}
               </p>
               {zoomedMedia.caption && (
-                <p className="text-sm mt-2">{zoomedMedia.caption}</p>
+                <p className="text-[10px] sm:text-xs md:text-sm mt-1 sm:mt-2">{zoomedMedia.caption}</p>
               )}
             </div>
             
@@ -2098,12 +2248,12 @@ export default function MechanicJobDetailPage() {
               download
               target="_blank"
               rel="noopener noreferrer"
-              className="absolute top-0 right-12 bg-white text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-2"
+              className="absolute top-0 right-8 sm:right-10 md:right-12 bg-white text-gray-800 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              Download
+              <span className="hidden sm:inline">Download</span>
             </a>
           </div>
         </div>

@@ -138,8 +138,8 @@ export default function SuperAdminAnalyticsPage() {
   if (loading) {
     return (
       <DashboardLayout role="super_admin">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -147,162 +147,165 @@ export default function SuperAdminAnalyticsPage() {
 
   return (
     <DashboardLayout role="super_admin">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg flex items-center gap-3">
-                <BarChart3 className="w-8 h-8" />
-                Analytics & Reports
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg flex items-center gap-2 sm:gap-3">
+                <BarChart3 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 flex-shrink-0" />
+                <span className="truncate">Analytics & Reports</span>
               </h1>
-              <p className="text-white font-medium mt-1">Comprehensive business intelligence dashboard</p>
+              <p className="text-white font-medium text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">Comprehensive business intelligence dashboard</p>
             </div>
             <button
               onClick={exportReport}
-              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-2 transition"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-1.5 sm:gap-2 transition text-xs sm:text-sm w-full sm:w-auto justify-center"
             >
-              <Download className="w-5 h-5" />
-              Export Report
+              <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">Export Report</span>
+              <span className="sm:hidden">Export</span>
             </button>
           </div>
         </div>
 
         {/* Date Range Filter */}
-        <div className="card">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-gray-700">Time Period:</span>
-            {(['7d', '30d', '90d', '1y'] as const).map((range) => (
-              <button
-                key={range}
-                onClick={() => setDateRange(range)}
-                className={`px-4 py-2 rounded-lg font-medium transition ${
-                  dateRange === range
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {range === '7d' ? 'Last 7 Days' :
-                 range === '30d' ? 'Last 30 Days' :
-                 range === '90d' ? 'Last 90 Days' :
-                 'Last Year'}
-              </button>
-            ))}
+        <div className="card p-3 sm:p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+            <span className="text-xs sm:text-sm font-medium text-gray-700">Time Period:</span>
+            <div className="flex flex-wrap gap-2">
+              {(['7d', '30d', '90d', '1y'] as const).map((range) => (
+                <button
+                  key={range}
+                  onClick={() => setDateRange(range)}
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
+                    dateRange === range
+                      ? 'bg-brand-primary text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {range === '7d' ? 'Last 7 Days' :
+                   range === '30d' ? 'Last 30 Days' :
+                   range === '90d' ? 'Last 90 Days' :
+                   'Last Year'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Overview Metrics */}
         {data && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
               {/* Total Leads */}
-              <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
-                <div className="flex items-center justify-between mb-2">
-                  <FileText className="w-10 h-10 text-blue-600" />
-                  <div className={`flex items-center gap-1 text-sm font-semibold ${
+              <div className="card bg-gradient-to-br from-blue-50 to-blue-100 p-4 sm:p-5">
+                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                  <FileText className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-blue-600 flex-shrink-0" />
+                  <div className={`flex items-center gap-1 text-xs sm:text-sm font-semibold ${
                     data.overview.leadsGrowth >= 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
                     {data.overview.leadsGrowth >= 0 ? (
-                      <TrendingUp className="w-4 h-4" />
+                      <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     ) : (
-                      <TrendingDown className="w-4 h-4" />
+                      <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     )}
                     {Math.abs(data.overview.leadsGrowth).toFixed(1)}%
                   </div>
                 </div>
-                <p className="text-sm text-gray-600">Total Leads</p>
-                <p className="text-4xl font-bold text-gray-800">{data.overview.totalLeads}</p>
+                <p className="text-xs sm:text-sm text-gray-600">Total Leads</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800">{data.overview.totalLeads}</p>
               </div>
 
               {/* Conversion Rate */}
-              <div className="card bg-gradient-to-br from-green-50 to-green-100">
-                <div className="flex items-center justify-between mb-2">
-                  <CheckCircle className="w-10 h-10 text-green-600" />
+              <div className="card bg-gradient-to-br from-green-50 to-green-100 p-4 sm:p-5">
+                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                  <CheckCircle className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-green-600 flex-shrink-0" />
                 </div>
-                <p className="text-sm text-gray-600">Conversion Rate</p>
-                <p className="text-4xl font-bold text-gray-800">{data.overview.conversionRate.toFixed(1)}%</p>
+                <p className="text-xs sm:text-sm text-gray-600">Conversion Rate</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800">{data.overview.conversionRate.toFixed(1)}%</p>
               </div>
 
               {/* Total Revenue */}
-              <div className="card bg-gradient-to-br from-purple-50 to-purple-100">
-                <div className="flex items-center justify-between mb-2">
-                  <DollarSign className="w-10 h-10 text-purple-600" />
-                  <div className={`flex items-center gap-1 text-sm font-semibold ${
+              <div className="card bg-gradient-to-br from-purple-50 to-purple-100 p-4 sm:p-5">
+                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                  <DollarSign className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-purple-600 flex-shrink-0" />
+                  <div className={`flex items-center gap-1 text-xs sm:text-sm font-semibold ${
                     data.overview.revenueGrowth >= 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
                     {data.overview.revenueGrowth >= 0 ? (
-                      <TrendingUp className="w-4 h-4" />
+                      <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     ) : (
-                      <TrendingDown className="w-4 h-4" />
+                      <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     )}
                     {Math.abs(data.overview.revenueGrowth).toFixed(1)}%
                   </div>
                 </div>
-                <p className="text-sm text-gray-600">Total Revenue</p>
-                <p className="text-4xl font-bold text-gray-800">₹{(data.overview.totalRevenue / 1000).toFixed(1)}K</p>
+                <p className="text-xs sm:text-sm text-gray-600">Total Revenue</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800">₹{(data.overview.totalRevenue / 1000).toFixed(1)}K</p>
               </div>
 
               {/* Avg Lead Value */}
-              <div className="card bg-gradient-to-br from-orange-50 to-orange-100">
-                <div className="flex items-center justify-between mb-2">
-                  <Star className="w-10 h-10 text-orange-600" />
+              <div className="card bg-gradient-to-br from-orange-50 to-orange-100 p-4 sm:p-5">
+                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                  <Star className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-orange-600 flex-shrink-0" />
                 </div>
-                <p className="text-sm text-gray-600">Avg Lead Value</p>
-                <p className="text-4xl font-bold text-gray-800">₹{data.overview.avgLeadValue.toFixed(0)}</p>
+                <p className="text-xs sm:text-sm text-gray-600">Avg Lead Value</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800">₹{data.overview.avgLeadValue.toFixed(0)}</p>
               </div>
             </div>
 
             {/* Secondary Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="card">
-                <div className="flex items-center gap-3 mb-3">
-                  <Clock className="w-8 h-8 text-blue-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Avg Completion Time</p>
-                    <p className="text-2xl font-bold text-gray-800">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
+              <div className="card p-4 sm:p-5">
+                <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                  <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-blue-600 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-gray-600">Avg Completion Time</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-800">
                       {data.overview.avgCompletionTime.toFixed(1)} days
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="card">
-                <div className="flex items-center gap-3 mb-3">
-                  <Users className="w-8 h-8 text-green-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Active Workshops</p>
-                    <p className="text-2xl font-bold text-gray-800">12</p>
+              <div className="card p-4 sm:p-5">
+                <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                  <Users className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-600 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-gray-600">Active Workshops</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-800">12</p>
                   </div>
                 </div>
               </div>
 
-              <div className="card">
-                <div className="flex items-center gap-3 mb-3">
-                  <Star className="w-8 h-8 text-yellow-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Avg Satisfaction</p>
-                    <p className="text-2xl font-bold text-gray-800">4.2/5</p>
+              <div className="card p-4 sm:p-5">
+                <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                  <Star className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-yellow-600 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-gray-600">Avg Satisfaction</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-800">4.2/5</p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Leads by Status */}
-            <div className="card">
-              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <BarChart3 className="w-6 h-6 text-brand-primary" />
-                Leads by Status
+            <div className="card p-4 sm:p-5 md:p-6">
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
+                <span>Leads by Status</span>
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {data.leadsByStatus.sort((a, b) => b.count - a.count).slice(0, 8).map((item) => (
                   <div key={item.status} className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium">{item.status.replace(/_/g, ' ')}</span>
-                      <span className="text-gray-600">{item.count} ({item.percentage.toFixed(1)}%)</span>
+                    <div className="flex justify-between text-xs sm:text-sm">
+                      <span className="font-medium truncate">{item.status.replace(/_/g, ' ')}</span>
+                      <span className="text-gray-600 flex-shrink-0 ml-2">{item.count} ({item.percentage.toFixed(1)}%)</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
                       <div
-                        className="bg-brand-primary h-2 rounded-full transition-all"
+                        className="bg-brand-primary h-1.5 sm:h-2 rounded-full transition-all"
                         style={{ width: `${item.percentage}%` }}
                       ></div>
                     </div>
@@ -312,18 +315,18 @@ export default function SuperAdminAnalyticsPage() {
             </div>
 
             {/* Additional Charts Placeholder */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="card">
-                <h3 className="text-xl font-bold mb-4">Revenue Trend</h3>
-                <div className="h-64 flex items-center justify-center bg-gray-50 rounded">
-                  <p className="text-gray-500">Chart visualization coming soon</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
+              <div className="card p-4 sm:p-5 md:p-6">
+                <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Revenue Trend</h3>
+                <div className="h-48 sm:h-56 md:h-64 flex items-center justify-center bg-gray-50 rounded">
+                  <p className="text-gray-500 text-xs sm:text-sm md:text-base">Chart visualization coming soon</p>
                 </div>
               </div>
 
-              <div className="card">
-                <h3 className="text-xl font-bold mb-4">Workshop Performance</h3>
-                <div className="h-64 flex items-center justify-center bg-gray-50 rounded">
-                  <p className="text-gray-500">Chart visualization coming soon</p>
+              <div className="card p-4 sm:p-5 md:p-6">
+                <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Workshop Performance</h3>
+                <div className="h-48 sm:h-56 md:h-64 flex items-center justify-center bg-gray-50 rounded">
+                  <p className="text-gray-500 text-xs sm:text-sm md:text-base">Chart visualization coming soon</p>
                 </div>
               </div>
             </div>

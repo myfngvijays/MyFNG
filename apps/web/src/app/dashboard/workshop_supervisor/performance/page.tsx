@@ -145,8 +145,8 @@ export default function PerformancePage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_supervisor">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -154,120 +154,120 @@ export default function PerformancePage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-text-heading">Performance Analytics</h1>
-          <p className="text-text-body mt-2">Track team performance and identify areas for improvement</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Performance Analytics</h1>
+          <p className="text-text-body mt-1 sm:mt-2 text-xs sm:text-sm md:text-base">Track team performance and identify areas for improvement</p>
         </div>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
-            <div className="flex items-center justify-between mb-2">
-              <CheckCircle className="w-8 h-8 text-blue-600" />
-              <TrendingUp className="w-5 h-5 text-green-600" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          <div className="card bg-gradient-to-br from-blue-50 to-blue-100 p-3 sm:p-4 md:p-5">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+              <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-blue-600 flex-shrink-0" />
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
             </div>
-            <p className="text-sm text-gray-600">Total Completed</p>
-            <p className="text-3xl font-bold text-blue-600">{stats.total_jobs_completed}</p>
-            <p className="text-xs text-green-600 mt-1">All time</p>
+            <p className="text-xs sm:text-sm text-gray-600">Total Completed</p>
+            <p className="text-2xl sm:text-3xl font-bold text-blue-600">{stats.total_jobs_completed}</p>
+            <p className="text-[10px] sm:text-xs text-green-600 mt-0.5 sm:mt-1">All time</p>
           </div>
 
-          <div className="card bg-gradient-to-br from-green-50 to-green-100">
-            <div className="flex items-center justify-between mb-2">
-              <Clock className="w-8 h-8 text-green-600" />
-              <span className="text-xs text-gray-600">avg</span>
+          <div className="card bg-gradient-to-br from-green-50 to-green-100 p-3 sm:p-4 md:p-5">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+              <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-600 flex-shrink-0" />
+              <span className="text-[10px] sm:text-xs text-gray-600">avg</span>
             </div>
-            <p className="text-sm text-gray-600">Completion Time</p>
-            <p className="text-3xl font-bold text-green-600">{stats.avg_completion_time}h</p>
-            <p className="text-xs text-gray-600 mt-1">Per job</p>
+            <p className="text-xs sm:text-sm text-gray-600">Completion Time</p>
+            <p className="text-2xl sm:text-3xl font-bold text-green-600">{stats.avg_completion_time}h</p>
+            <p className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1">Per job</p>
           </div>
 
-          <div className="card bg-gradient-to-br from-purple-50 to-purple-100">
-            <div className="flex items-center justify-between mb-2">
-              <TrendingUp className="w-8 h-8 text-purple-600" />
-              <span className={`text-xs ${stats.sla_compliance_rate >= 80 ? 'text-green-600' : 'text-red-600'}`}>
+          <div className="card bg-gradient-to-br from-purple-50 to-purple-100 p-3 sm:p-4 md:p-5 sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+              <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-600 flex-shrink-0" />
+              <span className={`text-[10px] sm:text-xs ${stats.sla_compliance_rate >= 80 ? 'text-green-600' : 'text-red-600'}`}>
                 {stats.sla_compliance_rate >= 80 ? '↑' : '↓'}
               </span>
             </div>
-            <p className="text-sm text-gray-600">SLA Compliance</p>
-            <p className="text-3xl font-bold text-purple-600">{stats.sla_compliance_rate}%</p>
-            <p className="text-xs text-gray-600 mt-1">On-time completion</p>
+            <p className="text-xs sm:text-sm text-gray-600">SLA Compliance</p>
+            <p className="text-2xl sm:text-3xl font-bold text-purple-600">{stats.sla_compliance_rate}%</p>
+            <p className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1">On-time completion</p>
           </div>
         </div>
 
         {/* Period Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="card">
-            <h3 className="font-semibold text-gray-600 mb-2">This Week</h3>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-blue-600" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          <div className="card p-3 sm:p-4">
+            <h3 className="font-semibold text-gray-600 mb-1.5 sm:mb-2 text-xs sm:text-sm">This Week</h3>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">{stats.jobs_this_week}</p>
-                <p className="text-sm text-gray-600">Jobs Completed</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <h3 className="font-semibold text-gray-600 mb-2">This Month</h3>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{stats.jobs_this_month}</p>
-                <p className="text-sm text-gray-600">Jobs Completed</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xl sm:text-2xl font-bold">{stats.jobs_this_week}</p>
+                <p className="text-xs sm:text-sm text-gray-600">Jobs Completed</p>
               </div>
             </div>
           </div>
 
-          <div className="card">
-            <h3 className="font-semibold text-gray-600 mb-2">Customer Satisfaction</h3>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-yellow-600" />
+          <div className="card p-3 sm:p-4">
+            <h3 className="font-semibold text-gray-600 mb-1.5 sm:mb-2 text-xs sm:text-sm">This Month</h3>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">{stats.customer_satisfaction}%</p>
-                <p className="text-sm text-gray-600">Average Rating</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xl sm:text-2xl font-bold">{stats.jobs_this_month}</p>
+                <p className="text-xs sm:text-sm text-gray-600">Jobs Completed</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="card p-3 sm:p-4 sm:col-span-2 lg:col-span-1">
+            <h3 className="font-semibold text-gray-600 mb-1.5 sm:mb-2 text-xs sm:text-sm">Customer Satisfaction</h3>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xl sm:text-2xl font-bold">{stats.customer_satisfaction}%</p>
+                <p className="text-xs sm:text-sm text-gray-600">Average Rating</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Performance Insights */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="card">
-            <h3 className="text-lg font-bold mb-4">Performance Insights</h3>
-            <div className="space-y-4">
-              <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg">
-                <CheckCircle className="w-5 h-5 text-green-600 mt-1" />
-                <div>
-                  <p className="font-semibold text-green-800">Excellent SLA Performance</p>
-                  <p className="text-sm text-gray-600">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
+          <div className="card p-3 sm:p-4 md:p-5">
+            <h3 className="text-base sm:text-lg font-bold mb-3 sm:mb-4">Performance Insights</h3>
+            <div className="space-y-3 sm:space-y-4">
+              <div className="flex items-start gap-2 sm:gap-3 p-2.5 sm:p-3 bg-green-50 rounded-lg">
+                <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 mt-0.5 sm:mt-1 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-green-800 text-xs sm:text-sm md:text-base">Excellent SLA Performance</p>
+                  <p className="text-xs sm:text-sm text-gray-600">
                     {stats.sla_compliance_rate}% of jobs completed on time
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-blue-600 mt-1" />
-                <div>
-                  <p className="font-semibold text-blue-800">Productivity Trend</p>
-                  <p className="text-sm text-gray-600">
+              <div className="flex items-start gap-2 sm:gap-3 p-2.5 sm:p-3 bg-blue-50 rounded-lg">
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mt-0.5 sm:mt-1 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-blue-800 text-xs sm:text-sm md:text-base">Productivity Trend</p>
+                  <p className="text-xs sm:text-sm text-gray-600">
                     Average {stats.avg_completion_time} hours per job completion
                   </p>
                 </div>
               </div>
 
               {stats.sla_compliance_rate < 80 && (
-                <div className="flex items-start gap-3 p-3 bg-red-50 rounded-lg">
-                  <AlertTriangle className="w-5 h-5 text-red-600 mt-1" />
-                  <div>
-                    <p className="font-semibold text-red-800">Improvement Needed</p>
-                    <p className="text-sm text-gray-600">
+                <div className="flex items-start gap-2 sm:gap-3 p-2.5 sm:p-3 bg-red-50 rounded-lg">
+                  <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 mt-0.5 sm:mt-1 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-red-800 text-xs sm:text-sm md:text-base">Improvement Needed</p>
+                    <p className="text-xs sm:text-sm text-gray-600">
                       SLA compliance below target. Consider team training.
                     </p>
                   </div>
@@ -276,20 +276,20 @@ export default function PerformancePage() {
             </div>
           </div>
 
-          <div className="card">
-            <h3 className="text-lg font-bold mb-4">Quick Actions</h3>
-            <div className="space-y-3">
-              <button className="w-full btn btn-outline text-left">
-                <Users className="w-5 h-5 inline mr-2" />
-                Schedule Team Meeting
+          <div className="card p-3 sm:p-4 md:p-5">
+            <h3 className="text-base sm:text-lg font-bold mb-3 sm:mb-4">Quick Actions</h3>
+            <div className="space-y-2 sm:space-y-3">
+              <button className="w-full btn btn-outline text-left text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center gap-1.5 sm:gap-2">
+                <Users className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                <span>Schedule Team Meeting</span>
               </button>
-              <button className="w-full btn btn-outline text-left">
-                <TrendingUp className="w-5 h-5 inline mr-2" />
-                View Detailed Reports
+              <button className="w-full btn btn-outline text-left text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center gap-1.5 sm:gap-2">
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                <span>View Detailed Reports</span>
               </button>
-              <button className="w-full btn btn-outline text-left">
-                <Clock className="w-5 h-5 inline mr-2" />
-                Set Performance Goals
+              <button className="w-full btn btn-outline text-left text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center gap-1.5 sm:gap-2">
+                <Clock className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                <span>Set Performance Goals</span>
               </button>
             </div>
           </div>

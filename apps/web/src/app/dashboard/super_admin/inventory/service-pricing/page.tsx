@@ -380,43 +380,45 @@ export default function ServiceTypePricingPage() {
   const isBulkMode = selectedWorkshop === 'ALL' && selectedZone && selectedClass;
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Service Type Pricing</h1>
-          <p className="text-gray-500">Override service prices by Zone, City, Workshop & Car Class</p>
+    <div className="p-3 sm:p-4 md:p-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Service Type Pricing</h1>
+          <p className="text-gray-500 text-xs sm:text-sm mt-0.5 sm:mt-1">Override service prices by Zone, City, Workshop & Car Class</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {isBulkMode && (
             <button 
               onClick={handleBulkSave}
               disabled={bulkSaving || Object.keys(prices).length === 0}
-              className="btn btn-secondary flex items-center gap-2 disabled:opacity-50"
+              className="btn btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
             >
-              {bulkSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
-              Apply to All ({filteredWorkshops.length}) Workshops
+              {bulkSaving ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+              <span className="hidden sm:inline">Apply to All ({filteredWorkshops.length}) Workshops</span>
+              <span className="sm:hidden">Apply All ({filteredWorkshops.length})</span>
             </button>
           )}
           <button 
             onClick={handleSave}
             disabled={saving || !selectedWorkshop || selectedWorkshop === 'ALL'}
-            className="btn btn-primary flex items-center gap-2 disabled:opacity-50"
+            className="btn btn-primary flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Save Changes
+            {saving ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            <span className="hidden sm:inline">Save Changes</span>
+            <span className="sm:hidden">Save</span>
           </button>
         </div>
       </div>
 
       {/* Controls: Zone → City → Class → Workshop */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
         {/* Zone Selector - FIRST */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-2">1. Select Zone *</label>
+        <div className="bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100">
+          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">1. Select Zone *</label>
           <div className="relative">
-            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <MapPin className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
             <select 
-              className="w-full pl-10 p-3 border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
+              className="w-full pl-8 sm:pl-10 p-2 sm:p-3 text-xs sm:text-sm border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
               value={selectedZone}
               onChange={(e) => setSelectedZone(e.target.value)}
             >
@@ -429,12 +431,12 @@ export default function ServiceTypePricingPage() {
         </div>
 
         {/* City Selector - SECOND */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-2">2. Select City (Optional)</label>
+        <div className="bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100">
+          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">2. Select City (Optional)</label>
           <div className="relative">
-            <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Building2 className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
             <select 
-              className="w-full pl-10 p-3 border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
+              className="w-full pl-8 sm:pl-10 p-2 sm:p-3 text-xs sm:text-sm border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
               value={selectedCity}
               onChange={(e) => setSelectedCity(e.target.value)}
               disabled={!selectedZone}
@@ -448,12 +450,12 @@ export default function ServiceTypePricingPage() {
         </div>
 
         {/* Class Selector - THIRD */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-2">3. Select Car Class *</label>
+        <div className="bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100">
+          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">3. Select Car Class *</label>
           <div className="relative">
-            <Car className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Car className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
             <select 
-              className="w-full pl-10 p-3 border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
+              className="w-full pl-8 sm:pl-10 p-2 sm:p-3 text-xs sm:text-sm border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value)}
               disabled={!selectedZone}
@@ -467,12 +469,12 @@ export default function ServiceTypePricingPage() {
         </div>
 
         {/* Workshop Selector - FOURTH */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-2">4. Select Workshop</label>
+        <div className="bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100">
+          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">4. Select Workshop</label>
           <div className="relative">
-            <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Store className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
             <select 
-              className="w-full pl-10 p-3 border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
+              className="w-full pl-8 sm:pl-10 p-2 sm:p-3 text-xs sm:text-sm border rounded-lg bg-gray-50 focus:bg-white transition-colors appearance-none"
               value={selectedWorkshop}
               onChange={(e) => setSelectedWorkshop(e.target.value)}
               disabled={!selectedZone || !selectedClass}
@@ -495,8 +497,8 @@ export default function ServiceTypePricingPage() {
 
       {/* Info Banner for Bulk Mode */}
       {isBulkMode && (
-        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800">
+        <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-xs sm:text-sm text-blue-800">
             <strong>Bulk Mode:</strong> Set prices below and click "Apply to All Workshops" to update all {filteredWorkshops.length} workshops 
             {selectedCity ? ` in ${cities.find(c => c.id === selectedCity)?.name}` : ''} 
             {selectedCity ? '' : ` in ${zones.find(z => z.id === selectedZone)?.name || 'Zone'}`} 
@@ -508,9 +510,9 @@ export default function ServiceTypePricingPage() {
 
       {/* Pricing Table */}
       {!selectedZone || !selectedClass || !selectedWorkshop ? (
-        <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-          <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">
+        <div className="text-center py-8 sm:py-10 md:py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+          <MapPin className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-300 mx-auto mb-2 sm:mb-3" />
+          <p className="text-gray-500 text-sm sm:text-base">
             {!selectedZone && "Please select a zone first"}
             {selectedZone && !selectedClass && "Please select a car class"}
             {selectedZone && selectedClass && !selectedWorkshop && "Please select a workshop"}
@@ -518,18 +520,18 @@ export default function ServiceTypePricingPage() {
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-            <div className="relative w-full max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <div className="p-3 sm:p-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="relative w-full sm:max-w-md">
+              <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <input 
                 type="text" 
                 placeholder="Filter services..." 
-                className="w-full pl-10 p-2 border rounded-lg text-sm"
+                className="w-full pl-8 sm:pl-10 p-1.5 sm:p-2 border rounded-lg text-xs sm:text-sm"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <div className="text-sm text-gray-500">
+            <div className="text-xs sm:text-sm text-gray-500">
               Editing rates for: <span className="font-bold text-brand-primary">
                 {zones.find(z => z.id === selectedZone)?.name || 'Zone'} 
                 {selectedCity && ` / ${cities.find(c => c.id === selectedCity)?.name || 'City'}`}
@@ -542,55 +544,96 @@ export default function ServiceTypePricingPage() {
             </div>
           </div>
           
-          <div className="max-h-[600px] overflow-y-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  <th className="p-4 font-medium text-gray-600">Service Name</th>
-                  <th className="p-4 font-medium text-gray-600">HSN Code</th>
-                  <th className="p-4 font-medium text-gray-600 text-right">
-                    {isBulkMode ? 'Bulk Price (All Workshops)' : 'Custom Price'}
-                  </th>
-                  <th className="p-4 font-medium text-gray-600 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {loading ? (
-                  <tr><td colSpan={4} className="p-8 text-center">Loading...</td></tr>
-                ) : (
-                  filteredServiceTypes.map((serviceType) => {
-                    const currentPrice = prices[serviceType.id];
-                    const hasOverride = currentPrice !== undefined;
-                    
-                    return (
-                      <tr key={serviceType.id} className={hasOverride ? 'bg-blue-50/30' : ''}>
-                        <td className="p-4 font-medium">{serviceType.name}</td>
-                        <td className="p-4 text-xs text-gray-500">{serviceType.hsn_sac_code || '-'}</td>
-                        <td className="p-4 text-right">
-                          <div className="relative inline-block w-32">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
-                            <input 
-                              type="number" 
-                              className={`w-full pl-6 p-1.5 border rounded text-right font-medium focus:ring-2 focus:ring-brand-primary/20 outline-none ${hasOverride ? 'border-blue-300 text-blue-700' : 'border-gray-200'}`}
-                              placeholder="0"
-                              value={currentPrice ?? ''}
-                              onChange={(e) => handlePriceChange(serviceType.id, e.target.value)}
-                            />
-                          </div>
-                        </td>
-                        <td className="p-4 text-center">
-                          {hasOverride && (
-                            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                              {isBulkMode ? 'Bulk Rate' : 'Custom Rate'}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+          <div className="max-h-[400px] sm:max-h-[500px] md:max-h-[600px] overflow-y-auto">
+            {/* Desktop Table */}
+            <div className="hidden lg:block">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 sticky top-0 z-10">
+                  <tr>
+                    <th className="p-3 sm:p-4 font-medium text-gray-600 text-xs sm:text-sm">Service Name</th>
+                    <th className="p-3 sm:p-4 font-medium text-gray-600 text-xs sm:text-sm">HSN Code</th>
+                    <th className="p-3 sm:p-4 font-medium text-gray-600 text-right text-xs sm:text-sm">
+                      {isBulkMode ? 'Bulk Price (All Workshops)' : 'Custom Price'}
+                    </th>
+                    <th className="p-3 sm:p-4 font-medium text-gray-600 text-center text-xs sm:text-sm">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {loading ? (
+                    <tr><td colSpan={4} className="p-6 sm:p-8 text-center text-xs sm:text-sm">Loading...</td></tr>
+                  ) : (
+                    filteredServiceTypes.map((serviceType) => {
+                      const currentPrice = prices[serviceType.id];
+                      const hasOverride = currentPrice !== undefined;
+                      
+                      return (
+                        <tr key={serviceType.id} className={hasOverride ? 'bg-blue-50/30' : ''}>
+                          <td className="p-3 sm:p-4 font-medium text-xs sm:text-sm">{serviceType.name}</td>
+                          <td className="p-3 sm:p-4 text-[10px] sm:text-xs text-gray-500">{serviceType.hsn_sac_code || '-'}</td>
+                          <td className="p-3 sm:p-4 text-right">
+                            <div className="relative inline-block w-28 sm:w-32">
+                              <span className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs sm:text-sm">₹</span>
+                              <input 
+                                type="number" 
+                                className={`w-full pl-5 sm:pl-6 p-1 sm:p-1.5 border rounded text-right font-medium text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary/20 outline-none ${hasOverride ? 'border-blue-300 text-blue-700' : 'border-gray-200'}`}
+                                placeholder="0"
+                                value={currentPrice ?? ''}
+                                onChange={(e) => handlePriceChange(serviceType.id, e.target.value)}
+                              />
+                            </div>
+                          </td>
+                          <td className="p-3 sm:p-4 text-center">
+                            {hasOverride && (
+                              <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full">
+                                {isBulkMode ? 'Bulk Rate' : 'Custom Rate'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className="lg:hidden divide-y divide-gray-100">
+              {loading ? (
+                <div className="p-6 text-center text-xs sm:text-sm">Loading...</div>
+              ) : (
+                filteredServiceTypes.map((serviceType) => {
+                  const currentPrice = prices[serviceType.id];
+                  const hasOverride = currentPrice !== undefined;
+                  
+                  return (
+                    <div key={serviceType.id} className={`p-3 sm:p-4 ${hasOverride ? 'bg-blue-50/30' : ''}`}>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-xs sm:text-sm mb-1">{serviceType.name}</div>
+                          <div className="text-[10px] sm:text-xs text-gray-500">HSN: {serviceType.hsn_sac_code || '-'}</div>
+                        </div>
+                        {hasOverride && (
+                          <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full flex-shrink-0">
+                            {isBulkMode ? 'Bulk' : 'Custom'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-xs sm:text-sm">₹</span>
+                        <input 
+                          type="number" 
+                          className={`w-full pl-5 sm:pl-6 p-1.5 sm:p-2 border rounded text-right font-medium text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary/20 outline-none ${hasOverride ? 'border-blue-300 text-blue-700' : 'border-gray-200'}`}
+                          placeholder="0"
+                          value={currentPrice ?? ''}
+                          onChange={(e) => handlePriceChange(serviceType.id, e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       )}

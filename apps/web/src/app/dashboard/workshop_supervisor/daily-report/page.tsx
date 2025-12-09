@@ -284,8 +284,8 @@ export default function DailyReportPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_supervisor">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -295,40 +295,41 @@ export default function DailyReportPage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-text-heading flex items-center gap-3">
-              <FileText className="w-8 h-8" />
-              Daily Report
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading flex items-center gap-2 sm:gap-3">
+              <FileText className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 flex-shrink-0" />
+              <span>Daily Report</span>
             </h1>
-            <p className="text-text-body mt-2">
+            <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">
               End of day summary and insights
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
               max={new Date().toISOString().split('T')[0]}
-              className="input"
+              className="input text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 w-full sm:w-auto"
             />
             <button
               onClick={exportReport}
               disabled={generating || !metrics}
-              className="btn btn-primary flex items-center gap-2"
+              className="btn btn-primary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
             >
               {generating ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <div className="animate-spin rounded-full h-3.5 w-3.5 sm:h-4 sm:w-4 border-b-2 border-white"></div>
                   Generating...
                 </>
               ) : (
                 <>
-                  <Download className="w-4 h-4" />
-                  Export Report
+                  <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Export Report</span>
+                  <span className="sm:hidden">Export</span>
                 </>
               )}
             </button>
@@ -336,149 +337,149 @@ export default function DailyReportPage() {
         </div>
 
         {!metrics ? (
-          <div className="card text-center py-12">
-            <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-xl font-semibold text-gray-700">No Data Available</p>
-            <p className="text-gray-600 mt-2">No jobs found for selected date</p>
+          <div className="card text-center py-8 sm:py-10 md:py-12">
+            <Calendar className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-2 sm:mb-3 md:mb-4" />
+            <p className="text-lg sm:text-xl font-semibold text-gray-700">No Data Available</p>
+            <p className="text-gray-600 mt-1.5 sm:mt-2 text-xs sm:text-sm">No jobs found for selected date</p>
           </div>
         ) : (
           <>
             {/* Overall Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="card bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              <div className="card bg-gradient-to-r from-blue-500 to-blue-600 text-white p-3 sm:p-4 md:p-5">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm opacity-90">Total Jobs</p>
-                    <p className="text-4xl font-bold mt-2">{metrics.totalJobs}</p>
-                    <p className="text-xs mt-2 opacity-75">For {new Date(selectedDate).toLocaleDateString()}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm opacity-90">Total Jobs</p>
+                    <p className="text-2xl sm:text-3xl md:text-4xl font-bold mt-1 sm:mt-2">{metrics.totalJobs}</p>
+                    <p className="text-[10px] sm:text-xs mt-1 sm:mt-2 opacity-75">For {new Date(selectedDate).toLocaleDateString()}</p>
                   </div>
-                  <Users className="w-12 h-12 opacity-75" />
+                  <Users className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 opacity-75 flex-shrink-0" />
                 </div>
               </div>
 
-              <div className="card bg-gradient-to-r from-green-500 to-green-600 text-white">
+              <div className="card bg-gradient-to-r from-green-500 to-green-600 text-white p-3 sm:p-4 md:p-5">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm opacity-90">Completed</p>
-                    <p className="text-4xl font-bold mt-2">{metrics.completedJobs}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <TrendingUp className="w-4 h-4" />
-                      <span className="text-sm">{completionRate}% completion rate</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm opacity-90">Completed</p>
+                    <p className="text-2xl sm:text-3xl md:text-4xl font-bold mt-1 sm:mt-2">{metrics.completedJobs}</p>
+                    <div className="flex items-center gap-1.5 sm:gap-2 mt-1 sm:mt-2">
+                      <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      <span className="text-xs sm:text-sm">{completionRate}% completion rate</span>
                     </div>
                   </div>
-                  <CheckCircle className="w-12 h-12 opacity-75" />
+                  <CheckCircle className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 opacity-75 flex-shrink-0" />
                 </div>
               </div>
 
-              <div className="card bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+              <div className="card bg-gradient-to-r from-orange-500 to-orange-600 text-white p-3 sm:p-4 md:p-5 sm:col-span-2 lg:col-span-1">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm opacity-90">Avg Time</p>
-                    <p className="text-4xl font-bold mt-2">{Math.floor(metrics.averageCompletionTime / 60)}h {metrics.averageCompletionTime % 60}m</p>
-                    <p className="text-xs mt-2 opacity-75">Per job completion</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm opacity-90">Avg Time</p>
+                    <p className="text-2xl sm:text-3xl md:text-4xl font-bold mt-1 sm:mt-2">{Math.floor(metrics.averageCompletionTime / 60)}h {metrics.averageCompletionTime % 60}m</p>
+                    <p className="text-[10px] sm:text-xs mt-1 sm:mt-2 opacity-75">Per job completion</p>
                   </div>
-                  <Clock className="w-12 h-12 opacity-75" />
+                  <Clock className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 opacity-75 flex-shrink-0" />
                 </div>
               </div>
             </div>
 
             {/* Status Breakdown */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="card border-2 border-green-300 bg-green-50">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="card border-2 border-green-300 bg-green-50 p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Completed</p>
-                    <p className="text-2xl font-bold text-green-600">{metrics.completedJobs}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-gray-600">Completed</p>
+                    <p className="text-xl sm:text-2xl font-bold text-green-600">{metrics.completedJobs}</p>
                   </div>
-                  <CheckCircle className="w-8 h-8 text-green-600" />
+                  <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-600 flex-shrink-0" />
                 </div>
               </div>
 
-              <div className="card border-2 border-blue-300 bg-blue-50">
+              <div className="card border-2 border-blue-300 bg-blue-50 p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Pending</p>
-                    <p className="text-2xl font-bold text-blue-600">{metrics.pendingJobs}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-gray-600">Pending</p>
+                    <p className="text-xl sm:text-2xl font-bold text-blue-600">{metrics.pendingJobs}</p>
                   </div>
-                  <Clock className="w-8 h-8 text-blue-600" />
+                  <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-blue-600 flex-shrink-0" />
                 </div>
               </div>
 
-              <div className="card border-2 border-red-300 bg-red-50">
+              <div className="card border-2 border-red-300 bg-red-50 p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Overdue</p>
-                    <p className="text-2xl font-bold text-red-600">{metrics.overdueJobs}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-gray-600">Overdue</p>
+                    <p className="text-xl sm:text-2xl font-bold text-red-600">{metrics.overdueJobs}</p>
                   </div>
-                  <AlertTriangle className="w-8 h-8 text-red-600" />
+                  <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-red-600 flex-shrink-0" />
                 </div>
               </div>
 
-              <div className="card border-2 border-orange-300 bg-orange-50">
+              <div className="card border-2 border-orange-300 bg-orange-50 p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Rejected</p>
-                    <p className="text-2xl font-bold text-orange-600">{metrics.rejectedJobs}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-gray-600">Rejected</p>
+                    <p className="text-xl sm:text-2xl font-bold text-orange-600">{metrics.rejectedJobs}</p>
                   </div>
-                  <XCircle className="w-8 h-8 text-orange-600" />
+                  <XCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-600 flex-shrink-0" />
                 </div>
               </div>
             </div>
 
             {/* Mechanic Performance */}
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Wrench className="w-5 h-5" />
+            <div className="card p-3 sm:p-4 md:p-5">
+              <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                <Wrench className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 Mechanic Performance Today
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {metrics.mechanicPerformance.map((mechanic) => (
                   <div 
                     key={mechanic.id}
-                    className={`p-4 rounded-lg border-2 ${
+                    className={`p-3 sm:p-4 rounded-lg border-2 ${
                       mechanic.status === 'excellent' ? 'bg-green-50 border-green-300' :
                       mechanic.status === 'good' ? 'bg-blue-50 border-blue-300' :
                       'bg-orange-50 border-orange-300'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                        <div className={`w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                           mechanic.status === 'excellent' ? 'bg-green-600' :
                           mechanic.status === 'good' ? 'bg-blue-600' :
                           'bg-orange-600'
                         }`}>
                           {mechanic.status === 'excellent' ? (
-                            <Award className="w-5 h-5 text-white" />
+                            <Award className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                           ) : mechanic.status === 'good' ? (
-                            <ThumbsUp className="w-5 h-5 text-white" />
+                            <ThumbsUp className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                           ) : (
-                            <ThumbsDown className="w-5 h-5 text-white" />
+                            <ThumbsDown className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                           )}
                         </div>
-                        <div>
-                          <p className="font-semibold">{mechanic.name}</p>
-                          <p className="text-sm text-gray-600">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-sm sm:text-base truncate">{mechanic.name}</p>
+                          <p className="text-xs sm:text-sm text-gray-600">
                             Quality Score: {mechanic.qualityScore}%
                           </p>
                         </div>
                       </div>
-                      <div className="grid grid-cols-4 gap-6 text-center">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 text-center w-full sm:w-auto">
                         <div>
-                          <p className="text-xs text-gray-600">Assigned</p>
-                          <p className="text-lg font-bold">{mechanic.assignedJobs}</p>
+                          <p className="text-[10px] sm:text-xs text-gray-600">Assigned</p>
+                          <p className="text-base sm:text-lg font-bold">{mechanic.assignedJobs}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-600">Completed</p>
-                          <p className="text-lg font-bold text-green-600">{mechanic.completedJobs}</p>
+                          <p className="text-[10px] sm:text-xs text-gray-600">Completed</p>
+                          <p className="text-base sm:text-lg font-bold text-green-600">{mechanic.completedJobs}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-600">Active</p>
-                          <p className="text-lg font-bold text-blue-600">{mechanic.activeJobs}</p>
+                          <p className="text-[10px] sm:text-xs text-gray-600">Active</p>
+                          <p className="text-base sm:text-lg font-bold text-blue-600">{mechanic.activeJobs}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-600">Avg Time</p>
-                          <p className="text-lg font-bold">{mechanic.averageTime}m</p>
+                          <p className="text-[10px] sm:text-xs text-gray-600">Avg Time</p>
+                          <p className="text-base sm:text-lg font-bold">{mechanic.averageTime}m</p>
                         </div>
                       </div>
                     </div>
@@ -489,19 +490,19 @@ export default function DailyReportPage() {
 
             {/* Issues Encountered */}
             {metrics.issuesEncountered.some(i => i.count > 0) && (
-              <div className="card bg-orange-50 border-orange-200">
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-orange-700">
-                  <AlertTriangle className="w-5 h-5" />
+              <div className="card bg-orange-50 border-orange-200 p-3 sm:p-4 md:p-5">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2 text-orange-700">
+                  <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                   Issues Encountered
                 </h3>
                 <div className="space-y-2">
                   {metrics.issuesEncountered.filter(i => i.count > 0).map((issue, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-white rounded-lg">
-                      <div>
-                        <p className="font-semibold">{issue.type}</p>
-                        <p className="text-sm text-gray-600">{issue.description}</p>
+                    <div key={index} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 p-2.5 sm:p-3 bg-white rounded-lg">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-xs sm:text-sm md:text-base">{issue.type}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">{issue.description}</p>
                       </div>
-                      <span className="text-2xl font-bold text-orange-600">{issue.count}</span>
+                      <span className="text-xl sm:text-2xl font-bold text-orange-600 flex-shrink-0">{issue.count}</span>
                     </div>
                   ))}
                 </div>
@@ -509,15 +510,15 @@ export default function DailyReportPage() {
             )}
 
             {/* Recommendations */}
-            <div className="card bg-blue-50 border-blue-200">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-blue-700">
-                <TrendingUp className="w-5 h-5" />
+            <div className="card bg-blue-50 border-blue-200 p-3 sm:p-4 md:p-5">
+              <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2 text-blue-700">
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 Recommendations & Insights
               </h3>
               <div className="space-y-2">
                 {metrics.recommendations.map((rec, index) => (
-                  <div key={index} className="p-3 bg-white rounded-lg">
-                    <p className="text-sm">{rec}</p>
+                  <div key={index} className="p-2.5 sm:p-3 bg-white rounded-lg">
+                    <p className="text-xs sm:text-sm">{rec}</p>
                   </div>
                 ))}
               </div>

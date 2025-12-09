@@ -213,126 +213,126 @@ export default function CustomerRegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-3 sm:p-4">
       <div className="max-w-md w-full">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-primary rounded-full mb-4">
-            <User className="w-8 h-8 text-white" />
+        <div className="text-center mb-6 sm:mb-7 md:mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-15 sm:h-15 md:w-16 md:h-16 bg-brand-primary rounded-full mb-3 sm:mb-4">
+            <User className="w-7 h-7 sm:w-7.5 sm:h-7.5 md:w-8 md:h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Create Account</h1>
-          <p className="text-gray-600 mt-2">Join MyFNG for hassle-free service</p>
+          <h1 className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-gray-900">Create Account</h1>
+          <p className="text-gray-600 text-sm sm:text-base mt-1.5 sm:mt-2">Join MyFNG for hassle-free service</p>
         </div>
 
         {/* Progress Indicator */}
-        <div className="flex items-center justify-center mb-8">
+        <div className="flex items-center justify-center mb-6 sm:mb-7 md:mb-8 px-2">
           <div className={`flex items-center ${step === 'details' ? 'text-brand-primary' : 'text-green-500'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            <div className={`w-7 h-7 sm:w-7.5 sm:h-7.5 md:w-8 md:h-8 rounded-full flex items-center justify-center ${
               step === 'details' ? 'bg-brand-primary' : 'bg-green-500'
-            } text-white font-semibold`}>
-              {step === 'details' ? '1' : <CheckCircle className="w-5 h-5" />}
+            } text-white text-xs sm:text-sm font-semibold`}>
+              {step === 'details' ? '1' : <CheckCircle className="w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5" />}
             </div>
-            <span className="ml-2 text-sm font-medium">Details</span>
+            <span className="ml-1.5 sm:ml-2 text-xs sm:text-sm font-medium hidden sm:inline">Details</span>
           </div>
           
-          <div className="w-12 h-0.5 bg-gray-300 mx-2" />
+          <div className="w-8 sm:w-10 md:w-12 h-0.5 bg-gray-300 mx-1 sm:mx-2" />
           
           <div className={`flex items-center ${
             step === 'otp' ? 'text-brand-primary' : step === 'password' ? 'text-green-500' : 'text-gray-400'
           }`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            <div className={`w-7 h-7 sm:w-7.5 sm:h-7.5 md:w-8 md:h-8 rounded-full flex items-center justify-center ${
               step === 'otp' ? 'bg-brand-primary' : step === 'password' ? 'bg-green-500' : 'bg-gray-300'
-            } text-white font-semibold`}>
-              {step === 'password' ? <CheckCircle className="w-5 h-5" /> : '2'}
+            } text-white text-xs sm:text-sm font-semibold`}>
+              {step === 'password' ? <CheckCircle className="w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5" /> : '2'}
             </div>
-            <span className="ml-2 text-sm font-medium">Verify</span>
+            <span className="ml-1.5 sm:ml-2 text-xs sm:text-sm font-medium hidden sm:inline">Verify</span>
           </div>
           
-          <div className="w-12 h-0.5 bg-gray-300 mx-2" />
+          <div className="w-8 sm:w-10 md:w-12 h-0.5 bg-gray-300 mx-1 sm:mx-2" />
           
           <div className={`flex items-center ${step === 'password' ? 'text-brand-primary' : 'text-gray-400'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            <div className={`w-7 h-7 sm:w-7.5 sm:h-7.5 md:w-8 md:h-8 rounded-full flex items-center justify-center ${
               step === 'password' ? 'bg-brand-primary' : 'bg-gray-300'
-            } text-white font-semibold`}>
+            } text-white text-xs sm:text-sm font-semibold`}>
               3
             </div>
-            <span className="ml-2 text-sm font-medium">Secure</span>
+            <span className="ml-1.5 sm:ml-2 text-xs sm:text-sm font-medium hidden sm:inline">Secure</span>
           </div>
         </div>
 
         {/* Form Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-5 sm:p-6 md:p-8">
           {/* Success Message */}
           {successMessage && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              <p className="text-green-800 text-sm">{successMessage}</p>
+            <div className="mb-4 sm:mb-5 md:mb-6 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-1.5 sm:gap-2">
+              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
+              <p className="text-green-800 text-xs sm:text-sm">{successMessage}</p>
             </div>
           )}
 
           {/* General Error */}
           {errors.general && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-800 text-sm">{errors.general}</p>
+            <div className="mb-4 sm:mb-5 md:mb-6 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-800 text-xs sm:text-sm">{errors.general}</p>
             </div>
           )}
 
           {/* Step 1: Details Form */}
           {step === 'details' && (
-            <form onSubmit={handleSubmitDetails} className="space-y-4">
+            <form onSubmit={handleSubmitDetails} className="space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Full Name *
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <User className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                   <input
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
+                    className={`w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
                       errors.fullName ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="Enter your full name"
                   />
                 </div>
                 {errors.fullName && (
-                  <p className="text-red-500 text-xs mt-1">{errors.fullName}</p>
+                  <p className="text-red-500 text-[10px] sm:text-xs mt-0.5 sm:mt-1">{errors.fullName}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Email Address *
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Mail className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
+                    className={`w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
                       errors.email ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="your@email.com"
                   />
                 </div>
                 {errors.email && (
-                  <p className="text-red-500 text-xs mt-1">{errors.email}</p>
+                  <p className="text-red-500 text-[10px] sm:text-xs mt-0.5 sm:mt-1">{errors.email}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Mobile Number *
                 </label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Phone className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                   <input
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
+                    className={`w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
                       errors.phone ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="9876543210"
@@ -340,64 +340,64 @@ export default function CustomerRegisterPage() {
                   />
                 </div>
                 {errors.phone && (
-                  <p className="text-red-500 text-xs mt-1">{errors.phone}</p>
+                  <p className="text-red-500 text-[10px] sm:text-xs mt-0.5 sm:mt-1">{errors.phone}</p>
                 )}
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-brand-primary hover:bg-brand-primary/90 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+                className="w-full bg-brand-primary hover:bg-brand-primary/90 text-white py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Sending OTP...' : 'Continue'}
-                <ArrowRight className="w-5 h-5" />
+                <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </form>
           )}
 
           {/* Step 2: OTP Verification */}
           {step === 'otp' && (
-            <form onSubmit={handleVerifyOTP} className="space-y-4">
-              <div className="text-center mb-6">
-                <Shield className="w-16 h-16 text-brand-primary mx-auto mb-3" />
-                <h3 className="text-lg font-semibold">Verify Your Number</h3>
-                <p className="text-gray-600 text-sm mt-1">
+            <form onSubmit={handleVerifyOTP} className="space-y-3 sm:space-y-4">
+              <div className="text-center mb-4 sm:mb-5 md:mb-6">
+                <Shield className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-brand-primary mx-auto mb-2 sm:mb-3" />
+                <h3 className="text-base sm:text-lg font-semibold">Verify Your Number</h3>
+                <p className="text-gray-600 text-xs sm:text-sm mt-1">
                   Enter the 6-digit OTP sent to {phone}
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   OTP Code *
                 </label>
                 <input
                   type="text"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className={`w-full px-4 py-3 border rounded-lg text-center text-2xl tracking-widest font-semibold focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
+                  className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-center text-xl sm:text-2xl tracking-widest font-semibold focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
                     errors.otp ? 'border-red-500' : 'border-gray-300'
                   }`}
                   placeholder="000000"
                   maxLength={6}
                 />
                 {errors.otp && (
-                  <p className="text-red-500 text-xs mt-1">{errors.otp}</p>
+                  <p className="text-red-500 text-[10px] sm:text-xs mt-0.5 sm:mt-1">{errors.otp}</p>
                 )}
               </div>
 
               <button
                 type="submit"
                 disabled={loading || otp.length !== 6}
-                className="w-full bg-brand-primary hover:bg-brand-primary/90 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+                className="w-full bg-brand-primary hover:bg-brand-primary/90 text-white py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Verifying...' : 'Verify OTP'}
-                <CheckCircle className="w-5 h-5" />
+                <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
 
               <button
                 type="button"
                 onClick={() => setStep('details')}
-                className="w-full text-gray-600 hover:text-gray-800 py-2 text-sm"
+                className="w-full text-gray-600 hover:text-gray-800 py-2 text-xs sm:text-sm"
               >
                 ← Change Number
               </button>
@@ -406,71 +406,71 @@ export default function CustomerRegisterPage() {
 
           {/* Step 3: Password Setup */}
           {step === 'password' && (
-            <form onSubmit={handleSetPassword} className="space-y-4">
-              <div className="text-center mb-6">
-                <Lock className="w-16 h-16 text-brand-primary mx-auto mb-3" />
-                <h3 className="text-lg font-semibold">Secure Your Account</h3>
-                <p className="text-gray-600 text-sm mt-1">
+            <form onSubmit={handleSetPassword} className="space-y-3 sm:space-y-4">
+              <div className="text-center mb-4 sm:mb-5 md:mb-6">
+                <Lock className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-brand-primary mx-auto mb-2 sm:mb-3" />
+                <h3 className="text-base sm:text-lg font-semibold">Secure Your Account</h3>
+                <p className="text-gray-600 text-xs sm:text-sm mt-1">
                   Create a strong password
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Password *
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Lock className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
+                    className={`w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
                       errors.password ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="At least 8 characters"
                   />
                 </div>
                 {errors.password && (
-                  <p className="text-red-500 text-xs mt-1">{errors.password}</p>
+                  <p className="text-red-500 text-[10px] sm:text-xs mt-0.5 sm:mt-1">{errors.password}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Confirm Password *
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Lock className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                   <input
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
+                    className={`w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent ${
                       errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="Re-enter password"
                   />
                 </div>
                 {errors.confirmPassword && (
-                  <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>
+                  <p className="text-red-500 text-[10px] sm:text-xs mt-0.5 sm:mt-1">{errors.confirmPassword}</p>
                 )}
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-brand-primary hover:bg-brand-primary/90 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+                className="w-full bg-brand-primary hover:bg-brand-primary/90 text-white py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Creating Account...' : 'Complete Registration'}
-                <CheckCircle className="w-5 h-5" />
+                <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </form>
           )}
 
           {/* Login Link */}
-          <div className="mt-6 text-center">
-            <p className="text-gray-600 text-sm">
+          <div className="mt-4 sm:mt-5 md:mt-6 text-center">
+            <p className="text-gray-600 text-xs sm:text-sm">
               Already have an account?{' '}
               <Link href="/customer/login" className="text-brand-primary font-semibold hover:underline">
                 Login here
@@ -480,7 +480,7 @@ export default function CustomerRegisterPage() {
         </div>
 
         {/* Trust Indicators */}
-        <div className="mt-6 text-center text-sm text-gray-600">
+        <div className="mt-4 sm:mt-5 md:mt-6 text-center text-xs sm:text-sm text-gray-600">
           <p>🔒 Your data is secure and encrypted</p>
         </div>
       </div>

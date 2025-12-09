@@ -247,10 +247,10 @@ function SupervisorJobsContent() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_supervisor">
-        <div className="flex items-center justify-center h-64">
+        <div className="flex items-center justify-center h-48 sm:h-64">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading jobs...</p>
+            <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary mx-auto"></div>
+            <p className="mt-3 sm:mt-4 text-gray-600 text-xs sm:text-sm md:text-base">Loading jobs...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -259,33 +259,34 @@ function SupervisorJobsContent() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-text-heading">Manage Jobs</h1>
-            <p className="text-text-body mt-2">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Manage Jobs</h1>
+            <p className="text-text-body mt-1 sm:mt-2 text-xs sm:text-sm md:text-base">
               Monitor job progress, assign mechanics, and perform quality control
             </p>
           </div>
           <button
             onClick={() => fetchJobs(true)}
             disabled={refreshing}
-            className="btn btn-outline flex items-center gap-2"
+            className="btn btn-outline flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
           >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
+            <span className="sm:hidden">Refresh</span>
           </button>
         </div>
 
         {/* Stats Bar */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
             <div>
-              <p className="text-sm text-gray-600">Total Jobs</p>
-              <p className="text-2xl font-bold text-blue-600">{total}</p>
+              <p className="text-xs sm:text-sm text-gray-600">Total Jobs</p>
+              <p className="text-xl sm:text-2xl font-bold text-blue-600">{total}</p>
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-xs sm:text-sm text-gray-600">
               Page {page} of {totalPages}
             </div>
           </div>
@@ -299,12 +300,12 @@ function SupervisorJobsContent() {
 
         {/* Error State */}
         {error && (
-          <div className="card bg-red-50 border-red-200">
-            <p className="text-red-600 font-semibold">Error loading jobs</p>
-            <p className="text-sm text-gray-600 mt-1">{error}</p>
+          <div className="card bg-red-50 border-red-200 p-3 sm:p-4">
+            <p className="text-red-600 font-semibold text-xs sm:text-sm md:text-base">Error loading jobs</p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-1">{error}</p>
             <button
               onClick={() => fetchJobs()}
-              className="btn btn-primary mt-3"
+              className="btn btn-primary mt-2 sm:mt-3 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
             >
               Retry
             </button>
@@ -313,7 +314,7 @@ function SupervisorJobsContent() {
 
         {/* Jobs List */}
         {jobs.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:gap-4">
             {jobs.map((job) => (
               <JobCard
                 key={job.id}
@@ -323,9 +324,9 @@ function SupervisorJobsContent() {
             ))}
           </div>
         ) : (
-          <div className="card text-center py-12">
-            <p className="text-gray-500 text-lg">No jobs found</p>
-            <p className="text-sm text-gray-400 mt-2">
+          <div className="card text-center py-8 sm:py-10 md:py-12">
+            <p className="text-gray-500 text-base sm:text-lg md:text-xl">No jobs found</p>
+            <p className="text-xs sm:text-sm text-gray-400 mt-1.5 sm:mt-2">
               Try adjusting your filters or search criteria
             </p>
           </div>
@@ -333,18 +334,19 @@ function SupervisorJobsContent() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="card">
-            <div className="flex items-center justify-between">
+          <div className="card p-3 sm:p-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
               <button
                 onClick={() => setPage(Math.max(1, page - 1))}
                 disabled={page === 1}
-                className="btn btn-outline flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn btn-outline flex items-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
               >
-                <ChevronLeft className="w-4 h-4" />
-                Previous
+                <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Previous</span>
+                <span className="sm:hidden">Prev</span>
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
                 {[...Array(Math.min(5, totalPages))].map((_, i) => {
                   const pageNum = i + 1;
                   return (
@@ -352,7 +354,7 @@ function SupervisorJobsContent() {
                       key={pageNum}
                       onClick={() => setPage(pageNum)}
                       className={`
-                        px-3 py-1 rounded
+                        px-2.5 sm:px-3 py-1 rounded text-xs sm:text-sm
                         ${page === pageNum 
                           ? 'bg-brand-primary text-white' 
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -363,12 +365,12 @@ function SupervisorJobsContent() {
                     </button>
                   );
                 })}
-                {totalPages > 5 && <span className="text-gray-500">...</span>}
+                {totalPages > 5 && <span className="text-gray-500 text-xs sm:text-sm">...</span>}
                 {totalPages > 5 && (
                   <button
                     onClick={() => setPage(totalPages)}
                     className={`
-                      px-3 py-1 rounded
+                      px-2.5 sm:px-3 py-1 rounded text-xs sm:text-sm
                       ${page === totalPages 
                         ? 'bg-brand-primary text-white' 
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -383,10 +385,11 @@ function SupervisorJobsContent() {
               <button
                 onClick={() => setPage(Math.min(totalPages, page + 1))}
                 disabled={page === totalPages}
-                className="btn btn-outline flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn btn-outline flex items-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
               >
-                Next
-                <ChevronRight className="w-4 h-4" />
+                <span className="hidden sm:inline">Next</span>
+                <span className="sm:hidden">Next</span>
+                <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             </div>
           </div>
@@ -401,8 +404,8 @@ export default function SupervisorJobsPage() {
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading jobs...</p>
+          <div className="animate-spin rounded-full h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-3 sm:mt-4 text-gray-600 text-xs sm:text-sm md:text-base">Loading jobs...</p>
         </div>
       </div>
     }>

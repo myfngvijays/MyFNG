@@ -245,38 +245,38 @@ function LeadManagerLeadsContent() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Lead Management</h1>
-          <p className="text-gray-600 mt-1">{leads.length} leads found</p>
+      <div className="mb-4 sm:mb-5 md:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Lead Management</h1>
+          <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{leads.length} leads found</p>
         </div>
         <Link href="/dashboard/lead_manager">
-          <button className="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium">
+          <button className="bg-gray-200 hover:bg-gray-300 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap w-full sm:w-auto">
             ← Back to Dashboard
           </button>
         </Link>
       </div>
 
       {/* Search Bar */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-5 md:mb-6">
         <input
           type="text"
           placeholder="Search by name, phone, lead number, or vehicle..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>
 
       {/* Filter Tabs */}
-      <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+      <div className="mb-4 sm:mb-5 md:mb-6 flex gap-1.5 sm:gap-2 overflow-x-auto pb-2 scrollbar-hide">
         {filters.map((filter) => (
           <button
             key={filter.value}
             onClick={() => setActiveFilter(filter.value)}
-            className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium text-xs sm:text-sm whitespace-nowrap transition flex-shrink-0 ${
               activeFilter === filter.value
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -288,157 +288,242 @@ function LeadManagerLeadsContent() {
       </div>
 
       {/* Sort Options */}
-      <div className="mb-6 flex items-center gap-4">
-        <span className="text-gray-700 font-medium">Sort by:</span>
+      <div className="mb-4 sm:mb-5 md:mb-6 flex flex-wrap items-center gap-2 sm:gap-3 md:gap-4">
+        <span className="text-xs sm:text-sm text-gray-700 font-medium">Sort by:</span>
         <button
           onClick={() => setSortBy('priority')}
-          className={`px-3 py-1 rounded-lg ${sortBy === 'priority' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'}`}
+          className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded-lg ${sortBy === 'priority' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'}`}
         >
           Priority
         </button>
         <button
           onClick={() => setSortBy('sla')}
-          className={`px-3 py-1 rounded-lg ${sortBy === 'sla' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'}`}
+          className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded-lg ${sortBy === 'sla' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'}`}
         >
           SLA
         </button>
         <button
           onClick={() => setSortBy('created')}
-          className={`px-3 py-1 rounded-lg ${sortBy === 'created' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'}`}
+          className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded-lg ${sortBy === 'created' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'}`}
         >
           Latest
         </button>
       </div>
 
-      {/* Leads Table */}
+      {/* Leads Table - Desktop */}
       {leads.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-12 text-center">
-          <div className="text-6xl mb-4">📋</div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">No Leads Found</h3>
-          <p className="text-gray-600">
+        <div className="bg-white rounded-lg shadow p-8 sm:p-10 md:p-12 text-center">
+          <div className="text-4xl sm:text-5xl md:text-6xl mb-3 sm:mb-4">📋</div>
+          <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-1 sm:mb-2">No Leads Found</h3>
+          <p className="text-sm sm:text-base text-gray-600">
             {searchTerm ? `No leads match "${searchTerm}"` : `No leads in ${activeFilter} filter`}
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead Details</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Workshop</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {leads.map((lead) => (
-                <tr 
-                  key={lead.id}
-                  className={`hover:bg-gray-50 ${lead.sla_state === 'BREACHED' ? 'border-l-4 border-red-500' : ''}`}
-                >
-                  {/* Lead Details */}
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium text-gray-900">#{lead.lead_number}</span>
-                      <div className="flex gap-2 mt-1">
-                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${getPriorityColor(lead.lead_priority || 'NORMAL')}`}>
-                          {lead.lead_priority || 'NORMAL'}
-                        </span>
-                        {lead.is_incomplete && (
-                          <span className="text-xs px-2 py-1 rounded-full font-medium text-orange-600 bg-orange-100">
-                            INCOMPLETE
-                          </span>
+        <>
+          {/* Desktop Table */}
+          <div className="bg-white rounded-lg shadow overflow-hidden hidden lg:block">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead Details</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Workshop</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {leads.map((lead) => (
+                    <tr 
+                      key={lead.id}
+                      className={`hover:bg-gray-50 ${lead.sla_state === 'BREACHED' ? 'border-l-4 border-red-500' : ''}`}
+                    >
+                      {/* Lead Details */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex flex-col">
+                          <span className="text-xs sm:text-sm font-medium text-gray-900">#{lead.lead_number}</span>
+                          <div className="flex flex-wrap gap-1 sm:gap-2 mt-1">
+                            <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-medium ${getPriorityColor(lead.lead_priority || 'NORMAL')}`}>
+                              {lead.lead_priority || 'NORMAL'}
+                            </span>
+                            {lead.is_incomplete && (
+                              <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-medium text-orange-600 bg-orange-100">
+                                INCOMPLETE
+                              </span>
+                            )}
+                            {lead.reopen_count > 0 && (
+                              <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-medium text-red-600 bg-red-100">
+                                Reopened ({lead.reopen_count})
+                              </span>
+                            )}
+                          </div>
+                          {lead.sla_state && (
+                            <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-medium mt-1 inline-block ${getSLAColor(lead.sla_state)}`}>
+                              SLA: {lead.sla_state}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Customer */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div>
+                          <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[150px]">{lead.customer_name}</div>
+                          <div className="text-xs sm:text-sm text-gray-500 truncate">{lead.customer_phone}</div>
+                          <div className="text-[10px] sm:text-xs text-gray-400 mt-0.5 sm:mt-1 truncate">{lead.city || 'N/A'}</div>
+                        </div>
+                      </td>
+
+                      {/* Vehicle */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div>
+                          <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[120px]">{lead.vehicle_model || 'N/A'}</div>
+                          <div className="text-[10px] sm:text-xs text-gray-500 truncate">{lead.vehicle_number || 'Not provided'}</div>
+                        </div>
+                      </td>
+
+                      {/* Workshop */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        {lead.workshop ? (
+                          <div>
+                            <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[150px]">{lead.workshop.name}</div>
+                            <div className="text-[10px] sm:text-xs text-gray-500 truncate">{lead.workshop.city}</div>
+                          </div>
+                        ) : (
+                          <span className="text-xs sm:text-sm text-orange-600 font-medium">Not Assigned</span>
                         )}
-                        {lead.reopen_count > 0 && (
-                          <span className="text-xs px-2 py-1 rounded-full font-medium text-red-600 bg-red-100">
-                            Reopened ({lead.reopen_count})
-                          </span>
-                        )}
-                      </div>
-                      {lead.sla_state && (
-                        <span className={`text-xs px-2 py-1 rounded-full font-medium mt-1 inline-block ${getSLAColor(lead.sla_state)}`}>
-                          SLA: {lead.sla_state}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <span className={`text-[10px] sm:text-xs px-2 sm:px-3 py-0.5 sm:py-1 rounded-full font-medium ${getStatusColor(lead.status)}`}>
+                          {lead.status}
                         </span>
-                      )}
-                    </div>
-                  </td>
+                      </td>
 
-                  {/* Customer */}
-                  <td className="px-6 py-4">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{lead.customer_name}</div>
-                      <div className="text-sm text-gray-500">{lead.customer_phone}</div>
-                      <div className="text-xs text-gray-400 mt-1">{lead.city || 'N/A'}</div>
-                    </div>
-                  </td>
+                      {/* Actions */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex flex-col sm:flex-row gap-1 sm:gap-2">
+                          <Link href={`/dashboard/lead_manager/leads/${lead.id}`}>
+                            <button className="text-blue-600 hover:text-blue-800 font-medium text-xs sm:text-sm whitespace-nowrap">
+                              View
+                            </button>
+                          </Link>
+                          {(lead.status === 'VALIDATED' || lead.status === 'ASSIGNED_TO_WORKSHOP') && (
+                            <button 
+                              onClick={() => handleAssignClick(lead)}
+                              className="text-green-600 hover:text-green-800 font-medium text-xs sm:text-sm whitespace-nowrap"
+                            >
+                              {lead.workshop_id ? 'Reassign' : 'Assign'}
+                            </button>
+                          )}
+                          {lead.is_incomplete && (
+                            <Link href={`/dashboard/lead_manager/leads/${lead.id}?mode=edit`}>
+                              <button className="text-orange-600 hover:text-orange-800 font-medium text-xs sm:text-sm whitespace-nowrap">
+                                Complete
+                              </button>
+                            </Link>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-                  {/* Vehicle */}
-                  <td className="px-6 py-4">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{lead.vehicle_model || 'N/A'}</div>
-                      <div className="text-xs text-gray-500">{lead.vehicle_number || 'Not provided'}</div>
-                    </div>
-                  </td>
-
-                  {/* Workshop */}
-                  <td className="px-6 py-4">
-                    {lead.workshop ? (
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{lead.workshop.name}</div>
-                        <div className="text-xs text-gray-500">{lead.workshop.city}</div>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-orange-600 font-medium">Not Assigned</span>
-                    )}
-                  </td>
-
-                  {/* Status */}
-                  <td className="px-6 py-4">
-                    <span className={`text-xs px-3 py-1 rounded-full font-medium ${getStatusColor(lead.status)}`}>
-                      {lead.status}
-                    </span>
-                  </td>
-
-                  {/* Actions */}
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      <Link href={`/dashboard/lead_manager/leads/${lead.id}`}>
-                        <button className="text-blue-600 hover:text-blue-800 font-medium text-sm">
-                          View
-                        </button>
-                      </Link>
-                      {(lead.status === 'VALIDATED' || lead.status === 'ASSIGNED_TO_WORKSHOP') && (
-                        <button 
-                          onClick={() => handleAssignClick(lead)}
-                          className="text-green-600 hover:text-green-800 font-medium text-sm"
-                        >
-                          {lead.workshop_id ? 'Reassign' : 'Assign'}
-                        </button>
-                      )}
+          {/* Mobile/Tablet Cards */}
+          <div className="lg:hidden space-y-3 sm:space-y-4">
+            {leads.map((lead) => (
+              <div 
+                key={lead.id}
+                className={`bg-white rounded-lg shadow p-3 sm:p-4 border ${lead.sla_state === 'BREACHED' ? 'border-l-4 border-red-500' : 'border-gray-100'}`}
+              >
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm sm:text-base font-medium text-gray-900">#{lead.lead_number}</span>
+                      <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-medium ${getPriorityColor(lead.lead_priority || 'NORMAL')}`}>
+                        {lead.lead_priority || 'NORMAL'}
+                      </span>
                       {lead.is_incomplete && (
-                        <Link href={`/dashboard/lead_manager/leads/${lead.id}?mode=edit`}>
-                          <button className="text-orange-600 hover:text-orange-800 font-medium text-sm">
-                            Complete
-                          </button>
-                        </Link>
+                        <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-medium text-orange-600 bg-orange-100">
+                          INCOMPLETE
+                        </span>
                       )}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    {lead.sla_state && (
+                      <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-medium inline-block ${getSLAColor(lead.sla_state)}`}>
+                        SLA: {lead.sla_state}
+                      </span>
+                    )}
+                  </div>
+                  <span className={`text-[10px] sm:text-xs px-2 sm:px-3 py-0.5 sm:py-1 rounded-full font-medium flex-shrink-0 ${getStatusColor(lead.status)}`}>
+                    {lead.status}
+                  </span>
+                </div>
+
+                <div className="space-y-2 mb-3 pb-3 border-b border-gray-100">
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <span className="text-gray-500">Customer:</span>
+                    <div className="text-right min-w-0 flex-1 ml-2">
+                      <div className="text-gray-900 font-medium truncate">{lead.customer_name}</div>
+                      <div className="text-gray-500 text-xs truncate">{lead.customer_phone}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <span className="text-gray-500">Vehicle:</span>
+                    <div className="text-right min-w-0 flex-1 ml-2">
+                      <div className="text-gray-900 font-medium truncate">{lead.vehicle_model || 'N/A'}</div>
+                      <div className="text-gray-500 text-[10px] sm:text-xs truncate">{lead.vehicle_number || 'Not provided'}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <span className="text-gray-500">Workshop:</span>
+                    <span className="text-gray-900 font-medium text-right truncate max-w-[60%]">
+                      {lead.workshop ? `${lead.workshop.name}, ${lead.workshop.city}` : <span className="text-orange-600">Not Assigned</span>}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Link href={`/dashboard/lead_manager/leads/${lead.id}`} className="flex-1 min-w-[80px]">
+                    <button className="w-full px-3 py-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 rounded-lg hover:bg-blue-50">
+                      View
+                    </button>
+                  </Link>
+                  {(lead.status === 'VALIDATED' || lead.status === 'ASSIGNED_TO_WORKSHOP') && (
+                    <button 
+                      onClick={() => handleAssignClick(lead)}
+                      className="flex-1 min-w-[80px] px-3 py-1.5 text-xs sm:text-sm text-green-600 hover:text-green-800 font-medium border border-green-200 rounded-lg hover:bg-green-50"
+                    >
+                      {lead.workshop_id ? 'Reassign' : 'Assign'}
+                    </button>
+                  )}
+                  {lead.is_incomplete && (
+                    <Link href={`/dashboard/lead_manager/leads/${lead.id}?mode=edit`} className="flex-1 min-w-[80px]">
+                      <button className="w-full px-3 py-1.5 text-xs sm:text-sm text-orange-600 hover:text-orange-800 font-medium border border-orange-200 rounded-lg hover:bg-orange-50">
+                        Complete
+                      </button>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Assignment Modal */}
       {showAssignModal && selectedLead && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-4 sm:p-5 md:p-6 my-4 sm:my-6 md:my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3 sm:mb-4 gap-2">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 truncate">
                 Assign Workshop - Lead #{selectedLead.lead_number}
               </h3>
               <button
@@ -448,19 +533,19 @@ function LeadManagerLeadsContent() {
                   setSelectedWorkshop('');
                   setAssignmentNotes('');
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
             
             {/* Priority Selection */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Priority Level</label>
+            <div className="mb-3 sm:mb-4">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Priority Level</label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500"
               >
                 <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>
@@ -471,10 +556,10 @@ function LeadManagerLeadsContent() {
             </div>
 
             {/* Workshop Search */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Search Workshops</label>
+            <div className="mb-3 sm:mb-4">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Search Workshops</label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 <input
                   type="text"
                   value={workshopSearch}
@@ -485,35 +570,35 @@ function LeadManagerLeadsContent() {
                     }
                   }}
                   placeholder="Search by name or city..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
 
             {/* Workshop List */}
-            <div className="mb-4 max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
+            <div className="mb-3 sm:mb-4 max-h-64 sm:max-h-72 md:max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
               {filteredWorkshops.length === 0 ? (
-                <p className="p-4 text-center text-gray-500">No workshops found</p>
+                <p className="p-3 sm:p-4 text-center text-xs sm:text-sm text-gray-500">No workshops found</p>
               ) : (
                 filteredWorkshops.map((workshop) => (
                   <div
                     key={workshop.id}
                     onClick={() => setSelectedWorkshop(workshop.id)}
-                    className={`p-4 cursor-pointer hover:bg-gray-50 transition border-b border-gray-100 ${
+                    className={`p-3 sm:p-4 cursor-pointer hover:bg-gray-50 transition border-b border-gray-100 ${
                       selectedWorkshop === workshop.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900">{workshop.name}</h4>
-                        <p className="text-sm text-gray-600">{workshop.city}, {workshop.state}</p>
-                        <p className="text-xs text-gray-500 mt-1">{workshop.contact_person} • {workshop.phone}</p>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-sm sm:text-base text-gray-900 truncate">{workshop.name}</h4>
+                        <p className="text-xs sm:text-sm text-gray-600 truncate">{workshop.city}, {workshop.state}</p>
+                        <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 truncate">{workshop.contact_person} • {workshop.phone}</p>
                       </div>
-                      <div className="text-right">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium">Rating: {workshop.rating || 'N/A'}</span>
+                      <div className="text-left sm:text-right flex-shrink-0">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <span className="text-[10px] sm:text-xs font-medium">Rating: {workshop.rating || 'N/A'}</span>
                         </div>
-                        <div className={`text-xs mt-1 px-2 py-1 rounded ${
+                        <div className={`text-[10px] sm:text-xs mt-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded ${
                           workshop.capacity_status === 'AVAILABLE' ? 'bg-green-100 text-green-800' :
                           workshop.capacity_status === 'BUSY' ? 'bg-yellow-100 text-yellow-800' :
                           'bg-red-100 text-red-800'
@@ -528,19 +613,19 @@ function LeadManagerLeadsContent() {
             </div>
 
             {/* Assignment Notes */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Assignment Notes (Optional)</label>
+            <div className="mb-3 sm:mb-4">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Assignment Notes (Optional)</label>
               <textarea
                 value={assignmentNotes}
                 onChange={(e) => setAssignmentNotes(e.target.value)}
                 rows={3}
-                className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg p-2 sm:p-3 text-sm focus:ring-2 focus:ring-blue-500"
                 placeholder="Any special instructions or notes for the workshop..."
               />
             </div>
 
             {/* Actions */}
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button
                 onClick={() => {
                   setShowAssignModal(false);
@@ -548,7 +633,7 @@ function LeadManagerLeadsContent() {
                   setSelectedWorkshop('');
                   setAssignmentNotes('');
                 }}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg font-medium"
+                className="flex-1 bg-gray-200 hover:bg-gray-300 px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg font-medium"
                 disabled={assigning}
               >
                 Cancel
@@ -556,17 +641,17 @@ function LeadManagerLeadsContent() {
               <button
                 onClick={handleAssignWorkshop}
                 disabled={assigning || !selectedWorkshop}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 text-sm sm:text-base rounded-lg font-medium flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {assigning ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Assigning...
+                    <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                    <span>Assigning...</span>
                   </>
                 ) : (
                   <>
-                    Assign Workshop
-                    <ArrowRight className="w-5 h-5" />
+                    <span>Assign Workshop</span>
+                    <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
                   </>
                 )}
               </button>

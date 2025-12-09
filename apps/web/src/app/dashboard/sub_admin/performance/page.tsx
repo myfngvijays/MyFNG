@@ -150,46 +150,46 @@ function SubAdminPerformanceContent() {
             <p className="text-gray-600">No performance data available</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
             {performanceData.map((member) => {
               const metrics = getPerformanceMetrics(member);
               return (
-                <div key={member.member_id} className="bg-white rounded-lg shadow p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                        <Users className="w-6 h-6 text-blue-600" />
+                <div key={member.member_id} className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                      <div className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Users className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-gray-900">{member.member_name}</h3>
-                        <p className="text-sm text-gray-500">{member.member_email}</p>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-semibold text-sm sm:text-base text-gray-900 truncate">{member.member_name}</h3>
+                        <p className="text-xs sm:text-sm text-gray-500 truncate">{member.member_email}</p>
                       </div>
                     </div>
-                    <Award className="w-6 h-6 text-yellow-500" />
+                    <Award className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-500 flex-shrink-0" />
                   </div>
 
-                  <div className="mb-4">
-                    <div className="flex items-end gap-2 mb-2">
-                      <span className="text-3xl font-bold text-blue-600">
+                  <div className="mb-3 sm:mb-4">
+                    <div className="flex items-end gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                      <span className="text-2xl sm:text-3xl font-bold text-blue-600">
                         {metrics.primary.toFixed(1)}
                       </span>
-                      <span className="text-sm text-gray-500 mb-1">{metrics.primaryLabel}</span>
+                      <span className="text-xs sm:text-sm text-gray-500 mb-0.5 sm:mb-1">{metrics.primaryLabel}</span>
                     </div>
                   </div>
 
-                  <div className="space-y-2 border-t pt-4">
+                  <div className="space-y-1.5 sm:space-y-2 border-t pt-3 sm:pt-4">
                     {metrics.metrics.map((metric, index) => (
                       <div key={index} className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">{metric.label}</span>
-                        <span className="text-sm font-semibold text-gray-900">{metric.value}</span>
+                        <span className="text-xs sm:text-sm text-gray-600">{metric.label}</span>
+                        <span className="text-xs sm:text-sm font-semibold text-gray-900">{metric.value}</span>
                       </div>
                     ))}
                   </div>
 
-                  <div className="mt-4 pt-4 border-t">
+                  <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t">
                     <Link
                       href={`/dashboard/sub_admin/performance/${member.member_id}`}
-                      className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                      className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-medium"
                     >
                       View Detailed Report →
                     </Link>

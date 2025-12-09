@@ -140,29 +140,29 @@ export default function MechanicPerformancePage() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-text-heading">Performance Dashboard</h1>
-            <p className="text-text-body mt-2">Track your work metrics and KPIs</p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Performance Dashboard</h1>
+            <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Track your work metrics and KPIs</p>
           </div>
           
           {/* Performance Grade */}
-          <div className={`px-6 py-4 rounded-xl ${performanceGrade.bgColor} border-2 border-current ${performanceGrade.color}`}>
-            <p className="text-sm font-medium">Overall Grade</p>
-            <p className="text-4xl font-bold">{performanceGrade.grade}</p>
-            <p className="text-sm">{avgPerformanceScore.toFixed(1)}%</p>
+          <div className={`px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-lg sm:rounded-xl ${performanceGrade.bgColor} border-2 border-current ${performanceGrade.color} w-full sm:w-auto`}>
+            <p className="text-xs sm:text-sm font-medium">Overall Grade</p>
+            <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{performanceGrade.grade}</p>
+            <p className="text-xs sm:text-sm">{avgPerformanceScore.toFixed(1)}%</p>
           </div>
         </div>
 
         {/* Period Selector */}
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2 sm:gap-3">
           {(['today', 'week', 'month'] as const).map((period) => (
             <button
               key={period}
               onClick={() => setSelectedPeriod(period)}
-              className={`px-6 py-3 rounded-lg font-medium capitalize transition ${
+              className={`px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 md:py-3 rounded-lg font-medium capitalize transition text-xs sm:text-sm ${
                 selectedPeriod === period
                   ? 'bg-brand-primary text-white shadow-md'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
@@ -174,68 +174,68 @@ export default function MechanicPerformancePage() {
         </div>
 
         {/* Key Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
           {/* Jobs Completed */}
-          <div className="card bg-gradient-to-br from-green-50 to-green-100">
-            <div className="flex items-center justify-between mb-3">
-              <CheckCircle className="w-10 h-10 text-green-600" />
-              <span className="text-3xl font-bold text-green-600">{totalCompleted}</span>
+          <div className="card bg-gradient-to-br from-green-50 to-green-100 p-3 sm:p-4 md:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 lg:w-10 lg:h-10 text-green-600 flex-shrink-0" />
+              <span className="text-xl sm:text-2xl md:text-3xl font-bold text-green-600">{totalCompleted}</span>
             </div>
-            <p className="text-sm text-gray-600">Jobs Completed</p>
-            <p className="text-xs text-gray-500 mt-1">out of {totalAssigned} assigned</p>
-            <div className="mt-2">
-              <div className="w-full bg-gray-200 rounded-full h-2">
+            <p className="text-xs sm:text-sm text-gray-600">Jobs Completed</p>
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">out of {totalAssigned} assigned</p>
+            <div className="mt-1.5 sm:mt-2">
+              <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
                 <div
-                  className="bg-green-600 h-2 rounded-full transition-all"
+                  className="bg-green-600 h-1.5 sm:h-2 rounded-full transition-all"
                   style={{ width: `${completionRate}%` }}
                 />
               </div>
-              <p className="text-xs text-gray-600 mt-1">{completionRate.toFixed(0)}% completion rate</p>
+              <p className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1">{completionRate.toFixed(0)}% completion rate</p>
             </div>
           </div>
 
           {/* SLA Success Rate */}
-          <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
-            <div className="flex items-center justify-between mb-3">
-              <Clock className="w-10 h-10 text-blue-600" />
-              <span className="text-3xl font-bold text-blue-600">{avgSLARate.toFixed(0)}%</span>
+          <div className="card bg-gradient-to-br from-blue-50 to-blue-100 p-3 sm:p-4 md:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 lg:w-10 lg:h-10 text-blue-600 flex-shrink-0" />
+              <span className="text-xl sm:text-2xl md:text-3xl font-bold text-blue-600">{avgSLARate.toFixed(0)}%</span>
             </div>
-            <p className="text-sm text-gray-600">SLA Success Rate</p>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs sm:text-sm text-gray-600">SLA Success Rate</p>
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
               {calculateSum(currentMetrics, 'sla_success_count')} on-time / {' '}
               {calculateSum(currentMetrics, 'sla_breach_count')} breached
             </p>
           </div>
 
           {/* Avg Repair Time */}
-          <div className="card bg-gradient-to-br from-purple-50 to-purple-100">
-            <div className="flex items-center justify-between mb-3">
-              <Activity className="w-10 h-10 text-purple-600" />
-              <span className="text-3xl font-bold text-purple-600">{avgDuration.toFixed(0)}m</span>
+          <div className="card bg-gradient-to-br from-purple-50 to-purple-100 p-3 sm:p-4 md:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <Activity className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 lg:w-10 lg:h-10 text-purple-600 flex-shrink-0" />
+              <span className="text-xl sm:text-2xl md:text-3xl font-bold text-purple-600">{avgDuration.toFixed(0)}m</span>
             </div>
-            <p className="text-sm text-gray-600">Avg Repair Time</p>
-            <p className="text-xs text-gray-500 mt-1">minutes per job</p>
+            <p className="text-xs sm:text-sm text-gray-600">Avg Repair Time</p>
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">minutes per job</p>
           </div>
 
           {/* Quality Score */}
-          <div className="card bg-gradient-to-br from-orange-50 to-orange-100">
-            <div className="flex items-center justify-between mb-3">
-              <Award className="w-10 h-10 text-orange-600" />
-              <span className="text-3xl font-bold text-orange-600">
+          <div className="card bg-gradient-to-br from-orange-50 to-orange-100 p-3 sm:p-4 md:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <Award className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 lg:w-10 lg:h-10 text-orange-600 flex-shrink-0" />
+              <span className="text-xl sm:text-2xl md:text-3xl font-bold text-orange-600">
                 {totalCompleted > 0 ? ((totalCompleted - totalReworks) / totalCompleted * 100).toFixed(0) : 0}%
               </span>
             </div>
-            <p className="text-sm text-gray-600">Quality Score</p>
-            <p className="text-xs text-gray-500 mt-1">{totalReworks} reworks needed</p>
+            <p className="text-xs sm:text-sm text-gray-600">Quality Score</p>
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">{totalReworks} reworks needed</p>
           </div>
         </div>
 
         {/* Detailed Stats */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
           {/* Work Distribution */}
-          <div className="card">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <BarChart3 className="w-6 h-6 text-brand-primary" />
+          <div className="card p-3 sm:p-4 md:p-5">
+            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+              <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
               Work Distribution
             </h2>
             <div className="space-y-4">
@@ -289,30 +289,30 @@ export default function MechanicPerformancePage() {
           </div>
 
           {/* Quality Control */}
-          <div className="card">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Target className="w-6 h-6 text-brand-primary" />
+          <div className="card p-3 sm:p-4 md:p-5">
+            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+              <Target className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
               Quality Control
             </h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="w-8 h-8 text-green-600" />
+            <div className="space-y-3 sm:space-y-4">
+              <div className="flex items-center justify-between p-3 sm:p-4 bg-green-50 rounded-lg">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-600 flex-shrink-0" />
                   <div>
-                    <p className="text-sm text-gray-600">QC Passed</p>
-                    <p className="text-2xl font-bold text-green-600">
+                    <p className="text-xs sm:text-sm text-gray-600">QC Passed</p>
+                    <p className="text-xl sm:text-2xl font-bold text-green-600">
                       {calculateSum(currentMetrics, 'qc_pass_count')}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <XCircle className="w-8 h-8 text-red-600" />
+              <div className="flex items-center justify-between p-3 sm:p-4 bg-red-50 rounded-lg">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <XCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-red-600 flex-shrink-0" />
                   <div>
-                    <p className="text-sm text-gray-600">QC Failed (Rework)</p>
-                    <p className="text-2xl font-bold text-red-600">
+                    <p className="text-xs sm:text-sm text-gray-600">QC Failed (Rework)</p>
+                    <p className="text-xl sm:text-2xl font-bold text-red-600">
                       {calculateSum(currentMetrics, 'qc_fail_count')}
                     </p>
                   </div>
@@ -348,25 +348,25 @@ export default function MechanicPerformancePage() {
         </div>
 
         {/* Extra Work Stats */}
-        <div className="card">
-          <h2 className="text-xl font-bold mb-4">Additional Work Requests</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <p className="text-3xl font-bold text-blue-600">
+        <div className="card p-3 sm:p-4 md:p-5">
+          <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Additional Work Requests</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg">
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-blue-600">
                 {calculateSum(currentMetrics, 'extra_work_requests_count')}
               </p>
-              <p className="text-sm text-gray-600 mt-1">Total Requests</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Total Requests</p>
             </div>
 
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <p className="text-3xl font-bold text-green-600">
+            <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg">
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-green-600">
                 {calculateSum(currentMetrics, 'extra_work_approved_count')}
               </p>
-              <p className="text-sm text-gray-600 mt-1">Approved</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Approved</p>
             </div>
 
-            <div className="text-center p-4 bg-purple-50 rounded-lg">
-              <p className="text-3xl font-bold text-purple-600">
+            <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg">
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-purple-600">
                 {calculateSum(currentMetrics, 'extra_work_requests_count') > 0
                   ? (
                       (calculateSum(currentMetrics, 'extra_work_approved_count') /
@@ -375,31 +375,31 @@ export default function MechanicPerformancePage() {
                     ).toFixed(0)
                   : 0}%
               </p>
-              <p className="text-sm text-gray-600 mt-1">Approval Rate</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Approval Rate</p>
             </div>
           </div>
         </div>
 
         {/* Performance Trend */}
         {currentMetrics.length > 1 && (
-          <div className="card">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <TrendingUp className="w-6 h-6 text-brand-primary" />
+          <div className="card p-3 sm:p-4 md:p-5">
+            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+              <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
               Performance Trend
             </h2>
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {[...currentMetrics].reverse().map((metric, index) => (
-                <div key={index} className="flex items-center gap-4">
-                  <div className="w-24 text-sm text-gray-600">
+                <div key={index} className="flex items-center gap-2 sm:gap-3 md:gap-4">
+                  <div className="w-16 sm:w-20 md:w-24 text-xs sm:text-sm text-gray-600 flex-shrink-0">
                     {new Date(metric.date).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric'
                     })}
                   </div>
-                  <div className="flex-1">
-                    <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="w-full bg-gray-200 rounded-full h-2 sm:h-3">
                       <div
-                        className={`h-3 rounded-full ${
+                        className={`h-2 sm:h-3 rounded-full ${
                           metric.performance_score >= 80
                             ? 'bg-green-500'
                             : metric.performance_score >= 60
@@ -410,8 +410,8 @@ export default function MechanicPerformancePage() {
                       />
                     </div>
                   </div>
-                  <div className="w-16 text-right">
-                    <span className="text-sm font-semibold">{metric.performance_score.toFixed(0)}%</span>
+                  <div className="w-12 sm:w-14 md:w-16 text-right flex-shrink-0">
+                    <span className="text-xs sm:text-sm font-semibold">{metric.performance_score.toFixed(0)}%</span>
                   </div>
                 </div>
               ))}
@@ -420,46 +420,46 @@ export default function MechanicPerformancePage() {
         )}
 
         {/* Achievements & Goals */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500">
-            <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
-              <Award className="w-6 h-6 text-yellow-600" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
+          <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 p-3 sm:p-4 md:p-5">
+            <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+              <Award className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600 flex-shrink-0" />
               Achievements
             </h3>
-            <ul className="space-y-2">
+            <ul className="space-y-1.5 sm:space-y-2">
               {avgSLARate >= 90 && (
-                <li className="flex items-center gap-2 text-sm">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
+                <li className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
                   <span>90%+ SLA Success Rate</span>
                 </li>
               )}
               {totalCompleted >= 10 && (
-                <li className="flex items-center gap-2 text-sm">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
+                <li className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
                   <span>Completed {totalCompleted} jobs</span>
                 </li>
               )}
               {totalReworks === 0 && totalCompleted > 0 && (
-                <li className="flex items-center gap-2 text-sm">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
+                <li className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
                   <span>Zero Rework - Perfect Quality!</span>
                 </li>
               )}
               {avgPerformanceScore >= 90 && (
-                <li className="flex items-center gap-2 text-sm">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
+                <li className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
                   <span>Top Performer (A+ Grade)</span>
                 </li>
               )}
             </ul>
           </div>
 
-          <div className="card bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500">
-            <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
-              <Target className="w-6 h-6 text-blue-600" />
+          <div className="card bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 p-3 sm:p-4 md:p-5">
+            <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+              <Target className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0" />
               Goals & Targets
             </h3>
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
               <li className="flex items-center justify-between">
                 <span>SLA Success Target:</span>
                 <span className="font-semibold">90%</span>

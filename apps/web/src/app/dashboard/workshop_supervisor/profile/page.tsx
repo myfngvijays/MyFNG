@@ -76,8 +76,8 @@ export default function SupervisorProfilePage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_supervisor">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -85,27 +85,28 @@ export default function SupervisorProfilePage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-text-heading">My Profile</h1>
-            <p className="text-text-body mt-2">View and manage your profile information</p>
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">My Profile</h1>
+            <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">View and manage your profile information</p>
           </div>
           {!isEditing ? (
             <button
               onClick={() => setIsEditing(true)}
-              className="btn bg-brand-primary text-white hover:bg-brand-primary-hover"
+              className="btn bg-brand-primary text-white hover:bg-brand-primary-hover text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto flex items-center justify-center gap-1.5 sm:gap-2"
             >
-              <Edit2 className="w-5 h-5 mr-2" />
-              Edit Profile
+              <Edit2 className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">Edit Profile</span>
+              <span className="sm:hidden">Edit</span>
             </button>
           ) : (
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <button
                 onClick={handleSave}
-                className="btn bg-green-500 text-white hover:bg-green-600"
+                className="btn bg-green-500 text-white hover:bg-green-600 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2"
               >
-                <Save className="w-5 h-5 mr-2" />
+                <Save className="w-4 h-4 sm:w-5 sm:h-5" />
                 Save
               </button>
               <button
@@ -117,7 +118,7 @@ export default function SupervisorProfilePage() {
                     email: profile.email
                   });
                 }}
-                className="btn btn-outline"
+                className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
               >
                 Cancel
               </button>

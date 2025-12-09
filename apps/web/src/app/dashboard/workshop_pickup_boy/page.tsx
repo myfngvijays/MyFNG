@@ -133,21 +133,21 @@ export default function WorkshopPickupBoyDashboard() {
 
   return (
     <DashboardLayout role="workshop_pickup_boy">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-text-heading">Pickup & Delivery Dashboard</h1>
-          <p className="text-text-body mt-2">Manage your pickup and delivery tasks</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Pickup & Delivery Dashboard</h1>
+          <p className="text-text-body text-sm sm:text-base mt-1 sm:mt-2">Manage your pickup and delivery tasks</p>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {stats.map((stat, index) => (
             <div key={index} className="card">
-              <div className="flex items-center gap-3">
-                <div className={stat.color}>{stat.icon}</div>
-                <div>
-                  <p className="text-sm text-text-body">{stat.label}</p>
-                  <p className="text-2xl font-bold text-text-heading">{stat.value}</p>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className={`${stat.color} flex-shrink-0`}>{stat.icon}</div>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-text-body">{stat.label}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-text-heading">{stat.value}</p>
                 </div>
               </div>
             </div>
@@ -156,31 +156,31 @@ export default function WorkshopPickupBoyDashboard() {
 
         {/* Recent Tasks */}
         <div className="card">
-          <h2 className="text-xl font-semibold text-text-heading mb-4">Active Tasks</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-text-heading mb-3 sm:mb-4">Active Tasks</h2>
           {tasks.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {tasks.map((task) => (
-                <div key={task.id} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex-1">
-                      <p className="font-semibold text-text-heading text-lg">{task.lead_number}</p>
-                      <p className="text-sm text-text-body">{task.customer_name} - {task.vehicle_number}</p>
-                      <div className="mt-2 space-y-1">
+                <div key={task.id} className="p-3 sm:p-4 border border-gray-200 rounded-lg hover:shadow-md transition">
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-2 sm:gap-3 mb-2 sm:mb-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-text-heading text-base sm:text-lg truncate">{task.lead_number}</p>
+                      <p className="text-xs sm:text-sm text-text-body truncate">{task.customer_name} - {task.vehicle_number}</p>
+                      <div className="mt-1.5 sm:mt-2 space-y-1">
                         {task.pickup_address && (
-                          <p className="text-xs text-gray-500 flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            Pickup: {task.pickup_address}
+                          <p className="text-[10px] sm:text-xs text-gray-500 flex items-start gap-1">
+                            <MapPin className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex-shrink-0 mt-0.5" />
+                            <span className="truncate">Pickup: {task.pickup_address}</span>
                           </p>
                         )}
                         {task.address && (
-                          <p className="text-xs text-gray-500 flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            Address: {task.address}
+                          <p className="text-[10px] sm:text-xs text-gray-500 flex items-start gap-1">
+                            <MapPin className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex-shrink-0 mt-0.5" />
+                            <span className="truncate">Address: {task.address}</span>
                           </p>
                         )}
                       </div>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ml-4 ${
+                    <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 sm:ml-4 ${
                       task.status === 'IN_PROGRESS' ? 'bg-green-100 text-green-700' : 
                       task.status === 'ACCEPTED' ? 'bg-blue-100 text-blue-700' :
                       'bg-yellow-100 text-yellow-700'
@@ -188,7 +188,7 @@ export default function WorkshopPickupBoyDashboard() {
                       {task.status.replace('_', ' ')}
                     </span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <button 
                       onClick={async () => {
                         console.log('Navigate button clicked for task:', task.id, task.lead_number);
@@ -245,14 +245,14 @@ export default function WorkshopPickupBoyDashboard() {
                           toast.error('Failed to update status: ' + (error.message || 'Unknown error'));
                         }
                       }}
-                      className="btn btn-outline text-sm flex-1 flex items-center justify-center gap-2"
+                      className="btn btn-outline text-xs sm:text-sm flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2 sm:py-2.5"
                     >
-                      <Navigation className="w-4 h-4" />
+                      <Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       Navigate
                     </button>
                     <button 
                       onClick={() => window.location.href = `/dashboard/workshop_pickup_boy/tasks/${task.id}`}
-                      className="btn btn-primary text-sm flex-1"
+                      className="btn btn-primary text-xs sm:text-sm flex-1 py-2 sm:py-2.5"
                     >
                       View Details
                     </button>
@@ -261,35 +261,35 @@ export default function WorkshopPickupBoyDashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-center py-8">No active tasks</p>
+            <p className="text-gray-500 text-center py-6 sm:py-8 text-sm sm:text-base">No active tasks</p>
           )}
         </div>
 
         {/* Photo Upload Guide */}
         <div className="card bg-blue-50 border-l-4 border-brand-primary">
-          <h3 className="font-semibold text-text-heading mb-3 flex items-center gap-2">
-            <Camera className="w-5 h-5 text-brand-primary" />
+          <h3 className="font-semibold text-sm sm:text-base text-text-heading mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+            <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
             Photo Guidelines
           </h3>
-          <ul className="text-sm text-gray-700 space-y-2">
-            <li className="flex items-start gap-2">
-              <CheckCircle className="w-4 h-4 mt-0.5 text-green-600" />
+          <ul className="text-xs sm:text-sm text-gray-700 space-y-1.5 sm:space-y-2">
+            <li className="flex items-start gap-1.5 sm:gap-2">
+              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mt-0.5 text-green-600 flex-shrink-0" />
               <span>Take clear photos of vehicle before pickup</span>
             </li>
-            <li className="flex items-start gap-2">
-              <CheckCircle className="w-4 h-4 mt-0.5 text-green-600" />
+            <li className="flex items-start gap-1.5 sm:gap-2">
+              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mt-0.5 text-green-600 flex-shrink-0" />
               <span>Capture odometer reading</span>
             </li>
-            <li className="flex items-start gap-2">
-              <CheckCircle className="w-4 h-4 mt-0.5 text-green-600" />
+            <li className="flex items-start gap-1.5 sm:gap-2">
+              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mt-0.5 text-green-600 flex-shrink-0" />
               <span>Document any existing damage</span>
             </li>
-            <li className="flex items-start gap-2">
-              <CheckCircle className="w-4 h-4 mt-0.5 text-green-600" />
+            <li className="flex items-start gap-1.5 sm:gap-2">
+              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mt-0.5 text-green-600 flex-shrink-0" />
               <span>Photo of customer ID/signature</span>
             </li>
-            <li className="flex items-start gap-2">
-              <CheckCircle className="w-4 h-4 mt-0.5 text-green-600" />
+            <li className="flex items-start gap-1.5 sm:gap-2">
+              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mt-0.5 text-green-600 flex-shrink-0" />
               <span>Repeat process during delivery</span>
             </li>
           </ul>

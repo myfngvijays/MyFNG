@@ -245,34 +245,34 @@ export default function WorkshopAdminPendingLeadsPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-6">
-        <div className="bg-gradient-to-r from-yellow-500 to-orange-600 text-white p-6 rounded-lg shadow-lg">
-          <h1 className="text-3xl font-bold">⏰ Pending Lead Approvals</h1>
-          <p className="font-medium mt-1">Review and accept/reject incoming leads</p>
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
+        <div className="bg-gradient-to-r from-yellow-500 to-orange-600 text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">⏰ Pending Lead Approvals</h1>
+          <p className="font-medium text-sm sm:text-base mt-0.5 sm:mt-1">Review and accept/reject incoming leads</p>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {leads.length === 0 ? (
-            <div className="card text-center py-12">
-              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">All Caught Up!</h3>
-              <p className="text-gray-500">No pending leads waiting for approval</p>
+            <div className="card text-center py-8 sm:py-10 md:py-12">
+              <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-green-500 mx-auto mb-3 sm:mb-4" />
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">All Caught Up!</h3>
+              <p className="text-gray-500 text-sm sm:text-base">No pending leads waiting for approval</p>
             </div>
           ) : (
             leads.map((lead) => (
               <div key={lead.id} className="card hover:shadow-xl transition-shadow border-l-4 border-yellow-500">
                 {/* Header */}
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-2xl font-bold text-brand-primary">{lead.lead_number}</h3>
-                    <p className="text-sm text-gray-500 mt-1">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-brand-primary truncate">{lead.lead_number}</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">
                       Created: {new Date(lead.created_at).toLocaleString()}
                     </p>
                   </div>
                   {lead.sla_accept_deadline && (
-                    <div className="bg-orange-100 border border-orange-300 px-4 py-2 rounded-lg">
-                      <p className="text-xs text-orange-600 font-semibold">SLA Deadline</p>
-                      <p className="text-sm font-bold text-orange-700">
+                    <div className="bg-orange-100 border border-orange-300 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg flex-shrink-0">
+                      <p className="text-[10px] sm:text-xs text-orange-600 font-semibold">SLA Deadline</p>
+                      <p className="text-xs sm:text-sm font-bold text-orange-700">
                         {new Date(lead.sla_accept_deadline).toLocaleString()}
                       </p>
                     </div>
@@ -280,31 +280,31 @@ export default function WorkshopAdminPendingLeadsPage() {
                 </div>
 
                 {/* Customer & Vehicle Details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Phone className="w-5 h-5 text-blue-600" />
-                      <h4 className="font-semibold text-blue-900">Customer Details</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
+                  <div className="bg-blue-50 p-3 sm:p-4 rounded-lg">
+                    <div className="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+                      <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
+                      <h4 className="font-semibold text-sm sm:text-base text-blue-900">Customer Details</h4>
                     </div>
-                    <p className="font-bold text-lg">{lead.customer_name}</p>
-                    <p className="text-gray-700">{lead.customer_phone}</p>
+                    <p className="font-bold text-base sm:text-lg">{lead.customer_name}</p>
+                    <p className="text-gray-700 text-sm sm:text-base">{lead.customer_phone}</p>
                     {lead.address && (
-                      <div className="flex items-start gap-2 mt-2">
-                        <MapPin className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
-                        <p className="text-sm text-gray-600">{lead.address}</p>
+                      <div className="flex items-start gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
+                        <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                        <p className="text-xs sm:text-sm text-gray-600">{lead.address}</p>
                       </div>
                     )}
                   </div>
 
-                  <div className="bg-purple-50 p-4 rounded-lg">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Car className="w-5 h-5 text-purple-600" />
-                      <h4 className="font-semibold text-purple-900">Vehicle Details</h4>
+                  <div className="bg-purple-50 p-3 sm:p-4 rounded-lg">
+                    <div className="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+                      <Car className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                      <h4 className="font-semibold text-sm sm:text-base text-purple-900">Vehicle Details</h4>
                     </div>
-                    <p className="font-bold text-lg">{lead.vehicle_number}</p>
-                    <p className="text-gray-700">{lead.vehicle_make} {lead.vehicle_model}</p>
+                    <p className="font-bold text-base sm:text-lg">{lead.vehicle_number}</p>
+                    <p className="text-gray-700 text-sm sm:text-base">{lead.vehicle_make} {lead.vehicle_model}</p>
                     {lead.pickup_required && (
-                      <span className="inline-block mt-2 px-3 py-1 bg-purple-200 text-purple-800 rounded-full text-xs font-semibold">
+                      <span className="inline-block mt-1.5 sm:mt-2 px-2 sm:px-3 py-0.5 sm:py-1 bg-purple-200 text-purple-800 rounded-full text-[10px] sm:text-xs font-semibold">
                         🚗 Pickup Required
                       </span>
                     )}
@@ -312,47 +312,47 @@ export default function WorkshopAdminPendingLeadsPage() {
                 </div>
 
                 {/* Service Details */}
-                <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                  <h4 className="font-semibold text-gray-900 mb-2">Service Required</h4>
-                  <p className="text-gray-800 font-medium">
+                <div className="bg-gray-50 p-3 sm:p-4 rounded-lg mb-3 sm:mb-4">
+                  <h4 className="font-semibold text-sm sm:text-base text-gray-900 mb-1.5 sm:mb-2">Service Required</h4>
+                  <p className="text-gray-800 font-medium text-sm sm:text-base">
                     {lead.service_type_names || lead.service_type}
                   </p>
                   {lead.description && (
-                    <p className="text-sm text-gray-600 mt-2">{lead.description}</p>
+                    <p className="text-xs sm:text-sm text-gray-600 mt-1.5 sm:mt-2">{lead.description}</p>
                   )}
                   {lead.estimated_amount && (
-                    <div className="flex items-center gap-2 mt-3">
-                      <DollarSign className="w-5 h-5 text-green-600" />
-                      <span className="text-xl font-bold text-green-600">
+                    <div className="flex items-center gap-1.5 sm:gap-2 mt-2 sm:mt-3">
+                      <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
+                      <span className="text-lg sm:text-xl font-bold text-green-600">
                         ₹{lead.estimated_amount.toLocaleString()}
                       </span>
-                      <span className="text-sm text-gray-500">(Estimated)</span>
+                      <span className="text-xs sm:text-sm text-gray-500">(Estimated)</span>
                     </div>
                   )}
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-3 pt-4 border-t">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4 border-t">
                   <button
                     onClick={() => router.push(`/dashboard/workshop_admin/leads/${lead.id}`)}
-                    className="btn btn-outline flex-1 flex items-center justify-center gap-2"
+                    className="btn btn-outline flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm py-2 sm:py-2.5"
                   >
-                    <Eye className="w-4 h-4" />
+                    <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     View Details
                   </button>
                   <button
                     onClick={() => handleAcceptLead(lead.id)}
                     disabled={processing === lead.id}
-                    className="btn bg-green-600 hover:bg-green-700 text-white flex-1 flex items-center justify-center gap-2"
+                    className="btn bg-green-600 hover:bg-green-700 text-white flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm py-2 sm:py-2.5"
                   >
                     {processing === lead.id ? (
                       <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                         Processing...
                       </>
                     ) : (
                       <>
-                        <CheckCircle className="w-4 h-4" />
+                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         Accept Lead
                       </>
                     )}
@@ -360,9 +360,9 @@ export default function WorkshopAdminPendingLeadsPage() {
                   <button
                     onClick={() => handleRejectLead(lead.id)}
                     disabled={processing === lead.id}
-                    className="btn bg-red-600 hover:bg-red-700 text-white flex-1 flex items-center justify-center gap-2"
+                    className="btn bg-red-600 hover:bg-red-700 text-white flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm py-2 sm:py-2.5"
                   >
-                    <XCircle className="w-4 h-4" />
+                    <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     Reject
                   </button>
                 </div>

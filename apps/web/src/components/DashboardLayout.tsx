@@ -229,42 +229,44 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     <div className="min-h-screen bg-background-grey">
       {/* Header */}
       <header className="bg-white shadow-sm fixed top-0 w-full z-40">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 py-2 sm:py-3">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
+              className="lg:hidden p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"
+              aria-label="Toggle sidebar"
             >
-              {sidebarOpen ? <X /> : <Menu />}
+              {sidebarOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
             
-            <Link href="/" className="flex items-center gap-2">
-              <Wrench className="w-8 h-8 text-brand-fng" />
-              <span className="text-2xl font-bold">
+            <Link href="/" className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <Wrench className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-brand-fng flex-shrink-0" />
+              <span className="text-lg sm:text-xl md:text-2xl font-bold whitespace-nowrap">
                 <span className="text-brand-my">My</span>
                 <span className="text-brand-fng">FNG</span>
               </span>
             </Link>
           </div>
 
-          <div className="flex items-center gap-4">
-            <button className="p-2 hover:bg-gray-100 rounded-lg relative">
-              <Bell className="w-6 h-6 text-gray-600" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
+            <button className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg relative" aria-label="Notifications">
+              <Bell className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" />
+              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></span>
             </button>
             
-            <div className="flex items-center gap-3">
-              <div className="text-right hidden sm:block">
-                <p className="font-medium text-sm">{userProfile?.full_name}</p>
-                <p className="text-xs text-gray-500">{userProfile?.role?.role_name}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="text-right hidden md:block">
+                <p className="font-medium text-xs sm:text-sm truncate max-w-[120px]">{userProfile?.full_name}</p>
+                <p className="text-xs text-gray-500 truncate max-w-[120px]">{userProfile?.role?.role_name}</p>
               </div>
               
               <button
                 onClick={handleLogout}
-                className="p-2 hover:bg-gray-100 rounded-lg text-red-600"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg text-red-600"
                 title="Logout"
+                aria-label="Logout"
               >
-                <LogOut className="w-6 h-6" />
+                <LogOut className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
           </div>
@@ -273,11 +275,11 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-transform lg:translate-x-0 w-64 z-30 overflow-y-auto ${
+        className={`fixed left-0 top-14 sm:top-16 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-transform duration-300 ease-in-out lg:translate-x-0 w-56 sm:w-64 z-30 overflow-y-auto ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <nav className="p-4 space-y-2">
+        <nav className="p-2 sm:p-3 md:p-4 space-y-1 sm:space-y-2">
           {getMenuItems().map((item) => (
             <NavLink 
               key={item.href} 
@@ -292,8 +294,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       </aside>
 
       {/* Main Content */}
-      <main className="lg:ml-64 pt-16 min-h-screen">
-        <div className="p-6">
+      <main className="lg:ml-56 sm:lg:ml-64 pt-14 sm:pt-16 min-h-screen">
+        <div className="p-3 sm:p-4 md:p-6">
           {children}
         </div>
       </main>
@@ -313,14 +315,14 @@ function NavLink({ href, icon, children, active }: { href: string; icon: React.R
   return (
     <Link
       href={href}
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+      className={`flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base ${
         active 
           ? 'bg-white text-blue-700 shadow-lg font-semibold' 
           : 'text-white hover:bg-blue-500/30 font-medium'
       }`}
     >
-      {icon}
-      <span>{children}</span>
+      <span className="flex-shrink-0">{icon}</span>
+      <span className="truncate">{children}</span>
     </Link>
   );
 }

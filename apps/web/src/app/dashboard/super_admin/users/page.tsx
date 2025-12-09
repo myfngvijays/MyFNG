@@ -154,44 +154,32 @@ export default function UserManagementPage() {
     }
 
     try {
-      // First, create auth user in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: newUser.email,
-        password: newUser.password,
-        options: {
-          data: {
-            full_name: newUser.full_name,
-            phone: newUser.phone
-          }
-        }
-      });
-
-      if (authError) {
-        alert(`Auth error: ${authError.message}`);
-        return;
-      }
-
-      // Then insert into users_login table
-      const { error: insertError } = await supabase
-        .from('users_login')
-        .insert([{
-          id: authData.user?.id,
+      // Use server-side API route to create user (bypasses email confirmation)
+      const response = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           full_name: newUser.full_name,
           email: newUser.email,
           phone: newUser.phone,
+          password: newUser.password,
           role_id: newUser.role_id,
           workshop_id: newUser.workshop_id || null,
           assigned_manager_id: newUser.assigned_manager_id || null,
           department: newUser.department || null,
-          is_active: true
-        }]);
+        }),
+      });
 
-      if (insertError) {
-        alert(`Database error: ${insertError.message}`);
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(`Error: ${result.error || 'Failed to create user'}`);
         return;
       }
 
-      alert('User created successfully! Login credentials sent to email.');
+      alert('User created successfully! User can login immediately.');
       setShowAddModal(false);
       setNewUser({
         full_name: '',
@@ -205,6 +193,7 @@ export default function UserManagementPage() {
       });
       fetchUsers();
     } catch (error: any) {
+      console.error('Error creating user:', error);
       alert(`Failed to create user: ${error.message}`);
     }
   };
@@ -254,42 +243,43 @@ export default function UserManagementPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <Users className="w-6 h-6" />
-                User & Role Management
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-1.5 sm:gap-2">
+                <Users className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 flex-shrink-0" />
+                <span className="truncate">User & Role Management</span>
               </h1>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                 Create users, assign roles, and manage access
               </p>
             </div>
             <button 
               onClick={() => setShowAddModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base whitespace-nowrap w-full sm:w-auto justify-center"
             >
-              <UserPlus className="w-4 h-4" />
-              Create User
+              <UserPlus className="w-4 h-4 flex-shrink-0" />
+              <span className="hidden sm:inline">Create User</span>
+              <span className="sm:hidden">Create</span>
             </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-5 md:py-6 space-y-4 sm:space-y-5 md:space-y-6">
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex flex-col md:flex-row gap-4">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             {/* Search */}
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 <input
                   type="text"
                   placeholder="Search by name, email, or phone..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
             </div>
@@ -298,7 +288,7 @@ export default function UserManagementPage() {
             <select
               value={filterRole}
               onChange={(e) => setFilterRole(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full sm:w-auto"
             >
               <option value="all">All Roles</option>
               {AVAILABLE_ROLES.map((role) => (
@@ -309,113 +299,201 @@ export default function UserManagementPage() {
             </select>
           </div>
 
-          <div className="mt-4 text-sm text-gray-600">
+          <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600">
             Showing {filteredUsers.length} user(s)
           </div>
         </div>
 
-        {/* Users Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  User
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Contact
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Joined
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredUsers.map((user) => {
-                const roleColor = getRoleColor(user.role_code);
-                return (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center">
-                        <div className={`w-10 h-10 rounded-full bg-${roleColor}-100 flex items-center justify-center`}>
-                          <span className={`text-${roleColor}-600 font-bold text-lg`}>
-                            {user.full_name?.charAt(0).toUpperCase() || '?'}
-                          </span>
+        {/* Users Table - Desktop */}
+        <div className="bg-white rounded-lg shadow overflow-hidden hidden lg:block">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    User
+                  </th>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Contact
+                  </th>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Role
+                  </th>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Joined
+                  </th>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredUsers.map((user) => {
+                  const roleColor = getRoleColor(user.role_code);
+                  return (
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex items-center">
+                          <div className={`w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-${roleColor}-100 flex items-center justify-center flex-shrink-0`}>
+                            <span className={`text-${roleColor}-600 font-bold text-sm sm:text-base md:text-lg`}>
+                              {user.full_name?.charAt(0).toUpperCase() || '?'}
+                            </span>
+                          </div>
+                          <div className="ml-3 sm:ml-4 min-w-0">
+                            <div className="font-medium text-sm sm:text-base text-gray-900 truncate">{user.full_name}</div>
+                            <div className="text-xs sm:text-sm text-gray-500 truncate">ID: {user.id.substring(0, 8)}...</div>
+                          </div>
                         </div>
-                        <div className="ml-4">
-                          <div className="font-medium text-gray-900">{user.full_name}</div>
-                          <div className="text-sm text-gray-500">ID: {user.id.substring(0, 8)}...</div>
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="text-xs sm:text-sm">
+                          <div className="text-gray-900 truncate max-w-[200px]">{user.email}</div>
+                          <div className="text-gray-500 truncate">{user.phone || 'N/A'}</div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm">
-                        <div className="text-gray-900">{user.email}</div>
-                        <div className="text-gray-500">{user.phone || 'N/A'}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-${roleColor}-100 text-${roleColor}-800`}>
-                        {user.role?.role_name || user.role_code}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          user.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {user.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 text-right text-sm font-medium space-x-2">
-                      <button className="text-blue-600 hover:text-blue-900">
-                        Change Role
-                      </button>
-                      <button className="text-orange-600 hover:text-orange-900">
-                        Reset Password
-                      </button>
-                      {user.is_active ? (
-                        <button
-                          onClick={() => handleToggleStatus(user.id, user.is_active)}
-                          className="text-red-600 hover:text-red-900"
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <span className={`px-2 sm:px-3 py-0.5 sm:py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-${roleColor}-100 text-${roleColor}-800`}>
+                          {user.role?.role_name || user.role_code}
+                        </span>
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <span
+                          className={`px-2 py-0.5 sm:py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            user.is_active
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}
                         >
-                          Disable
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleToggleStatus(user.id, user.is_active)}
-                          className="text-green-600 hover:text-green-900"
-                        >
-                          Enable
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          {user.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm text-gray-500">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4 text-right text-xs sm:text-sm font-medium">
+                        <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1 sm:gap-2">
+                          <button className="text-blue-600 hover:text-blue-900 whitespace-nowrap">
+                            Change Role
+                          </button>
+                          <button className="text-orange-600 hover:text-orange-900 whitespace-nowrap">
+                            Reset Password
+                          </button>
+                          {user.is_active ? (
+                            <button
+                              onClick={() => handleToggleStatus(user.id, user.is_active)}
+                              className="text-red-600 hover:text-red-900 whitespace-nowrap"
+                            >
+                              Disable
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleStatus(user.id, user.is_active)}
+                              className="text-green-600 hover:text-green-900 whitespace-nowrap"
+                            >
+                              Enable
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
           {filteredUsers.length === 0 && (
-            <div className="text-center py-12">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500 text-lg">No users found</p>
-              <p className="text-gray-400 text-sm mt-2">
+            <div className="text-center py-8 sm:py-10 md:py-12">
+              <Users className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+              <p className="text-gray-500 text-base sm:text-lg">No users found</p>
+              <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">
+                {searchTerm ? `No results for "${searchTerm}"` : 'Try adjusting your filters'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Users Cards - Mobile/Tablet */}
+        <div className="lg:hidden space-y-3 sm:space-y-4">
+          {filteredUsers.map((user) => {
+            const roleColor = getRoleColor(user.role_code);
+            return (
+              <div key={user.id} className="bg-white rounded-lg shadow p-3 sm:p-4 border border-gray-100">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                    <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-${roleColor}-100 flex items-center justify-center flex-shrink-0`}>
+                      <span className={`text-${roleColor}-600 font-bold text-base sm:text-lg`}>
+                        {user.full_name?.charAt(0).toUpperCase() || '?'}
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-sm sm:text-base text-gray-900 truncate">{user.full_name}</div>
+                      <div className="text-xs text-gray-500 truncate">{user.email}</div>
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2 py-1 inline-flex text-xs font-semibold rounded-full flex-shrink-0 ${
+                      user.is_active
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}
+                  >
+                    {user.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                
+                <div className="space-y-2 mb-3">
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <span className="text-gray-500">Phone:</span>
+                    <span className="text-gray-900">{user.phone || 'N/A'}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <span className="text-gray-500">Role:</span>
+                    <span className={`px-2 py-0.5 inline-flex text-xs font-semibold rounded-full bg-${roleColor}-100 text-${roleColor}-800`}>
+                      {user.role?.role_name || user.role_code}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <span className="text-gray-500">Joined:</span>
+                    <span className="text-gray-900">{new Date(user.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
+                  <button className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-900 border border-blue-200 rounded-lg hover:bg-blue-50">
+                    Change Role
+                  </button>
+                  <button className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-orange-600 hover:text-orange-900 border border-orange-200 rounded-lg hover:bg-orange-50">
+                    Reset Password
+                  </button>
+                  {user.is_active ? (
+                    <button
+                      onClick={() => handleToggleStatus(user.id, user.is_active)}
+                      className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-red-600 hover:text-red-900 border border-red-200 rounded-lg hover:bg-red-50"
+                    >
+                      Disable
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleToggleStatus(user.id, user.is_active)}
+                      className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-green-600 hover:text-green-900 border border-green-200 rounded-lg hover:bg-green-50"
+                    >
+                      Enable
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {filteredUsers.length === 0 && (
+            <div className="text-center py-8 sm:py-10 md:py-12 bg-white rounded-lg shadow">
+              <Users className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+              <p className="text-gray-500 text-base sm:text-lg">No users found</p>
+              <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">
                 {searchTerm ? `No results for "${searchTerm}"` : 'Try adjusting your filters'}
               </p>
             </div>
@@ -424,49 +502,49 @@ export default function UserManagementPage() {
 
         {/* Add User Modal */}
         {showAddModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <h3 className="text-xl font-bold mb-4">Create New User</h3>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Create New User</h3>
               
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {/* Full Name */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     Full Name *
                   </label>
                   <input
                     type="text"
                     value={newUser.full_name}
                     onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Enter full name"
                   />
                 </div>
 
                 {/* Email & Phone */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                       Email *
                     </label>
                     <input
                       type="email"
                       value={newUser.email}
                       onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="user@example.com"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                       Phone *
                     </label>
                     <input
                       type="tel"
                       value={newUser.phone}
                       onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="10-digit phone"
                     />
                   </div>
@@ -474,14 +552,14 @@ export default function UserManagementPage() {
 
                 {/* Password */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     Password *
                   </label>
                   <input
                     type="password"
                     value={newUser.password}
                     onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Minimum 6 characters"
                   />
                   <p className="text-xs text-gray-500 mt-1">User will receive login credentials via email</p>
@@ -489,7 +567,7 @@ export default function UserManagementPage() {
 
                 {/* Role Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     Role *
                   </label>
                   <select
@@ -503,7 +581,7 @@ export default function UserManagementPage() {
                       department: ''
                     });
                     }}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Select Role</option>
                     {roles.map((role) => (
@@ -523,14 +601,14 @@ export default function UserManagementPage() {
                   if (!needsWorkshop) return null;
                   
                   return (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                         Workshop Assignment *
                       </label>
                       <select
                         value={newUser.workshop_id}
                         onChange={(e) => setNewUser({ ...newUser, workshop_id: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                        className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                       >
                         <option value="">Select Workshop</option>
                         {workshops.map((workshop) => (
@@ -554,14 +632,14 @@ export default function UserManagementPage() {
                   if (!needsDepartment) return null;
                   
                   return (
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 sm:p-4">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                         Department *
                       </label>
                       <select
                         value={newUser.department}
                         onChange={(e) => setNewUser({ ...newUser, department: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                        className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
                       >
                         <option value="">Select Department</option>
                         <option value="CSE">CSE - Customer Service Manager</option>
@@ -584,14 +662,14 @@ export default function UserManagementPage() {
                   if (!needsManager) return null;
                   
                   return (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                         Team Manager Assignment *
                       </label>
                       <select
                         value={newUser.assigned_manager_id}
                         onChange={(e) => setNewUser({ ...newUser, assigned_manager_id: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white"
+                        className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white"
                       >
                         <option value="">Select Team Manager</option>
                         {managers.map((manager) => (
@@ -614,7 +692,7 @@ export default function UserManagementPage() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-3 mt-6">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6">
                 <button
                   onClick={() => {
                     setShowAddModal(false);
@@ -629,7 +707,7 @@ export default function UserManagementPage() {
                       department: ''
                     });
                   }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="flex-1 px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
                 </button>
@@ -642,7 +720,7 @@ export default function UserManagementPage() {
                     if (selectedRole?.role_code === 'TELECALLER' && !newUser.assigned_manager_id) return true;
                     return false;
                   })()}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Create User
                 </button>

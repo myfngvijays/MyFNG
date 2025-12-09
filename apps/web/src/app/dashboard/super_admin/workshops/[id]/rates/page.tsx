@@ -228,8 +228,8 @@ export default function WorkshopRatesPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading rates...</p>
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-blue-600 mx-auto mb-3 sm:mb-4"></div>
+          <p className="text-gray-600 text-xs sm:text-sm md:text-base">Loading rates...</p>
         </div>
       </div>
     );
@@ -239,21 +239,21 @@ export default function WorkshopRatesPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
               <button
                 onClick={() => router.back()}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                  <DollarSign className="w-6 h-6" />
-                  Manage Rates - {workshop?.name || 'Workshop'}
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-1.5 sm:gap-2">
+                  <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+                  <span className="truncate">Manage Rates - {workshop?.name || 'Workshop'}</span>
                 </h1>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                   Set custom pricing for service types and addons
                 </p>
               </div>
@@ -261,29 +261,30 @@ export default function WorkshopRatesPage() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 disabled:opacity-50 text-xs sm:text-sm w-full sm:w-auto justify-center"
             >
-              <Save className="w-4 h-4" />
-              {saving ? 'Saving...' : 'Save All Changes'}
+              <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">{saving ? 'Saving...' : 'Save All Changes'}</span>
+              <span className="sm:hidden">{saving ? 'Saving...' : 'Save'}</span>
             </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-5 md:py-6 space-y-4 sm:space-y-5 md:space-y-6">
         {/* Service Types Pricing */}
         <div className="bg-white rounded-lg shadow">
-          <div className="px-6 py-4 border-b">
-            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Package className="w-5 h-5" />
-              Service Types Pricing
+          <div className="px-4 sm:px-5 md:px-6 py-3 sm:py-4 border-b">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 flex items-center gap-1.5 sm:gap-2">
+              <Package className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+              <span>Service Types Pricing</span>
             </h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
               Set custom prices for each service type for this workshop
             </p>
           </div>
-          <div className="p-6">
-            <div className="space-y-4">
+          <div className="p-4 sm:p-5 md:p-6">
+            <div className="space-y-3 sm:space-y-4">
               {serviceTypes.map((serviceType) => {
                 const pricing = serviceTypePricing[serviceType.id];
                 const price = pricing?.custom_price ?? null;
@@ -292,17 +293,17 @@ export default function WorkshopRatesPage() {
                 return (
                   <div
                     key={serviceType.id}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 p-3 sm:p-4 border rounded-lg hover:bg-gray-50"
                   >
-                    <div className="flex-1">
-                      <h3 className="font-medium text-gray-900">{serviceType.name}</h3>
+                    <div className="flex-1 min-w-0 w-full sm:w-auto">
+                      <h3 className="font-medium text-sm sm:text-base text-gray-900">{serviceType.name}</h3>
                       {serviceType.description && (
-                        <p className="text-sm text-gray-500 mt-1">{serviceType.description}</p>
+                        <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">{serviceType.description}</p>
                       )}
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-600">₹</span>
+                    <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:flex-none">
+                        <span className="text-xs sm:text-sm text-gray-600">₹</span>
                         <input
                           type="number"
                           min="0"
@@ -314,7 +315,7 @@ export default function WorkshopRatesPage() {
                               e.target.value
                             )
                           }
-                          className="w-32 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full sm:w-28 md:w-32 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           placeholder="Enter price"
                         />
                       </div>
@@ -323,7 +324,7 @@ export default function WorkshopRatesPage() {
                 );
               })}
               {serviceTypes.length === 0 && (
-                <div className="text-center py-12 text-gray-500">
+                <div className="text-center py-8 sm:py-10 md:py-12 text-gray-500 text-sm sm:text-base">
                   No service types found
                 </div>
               )}
@@ -333,17 +334,17 @@ export default function WorkshopRatesPage() {
 
         {/* Service Addons Pricing */}
         <div className="bg-white rounded-lg shadow">
-          <div className="px-6 py-4 border-b">
-            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Plus className="w-5 h-5" />
-              Service Addons Pricing
+          <div className="px-4 sm:px-5 md:px-6 py-3 sm:py-4 border-b">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 flex items-center gap-1.5 sm:gap-2">
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+              <span>Service Addons Pricing</span>
             </h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
               Set custom prices for each service addon for this workshop
             </p>
           </div>
-          <div className="p-6">
-            <div className="space-y-4">
+          <div className="p-4 sm:p-5 md:p-6">
+            <div className="space-y-3 sm:space-y-4">
               {serviceAddons.map((addon) => {
                 const pricing = addonPricing[addon.id];
                 const defaultPrice = addon.price || 0;
@@ -353,22 +354,22 @@ export default function WorkshopRatesPage() {
                 return (
                   <div
                     key={addon.id}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 p-3 sm:p-4 border rounded-lg hover:bg-gray-50"
                   >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium text-gray-900">{addon.name}</h3>
-                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                    <div className="flex-1 min-w-0 w-full sm:w-auto">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1 sm:mb-0">
+                        <h3 className="font-medium text-sm sm:text-base text-gray-900">{addon.name}</h3>
+                        <span className="text-[10px] sm:text-xs text-gray-500 bg-gray-100 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
                           Default: ₹{defaultPrice.toFixed(2)}
                         </span>
                       </div>
                       {addon.description && (
-                        <p className="text-sm text-gray-500 mt-1">{addon.description}</p>
+                        <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">{addon.description}</p>
                       )}
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-600">₹</span>
+                    <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:flex-none">
+                        <span className="text-xs sm:text-sm text-gray-600">₹</span>
                         <input
                           type="number"
                           min="0"
@@ -380,7 +381,7 @@ export default function WorkshopRatesPage() {
                               e.target.value
                             )
                           }
-                          className="w-32 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full sm:w-28 md:w-32 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           placeholder="Enter price"
                         />
                       </div>
@@ -389,7 +390,7 @@ export default function WorkshopRatesPage() {
                 );
               })}
               {serviceAddons.length === 0 && (
-                <div className="text-center py-12 text-gray-500">
+                <div className="text-center py-8 sm:py-10 md:py-12 text-gray-500 text-sm sm:text-base">
                   No service addons found
                 </div>
               )}

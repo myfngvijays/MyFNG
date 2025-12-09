@@ -106,8 +106,8 @@ export default function WorkshopJobsPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_admin">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -115,40 +115,40 @@ export default function WorkshopJobsPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-text-heading">Active Jobs</h1>
-          <p className="text-text-body mt-2">Monitor and manage ongoing work</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Active Jobs</h1>
+          <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Monitor and manage ongoing work</p>
         </div>
 
         {/* Filter Tabs */}
         <div className="card">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setFilter('active')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
                 filter === 'active'
                   ? 'bg-blue-100 text-blue-700'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              <Wrench className="w-4 h-4 inline mr-2" />
+              <Wrench className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1.5 sm:mr-2" />
               Active Jobs
             </button>
             <button
               onClick={() => setFilter('completed')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
                 filter === 'completed'
                   ? 'bg-green-100 text-green-700'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              <CheckCircle className="w-4 h-4 inline mr-2" />
+              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1.5 sm:mr-2" />
               Completed
             </button>
             <button
               onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
                 filter === 'all'
                   ? 'bg-purple-100 text-purple-700'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -160,76 +160,76 @@ export default function WorkshopJobsPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="card">
-            <p className="text-sm text-gray-600">Total Jobs</p>
-            <p className="text-2xl font-bold">{jobs.length}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Total Jobs</p>
+            <p className="text-xl sm:text-2xl font-bold">{jobs.length}</p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-600">Accepted</p>
-            <p className="text-2xl font-bold text-green-600">
+            <p className="text-xs sm:text-sm text-gray-600">Accepted</p>
+            <p className="text-xl sm:text-2xl font-bold text-green-600">
               {jobs.filter(j => j.status === 'ACCEPTED').length}
             </p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-600">In Progress</p>
-            <p className="text-2xl font-bold text-blue-600">
+            <p className="text-xs sm:text-sm text-gray-600">In Progress</p>
+            <p className="text-xl sm:text-2xl font-bold text-blue-600">
               {jobs.filter(j => j.status === 'IN_PROGRESS').length}
             </p>
           </div>
-          <div className="card">
-            <p className="text-sm text-gray-600">Completed</p>
-            <p className="text-2xl font-bold text-gray-600">
+          <div className="card sm:col-span-2 lg:col-span-1">
+            <p className="text-xs sm:text-sm text-gray-600">Completed</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-600">
               {jobs.filter(j => j.status === 'COMPLETED').length}
             </p>
           </div>
         </div>
 
         {/* Jobs List */}
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {jobs.map((job) => (
             <div key={job.id} className="card hover:shadow-lg transition">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900">{job.lead_number}</h3>
-                  <p className="text-lg text-gray-700">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{job.lead_number}</h3>
+                  <p className="text-sm sm:text-base md:text-lg text-gray-700 truncate">
                     {job.service_type_names || job.service_type}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2 ${getStatusColor(job.status)}`}>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold flex items-center gap-1.5 sm:gap-2 ${getStatusColor(job.status)}`}>
                     {getStatusIcon(job.status)}
                     {job.status.replace('_', ' ')}
                   </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Customer</p>
-                  <p className="font-semibold">{job.customer_name}</p>
-                  <p className="text-sm text-gray-600">{job.customer_phone}</p>
+                  <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Customer</p>
+                  <p className="font-semibold text-sm sm:text-base truncate">{job.customer_name}</p>
+                  <p className="text-xs sm:text-sm text-gray-600 truncate">{job.customer_phone}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Vehicle</p>
-                  <p className="font-semibold">{job.vehicle_number}</p>
+                  <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Vehicle</p>
+                  <p className="font-semibold text-sm sm:text-base truncate">{job.vehicle_number}</p>
                   {(job.vehicle_make || job.vehicle_model) && (
-                    <p className="text-sm text-gray-600">{job.vehicle_make} {job.vehicle_model}</p>
+                    <p className="text-xs sm:text-sm text-gray-600 truncate">{job.vehicle_make} {job.vehicle_model}</p>
                   )}
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Mechanic</p>
+                  <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Mechanic</p>
                   {job.assigned_mechanic ? (
                     <>
-                      <p className="font-semibold flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        {job.assigned_mechanic.full_name}
+                      <p className="font-semibold text-sm sm:text-base flex items-center gap-1.5 sm:gap-2 truncate">
+                        <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                        <span className="truncate">{job.assigned_mechanic.full_name}</span>
                       </p>
-                      <p className="text-sm text-gray-600">{job.assigned_mechanic.phone}</p>
+                      <p className="text-xs sm:text-sm text-gray-600 truncate">{job.assigned_mechanic.phone}</p>
                     </>
                   ) : (
-                    <p className="text-sm text-yellow-600 flex items-center gap-1">
-                      <AlertTriangle className="w-4 h-4" />
+                    <p className="text-xs sm:text-sm text-yellow-600 flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                       Not assigned
                     </p>
                   )}
@@ -238,19 +238,19 @@ export default function WorkshopJobsPage() {
 
               {/* Pickup Boy Row */}
               {job.pickup_required && (
-                <div className="mt-3 pt-3 border-t">
-                  <p className="text-sm text-gray-600 mb-1">Pickupboy/Driver</p>
+                <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t">
+                  <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Pickupboy/Driver</p>
                   {job.assigned_pickup_boy ? (
                     <>
-                      <p className="font-semibold flex items-center gap-2">
-                        <User className="w-4 h-4 text-purple-600" />
-                        {job.assigned_pickup_boy.full_name}
+                      <p className="font-semibold text-sm sm:text-base flex items-center gap-1.5 sm:gap-2 truncate">
+                        <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600 flex-shrink-0" />
+                        <span className="truncate">{job.assigned_pickup_boy.full_name}</span>
                       </p>
-                      <p className="text-sm text-gray-600">{job.assigned_pickup_boy.phone}</p>
+                      <p className="text-xs sm:text-sm text-gray-600 truncate">{job.assigned_pickup_boy.phone}</p>
                     </>
                   ) : (
-                    <p className="text-sm text-yellow-600 flex items-center gap-1">
-                      <AlertTriangle className="w-4 h-4" />
+                    <p className="text-xs sm:text-sm text-yellow-600 flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                       Pickup required - Not assigned
                     </p>
                   )}
@@ -258,22 +258,22 @@ export default function WorkshopJobsPage() {
               )}
 
               {job.estimated_amount && (
-                <div className="mt-4 flex items-center justify-between">
+                <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
                   <div>
-                    <p className="text-sm text-gray-600">Estimated Amount</p>
-                    <p className="text-xl font-bold text-green-600">₹{job.estimated_amount.toLocaleString()}</p>
+                    <p className="text-xs sm:text-sm text-gray-600">Estimated Amount</p>
+                    <p className="text-lg sm:text-xl font-bold text-green-600">₹{job.estimated_amount.toLocaleString()}</p>
                   </div>
                   {job.actual_amount && (
                     <div>
-                      <p className="text-sm text-gray-600">Actual Amount</p>
-                      <p className="text-xl font-bold text-green-600">₹{job.actual_amount.toLocaleString()}</p>
+                      <p className="text-xs sm:text-sm text-gray-600">Actual Amount</p>
+                      <p className="text-lg sm:text-xl font-bold text-green-600">₹{job.actual_amount.toLocaleString()}</p>
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="mt-4 pt-4 border-t flex justify-between items-center">
-                <div className="text-xs text-gray-500 space-x-4">
+              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
+                <div className="text-[10px] sm:text-xs text-gray-500 flex flex-wrap gap-2 sm:gap-4">
                   <span>Accepted: {new Date(job.accepted_at || job.created_at).toLocaleDateString()}</span>
                   {job.completed_at && (
                     <span>Completed: {new Date(job.completed_at).toLocaleDateString()}</span>
@@ -281,7 +281,7 @@ export default function WorkshopJobsPage() {
                 </div>
                 <button 
                   onClick={() => router.push(`/dashboard/workshop_admin/leads/${job.id}`)}
-                  className="btn btn-outline text-sm hover:bg-blue-50 hover:border-blue-500 transition"
+                  className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 hover:bg-blue-50 hover:border-blue-500 transition w-full sm:w-auto"
                 >
                   View Details
                 </button>
@@ -290,9 +290,9 @@ export default function WorkshopJobsPage() {
           ))}
 
           {jobs.length === 0 && (
-            <div className="card text-center py-12">
-              <Wrench className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No jobs found in this category</p>
+            <div className="card text-center py-8 sm:py-10 md:py-12">
+              <Wrench className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+              <p className="text-gray-500 text-sm sm:text-base">No jobs found in this category</p>
             </div>
           )}
         </div>

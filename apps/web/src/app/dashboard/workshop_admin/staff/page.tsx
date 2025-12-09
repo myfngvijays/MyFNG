@@ -367,8 +367,8 @@ export default function WorkshopStaffPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_admin">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -376,80 +376,81 @@ export default function WorkshopStaffPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-text-heading">Staff Management</h1>
-            <p className="text-text-body mt-2">{workshopInfo?.name || 'Workshop'} Team</p>
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Staff Management</h1>
+            <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">{workshopInfo?.name || 'Workshop'} Team</p>
           </div>
-          <button onClick={handleOpenCreate} className="btn btn-primary">
-            <Plus className="w-5 h-5" />
-            Add Staff Member
+          <button onClick={handleOpenCreate} className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto">
+            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="hidden sm:inline">Add Staff Member</span>
+            <span className="sm:hidden">Add Staff</span>
           </button>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="card">
-            <p className="text-sm text-gray-600">Total Staff</p>
-            <p className="text-2xl font-bold">{staff.length}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Total Staff</p>
+            <p className="text-xl sm:text-2xl font-bold">{staff.length}</p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-600">Active</p>
-            <p className="text-2xl font-bold text-green-600">
+            <p className="text-xs sm:text-sm text-gray-600">Active</p>
+            <p className="text-xl sm:text-2xl font-bold text-green-600">
               {staff.filter(s => s.is_active).length}
             </p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-600">Inactive</p>
-            <p className="text-2xl font-bold text-red-600">
+            <p className="text-xs sm:text-sm text-gray-600">Inactive</p>
+            <p className="text-xl sm:text-2xl font-bold text-red-600">
               {staff.filter(s => !s.is_active).length}
             </p>
           </div>
-          <div className="card">
-            <p className="text-sm text-gray-600">Roles</p>
-            <p className="text-2xl font-bold">{Object.keys(staffByRole).length}</p>
+          <div className="card sm:col-span-2 lg:col-span-1">
+            <p className="text-xs sm:text-sm text-gray-600">Roles</p>
+            <p className="text-xl sm:text-2xl font-bold">{Object.keys(staffByRole).length}</p>
           </div>
         </div>
 
         {/* Staff by Role */}
         {Object.entries(staffByRole).map(([roleCode, members]: [string, any]) => (
           <div key={roleCode} className="card">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <Users className="w-6 h-6 text-brand-primary" />
-              {members[0]?.role_id?.role_name || roleCode}
-              <span className="text-sm font-normal text-gray-500">({members.length})</span>
+            <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
+              <span className="truncate">{members[0]?.role_id?.role_name || roleCode}</span>
+              <span className="text-xs sm:text-sm font-normal text-gray-500">({members.length})</span>
             </h2>
 
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {members.map((member: any) => (
-                <div key={member.id} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className="w-12 h-12 rounded-full bg-brand-primary text-white flex items-center justify-center text-xl font-bold flex-shrink-0">
+                <div key={member.id} className="p-3 sm:p-4 border border-gray-200 rounded-lg hover:shadow-md transition">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                    <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+                      <div className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-full bg-brand-primary text-white flex items-center justify-center text-lg sm:text-xl font-bold flex-shrink-0">
                         {member.full_name?.charAt(0).toUpperCase()}
                       </div>
                       
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg">{member.full_name}</h3>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                          <h3 className="font-semibold text-base sm:text-lg truncate">{member.full_name}</h3>
                           {member.id === currentUserId && (
-                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">You</span>
+                            <span className="text-[10px] sm:text-xs bg-blue-100 text-blue-800 px-1.5 sm:px-2 py-0.5 rounded-full">You</span>
                           )}
                         </div>
-                        <div className="flex flex-col gap-1 mt-2 text-sm text-gray-600">
-                          <div className="flex items-center gap-2">
-                            <Mail className="w-4 h-4" />
-                            {member.email}
+                        <div className="flex flex-col gap-1 mt-1.5 sm:mt-2 text-xs sm:text-sm text-gray-600">
+                          <div className="flex items-center gap-1.5 sm:gap-2 truncate">
+                            <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                            <span className="truncate">{member.email}</span>
                           </div>
                           {member.phone && (
-                            <div className="flex items-center gap-2">
-                              <Phone className="w-4 h-4" />
-                              {member.phone}
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                              <span className="truncate">{member.phone}</span>
                             </div>
                           )}
                           {member.department && (
-                            <div className="text-xs text-gray-500">
+                            <div className="text-[10px] sm:text-xs text-gray-500">
                               Department: {member.department}
                             </div>
                           )}
@@ -457,11 +458,11 @@ export default function WorkshopStaffPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-2">
+                    <div className="flex flex-row sm:flex-col items-center sm:items-end gap-2 w-full sm:w-auto">
                       <button
                         onClick={() => toggleStaffStatus(member.id, member.is_active)}
                         disabled={!canManageStaff(member)}
-                        className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${
+                        className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold flex items-center gap-1 ${
                           member.is_active
                             ? 'bg-green-100 text-green-800 hover:bg-green-200'
                             : 'bg-red-100 text-red-800 hover:bg-red-200'
@@ -469,39 +470,39 @@ export default function WorkshopStaffPage() {
                       >
                         {member.is_active ? (
                           <>
-                            <CheckCircle className="w-3 h-3" />
+                            <CheckCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                             Active
                           </>
                         ) : (
                           <>
-                            <XCircle className="w-3 h-3" />
+                            <XCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                             Inactive
                           </>
                         )}
                       </button>
 
                       {canManageStaff(member) && (
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5 sm:gap-2">
                           <button 
                             onClick={() => handleOpenEdit(member)}
-                            className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                            className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm flex items-center gap-1"
                             title="Edit staff"
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </button>
                           <button 
                             onClick={() => handleOpenPasswordReset(member)}
-                            className="text-orange-600 hover:text-orange-800 text-sm flex items-center gap-1"
+                            className="text-orange-600 hover:text-orange-800 text-xs sm:text-sm flex items-center gap-1"
                             title="Reset password"
                           >
-                            <Key className="w-4 h-4" />
+                            <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </button>
                           <button 
                             onClick={() => handleDeleteStaff(member)}
-                            className="text-red-600 hover:text-red-800 text-sm flex items-center gap-1"
+                            className="text-red-600 hover:text-red-800 text-xs sm:text-sm flex items-center gap-1"
                             title="Remove staff"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </button>
                         </div>
                       )}
@@ -509,7 +510,7 @@ export default function WorkshopStaffPage() {
                   </div>
 
                   {member.last_login && (
-                    <div className="mt-3 pt-3 border-t text-xs text-gray-500">
+                    <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t text-[10px] sm:text-xs text-gray-500">
                       Last login: {new Date(member.last_login).toLocaleString()}
                     </div>
                   )}
@@ -520,11 +521,11 @@ export default function WorkshopStaffPage() {
         ))}
 
         {staff.length === 0 && (
-          <div className="card text-center py-12">
-            <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">No staff members found</p>
-            <button onClick={handleOpenCreate} className="btn btn-primary mt-4">
-              <Plus className="w-5 h-5" />
+          <div className="card text-center py-8 sm:py-10 md:py-12">
+            <Users className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+            <p className="text-gray-500 text-sm sm:text-base">No staff members found</p>
+            <button onClick={handleOpenCreate} className="btn btn-primary mt-3 sm:mt-4 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
               Add Your First Staff Member
             </button>
           </div>
@@ -533,28 +534,28 @@ export default function WorkshopStaffPage() {
 
       {/* Add/Edit Staff Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 sm:mb-5 md:mb-6">
+              <h3 className="text-lg sm:text-xl md:text-2xl font-bold">
                 {selectedStaff ? 'Edit Staff Member' : 'Add New Staff Member'}
               </h3>
               <button onClick={handleCloseModal} className="text-gray-500 hover:text-gray-700">
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {/* Full Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Full Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                   placeholder="Enter full name"
                   required
                 />
@@ -562,33 +563,33 @@ export default function WorkshopStaffPage() {
 
               {/* Email */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Email <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                   placeholder="user@example.com"
                   disabled={!!selectedStaff}
                   required
                 />
                 {selectedStaff && (
-                  <p className="text-xs text-gray-500 mt-1">Email cannot be changed after creation</p>
+                  <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">Email cannot be changed after creation</p>
                 )}
               </div>
 
               {/* Phone */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Phone Number
                 </label>
                 <input
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                   placeholder="+91 1234567890"
                 />
               </div>
@@ -596,14 +597,14 @@ export default function WorkshopStaffPage() {
               {/* Password - Only for new staff */}
               {!selectedStaff && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     Password <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                    className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                     placeholder="Enter password (min 6 characters)"
                     minLength={6}
                     required
@@ -613,13 +614,13 @@ export default function WorkshopStaffPage() {
 
               {/* Role */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Role <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={formData.role_id}
                   onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                   required
                 >
                   <option value="">Select a role</option>
@@ -629,25 +630,25 @@ export default function WorkshopStaffPage() {
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-500 mt-1">Only workshop staff roles are available</p>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">Only workshop staff roles are available</p>
               </div>
 
               {/* Department */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Department
                 </label>
                 <input
                   type="text"
                   value={formData.department}
                   onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                   placeholder="e.g. Mechanical, Service"
                 />
               </div>
 
               {/* Active Status */}
-              <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 bg-gray-50 rounded-lg">
                 <input
                   type="checkbox"
                   id="is_active"
@@ -655,24 +656,24 @@ export default function WorkshopStaffPage() {
                   onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                   className="w-4 h-4 text-brand-primary focus:ring-brand-primary border-gray-300 rounded"
                 />
-                <label htmlFor="is_active" className="text-sm font-medium text-gray-700 cursor-pointer">
+                <label htmlFor="is_active" className="text-xs sm:text-sm font-medium text-gray-700 cursor-pointer">
                   Staff member is active (can login)
                 </label>
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6 pt-6 border-t">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 sm:pt-5 md:pt-6 border-t">
               <button
                 onClick={handleCloseModal}
                 disabled={saving}
-                className="btn btn-outline flex-1"
+                className="btn btn-outline flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveStaff}
                 disabled={saving}
-                className="btn btn-primary flex-1"
+                className="btn btn-primary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
               >
                 {saving ? 'Saving...' : (selectedStaff ? 'Update Staff' : 'Add Staff')}
               </button>
@@ -683,59 +684,59 @@ export default function WorkshopStaffPage() {
 
       {/* Password Reset Modal */}
       {showPasswordModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold">Reset Password</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 sm:mb-5 md:mb-6">
+              <h3 className="text-lg sm:text-xl font-bold">Reset Password</h3>
               <button 
                 onClick={() => setShowPasswordModal(false)} 
                 className="text-gray-500 hover:text-gray-700"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-gray-700">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="p-3 sm:p-4 bg-blue-50 rounded-lg">
+                <p className="text-xs sm:text-sm text-gray-700">
                   Reset password for: <strong>{passwordResetUser?.full_name}</strong>
                 </p>
-                <p className="text-xs text-gray-500 mt-1">{passwordResetUser?.email}</p>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">{passwordResetUser?.email}</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   New Password <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                   placeholder="Enter new password (min 6 characters)"
                   minLength={6}
                 />
               </div>
 
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <p className="text-xs text-yellow-800">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2.5 sm:p-3">
+                <p className="text-[10px] sm:text-xs text-yellow-800">
                   ⚠️ Note: Password reset requires Supabase Admin API. Currently showing demo functionality.
                 </p>
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6 pt-6 border-t">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 sm:pt-5 md:pt-6 border-t">
               <button
                 onClick={() => setShowPasswordModal(false)}
                 disabled={saving}
-                className="btn btn-outline flex-1"
+                className="btn btn-outline flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
               >
                 Cancel
               </button>
               <button
                 onClick={handleResetPassword}
                 disabled={saving}
-                className="btn btn-primary flex-1"
+                className="btn btn-primary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
               >
                 {saving ? 'Resetting...' : 'Reset Password'}
               </button>

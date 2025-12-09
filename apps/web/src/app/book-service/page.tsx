@@ -52,6 +52,8 @@ export default function BookServicePage() {
   const [cities, setCities] = useState<any[]>([]);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [isDetectingAddress, setIsDetectingAddress] = useState(false);
+  const [showCityDropdown, setShowCityDropdown] = useState(false);
+  const cityDropdownRef = useRef<HTMLDivElement>(null);
   
   // Car Model State
   const [carModels, setCarModels] = useState<any[]>([]);
@@ -175,16 +177,19 @@ export default function BookServicePage() {
       if (carDropdownRef.current && !carDropdownRef.current.contains(event.target as Node)) {
         setShowCarSuggestions(false);
       }
+      if (cityDropdownRef.current && !cityDropdownRef.current.contains(event.target as Node)) {
+        setShowCityDropdown(false);
+      }
     };
 
-    if (showCarSuggestions) {
+    if (showCarSuggestions || showCityDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
       }
       
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showCarSuggestions]);
+  }, [showCarSuggestions, showCityDropdown]);
 
   async function fetchCities() {
     try {
@@ -596,6 +601,7 @@ export default function BookServicePage() {
   const handleCitySelect = (city: any) => {
     setFormData(prev => ({ ...prev, city }));
     localStorage.setItem('detected_city', city.name);
+    setShowCityDropdown(false);
   };
 
   const handleCarSelect = (car: any) => {
@@ -921,7 +927,7 @@ export default function BookServicePage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/30">
       <Navbar />
       
-      <div className="container mx-auto px-4 pt-24 pb-16">
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 pt-16 sm:pt-20 md:pt-24 pb-8 sm:pb-12 md:pb-16">
         <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
             {/* Progress Bar */}
@@ -933,110 +939,123 @@ export default function BookServicePage() {
             </div>
             
             {/* Form Content */}
-            <div className="p-8 md:p-12">
+            <div className="p-4 sm:p-6 md:p-8 lg:p-12">
               {/* Step Counter */}
-              <div className="text-right mb-8">
-                <span className="text-sm text-gray-500">
+              <div className="text-right mb-4 sm:mb-6 md:mb-8">
+                <span className="text-xs sm:text-sm text-gray-500">
                   Step {currentStep + 1} of {steps.length}
                   </span>
           </div>
 
               {/* Step Content */}
-              <div className={`min-h-[400px] flex flex-col justify-center ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} transition-all duration-300`}>
+              <div className={`min-h-[300px] sm:min-h-[400px] flex flex-col justify-center ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} transition-all duration-300`}>
                 {/* Title & Subtitle */}
-                <div className="mb-12">
-                  <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-3">
+                <div className="mb-6 sm:mb-8 md:mb-12">
+                  <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-2 sm:mb-3">
                     {currentStepData.title}
                   </h2>
-                  <p className="text-lg text-gray-600">
+                  <p className="text-base sm:text-lg text-gray-600">
                     {currentStepData.subtitle}
                   </p>
         </div>
 
                 {/* Step 1: Location + Car Model */}
                 {currentStep === 0 && (
-                  <div className="mb-12 space-y-8">
+                  <div className="mb-8 sm:mb-10 md:mb-12 space-y-6 sm:space-y-8">
                     {/* Location Section */}
-                    <div>
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center">
-                          <MapPin className="w-5 h-5 text-white" />
+                    <div className="relative" ref={cityDropdownRef}>
+                      <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center flex-shrink-0">
+                          <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                     </div>
-                        <h3 className="text-xl font-bold text-gray-900">Select City</h3>
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-900">Select City</h3>
                   </div>
 
                       {isDetectingLocation && (
-                        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl animate-fade-in">
-                          <div className="flex items-center gap-3">
-                            <Loader2 className="w-5 h-5 text-brand-primary animate-spin" />
-                            <p className="text-sm text-blue-700 font-medium">Detecting your location...</p>
+                        <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-xl animate-fade-in">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary animate-spin flex-shrink-0" />
+                            <p className="text-xs sm:text-sm text-blue-700 font-medium">Detecting your location...</p>
                       </div>
                     </div>
                       )}
 
                       {formData.city && (
-                        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl animate-fade-in">
-                          <div className="flex items-center gap-3">
-                            <CheckCircle className="w-5 h-5 text-green-600" />
-                            <p className="text-sm text-green-800 font-medium">
-                              Location: <strong>{formData.city.name}</strong>
-                            </p>
+                        <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-xl animate-fade-in">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
+                              <p className="text-xs sm:text-sm text-green-800 font-medium truncate">
+                                Location: <strong>{formData.city.name}</strong>
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => setShowCityDropdown(!showCityDropdown)}
+                              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-white border border-green-300 text-green-700 rounded-lg font-semibold hover:bg-green-100 transition-all flex-shrink-0 whitespace-nowrap"
+                            >
+                              Change
+                            </button>
                         </div>
                     </div>
                       )}
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                        {cities.map((city) => (
-                      <button
-                            key={city.id}
-                            onClick={() => handleCitySelect(city)}
-                            className={`p-3 rounded-xl border-2 transition-all transform hover:scale-105 ${
-                              formData.city?.id === city.id
-                                ? 'border-brand-primary bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg'
-                                : 'border-gray-200 bg-white text-text-body hover:border-brand-primary/50 hover:shadow-md'
-                            }`}
-                      >
-                            <div className="flex items-center justify-center gap-2">
-                              <MapPin className={`w-4 h-4 ${
-                                formData.city?.id === city.id ? 'text-white' : 'text-brand-primary'
-                              }`} />
-                              <span className="font-semibold text-sm">{city.name}</span>
-                            </div>
-                      </button>
-                        ))}
-                    </div>
-
-                      <button
-                        onClick={autoDetectLocation}
-                        disabled={isDetectingLocation}
-                        className="w-full px-4 py-2 bg-white border-2 border-brand-primary text-brand-primary rounded-xl font-semibold hover:bg-brand-primary hover:text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
-                      >
-                        {isDetectingLocation ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Detecting...
-                          </>
-                        ) : (
-                          <>
-                            <Navigation className="w-4 h-4" />
-                            Auto Detect Location
-                          </>
+                      {!formData.city && !isDetectingLocation && (
+                        <button
+                          onClick={autoDetectLocation}
+                          disabled={isDetectingLocation}
+                          className="w-full px-4 py-2.5 sm:py-3 bg-white border-2 border-brand-primary text-brand-primary rounded-xl font-semibold hover:bg-brand-primary hover:text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm sm:text-base"
+                        >
+                          <Navigation className="w-4 h-4" />
+                          Auto Detect Location
+                        </button>
                       )}
-                      </button>
+
+                      {/* City Dropdown */}
+                      {showCityDropdown && cities.length > 0 && (
+                        <div className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl max-h-64 sm:max-h-80 overflow-y-auto">
+                          <div className="p-2">
+                            {cities.map((city) => (
+                              <button
+                                key={city.id}
+                                type="button"
+                                onClick={() => handleCitySelect(city)}
+                                className={`w-full px-4 py-3 sm:py-4 text-left hover:bg-blue-50 transition-colors rounded-lg ${
+                                  formData.city?.id === city.id ? 'bg-blue-50 border border-brand-primary' : ''
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
+                                    <div>
+                                      <p className="font-semibold text-sm sm:text-base text-text-body">{city.name}</p>
+                                      {city.state && (
+                                        <p className="text-xs text-gray-600">{city.state}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {formData.city?.id === city.id && (
+                                    <CheckCircle className="w-5 h-5 text-brand-primary flex-shrink-0" />
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Car Model Section */}
                     <div>
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
-                          <Car className="w-5 h-5 text-white" />
+                      <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Car className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                     </div>
-                        <h3 className="text-xl font-bold text-gray-900">Select Car Model</h3>
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-900">Select Car Model</h3>
                   </div>
 
                       <div className="relative" ref={carDropdownRef}>
                       <div className="relative">
-                          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+                          <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-5 h-5 sm:w-6 sm:h-6 text-gray-400" />
                         <input
                           type="text"
                           value={carSearchQuery}
@@ -1052,7 +1071,7 @@ export default function BookServicePage() {
                             }
                           }}
                             placeholder="Enter Model (e.g. Swift, City, Creta)"
-                            className={`w-full pl-14 pr-4 py-5 text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
+                            className={`w-full pl-11 sm:pl-14 pr-10 sm:pr-12 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
                               formData.carModel
                                 ? 'border-brand-primary bg-brand-primary/5'
                                 : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
@@ -1060,29 +1079,29 @@ export default function BookServicePage() {
                             autoFocus
                         />
                           {formData.carModel && (
-                            <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                              <CheckCircle className="w-6 h-6 text-green-500" />
+                            <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2">
+                              <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
                             </div>
                         )}
                       </div>
                       
                         {showCarSuggestions && carSuggestions.length > 0 && (
-                          <div className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-y-auto">
+                          <div className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl max-h-64 sm:max-h-80 overflow-y-auto">
                             {carSuggestions.map((car) => (
                             <button
                               key={car.id}
                               type="button"
                               onClick={() => handleCarSelect(car)}
-                                className="w-full px-4 py-4 text-left hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+                                className="w-full px-3 sm:px-4 py-3 sm:py-4 text-left hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
                             >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="font-semibold text-text-body">{car.make}</p>
-                                    <p className="text-sm text-gray-600">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-semibold text-sm sm:text-base text-text-body truncate">{car.make}</p>
+                                    <p className="text-xs sm:text-sm text-gray-600 truncate">
                                       {car.model_name} {car.variant ? `(${car.variant})` : ''}
                                     </p>
                                 </div>
-                                  <ArrowRight className="w-5 h-5 text-gray-400" />
+                                  <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" />
                               </div>
                             </button>
                           ))}
@@ -1090,8 +1109,8 @@ export default function BookServicePage() {
                       )}
                       
                         {formData.carModel && (
-                          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
-                            <p className="text-sm text-green-800 font-medium">
+                          <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-xl">
+                            <p className="text-xs sm:text-sm text-green-800 font-medium">
                               Selected: <strong>{formData.carModel.make} {formData.carModel.model_name}</strong>
                             </p>
                         </div>
@@ -1103,7 +1122,7 @@ export default function BookServicePage() {
 
                 {/* Step 2: Name, Phone, Vehicle Number */}
                 {currentStep === 1 && (
-                  <div className="mb-12 space-y-6">
+                  <div className="mb-8 sm:mb-10 md:mb-12 space-y-4 sm:space-y-6">
                     {/* Name - Required */}
                     <div className="relative">
                       <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
@@ -1115,7 +1134,7 @@ export default function BookServicePage() {
                         value={formData.customerName}
                         onChange={(e) => handleInputChange('customerName', e.target.value)}
                         placeholder="Enter your full name"
-                        className={`w-full px-4 py-5 text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
+                        className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
                           formData.customerName
                             ? 'border-brand-primary bg-brand-primary/5'
                             : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
@@ -1128,8 +1147,8 @@ export default function BookServicePage() {
                         }}
                       />
                       {formData.customerName && (
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 mt-6">
-                          <CheckCircle className="w-6 h-6 text-green-500" />
+                        <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 mt-4 sm:mt-6">
+                          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
                         </div>
                       )}
                     </div>
@@ -1146,7 +1165,7 @@ export default function BookServicePage() {
                         onChange={(e) => handleInputChange('customerPhone', e.target.value.replace(/\D/g, '').slice(0, 10))}
                         placeholder="10-digit mobile number"
                         maxLength={10}
-                        className={`w-full px-4 py-5 text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
+                        className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
                           formData.customerPhone && formData.customerPhone.length === 10
                             ? 'border-brand-primary bg-brand-primary/5'
                             : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
@@ -1158,8 +1177,8 @@ export default function BookServicePage() {
                         }}
                       />
                       {formData.customerPhone && formData.customerPhone.length === 10 && (
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 mt-6">
-                          <CheckCircle className="w-6 h-6 text-green-500" />
+                        <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 mt-4 sm:mt-6">
+                          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
                         </div>
                       )}
                       {formData.customerPhone && formData.customerPhone.length < 10 && (
@@ -1181,7 +1200,7 @@ export default function BookServicePage() {
                         value={formData.vehicleNumber}
                         onChange={(e) => handleInputChange('vehicleNumber', e.target.value.toUpperCase())}
                         placeholder="e.g., MH12AB1234"
-                        className={`w-full px-4 py-5 text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase ${
+                        className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase ${
                           formData.vehicleNumber
                             ? 'border-brand-primary bg-brand-primary/5'
                             : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
@@ -1193,8 +1212,8 @@ export default function BookServicePage() {
                         }}
                       />
                       {formData.vehicleNumber && (
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 mt-6">
-                          <CheckCircle className="w-6 h-6 text-green-500" />
+                        <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 mt-4 sm:mt-6">
+                          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
                     </div>
                       )}
                       <p className="mt-2 text-xs text-gray-500 flex items-center gap-2">
@@ -1207,7 +1226,7 @@ export default function BookServicePage() {
 
                 {/* Step 3: Service Selection with Pricing */}
                 {currentStep === 2 && (
-                  <div className="mb-12">
+                  <div className="mb-8 sm:mb-10 md:mb-12">
                     {loadingServiceTypes || loadingPricing ? (
                       <div className="text-center py-12">
                         <Loader2 className="w-8 h-8 animate-spin text-brand-primary mx-auto mb-4" />
@@ -1222,15 +1241,15 @@ export default function BookServicePage() {
                     ) : (
                       <>
                         {/* Summary Card */}
-                        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
-                          <div className="flex items-center justify-between">
-                    <div>
-                              <p className="text-sm text-gray-600">Location</p>
-                              <p className="font-bold text-brand-secondary">{formData.city?.name}</p>
+                        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                    <div className="w-full sm:w-auto">
+                              <p className="text-xs sm:text-sm text-gray-600">Location</p>
+                              <p className="font-bold text-sm sm:text-base text-brand-secondary">{formData.city?.name}</p>
                             </div>
-                            <div>
-                              <p className="text-sm text-gray-600">Vehicle</p>
-                              <p className="font-bold text-brand-secondary">
+                            <div className="w-full sm:w-auto">
+                              <p className="text-xs sm:text-sm text-gray-600">Vehicle</p>
+                              <p className="font-bold text-sm sm:text-base text-brand-secondary">
                                 {formData.carModel?.make} {formData.carModel?.model_name}
                               </p>
                             </div>
@@ -1238,7 +1257,7 @@ export default function BookServicePage() {
                   </div>
 
                         {/* Service Types Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
                           {serviceTypes.map((service) => {
                             const isSelected = formData.selectedServices.includes(service.id);
                             const price = servicePricing[service.id] || service.base_price || 0;
@@ -1293,19 +1312,19 @@ export default function BookServicePage() {
 
                         {/* Total Price Display */}
                         {formData.selectedServices.length > 0 && (
-                          <div className="p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <DollarSign className="w-6 h-6 text-green-600" />
+                          <div className="p-4 sm:p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                              <div className="flex items-center gap-2 sm:gap-3">
+                                <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0" />
                   <div>
-                                  <p className="text-sm text-gray-600">Total Price</p>
-                                  <p className="text-3xl font-bold text-green-700">
+                                  <p className="text-xs sm:text-sm text-gray-600">Total Price</p>
+                                  <p className="text-2xl sm:text-3xl font-bold text-green-700">
                                     ₹{totalPrice.toLocaleString('en-IN')}
                     </p>
                   </div>
                 </div>
-                              <div className="text-right">
-                                <p className="text-sm text-gray-600">
+                              <div className="text-left sm:text-right w-full sm:w-auto">
+                                <p className="text-xs sm:text-sm text-gray-600">
                                   {formData.selectedServices.length} service{formData.selectedServices.length > 1 ? 's' : ''} selected
                                 </p>
                                 <p className="text-xs text-gray-500 mt-1">
@@ -1322,7 +1341,7 @@ export default function BookServicePage() {
 
               {/* Step 4: Pickup Details */}
               {currentStep === 3 && (
-                <div className="mb-12 space-y-6">
+                <div className="mb-8 sm:mb-10 md:mb-12 space-y-4 sm:space-y-6">
                   {/* Pickup Date */}
                   <div className="relative">
                     <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
@@ -1334,7 +1353,7 @@ export default function BookServicePage() {
                       value={formData.pickupDate}
                       onChange={(e) => handleInputChange('pickupDate', e.target.value)}
                       min={new Date().toISOString().split('T')[0]}
-                      className={`w-full px-4 py-5 text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
+                      className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
                         formData.pickupDate
                           ? 'border-brand-primary bg-brand-primary/5'
                           : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
@@ -1347,8 +1366,8 @@ export default function BookServicePage() {
                       }}
                     />
                     {formData.pickupDate && (
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 mt-6">
-                        <CheckCircle className="w-6 h-6 text-green-500" />
+                      <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 mt-4 sm:mt-6">
+                        <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
                       </div>
                     )}
                   </div>
@@ -1363,7 +1382,7 @@ export default function BookServicePage() {
                       type="time"
                       value={formData.pickupTime}
                       onChange={(e) => handleInputChange('pickupTime', e.target.value)}
-                      className={`w-full px-4 py-5 text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
+                      className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
                         formData.pickupTime
                           ? 'border-brand-primary bg-brand-primary/5'
                           : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
@@ -1375,8 +1394,8 @@ export default function BookServicePage() {
                       }}
                     />
                     {formData.pickupTime && (
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 mt-6">
-                        <CheckCircle className="w-6 h-6 text-green-500" />
+                      <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 mt-4 sm:mt-6">
+                        <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
                       </div>
                     )}
                   </div>
@@ -1422,7 +1441,7 @@ export default function BookServicePage() {
                       onChange={(e) => handleInputChange('pickupAddress', e.target.value)}
                       placeholder="Enter complete address with landmark or click 'Auto Detect'"
                       rows={4}
-                      className={`w-full px-4 py-5 text-lg border-2 rounded-xl focus:ring-2 outline-none transition-all resize-none ${
+                      className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-sm sm:text-base md:text-lg border-2 rounded-xl focus:ring-2 outline-none transition-all resize-none ${
                         formData.pickupAddress
                           ? 'border-brand-primary bg-brand-primary/5'
                           : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
@@ -1434,8 +1453,8 @@ export default function BookServicePage() {
                       }}
                     />
                     {formData.pickupAddress && (
-                      <div className="absolute right-4 top-20">
-                        <CheckCircle className="w-6 h-6 text-green-500" />
+                      <div className="absolute right-3 sm:right-4 top-16 sm:top-20">
+                        <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
                       </div>
                     )}
                     <p className="mt-2 text-xs text-gray-500">
@@ -1444,9 +1463,9 @@ export default function BookServicePage() {
                   </div>
 
                   {/* Summary Card */}
-                  <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
-                    <h4 className="font-bold text-gray-900 mb-3">Booking Summary</h4>
-                    <div className="space-y-2 text-sm">
+                  <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+                    <h4 className="font-bold text-sm sm:text-base text-gray-900 mb-2 sm:mb-3">Booking Summary</h4>
+                    <div className="space-y-2 text-xs sm:text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Location:</span>
                         <span className="font-semibold">{formData.city?.name}</span>
@@ -1479,7 +1498,7 @@ export default function BookServicePage() {
 
               {/* Step 5: Payment Options */}
               {currentStep === 4 && (
-                <div className="mb-12 space-y-6">
+                <div className="mb-8 sm:mb-10 md:mb-12 space-y-4 sm:space-y-6">
                   {/* Payment Method Selection */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
@@ -1487,7 +1506,7 @@ export default function BookServicePage() {
                       Payment Method <span className="text-red-500">*</span>
                     </label>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       {/* Cash Payment */}
                       <button
                         type="button"
@@ -1617,7 +1636,7 @@ export default function BookServicePage() {
                       When to Pay?
                     </label>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       <button
                         type="button"
                         onClick={() => handleInputChange('paymentStatus', 'PAY_LATER')}
@@ -1665,12 +1684,12 @@ export default function BookServicePage() {
                   </div>
 
                   {/* Final Summary */}
-                  <div className="mt-6 p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl">
-                    <h4 className="font-bold text-gray-900 mb-4">Final Booking Summary</h4>
-                    <div className="space-y-3 text-sm">
-                      <div className="flex justify-between items-center">
+                  <div className="mt-4 sm:mt-6 p-4 sm:p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl">
+                    <h4 className="font-bold text-sm sm:text-base text-gray-900 mb-3 sm:mb-4">Final Booking Summary</h4>
+                    <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                         <span className="text-gray-600">Total Amount:</span>
-                        <span className="text-2xl font-bold text-green-700">
+                        <span className="text-xl sm:text-2xl font-bold text-green-700">
                           ₹{totalPrice.toLocaleString('en-IN')}
                         </span>
                       </div>
@@ -1695,24 +1714,24 @@ export default function BookServicePage() {
               )}
 
               {/* Navigation Buttons */}
-                <div className="flex items-center justify-between pt-8 border-t border-gray-100">
+                <div className="flex items-center justify-between pt-4 sm:pt-6 md:pt-8 border-t border-gray-100 gap-3 sm:gap-4">
                   <button
                     onClick={handleBack}
                     disabled={currentStep === 0}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all ${
+                    className={`flex items-center gap-1 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 rounded-xl font-semibold text-sm sm:text-base transition-all ${
                       currentStep === 0
                         ? 'text-gray-300 cursor-not-allowed'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
-                    <ArrowLeft className="w-5 h-5" />
-                    Back
+                    <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span className="hidden sm:inline">Back</span>
                   </button>
                 
                   <button
                     onClick={handleNext}
                     disabled={!canProceed || isProcessingPayment}
-                    className={`flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-lg transition-all transform ${
+                    className={`flex items-center gap-2 px-6 sm:px-8 py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all transform ${
                       canProceed && !isProcessingPayment
                         ? 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:shadow-2xl hover:shadow-brand-primary/50 hover:scale-105 active:scale-95'
                         : 'bg-gray-200 text-gray-400 cursor-not-allowed'

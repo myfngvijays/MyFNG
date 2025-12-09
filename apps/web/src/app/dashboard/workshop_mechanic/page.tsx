@@ -500,88 +500,81 @@ export default function WorkshopMechanicDashboard() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg -mx-6 -mt-6 mb-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🔧 Mechanic Dashboard</h1>
-              <p className="text-white font-medium mt-1">Your assigned jobs and tasks</p>
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6 mb-4 sm:mb-5 md:mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">🔧 Mechanic Dashboard</h1>
+              <p className="text-white text-sm sm:text-base font-medium mt-0.5 sm:mt-1">Your assigned jobs and tasks</p>
             </div>
-          </div>
-        </div>
-        
-        <div className="flex justify-between items-start">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p className="text-sm text-gray-600">Performance Score</p>
-                <p className="text-2xl font-bold text-brand-primary">{performanceStats.performance_score.toFixed(0)}%</p>
-              </div>
+            <div className="text-left sm:text-right">
+              <p className="text-xs sm:text-sm text-white/90">Performance Score</p>
+              <p className="text-xl sm:text-2xl font-bold text-yellow-300">{performanceStats.performance_score.toFixed(0)}%</p>
             </div>
           </div>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
           <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
-            <div className="flex items-center gap-3">
-              <Calendar className="w-8 h-8 text-brand-primary" />
-              <div>
-                <p className="text-sm text-text-body">Assigned Today</p>
-                <p className="text-2xl font-bold text-text-heading">{stats.assigned_today}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Calendar className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-brand-primary flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-text-body">Assigned Today</p>
+                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.assigned_today}</p>
               </div>
             </div>
           </div>
 
           <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100">
-            <div className="flex items-center gap-3">
-              <Clock className="w-8 h-8 text-yellow-600" />
-              <div>
-                <p className="text-sm text-text-body">In Progress</p>
-                <p className="text-2xl font-bold text-text-heading">{stats.in_progress}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-yellow-600 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-text-body">In Progress</p>
+                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.in_progress}</p>
               </div>
             </div>
           </div>
 
           <div className="card bg-gradient-to-br from-green-50 to-green-100">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="w-8 h-8 text-green-600" />
-              <div>
-                <p className="text-sm text-text-body">Completed Today</p>
-                <p className="text-2xl font-bold text-text-heading">{stats.completed_today}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-600 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-text-body">Completed Today</p>
+                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.completed_today}</p>
               </div>
             </div>
           </div>
 
           <div className="card bg-gradient-to-br from-orange-50 to-orange-100">
-              <div className="flex items-center gap-3">
-              <AlertTriangle className="w-8 h-8 text-orange-600" />
-                <div>
-                <p className="text-sm text-text-body">Need Approval</p>
-                <p className="text-2xl font-bold text-text-heading">{stats.need_approval}</p>
+              <div className="flex items-center gap-2 sm:gap-3">
+              <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-600 flex-shrink-0" />
+                <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-text-body">Need Approval</p>
+                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.need_approval}</p>
               </div>
             </div>
                 </div>
 
-          <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
-            <div className="flex items-center gap-3">
-              <TrendingUp className="w-8 h-8 text-brand-secondary" />
-              <div>
-                <p className="text-sm text-text-body">SLA Success</p>
-                <p className="text-2xl font-bold text-text-heading">{performanceStats.sla_success_rate.toFixed(0)}%</p>
+          <div className="card bg-gradient-to-br from-blue-50 to-blue-100 sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-brand-secondary flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-text-body">SLA Success</p>
+                <p className="text-xl sm:text-2xl font-bold text-text-heading">{performanceStats.sla_success_rate.toFixed(0)}%</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 overflow-x-auto">
           {(['ALL', 'ASSIGNED', 'IN_PROGRESS', 'HOLD', 'COMPLETED', 'NEED_APPROVAL'] as FilterType[]).map((filter) => (
             <button
               key={filter}
               onClick={() => setActiveFilter(filter)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap flex-shrink-0 ${
                 activeFilter === filter
                   ? 'bg-brand-primary text-white shadow-md hover:bg-brand-primary-hover'
                   : 'bg-white text-text-body border border-gray-300 hover:bg-gray-50'
@@ -593,7 +586,7 @@ export default function WorkshopMechanicDashboard() {
         </div>
 
         {/* Jobs List */}
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {filteredJobs.length > 0 ? (
             filteredJobs.map((job) => (
               <div 
@@ -605,38 +598,38 @@ export default function WorkshopMechanicDashboard() {
                 }}
                 onClick={() => router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`)}
               >
-                <div className="flex justify-between items-start mb-4">
-                    <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-xl font-bold">{job.lead_number}</h3>
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(job.mechanic_status)}`}>
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3 sm:mb-4">
+                    <div className="flex-1 min-w-0 w-full">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
+                      <h3 className="text-lg sm:text-xl font-bold truncate">{job.lead_number}</h3>
+                      <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 ${getStatusColor(job.mechanic_status)}`}>
                         {job.mechanic_status.replace('_', ' ')}
                       </span>
                       {job.job_priority !== 'NORMAL' && (
-                        <span className={`px-2 py-1 rounded text-xs font-semibold border ${getPriorityColor(job.job_priority)}`}>
+                        <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold border flex-shrink-0 ${getPriorityColor(job.job_priority)}`}>
                           {job.job_priority}
                         </span>
                       )}
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mt-2 sm:mt-3">
                       <div>
-                        <p className="text-sm text-gray-600">Vehicle</p>
-                        <p className="font-semibold">{job.vehicle_number}</p>
-                        <p className="text-sm text-gray-600">{job.vehicle_make} {job.vehicle_model}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">Vehicle</p>
+                        <p className="font-semibold text-sm sm:text-base">{job.vehicle_number}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">{job.vehicle_make} {job.vehicle_model}</p>
                       </div>
                       
                       <div>
-                        <p className="text-sm text-gray-600">Service Type</p>
-                        <p className="font-semibold">
+                        <p className="text-xs sm:text-sm text-gray-600">Service Type</p>
+                        <p className="font-semibold text-xs sm:text-sm">
                           {job.service_type_names && job.service_type_names.length > 0
                             ? job.service_type_names.join(', ')
                             : job.service_types?.join(', ') || 'N/A'}
                         </p>
                         {job.service_addon_names && job.service_addon_names.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1">
+                          <div className="mt-1.5 sm:mt-2 flex flex-wrap gap-1">
                             {job.service_addon_names.map((addon, idx) => (
-                              <span key={idx} className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
+                              <span key={idx} className="px-1.5 sm:px-2 py-0.5 bg-green-100 text-green-700 rounded text-[10px] sm:text-xs font-medium">
                                 {addon}
                               </span>
                             ))}
@@ -645,18 +638,18 @@ export default function WorkshopMechanicDashboard() {
                       </div>
                       
                       <div>
-                        <p className="text-sm text-gray-600">SLA Remaining</p>
-                        <p className="font-semibold">{formatSLA(job.sla_remaining_minutes)}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">SLA Remaining</p>
+                        <p className="font-semibold text-sm sm:text-base">{formatSLA(job.sla_remaining_minutes)}</p>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Progress Indicators */}
-                <div className="flex flex-wrap gap-3 pt-3 border-t">
+                <div className="flex flex-wrap gap-2 sm:gap-3 pt-2 sm:pt-3 border-t">
                   {/* Media upload status */}
-                  <div className="flex items-center gap-2 text-sm">
-                    <Camera className="w-4 h-4 text-gray-500" />
+                  <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                    <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
                     <span className={job.before_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
                       📷 Before: {job.before_images_count}
                     </span>
@@ -670,56 +663,56 @@ export default function WorkshopMechanicDashboard() {
 
                   {/* Checklist status */}
                   {job.checklist_completed && (
-                    <div className="flex items-center gap-1 text-sm text-green-600">
-                      <CheckCircle className="w-4 h-4" />
+                    <div className="flex items-center gap-1 text-xs sm:text-sm text-green-600">
+                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                       Checklist Complete
                     </div>
                   )}
 
                   {/* Parts assigned */}
                   {job.has_parts_assigned && (
-                    <div className="flex items-center gap-1 text-sm text-blue-600">
-                      <Package className="w-4 h-4" />
+                    <div className="flex items-center gap-1 text-xs sm:text-sm text-blue-600">
+                      <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                       Parts Assigned
                     </div>
                   )}
 
                   {/* Extra work pending */}
                   {job.has_pending_extra_work && (
-                    <div className="flex items-center gap-1 text-sm text-orange-600">
-                      <AlertTriangle className="w-4 h-4" />
+                    <div className="flex items-center gap-1 text-xs sm:text-sm text-orange-600">
+                      <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                       Extra Work Pending
                     </div>
                   )}
                 </div>
 
-                <div className="flex gap-2 mt-4 pt-4 border-t">
+                <div className="flex flex-col sm:flex-row gap-2 mt-3 sm:mt-4 pt-3 sm:pt-4 border-t">
                   {job.mechanic_status === 'ASSIGNED' && (
                     <button 
-                      className="btn bg-brand-primary hover:bg-brand-primary-hover text-white text-sm"
+                      className="btn bg-brand-primary hover:bg-brand-primary-hover text-white text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2"
                       onClick={(e) => {
                         e.stopPropagation();
                         router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`);
                       }}
                     >
-                      <PlayCircle className="w-4 h-4" />
+                      <PlayCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         Start Job
                       </button>
                     )}
                   {job.mechanic_status === 'IN_PROGRESS' && (
                     <button 
-                      className="btn btn-outline text-sm"
+                      className="btn btn-outline text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4"
                       onClick={(e) => {
                         e.stopPropagation();
                         router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}?action=upload`);
                       }}
                     >
-                      <ImagePlus className="w-4 h-4" />
+                      <ImagePlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     Upload Photos
                   </button>
                   )}
                   <button 
-                    className="btn btn-primary text-sm"
+                    className="btn btn-primary text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4"
                     onClick={(e) => {
                       e.stopPropagation();
                       router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`);
@@ -729,15 +722,15 @@ export default function WorkshopMechanicDashboard() {
                   </button>
                   </div>
 
-                <div className="mt-3 pt-3 border-t text-xs text-gray-500">
+                <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t text-[10px] sm:text-xs text-gray-500">
                   Assigned: {new Date(job.assigned_at).toLocaleString()}
                 </div>
             </div>
             ))
           ) : (
-            <div className="card text-center py-12">
-              <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500 text-lg">No jobs found for this filter</p>
+            <div className="card text-center py-8 sm:py-10 md:py-12">
+              <AlertCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
+              <p className="text-gray-500 text-base sm:text-lg">No jobs found for this filter</p>
             </div>
           )}
           </div>

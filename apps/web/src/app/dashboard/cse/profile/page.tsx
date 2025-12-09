@@ -87,8 +87,8 @@ export default function CSEProfilePage() {
   if (loading) {
     return (
       <DashboardLayout role="customer_service_executive">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <Loader2 className="w-7 w-7 sm:w-8 sm:w-8 animate-spin text-indigo-600" />
         </div>
       </DashboardLayout>
     );
@@ -96,52 +96,52 @@ export default function CSEProfilePage() {
 
   return (
     <DashboardLayout role="customer_service_executive">
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <User className="w-8 h-8 text-indigo-600" />
-            My Profile
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
+            <User className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-indigo-600 flex-shrink-0" />
+            <span>My Profile</span>
           </h1>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white p-4 sm:p-5 md:p-6 rounded-lg shadow">
           {isEditing ? (
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Full Name</label>
                 <input
                   type="text"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Phone</label>
                 <input
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
                   value={formData.email}
                   disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg bg-gray-100"
                 />
-                <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">Email cannot be changed</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-xs sm:text-sm"
                 >
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {saving ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                   Save
                 </button>
                 <button
@@ -149,49 +149,49 @@ export default function CSEProfilePage() {
                     setIsEditing(false);
                     fetchProfile();
                   }}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                  className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-xs sm:text-sm"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   Cancel
                 </button>
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="w-20 h-20 bg-indigo-600 rounded-full flex items-center justify-center">
-                  <span className="text-2xl font-bold text-white">
+            <div className="space-y-4 sm:space-y-5 md:space-y-6">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 bg-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-xl sm:text-2xl font-bold text-white">
                     {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
                   </span>
                 </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">{profile?.full_name || 'N/A'}</h2>
-                  <p className="text-gray-600">{(profile?.roles as any)?.role_name || 'CSE'}</p>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 truncate">{profile?.full_name || 'N/A'}</h2>
+                  <p className="text-gray-600 text-sm sm:text-base">{(profile?.roles as any)?.role_name || 'CSE'}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6 mt-4 sm:mt-5 md:mt-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                    <Mail className="w-4 h-4" />
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5 sm:gap-2">
+                    <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                     Email
                   </label>
-                  <p className="text-lg">{profile?.email || 'N/A'}</p>
+                  <p className="text-sm sm:text-base md:text-lg truncate">{profile?.email || 'N/A'}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                    <Phone className="w-4 h-4" />
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5 sm:gap-2">
+                    <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                     Phone
                   </label>
-                  <p className="text-lg">{profile?.phone || 'Not provided'}</p>
+                  <p className="text-sm sm:text-base md:text-lg">{profile?.phone || 'Not provided'}</p>
                 </div>
               </div>
 
               <button
                 onClick={() => setIsEditing(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-xs sm:text-sm w-full sm:w-auto"
               >
-                <Edit2 className="w-4 h-4" />
+                <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 Edit Profile
               </button>
             </div>

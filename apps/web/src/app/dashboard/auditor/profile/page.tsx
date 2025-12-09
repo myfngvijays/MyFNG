@@ -156,8 +156,8 @@ export default function AuditorProfilePage() {
   if (loading) {
     return (
       <DashboardLayout role="auditor">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <Loader2 className="w-7 w-7 sm:w-8 sm:w-8 animate-spin text-indigo-600" />
         </div>
       </DashboardLayout>
     );
@@ -166,8 +166,8 @@ export default function AuditorProfilePage() {
   if (!profile) {
     return (
       <DashboardLayout role="auditor">
-        <div className="text-center py-12">
-          <p className="text-gray-600">Profile not found</p>
+        <div className="text-center py-8 sm:py-10 md:py-12">
+          <p className="text-gray-600 text-sm sm:text-base">Profile not found</p>
         </div>
       </DashboardLayout>
     );
@@ -175,33 +175,33 @@ export default function AuditorProfilePage() {
 
   return (
     <DashboardLayout role="auditor">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <User className="w-8 h-8 text-indigo-600" />
-              My Profile
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
+              <User className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-indigo-600 flex-shrink-0" />
+              <span>My Profile</span>
             </h1>
-            <p className="text-gray-600 mt-1">Manage your profile information</p>
+            <p className="text-gray-600 text-xs sm:text-sm mt-0.5 sm:mt-1">Manage your profile information</p>
           </div>
           {!isEditing && (
             <button
               onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-xs sm:text-sm w-full sm:w-auto"
             >
-              <Edit2 className="w-4 h-4" />
+              <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               Edit Profile
             </button>
           )}
         </div>
 
         {/* Profile Card */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex flex-col md:flex-row gap-6">
+        <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+          <div className="flex flex-col md:flex-row gap-4 sm:gap-5 md:gap-6">
             {/* Profile Image */}
-            <div className="flex-shrink-0">
-              <div className="relative w-32 h-32 rounded-full overflow-hidden bg-gray-200">
+            <div className="flex-shrink-0 flex justify-center md:justify-start">
+              <div className="relative w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full overflow-hidden bg-gray-200">
                 {formData.profile_image ? (
                   <Image
                     src={formData.profile_image}
@@ -211,22 +211,22 @@ export default function AuditorProfilePage() {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-indigo-100">
-                    <User className="w-16 h-16 text-indigo-600" />
+                    <User className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-indigo-600" />
                   </div>
                 )}
                 {isEditing && (
                   <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-                    <Camera className="w-6 h-6 text-white" />
+                    <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
                 )}
               </div>
             </div>
 
             {/* Profile Info */}
-            <div className="flex-1 space-y-4">
+            <div className="flex-1 space-y-3 sm:space-y-4">
               {/* Full Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Full Name
                 </label>
                 {isEditing ? (
@@ -234,27 +234,27 @@ export default function AuditorProfilePage() {
                     type="text"
                     value={formData.full_name}
                     onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 ) : (
-                  <p className="text-lg font-semibold text-gray-900">{profile.full_name}</p>
+                  <p className="text-base sm:text-lg font-semibold text-gray-900">{profile.full_name}</p>
                 )}
               </div>
 
               {/* Email */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                  <Mail className="w-4 h-4" />
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5 sm:gap-2">
+                  <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                   Email
                 </label>
-                <p className="text-gray-900">{profile.email}</p>
-                <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+                <p className="text-sm sm:text-base text-gray-900">{profile.email}</p>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">Email cannot be changed</p>
               </div>
 
               {/* Phone */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                  <Phone className="w-4 h-4" />
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5 sm:gap-2">
+                  <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                   Phone
                 </label>
                 {isEditing ? (
@@ -262,50 +262,50 @@ export default function AuditorProfilePage() {
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     placeholder="Enter phone number"
                   />
                 ) : (
-                  <p className="text-gray-900">{profile.phone || 'Not provided'}</p>
+                  <p className="text-sm sm:text-base text-gray-900">{profile.phone || 'Not provided'}</p>
                 )}
               </div>
 
               {/* Role */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                  <Shield className="w-4 h-4" />
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5 sm:gap-2">
+                  <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                   Role
                 </label>
-                <p className="text-gray-900">{profile.role?.role_name || 'Auditor'}</p>
+                <p className="text-sm sm:text-base text-gray-900">{profile.role?.role_name || 'Auditor'}</p>
               </div>
 
               {/* Account Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-3 sm:pt-4 border-t border-gray-200">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5 sm:gap-2">
+                    <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                     Member Since
                   </label>
-                  <p className="text-gray-900">
+                  <p className="text-sm sm:text-base text-gray-900">
                     {new Date(profile.created_at).toLocaleDateString()}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     Last Login
                   </label>
-                  <p className="text-gray-900">
+                  <p className="text-sm sm:text-base text-gray-900">
                     {profile.last_login
                       ? new Date(profile.last_login).toLocaleString()
                       : 'Never'}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     Account Status
                   </label>
                   <span
-                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    className={`inline-flex px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full ${
                       profile.is_active
                         ? 'bg-green-100 text-green-800'
                         : 'bg-red-100 text-red-800'
@@ -318,25 +318,26 @@ export default function AuditorProfilePage() {
 
               {/* Action Buttons */}
               {isEditing && (
-                <div className="flex gap-3 pt-4">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4">
                   <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                    className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-xs sm:text-sm"
                   >
                     {saving ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                     ) : (
-                      <Save className="w-4 h-4" />
+                      <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     )}
-                    Save Changes
+                    <span className="hidden sm:inline">Save Changes</span>
+                    <span className="sm:hidden">Save</span>
                   </button>
                   <button
                     onClick={handleCancel}
                     disabled={saving}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50"
+                    className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 text-xs sm:text-sm"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     Cancel
                   </button>
                 </div>

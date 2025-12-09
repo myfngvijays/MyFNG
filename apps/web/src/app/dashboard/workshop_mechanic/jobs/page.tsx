@@ -197,8 +197,8 @@ export default function MechanicJobsPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_mechanic">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -206,53 +206,53 @@ export default function MechanicJobsPage() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-text-heading">My Jobs</h1>
-          <p className="text-text-body mt-2">Manage your assigned service jobs</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">My Jobs</h1>
+          <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Manage your assigned service jobs</p>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
           <div className="card">
-            <p className="text-sm text-gray-600">Total Assigned</p>
-            <p className="text-2xl font-bold">{jobs.length}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Total Assigned</p>
+            <p className="text-xl sm:text-2xl font-bold">{jobs.length}</p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-600">In Progress</p>
-            <p className="text-2xl font-bold text-blue-600">
+            <p className="text-xs sm:text-sm text-gray-600">In Progress</p>
+            <p className="text-xl sm:text-2xl font-bold text-blue-600">
               {jobs.filter(j => j.mechanic_status === 'IN_PROGRESS').length}
             </p>
           </div>
-          <div className="card">
-            <p className="text-sm text-gray-600">Ready to Start</p>
-            <p className="text-2xl font-bold text-green-600">
+          <div className="card sm:col-span-1">
+            <p className="text-xs sm:text-sm text-gray-600">Ready to Start</p>
+            <p className="text-xl sm:text-2xl font-bold text-green-600">
               {jobs.filter(j => j.mechanic_status === 'ASSIGNED').length}
             </p>
           </div>
         </div>
 
         {/* Jobs List */}
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {jobs.map((job) => (
             <div key={job.job_id || job.lead_id} className="card hover:shadow-lg transition">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-xl font-bold">{job.lead_number || 'N/A'}</h3>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg sm:text-xl font-bold truncate">{job.lead_number || 'N/A'}</h3>
                   {job.problem_description && (
-                    <p className="text-lg text-gray-700 mt-1">{job.problem_description}</p>
+                    <p className="text-sm sm:text-base md:text-lg text-gray-700 mt-0.5 sm:mt-1 line-clamp-2">{job.problem_description}</p>
                   )}
                   {job.service_type_names && job.service_type_names.length > 0 ? (
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 truncate">
                       Services: {job.service_type_names.join(', ')}
                     </p>
                   ) : job.service_types && Array.isArray(job.service_types) && job.service_types.length > 0 && (
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 truncate">
                       Services: {job.service_types.join(', ')}
                     </p>
                   )}
                 </div>
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold flex-shrink-0 ${
                   job.mechanic_status === 'IN_PROGRESS' 
                     ? 'bg-blue-100 text-blue-700' 
                     : job.mechanic_status === 'COMPLETED'
@@ -267,19 +267,19 @@ export default function MechanicJobsPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
                 <div>
-                  <p className="text-sm text-gray-600">Customer</p>
-                  <p className="font-semibold">{job.customer_name || 'N/A'}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">Customer</p>
+                  <p className="font-semibold text-sm sm:text-base truncate">{job.customer_name || 'N/A'}</p>
                   {job.customer_phone && (
-                    <p className="text-sm text-gray-600">{job.customer_phone}</p>
+                    <p className="text-xs sm:text-sm text-gray-600 truncate">{job.customer_phone}</p>
                   )}
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Vehicle</p>
-                  <p className="font-semibold">{job.vehicle_number || 'N/A'}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">Vehicle</p>
+                  <p className="font-semibold text-sm sm:text-base truncate">{job.vehicle_number || 'N/A'}</p>
                   {(job.vehicle_make || job.vehicle_model) && (
-                    <p className="text-sm text-gray-600">
+                    <p className="text-xs sm:text-sm text-gray-600 truncate">
                       {job.vehicle_make || ''} {job.vehicle_model || ''}
                     </p>
                   )}
@@ -288,26 +288,26 @@ export default function MechanicJobsPage() {
 
               {/* Image counts */}
               {(job.before_images_count > 0 || job.after_images_count > 0) && (
-                <div className="mb-4 flex gap-4 text-sm">
+                <div className="mb-3 sm:mb-4 flex gap-3 sm:gap-4 text-xs sm:text-sm">
                   <div className={`flex items-center gap-1 ${
                     job.before_images_count > 0 ? 'text-green-600' : 'text-gray-400'
                   }`}>
-                    <Camera className="w-4 h-4" />
+                    <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                     Before: {job.before_images_count}
                   </div>
                   <div className={`flex items-center gap-1 ${
                     job.after_images_count > 0 ? 'text-green-600' : 'text-gray-400'
                   }`}>
-                    <Camera className="w-4 h-4" />
+                    <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                     After: {job.after_images_count}
                   </div>
                 </div>
               )}
 
               {job.problem_description && (
-                <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-600 mb-1">Work Description</p>
-                  <p className="text-sm">{job.problem_description}</p>
+                <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Work Description</p>
+                  <p className="text-xs sm:text-sm">{job.problem_description}</p>
                 </div>
               )}
 
@@ -319,9 +319,9 @@ export default function MechanicJobsPage() {
                         updateJobStatus(job.lead_id, 'IN_PROGRESS');
                       }
                     }}
-                    className="btn bg-blue-500 hover:bg-blue-600 text-white flex items-center gap-2"
+                    className="btn bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   >
-                    <Wrench className="w-5 h-5" />
+                    <Wrench className="w-4 h-4 sm:w-5 sm:h-5" />
                     Start Job
                   </button>
                 )}

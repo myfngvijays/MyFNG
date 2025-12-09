@@ -122,78 +122,78 @@ export default function AuditorEscalationsPage() {
 
   return (
     <DashboardLayout role="auditor">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <AlertTriangle className="w-8 h-8 text-red-600" />
-            Escalations
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
+            <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-red-600 flex-shrink-0" />
+            <span>Escalations</span>
           </h1>
-          <p className="text-gray-600 mt-1">Manage audit-related escalations and issues</p>
+          <p className="text-gray-600 text-xs sm:text-sm mt-0.5 sm:mt-1">Manage audit-related escalations and issues</p>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-500">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-white p-3 sm:p-4 rounded-lg shadow border-l-4 border-red-500">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Open</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.open}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Open</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.open}</p>
               </div>
-              <XCircle className="w-8 h-8 text-red-500" />
+              <XCircle className="w-7 h-7 sm:w-8 sm:h-8 text-red-500 flex-shrink-0" />
             </div>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
+          <div className="bg-white p-3 sm:p-4 rounded-lg shadow border-l-4 border-blue-500">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">In Progress</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.in_progress}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">In Progress</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.in_progress}</p>
               </div>
-              <Clock className="w-8 h-8 text-blue-500" />
+              <Clock className="w-7 h-7 sm:w-8 sm:h-8 text-blue-500 flex-shrink-0" />
             </div>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
+          <div className="bg-white p-3 sm:p-4 rounded-lg shadow border-l-4 border-green-500">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Resolved</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.resolved}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Resolved</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.resolved}</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-green-500" />
+              <CheckCircle className="w-7 h-7 sm:w-8 sm:h-8 text-green-500 flex-shrink-0" />
             </div>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-600">
+          <div className="bg-white p-3 sm:p-4 rounded-lg shadow border-l-4 border-red-600 sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Critical</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.critical}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Critical</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.critical}</p>
               </div>
-              <Flag className="w-8 h-8 text-red-600" />
+              <Flag className="w-7 h-7 sm:w-8 sm:h-8 text-red-600 flex-shrink-0" />
             </div>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="bg-white p-4 rounded-lg shadow">
-          <div className="flex flex-wrap gap-4 items-end">
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+        <div className="bg-white p-3 sm:p-4 rounded-lg shadow">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="sm:col-span-2 lg:col-span-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Search</label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                 <input
                   type="text"
                   value={filters.search}
                   onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                   placeholder="Search escalations..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
             </div>
-            <div className="min-w-[150px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Status</label>
               <select
                 value={filters.status}
                 onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="all">All Status</option>
                 <option value="OPEN">Open</option>
@@ -203,12 +203,12 @@ export default function AuditorEscalationsPage() {
                 <option value="CLOSED">Closed</option>
               </select>
             </div>
-            <div className="min-w-[150px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Priority</label>
               <select
                 value={filters.priority}
                 onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="all">All Priorities</option>
                 <option value="CRITICAL">Critical</option>
@@ -218,12 +218,12 @@ export default function AuditorEscalationsPage() {
                 <option value="LOW">Low</option>
               </select>
             </div>
-            <div className="min-w-[150px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Type</label>
               <select
                 value={filters.type}
                 onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="all">All Types</option>
                 <option value="CUSTOMER">Customer</option>
@@ -237,105 +237,169 @@ export default function AuditorEscalationsPage() {
 
         {/* Escalations List */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="p-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold">My Escalations</h2>
+          <div className="p-3 sm:p-4 border-b border-gray-200">
+            <h2 className="text-base sm:text-lg font-semibold">My Escalations</h2>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+            <div className="flex items-center justify-center h-48 sm:h-64">
+              <Loader2 className="w-7 h-7 sm:w-8 sm:h-8 animate-spin text-indigo-600" />
             </div>
           ) : escalations.length === 0 ? (
-            <div className="text-center py-12">
-              <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No escalations found</p>
+            <div className="text-center py-8 sm:py-10 md:py-12">
+              <AlertTriangle className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+              <p className="text-gray-600 text-sm sm:text-base">No escalations found</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Escalation #</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Priority</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {escalations.map((escalation) => (
-                    <tr key={escalation.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
+            <>
+              {/* Desktop Table */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase">Escalation #</th>
+                      <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead</th>
+                      <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                      <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase">Priority</th>
+                      <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
+                      <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                      <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {escalations.map((escalation) => (
+                      <tr key={escalation.id} className="hover:bg-gray-50">
+                        <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
+                          <div className="text-xs sm:text-sm font-medium text-gray-900">
+                            {escalation.escalation_number || `ESC-${escalation.id.slice(0, 8)}`}
+                          </div>
+                        </td>
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          {escalation.lead ? (
+                            <div>
+                              <div className="text-xs sm:text-sm font-medium text-gray-900">
+                                {escalation.lead.lead_number}
+                              </div>
+                              <div className="text-xs sm:text-sm text-gray-500">
+                                {escalation.lead.customer_name} • {escalation.lead.vehicle_number}
+                              </div>
+                              {escalation.lead.workshop && (
+                                <div className="text-[10px] sm:text-xs text-gray-400 mt-0.5 sm:mt-1">
+                                  {escalation.lead.workshop.name}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs sm:text-sm text-gray-500">N/A</span>
+                          )}
+                        </td>
+                        <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
+                          <span className="text-xs sm:text-sm text-gray-900">
+                            {escalation.escalation_type?.replace('_', ' ') || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full ${getPriorityColor(escalation.priority)}`}>
+                            {escalation.priority}
+                          </span>
+                        </td>
+                        <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full ${getStatusColor(escalation.status)}`}>
+                            {escalation.status}
+                          </span>
+                        </td>
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="text-xs sm:text-sm text-gray-900 max-w-xs truncate">
+                            {escalation.reason || 'N/A'}
+                          </div>
+                        </td>
+                        <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
+                          <div className="text-xs sm:text-sm text-gray-900">
+                            {new Date(escalation.created_at).toLocaleDateString()}
+                          </div>
+                          <div className="text-[10px] sm:text-xs text-gray-500">
+                            {new Date(escalation.created_at).toLocaleTimeString()}
+                          </div>
+                        </td>
+                        <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
+                          {escalation.audit_id && (
+                            <Link
+                              href={`/dashboard/auditor/audits/${escalation.audit_id}`}
+                              className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 bg-indigo-600 text-white text-xs sm:text-sm rounded-lg hover:bg-indigo-700"
+                            >
+                              <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                              View Audit
+                            </Link>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="lg:hidden divide-y divide-gray-200">
+                {escalations.map((escalation) => (
+                  <div key={escalation.id} className="p-4 hover:bg-gray-50 transition">
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-gray-900 mb-1">
                           {escalation.escalation_number || `ESC-${escalation.id.slice(0, 8)}`}
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {escalation.lead ? (
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {escalation.lead.lead_number}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {escalation.lead.customer_name} • {escalation.lead.vehicle_number}
-                            </div>
-                            {escalation.lead.workshop && (
-                              <div className="text-xs text-gray-400 mt-1">
-                                {escalation.lead.workshop.name}
-                              </div>
-                            )}
+                        {escalation.lead && (
+                          <div className="text-xs text-gray-500 truncate">
+                            {escalation.lead.lead_number} • {escalation.lead.customer_name}
                           </div>
-                        ) : (
-                          <span className="text-sm text-gray-500">N/A</span>
                         )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-900">
-                          {escalation.escalation_type?.replace('_', ' ') || 'N/A'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPriorityColor(escalation.priority)}`}>
+                      </div>
+                      <div className="flex flex-col gap-1 flex-shrink-0">
+                        <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold rounded-full ${getPriorityColor(escalation.priority)}`}>
                           {escalation.priority}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(escalation.status)}`}>
+                        <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold rounded-full ${getStatusColor(escalation.status)}`}>
                           {escalation.status}
                         </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900 max-w-xs truncate">
-                          {escalation.reason || 'N/A'}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 text-xs sm:text-sm mb-3">
+                      <div>
+                        <span className="text-gray-500">Type: </span>
+                        <span className="text-gray-900">{escalation.escalation_type?.replace('_', ' ') || 'N/A'}</span>
+                      </div>
+                      {escalation.reason && (
+                        <div>
+                          <span className="text-gray-500">Reason: </span>
+                          <span className="text-gray-900">{escalation.reason}</span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {new Date(escalation.created_at).toLocaleDateString()}
+                      )}
+                      {escalation.lead?.workshop && (
+                        <div>
+                          <span className="text-gray-500">Workshop: </span>
+                          <span className="text-gray-900">{escalation.lead.workshop.name}</span>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(escalation.created_at).toLocaleTimeString()}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {escalation.audit_id && (
-                          <Link
-                            href={`/dashboard/auditor/audits/${escalation.audit_id}`}
-                            className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
-                          >
-                            <Eye className="w-4 h-4" />
-                            View Audit
-                          </Link>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      )}
+                      <div>
+                        <span className="text-gray-500">Created: </span>
+                        <span className="text-gray-900">
+                          {new Date(escalation.created_at).toLocaleDateString()} {new Date(escalation.created_at).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    </div>
+                    {escalation.audit_id && (
+                      <Link
+                        href={`/dashboard/auditor/audits/${escalation.audit_id}`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-xs sm:text-sm rounded-lg hover:bg-indigo-700"
+                      >
+                        <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        View Audit
+                      </Link>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

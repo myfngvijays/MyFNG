@@ -209,107 +209,108 @@ export default function CarBrandsPage() {
   );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-5 md:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Car Brands Management</h1>
-          <p className="text-gray-500">Manage car brand logos and information</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Car Brands Management</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">Manage car brand logos and information</p>
         </div>
         <button
           onClick={handleAddNew}
-          className="flex items-center gap-2 bg-brand-primary hover:bg-brand-primary-hover text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+          className="flex items-center gap-1.5 sm:gap-2 bg-brand-primary hover:bg-brand-primary-hover text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors w-full sm:w-auto justify-center"
         >
-          <Plus className="w-5 h-5" />
-          Add Brand
+          <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+          <span className="hidden sm:inline">Add Brand</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </div>
 
       {/* Search */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <Search className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
           <input
             type="text"
             placeholder="Search brands..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+            className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
           />
         </div>
       </div>
 
       {/* Brands Grid */}
       {loading ? (
-        <div className="flex justify-center items-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-primary" />
+        <div className="flex justify-center items-center py-12 sm:py-16 md:py-20">
+          <Loader2 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 animate-spin text-brand-primary" />
         </div>
       ) : filteredBrands.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <Car className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-          <p className="text-gray-500 text-lg">No brands found</p>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 sm:p-10 md:p-12 text-center">
+          <Car className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 mx-auto text-gray-400 mb-3 sm:mb-4" />
+          <p className="text-gray-500 text-base sm:text-lg">No brands found</p>
           <button
             onClick={handleAddNew}
-            className="mt-4 text-brand-primary hover:underline"
+            className="mt-3 sm:mt-4 text-brand-primary hover:underline text-xs sm:text-sm"
           >
             Add your first brand
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
           {filteredBrands.map((brand) => (
             <div
               key={brand.id}
-              className="bg-white rounded-xl shadow-md border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+              className="bg-white rounded-xl shadow-md border border-gray-200 p-4 sm:p-5 md:p-6 hover:shadow-lg transition-shadow"
             >
-              <div className="flex flex-col items-center space-y-4">
+              <div className="flex flex-col items-center space-y-3 sm:space-y-4">
                 {/* Logo */}
-                <div className="w-32 h-32 bg-gray-50 rounded-lg flex items-center justify-center border-2 border-gray-200">
+                <div className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 bg-gray-50 rounded-lg flex items-center justify-center border-2 border-gray-200">
                   {brand.logo_url ? (
                     <img
                       src={brand.logo_url}
                       alt={brand.name}
-                      className="w-full h-full object-contain p-2"
+                      className="w-full h-full object-contain p-1.5 sm:p-2"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
                         const parent = target.parentElement;
                         if (parent && !parent.querySelector('.brand-fallback')) {
                           const fallback = document.createElement('div');
-                          fallback.className = 'brand-fallback text-xs font-bold text-gray-400 text-center px-2';
+                          fallback.className = 'brand-fallback text-[10px] sm:text-xs font-bold text-gray-400 text-center px-1 sm:px-2';
                           fallback.textContent = brand.name;
                           parent.appendChild(fallback);
                         }
                       }}
                     />
                   ) : (
-                    <Car className="w-12 h-12 text-gray-400" />
+                    <Car className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-gray-400" />
                   )}
                 </div>
 
                 {/* Brand Name */}
-                <div className="text-center">
-                  <h3 className="font-bold text-gray-900">{brand.name}</h3>
-                  <p className="text-xs text-gray-500 mt-1">
+                <div className="text-center w-full">
+                  <h3 className="font-bold text-sm sm:text-base text-gray-900 truncate">{brand.name}</h3>
+                  <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
                     Order: {brand.display_order} • {brand.is_active ? 'Active' : 'Inactive'}
                   </p>
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-2 w-full">
+                <div className="flex gap-1.5 sm:gap-2 w-full">
                   <button
                     onClick={() => handleEdit(brand)}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-sm font-medium"
+                    className="flex-1 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-xs sm:text-sm font-medium"
                   >
-                    <Edit className="w-4 h-4" />
-                    Edit
+                    <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Edit</span>
                   </button>
                   <button
                     onClick={() => handleDelete(brand.id)}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition-colors text-sm font-medium"
+                    className="flex-1 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition-colors text-xs sm:text-sm font-medium"
                   >
-                    <Trash2 className="w-4 h-4" />
-                    Delete
+                    <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Delete</span>
                   </button>
                 </div>
               </div>
@@ -320,24 +321,24 @@ export default function CarBrandsPage() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-5 md:px-6 py-3 sm:py-4 flex justify-between items-center">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">
                 {editingBrand ? 'Edit Brand' : 'Add New Brand'}
               </h2>
               <button
                 onClick={handleCloseModal}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-6">
+            <form onSubmit={handleSubmit} className="p-4 sm:p-5 md:p-6 space-y-4 sm:space-y-5 md:space-y-6">
               {/* Brand Name */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                   Brand Name <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -345,22 +346,22 @@ export default function CarBrandsPage() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="e.g., Maruti Suzuki"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   required
                 />
               </div>
 
               {/* Logo Upload */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                   Brand Logo <span className="text-red-500">*</span>
                 </label>
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {/* File Upload */}
                   <div>
-                    <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-brand-primary transition-colors">
-                      <Upload className="w-5 h-5 text-gray-400" />
-                      <span className="text-sm text-gray-600">
+                    <label className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-brand-primary transition-colors">
+                      <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+                      <span className="text-xs sm:text-sm text-gray-600 truncate">
                         {logoFile ? logoFile.name : 'Click to upload logo'}
                       </span>
                       <input
@@ -370,24 +371,24 @@ export default function CarBrandsPage() {
                         className="hidden"
                       />
                     </label>
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-[10px] sm:text-xs text-gray-500 mt-1.5 sm:mt-2">
                       Supported formats: JPEG, PNG, WEBP, SVG (Max 5MB)
                     </p>
                   </div>
 
                   {/* Logo Preview */}
                   {(logoPreview || formData.logo_url) && (
-                    <div className="w-32 h-32 bg-gray-50 rounded-lg flex items-center justify-center border-2 border-gray-200 mx-auto">
+                    <div className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 bg-gray-50 rounded-lg flex items-center justify-center border-2 border-gray-200 mx-auto">
                       <img
                         src={logoPreview || formData.logo_url}
                         alt="Logo preview"
-                        className="w-full h-full object-contain p-2"
+                        className="w-full h-full object-contain p-1.5 sm:p-2"
                       />
                     </div>
                   )}
 
                   {/* Or URL Input */}
-                  <div className="text-center text-sm text-gray-500">OR</div>
+                  <div className="text-center text-xs sm:text-sm text-gray-500">OR</div>
                   <input
                     type="url"
                     value={formData.logo_url}
@@ -396,64 +397,65 @@ export default function CarBrandsPage() {
                       if (e.target.value) setLogoPreview(e.target.value);
                     }}
                     placeholder="Enter logo URL"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                    className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
               </div>
 
               {/* Display Order */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                   Display Order
                 </label>
                 <input
                   type="number"
                   value={formData.display_order}
                   onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   min="0"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
                   Lower numbers appear first in the list
                 </p>
               </div>
 
               {/* Active Status */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <input
                   type="checkbox"
                   id="is_active"
                   checked={formData.is_active}
                   onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  className="w-5 h-5 text-brand-primary rounded focus:ring-brand-primary"
+                  className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary rounded focus:ring-brand-primary"
                 />
-                <label htmlFor="is_active" className="text-sm font-semibold text-gray-700">
+                <label htmlFor="is_active" className="text-xs sm:text-sm font-semibold text-gray-700">
                   Active (Show on home page)
                 </label>
               </div>
 
               {/* Submit Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-gray-200">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                  className="flex-1 px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-xs sm:text-sm font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploading}
-                  className="flex-1 px-4 py-2 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="flex-1 px-3 sm:px-4 py-1.5 sm:py-2 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg transition-colors text-xs sm:text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 sm:gap-2"
                 >
                   {uploading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Uploading...
+                      <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
+                      <span className="hidden sm:inline">Uploading...</span>
+                      <span className="sm:hidden">Upload...</span>
                     </>
                   ) : (
                     <>
-                      <Check className="w-4 h-4" />
+                      <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       {editingBrand ? 'Update Brand' : 'Add Brand'}
                     </>
                   )}

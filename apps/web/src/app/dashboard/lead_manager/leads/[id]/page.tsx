@@ -232,8 +232,8 @@ export default function LeadReviewPage() {
   if (loading) {
     return (
       <DashboardLayout role="lead_manager">
-        <div className="flex items-center justify-center h-screen">
-          <Loader2 className="w-12 h-12 animate-spin text-brand-primary" />
+        <div className="flex items-center justify-center h-48 sm:h-64 md:h-screen">
+          <Loader2 className="w-10 w-10 sm:w-11 sm:w-11 md:w-12 md:w-12 animate-spin text-brand-primary" />
         </div>
       </DashboardLayout>
     );
@@ -242,12 +242,12 @@ export default function LeadReviewPage() {
   if (!lead) {
     return (
       <DashboardLayout role="lead_manager">
-        <div className="p-6 text-center">
-          <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Lead Not Found</h2>
+        <div className="p-4 sm:p-5 md:p-6 text-center">
+          <AlertCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1.5 sm:mb-2">Lead Not Found</h2>
           <button
             onClick={() => router.push('/dashboard/lead_manager')}
-            className="btn-primary mt-4"
+            className="btn-primary mt-3 sm:mt-4 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
           >
             Back to Dashboard
           </button>
@@ -262,30 +262,31 @@ export default function LeadReviewPage() {
 
   return (
     <DashboardLayout role="lead_manager">
-      <div className="p-6 max-w-7xl mx-auto">
+      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Lead Review</h1>
-            <p className="text-gray-600 mt-1">Lead #{lead.lead_number}</p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Lead Review</h1>
+            <p className="text-gray-600 text-xs sm:text-sm mt-0.5 sm:mt-1">Lead #{lead.lead_number}</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             {canValidate && (
               <>
                 <button
                   onClick={() => setShowValidation(true)}
-                  className="btn-secondary flex items-center gap-2"
+                  className="btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
-                  <XCircle className="w-5 h-5" />
-                  Mark Incomplete
+                  <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="hidden sm:inline">Mark Incomplete</span>
+                  <span className="sm:hidden">Incomplete</span>
                 </button>
                 <button
                   onClick={() => handleValidate(true)}
                   disabled={actionLoading}
-                  className="btn-primary flex items-center gap-2"
+                  className="btn-primary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
-                  <CheckCircle className="w-5 h-5" />
-                  {actionLoading ? 'Validating...' : 'Validate Lead'}
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                  {actionLoading ? 'Validating...' : <><span className="hidden sm:inline">Validate Lead</span><span className="sm:hidden">Validate</span></>}
                 </button>
               </>
             )}
@@ -295,34 +296,35 @@ export default function LeadReviewPage() {
                   setShowWorkshopAssignment(true);
                   fetchWorkshops();
                 }}
-                className="btn-primary flex items-center gap-2"
+                className="btn-primary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
               >
-                <Building className="w-5 h-5" />
-                {isReassignment ? 'Change Workshop' : 'Assign Workshop'}
+                <Building className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">{isReassignment ? 'Change Workshop' : 'Assign Workshop'}</span>
+                <span className="sm:hidden">{isReassignment ? 'Change' : 'Assign'}</span>
               </button>
             )}
           </div>
         </div>
 
         {/* Status Banner */}
-        <div className={`p-4 rounded-lg mb-6 ${
+        <div className={`p-3 sm:p-4 rounded-lg mb-4 sm:mb-5 md:mb-6 ${
           lead.status === 'NEW' ? 'bg-blue-50 border border-blue-200' :
           lead.status === 'INCOMPLETE' ? 'bg-yellow-50 border border-yellow-200' :
           lead.status === 'VALIDATED' ? 'bg-green-50 border border-green-200' :
           'bg-gray-50 border border-gray-200'
         }`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">
-                Status: <span className="text-lg">{lead.status}</span>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm sm:text-base">
+                Status: <span className="text-base sm:text-lg">{lead.status}</span>
               </p>
               {lead.validated_at && (
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                   Validated by {lead.validated_by?.full_name} on {new Date(lead.validated_at).toLocaleString()}
                 </p>
               )}
             </div>
-            <span className={`px-4 py-2 rounded-full font-semibold ${
+            <span className={`px-3 sm:px-4 py-1 sm:py-2 rounded-full font-semibold text-xs sm:text-sm flex-shrink-0 ${
               lead.priority === 'CRITICAL' ? 'bg-red-600 text-white' :
               lead.priority === 'URGENT' ? 'bg-red-100 text-red-800' :
               lead.priority === 'HIGH' ? 'bg-orange-100 text-orange-800' :
@@ -333,90 +335,90 @@ export default function LeadReviewPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-5 md:space-y-6">
             {/* Customer Information */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Customer Information</h2>
-              <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">Customer Information</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="text-sm text-gray-600">Name</label>
-                  <p className="font-medium">{lead.customer_name}</p>
+                  <label className="text-xs sm:text-sm text-gray-600">Name</label>
+                  <p className="font-medium text-sm sm:text-base">{lead.customer_name}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">Phone</label>
-                  <p className="font-medium flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                    {lead.customer_phone}
+                  <label className="text-xs sm:text-sm text-gray-600">Phone</label>
+                  <p className="font-medium text-sm sm:text-base flex items-center gap-1.5 sm:gap-2">
+                    <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
+                    <span className="truncate">{lead.customer_phone}</span>
                   </p>
                 </div>
                 {lead.customer_email && (
-                  <div className="col-span-2">
-                    <label className="text-sm text-gray-600">Email</label>
-                    <p className="font-medium flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-gray-400" />
-                      {lead.customer_email}
+                  <div className="col-span-1 sm:col-span-2">
+                    <label className="text-xs sm:text-sm text-gray-600">Email</label>
+                    <p className="font-medium text-sm sm:text-base flex items-center gap-1.5 sm:gap-2">
+                      <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
+                      <span className="truncate">{lead.customer_email}</span>
                     </p>
                   </div>
                 )}
-                <div className="col-span-2">
-                  <label className="text-sm text-gray-600">Address</label>
-                  <p className="font-medium flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-gray-400" />
-                    {lead.address || lead.customer_address}, {lead.city?.name || lead.city}, {lead.pincode}
+                <div className="col-span-1 sm:col-span-2">
+                  <label className="text-xs sm:text-sm text-gray-600">Address</label>
+                  <p className="font-medium text-sm sm:text-base flex items-start gap-1.5 sm:gap-2">
+                    <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <span>{lead.address || lead.customer_address}, {lead.city?.name || lead.city}, {lead.pincode}</span>
                   </p>
                 </div>
               </div>
             </div>
 
             {/* Vehicle Information */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Vehicle Information</h2>
-              <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">Vehicle Information</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="text-sm text-gray-600">Vehicle Number</label>
-                  <p className="font-medium text-lg">{lead.vehicle_number}</p>
+                  <label className="text-xs sm:text-sm text-gray-600">Vehicle Number</label>
+                  <p className="font-medium text-base sm:text-lg">{lead.vehicle_number}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">Make & Model</label>
-                  <p className="font-medium">
+                  <label className="text-xs sm:text-sm text-gray-600">Make & Model</label>
+                  <p className="font-medium text-sm sm:text-base">
                     {lead.model?.make || lead.vehicle_make} {lead.model?.model_name || lead.vehicle_model}
                   </p>
                 </div>
                 {lead.vehicle_fuel_type && (
                   <div>
-                    <label className="text-sm text-gray-600">Fuel Type</label>
-                    <p className="font-medium">{lead.vehicle_fuel_type}</p>
+                    <label className="text-xs sm:text-sm text-gray-600">Fuel Type</label>
+                    <p className="font-medium text-sm sm:text-base">{lead.vehicle_fuel_type}</p>
                   </div>
                 )}
                 {lead.vehicle_odometer && (
                   <div>
-                    <label className="text-sm text-gray-600">Odometer</label>
-                    <p className="font-medium">{lead.vehicle_odometer} km</p>
+                    <label className="text-xs sm:text-sm text-gray-600">Odometer</label>
+                    <p className="font-medium text-sm sm:text-base">{lead.vehicle_odometer} km</p>
                   </div>
                 )}
               </div>
             </div>
 
             {/* Service Details */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Service Details</h2>
-              <div className="space-y-3">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">Service Details</h2>
+              <div className="space-y-2 sm:space-y-3">
                 <div>
-                  <label className="text-sm text-gray-600">Service Type</label>
-                  <p className="font-medium">{lead.service_type_names || lead.service_type || 'Not specified'}</p>
+                  <label className="text-xs sm:text-sm text-gray-600">Service Type</label>
+                  <p className="font-medium text-sm sm:text-base">{lead.service_type_names || lead.service_type || 'Not specified'}</p>
                 </div>
                 
                 {/* Service Addons / Sub-services */}
                 {subserviceNames.length > 0 && (
                   <div>
-                    <label className="text-sm text-gray-600 mb-2 block">Add-ons / Sub-services:</label>
-                    <div className="flex flex-wrap gap-2">
+                    <label className="text-xs sm:text-sm text-gray-600 mb-1.5 sm:mb-2 block">Add-ons / Sub-services:</label>
+                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
                       {subserviceNames.map((name, idx) => (
                         <span 
                           key={idx}
-                          className="inline-block px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium"
+                          className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 bg-green-100 text-green-800 rounded-full text-xs sm:text-sm font-medium"
                         >
                           {name}
                         </span>
@@ -427,20 +429,20 @@ export default function LeadReviewPage() {
                 
                 {lead.description && (
                   <div>
-                    <label className="text-sm text-gray-600">Description</label>
-                    <p className="font-medium">{lead.description}</p>
+                    <label className="text-xs sm:text-sm text-gray-600">Description</label>
+                    <p className="font-medium text-sm sm:text-base">{lead.description}</p>
                   </div>
                 )}
                 {lead.problem_description && (
                   <div>
-                    <label className="text-sm text-gray-600">Problem Description</label>
-                    <p className="font-medium">{lead.problem_description}</p>
+                    <label className="text-xs sm:text-sm text-gray-600">Problem Description</label>
+                    <p className="font-medium text-sm sm:text-base">{lead.problem_description}</p>
                   </div>
                 )}
                 {lead.estimated_amount && (
                   <div>
-                    <label className="text-sm text-gray-600">Estimated Amount</label>
-                    <p className="font-medium text-lg text-green-600">₹{lead.estimated_amount}</p>
+                    <label className="text-xs sm:text-sm text-gray-600">Estimated Amount</label>
+                    <p className="font-medium text-base sm:text-lg text-green-600">₹{lead.estimated_amount}</p>
                   </div>
                 )}
               </div>
@@ -448,47 +450,47 @@ export default function LeadReviewPage() {
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-5 md:space-y-6">
             {/* Timeline */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Timeline</h3>
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="bg-blue-100 p-2 rounded-full">
-                    <Calendar className="w-4 h-4 text-blue-600" />
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4">Timeline</h3>
+              <div className="space-y-3 sm:space-y-4">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <div className="bg-blue-100 p-1.5 sm:p-2 rounded-full flex-shrink-0">
+                    <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600" />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">Created</p>
-                    <p className="text-xs text-gray-600">{new Date(lead.created_at).toLocaleString()}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium">Created</p>
+                    <p className="text-[10px] sm:text-xs text-gray-600">{new Date(lead.created_at).toLocaleString()}</p>
                     {lead.created_by && (
-                      <p className="text-xs text-gray-500">by {lead.created_by.full_name}</p>
+                      <p className="text-[10px] sm:text-xs text-gray-500">by {lead.created_by.full_name}</p>
                     )}
                   </div>
                 </div>
                 
                 {lead.validated_at && (
-                  <div className="flex items-start gap-3">
-                    <div className="bg-green-100 p-2 rounded-full">
-                      <CheckCircle className="w-4 h-4 text-green-600" />
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <div className="bg-green-100 p-1.5 sm:p-2 rounded-full flex-shrink-0">
+                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600" />
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">Validated</p>
-                      <p className="text-xs text-gray-600">{new Date(lead.validated_at).toLocaleString()}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium">Validated</p>
+                      <p className="text-[10px] sm:text-xs text-gray-600">{new Date(lead.validated_at).toLocaleString()}</p>
                       {lead.validated_by && (
-                        <p className="text-xs text-gray-500">by {lead.validated_by.full_name}</p>
+                        <p className="text-[10px] sm:text-xs text-gray-500">by {lead.validated_by.full_name}</p>
                       )}
                     </div>
                   </div>
                 )}
                 
                 {lead.assigned_to_workshop_at && (
-                  <div className="flex items-start gap-3">
-                    <div className="bg-purple-100 p-2 rounded-full">
-                      <Building className="w-4 h-4 text-purple-600" />
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <div className="bg-purple-100 p-1.5 sm:p-2 rounded-full flex-shrink-0">
+                      <Building className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600" />
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">Workshop Assigned</p>
-                      <p className="text-xs text-gray-600">{new Date(lead.assigned_to_workshop_at).toLocaleString()}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium">Workshop Assigned</p>
+                      <p className="text-[10px] sm:text-xs text-gray-600">{new Date(lead.assigned_to_workshop_at).toLocaleString()}</p>
                     </div>
                   </div>
                 )}
@@ -497,18 +499,18 @@ export default function LeadReviewPage() {
 
             {/* Notes */}
             {(lead.validation_notes || lead.internal_notes) && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Notes</h3>
+              <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4">Notes</h3>
                 {lead.validation_notes && (
-                  <div className="mb-3">
-                    <p className="text-sm font-medium text-gray-600">Validation Notes:</p>
-                    <p className="text-sm text-gray-800 mt-1">{lead.validation_notes}</p>
+                  <div className="mb-2 sm:mb-3">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600">Validation Notes:</p>
+                    <p className="text-xs sm:text-sm text-gray-800 mt-0.5 sm:mt-1">{lead.validation_notes}</p>
                   </div>
                 )}
                 {lead.internal_notes && (
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Internal Notes:</p>
-                    <p className="text-sm text-gray-800 mt-1">{lead.internal_notes}</p>
+                    <p className="text-xs sm:text-sm font-medium text-gray-600">Internal Notes:</p>
+                    <p className="text-xs sm:text-sm text-gray-800 mt-0.5 sm:mt-1">{lead.internal_notes}</p>
                   </div>
                 )}
               </div>
@@ -518,26 +520,26 @@ export default function LeadReviewPage() {
 
         {/* Validation Modal */}
         {showValidation && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Mark Lead as Incomplete</h3>
-              <p className="text-gray-600 mb-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-4 sm:p-5 md:p-6">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">Mark Lead as Incomplete</h3>
+              <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">
                 Please provide details about what information is missing or incorrect:
               </p>
               <textarea
                 value={validationNotes}
                 onChange={(e) => setValidationNotes(e.target.value)}
                 rows={4}
-                className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                className="w-full border border-gray-300 rounded-lg p-2 sm:p-3 text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                 placeholder="e.g., Vehicle model incorrect, missing pickup address, etc."
               />
-              <div className="flex gap-3 mt-6">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6">
                 <button
                   onClick={() => {
                     setShowValidation(false);
                     setValidationNotes('');
                   }}
-                  className="flex-1 btn-secondary"
+                  className="flex-1 btn-secondary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   disabled={actionLoading}
                 >
                   Cancel
@@ -545,7 +547,7 @@ export default function LeadReviewPage() {
                 <button
                   onClick={() => handleValidate(false)}
                   disabled={actionLoading || !validationNotes.trim()}
-                  className="flex-1 btn-primary"
+                  className="flex-1 btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
                   {actionLoading ? 'Processing...' : 'Mark Incomplete'}
                 </button>
@@ -556,23 +558,23 @@ export default function LeadReviewPage() {
 
         {/* Workshop Assignment Modal */}
         {showWorkshopAssignment && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 my-8">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto">
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-4 sm:p-5 md:p-6 my-4 sm:my-6 md:my-8">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">
                 {isReassignment ? 'Change Workshop Assignment' : 'Assign Workshop'}
               </h3>
               
               {/* Reassignment Notice */}
               {isReassignment && lead.workshop && (
-                <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-yellow-900">Currently Assigned To</p>
-                      <p className="text-sm text-yellow-800 mt-1">
+                <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm font-medium text-yellow-900">Currently Assigned To</p>
+                      <p className="text-xs sm:text-sm text-yellow-800 mt-0.5 sm:mt-1">
                         {lead.workshop.name} - {lead.workshop.city}
                       </p>
-                      <p className="text-xs text-yellow-700 mt-2">
+                      <p className="text-[10px] sm:text-xs text-yellow-700 mt-1 sm:mt-2">
                         ⚠️ Workshop has not accepted yet. You can reassign to another workshop.
                       </p>
                     </div>
@@ -581,12 +583,12 @@ export default function LeadReviewPage() {
               )}
               
               {/* Priority Selection */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Priority Level</label>
+              <div className="mb-3 sm:mb-4">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Priority Level</label>
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-brand-primary"
+                  className="w-full border border-gray-300 rounded-lg p-2 text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary"
                 >
                   <option value="LOW">Low</option>
                   <option value="MEDIUM">Medium</option>
@@ -597,44 +599,44 @@ export default function LeadReviewPage() {
               </div>
 
               {/* Workshop Search */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Search Workshops</label>
+              <div className="mb-3 sm:mb-4">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Search Workshops</label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                   <input
                     type="text"
                     value={workshopSearch}
                     onChange={(e) => setWorkshopSearch(e.target.value)}
                     placeholder="Search by name or city..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
+                    className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
               </div>
 
               {/* Workshop List */}
-              <div className="mb-4 max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
+              <div className="mb-3 sm:mb-4 max-h-60 sm:max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
                 {filteredWorkshops.length === 0 ? (
-                  <p className="p-4 text-center text-gray-500">No workshops found</p>
+                  <p className="p-3 sm:p-4 text-center text-gray-500 text-xs sm:text-sm">No workshops found</p>
                 ) : (
                   filteredWorkshops.map((workshop) => (
                     <div
                       key={workshop.id}
                       onClick={() => setSelectedWorkshop(workshop.id)}
-                      className={`p-4 cursor-pointer hover:bg-gray-50 transition border-b border-gray-100 ${
+                      className={`p-3 sm:p-4 cursor-pointer hover:bg-gray-50 transition border-b border-gray-100 ${
                         selectedWorkshop === workshop.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900">{workshop.name}</h4>
-                          <p className="text-sm text-gray-600">{workshop.city}, {workshop.state}</p>
-                          <p className="text-xs text-gray-500 mt-1">{workshop.contact_person} • {workshop.phone}</p>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-gray-900 text-sm sm:text-base truncate">{workshop.name}</h4>
+                          <p className="text-xs sm:text-sm text-gray-600 truncate">{workshop.city}, {workshop.state}</p>
+                          <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 truncate">{workshop.contact_person} • {workshop.phone}</p>
                         </div>
-                        <div className="text-right">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium">Rating: {workshop.rating || 'N/A'}</span>
+                        <div className="text-left sm:text-right flex-shrink-0">
+                          <div className="flex items-center gap-1.5 sm:gap-2">
+                            <span className="text-[10px] sm:text-xs font-medium">Rating: {workshop.rating || 'N/A'}</span>
                           </div>
-                          <div className={`text-xs mt-1 px-2 py-1 rounded ${
+                          <div className={`text-[10px] sm:text-xs mt-0.5 sm:mt-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded ${
                             workshop.capacity_status === 'AVAILABLE' ? 'bg-green-100 text-green-800' :
                             workshop.capacity_status === 'BUSY' ? 'bg-yellow-100 text-yellow-800' :
                             'bg-red-100 text-red-800'
@@ -649,26 +651,26 @@ export default function LeadReviewPage() {
               </div>
 
               {/* Assignment Notes */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Assignment Notes (Optional)</label>
+              <div className="mb-3 sm:mb-4">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Assignment Notes (Optional)</label>
                 <textarea
                   value={assignmentNotes}
                   onChange={(e) => setAssignmentNotes(e.target.value)}
                   rows={3}
-                  className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-brand-primary"
+                  className="w-full border border-gray-300 rounded-lg p-2 sm:p-3 text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary"
                   placeholder="Any special instructions or notes for the workshop..."
                 />
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button
                   onClick={() => {
                     setShowWorkshopAssignment(false);
                     setSelectedWorkshop('');
                     setAssignmentNotes('');
                   }}
-                  className="flex-1 btn-secondary"
+                  className="flex-1 btn-secondary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                   disabled={actionLoading}
                 >
                   Cancel
@@ -676,17 +678,18 @@ export default function LeadReviewPage() {
                 <button
                   onClick={handleAssignWorkshop}
                   disabled={actionLoading || !selectedWorkshop}
-                  className="flex-1 btn-primary flex items-center justify-center gap-2"
+                  className="flex-1 btn-primary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
                   {actionLoading ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
                       Assigning...
                     </>
                   ) : (
                     <>
-                      Assign Workshop
-                      <ArrowRight className="w-5 h-5" />
+                      <span className="hidden sm:inline">Assign Workshop</span>
+                      <span className="sm:hidden">Assign</span>
+                      <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
                     </>
                   )}
                 </button>

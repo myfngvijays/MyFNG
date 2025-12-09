@@ -94,8 +94,8 @@ export default function SystemSettingsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading settings...</p>
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-blue-600 mx-auto mb-3 sm:mb-4"></div>
+          <p className="text-gray-600 text-xs sm:text-sm md:text-base">Loading settings...</p>
         </div>
       </div>
     );
@@ -105,65 +105,66 @@ export default function SystemSettingsPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <Settings className="w-6 h-6" />
-                System Settings
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-1.5 sm:gap-2">
+                <Settings className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+                <span className="truncate">System Settings</span>
               </h1>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                 Configure global system parameters and rules
               </p>
             </div>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="btn btn-primary flex items-center gap-2"
+              className="btn btn-primary flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm w-full sm:w-auto justify-center"
             >
-              <Save className="w-4 h-4" />
-              {saving ? 'Saving...' : 'Save All Changes'}
+              <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">{saving ? 'Saving...' : 'Save All Changes'}</span>
+              <span className="sm:hidden">{saving ? 'Saving...' : 'Save'}</span>
             </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
+      <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-5 md:py-6 space-y-4 sm:space-y-5 md:space-y-6">
         {/* System Status */}
         <div className="bg-white rounded-lg shadow">
-          <div className="border-b px-6 py-4">
-            <h2 className="font-semibold text-lg">🚀 System Status</h2>
+          <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">
+            <h2 className="font-semibold text-base sm:text-lg">🚀 System Status</h2>
           </div>
-          <div className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium">Maintenance Mode</h3>
-                <p className="text-sm text-gray-600">System accessible only to Super Admins</p>
+          <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-medium text-sm sm:text-base">Maintenance Mode</h3>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">System accessible only to Super Admins</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
                   checked={settings.maintenance_mode?.value || false}
                   onChange={() => handleToggle('maintenance_mode')}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium">Auto Lead Assignment</h3>
-                <p className="text-sm text-gray-600">Automatically assign leads to workshops</p>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-medium text-sm sm:text-base">Auto Lead Assignment</h3>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Automatically assign leads to workshops</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
                   checked={settings.auto_lead_assignment?.value || false}
                   onChange={() => handleToggle('auto_lead_assignment')}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
           </div>
@@ -171,46 +172,46 @@ export default function SystemSettingsPage() {
 
         {/* Notifications */}
         <div className="bg-white rounded-lg shadow">
-          <div className="border-b px-6 py-4">
-            <h2 className="font-semibold text-lg">🔔 Notifications</h2>
+          <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">
+            <h2 className="font-semibold text-base sm:text-lg">🔔 Notifications</h2>
           </div>
-          <div className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium">SMS Notifications</h3>
-              <label className="relative inline-flex items-center cursor-pointer">
+          <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <h3 className="font-medium text-sm sm:text-base">SMS Notifications</h3>
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
                   checked={settings.sms_notifications_enabled?.value || false}
                   onChange={() => handleToggle('sms_notifications_enabled')}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
 
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium">Email Notifications</h3>
-              <label className="relative inline-flex items-center cursor-pointer">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <h3 className="font-medium text-sm sm:text-base">Email Notifications</h3>
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
                   checked={settings.email_notifications_enabled?.value || false}
                   onChange={() => handleToggle('email_notifications_enabled')}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
 
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium">Push Notifications</h3>
-              <label className="relative inline-flex items-center cursor-pointer">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <h3 className="font-medium text-sm sm:text-base">Push Notifications</h3>
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
                   checked={settings.push_notifications_enabled?.value || false}
                   onChange={() => handleToggle('push_notifications_enabled')}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
           </div>
@@ -218,56 +219,56 @@ export default function SystemSettingsPage() {
 
         {/* SLA Rules */}
         <div className="bg-white rounded-lg shadow">
-          <div className="border-b px-6 py-4">
-            <h2 className="font-semibold text-lg">⏱️ SLA Rules (minutes)</h2>
+          <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">
+            <h2 className="font-semibold text-base sm:text-lg">⏱️ SLA Rules (minutes)</h2>
           </div>
-          <div className="p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
                   Lead Assignment to Manager
                 </label>
                 <input
                   type="number"
                   value={settings.sla_lead_assignment_minutes?.value || '15'}
                   onChange={(e) => handleChange('sla_lead_assignment_minutes', e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
                   Workshop Acceptance
                 </label>
                 <input
                   type="number"
                   value={settings.sla_workshop_acceptance_minutes?.value || '30'}
                   onChange={(e) => handleChange('sla_workshop_acceptance_minutes', e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
                   Pickup Boy Arrival
                 </label>
                 <input
                   type="number"
                   value={settings.sla_pickup_arrival_minutes?.value || '60'}
                   onChange={(e) => handleChange('sla_pickup_arrival_minutes', e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
                   Service Completion
                 </label>
                 <input
                   type="number"
                   value={settings.sla_service_completion_minutes?.value || '240'}
                   onChange={(e) => handleChange('sla_service_completion_minutes', e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -276,39 +277,39 @@ export default function SystemSettingsPage() {
 
         {/* Security */}
         <div className="bg-white rounded-lg shadow">
-          <div className="border-b px-6 py-4">
-            <h2 className="font-semibold text-lg">🔐 Security</h2>
+          <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">
+            <h2 className="font-semibold text-base sm:text-lg">🔐 Security</h2>
           </div>
-          <div className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium">Two-Factor Authentication</h3>
-                <p className="text-sm text-gray-600">Require 2FA for all admin accounts</p>
+          <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-medium text-sm sm:text-base">Two-Factor Authentication</h3>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Require 2FA for all admin accounts</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
                   checked={settings.two_factor_auth_required?.value || false}
                   onChange={() => handleToggle('two_factor_auth_required')}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium">API Access</h3>
-                <p className="text-sm text-gray-600">Enable external API access</p>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-medium text-sm sm:text-base">API Access</h3>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Enable external API access</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
                   checked={settings.api_access_enabled?.value || false}
                   onChange={() => handleToggle('api_access_enabled')}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
           </div>
@@ -316,23 +317,23 @@ export default function SystemSettingsPage() {
 
         {/* Data & Backup */}
         <div className="bg-white rounded-lg shadow">
-          <div className="border-b px-6 py-4">
-            <h2 className="font-semibold text-lg">💾 Data & Backup</h2>
+          <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">
+            <h2 className="font-semibold text-base sm:text-lg">💾 Data & Backup</h2>
           </div>
-          <div className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium">Automatic Backup</h3>
-                <p className="text-sm text-gray-600">Daily backup at 2:00 AM</p>
+          <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-medium text-sm sm:text-base">Automatic Backup</h3>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Daily backup at 2:00 AM</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
                   checked={settings.auto_backup_enabled?.value || false}
                   onChange={() => handleToggle('auto_backup_enabled')}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
           </div>
@@ -343,10 +344,11 @@ export default function SystemSettingsPage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="btn btn-primary flex items-center gap-2 px-8"
+            className="btn btn-primary flex items-center gap-1.5 sm:gap-2 px-4 sm:px-6 md:px-8 py-1.5 sm:py-2 text-xs sm:text-sm"
           >
-            <Save className="w-5 h-5" />
-            {saving ? 'Saving Changes...' : 'Save All Changes'}
+            <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5" />
+            <span className="hidden sm:inline">{saving ? 'Saving Changes...' : 'Save All Changes'}</span>
+            <span className="sm:hidden">{saving ? 'Saving...' : 'Save'}</span>
           </button>
         </div>
       </div>

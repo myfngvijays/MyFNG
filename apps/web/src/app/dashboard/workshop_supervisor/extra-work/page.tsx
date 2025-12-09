@@ -247,8 +247,8 @@ export default function ExtraWorkApprovalsPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_supervisor">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -256,43 +256,43 @@ export default function ExtraWorkApprovalsPage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
-          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">💰 Extra Work Approvals</h1>
-          <p className="text-white font-medium mt-1">Review and approve mechanic's extra work requests</p>
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">💰 Extra Work Approvals</h1>
+          <p className="text-white font-medium text-sm sm:text-base mt-0.5 sm:mt-1">Review and approve mechanic's extra work requests</p>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100">
-            <div className="flex items-center gap-3">
-              <Clock className="w-10 h-10 text-yellow-600" />
-              <div>
-                <p className="text-sm text-gray-600">Pending Approval</p>
-                <p className="text-3xl font-bold text-gray-800">{requests.length}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Clock className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-yellow-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Pending Approval</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-800">{requests.length}</p>
               </div>
             </div>
           </div>
 
           <div className="card bg-gradient-to-br from-red-50 to-red-100">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-10 h-10 text-red-600" />
-              <div>
-                <p className="text-sm text-gray-600">Urgent Requests</p>
-                <p className="text-3xl font-bold text-gray-800">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <AlertTriangle className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-red-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Urgent Requests</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-800">
                   {requests.filter(r => r.is_urgent).length}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="card bg-gradient-to-br from-green-50 to-green-100">
-            <div className="flex items-center gap-3">
-              <DollarSign className="w-10 h-10 text-green-600" />
-              <div>
-                <p className="text-sm text-gray-600">Total Amount</p>
-                <p className="text-3xl font-bold text-gray-800">
+          <div className="card bg-gradient-to-br from-green-50 to-green-100 sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <DollarSign className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-green-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Total Amount</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-800">
                   ₹{requests.reduce((sum, r) => sum + r.amount, 0).toFixed(2)}
                 </p>
               </div>
@@ -302,13 +302,13 @@ export default function ExtraWorkApprovalsPage() {
 
         {/* Requests List */}
         {requests.length === 0 ? (
-          <div className="card text-center py-12">
-            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">All Caught Up!</h3>
-            <p className="text-gray-500">No pending extra work requests.</p>
+          <div className="card text-center py-8 sm:py-10 md:py-12">
+            <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-green-500 mx-auto mb-3 sm:mb-4" />
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">All Caught Up!</h3>
+            <p className="text-gray-500 text-sm sm:text-base">No pending extra work requests.</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {requests.map((request) => (
               <div 
                 key={request.id} 
@@ -316,75 +316,75 @@ export default function ExtraWorkApprovalsPage() {
                   request.is_urgent ? 'border-red-500 bg-red-50' : 'border-orange-500'
                 }`}
               >
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {/* Header */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="badge-blue text-lg">{request.lead_number}</span>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <span className="badge-blue text-sm sm:text-base md:text-lg">{request.lead_number}</span>
                       <span className={getCategoryBadge(request.category)}>
                         {request.category.replace(/_/g, ' ')}
                       </span>
                       {request.is_urgent && (
-                        <span className="badge-red flex items-center gap-1">
-                          <AlertTriangle className="w-4 h-4" />
+                        <span className="badge-red flex items-center gap-1 text-[10px] sm:text-xs">
+                          <AlertTriangle className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />
                           URGENT
                         </span>
                       )}
                     </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-orange-600">₹{request.amount.toFixed(2)}</p>
-                      <p className="text-xs text-gray-500">
+                    <div className="text-left sm:text-right flex-shrink-0">
+                      <p className="text-lg sm:text-xl md:text-2xl font-bold text-orange-600">₹{request.amount.toFixed(2)}</p>
+                      <p className="text-[10px] sm:text-xs text-gray-500">
                         {new Date(request.created_at).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
 
                   {/* Details Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-gray-500" />
-                        <span className="font-semibold">{request.customer_name}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                    <div className="space-y-1.5 sm:space-y-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                        <span className="font-semibold text-sm sm:text-base truncate">{request.customer_name}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Car className="w-4 h-4 text-gray-500" />
-                        <span>{request.vehicle_number}</span>
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <Car className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                        <span className="text-xs sm:text-sm truncate">{request.vehicle_number}</span>
                       </div>
                     </div>
 
                     <div>
-                      <p className="text-sm text-gray-600">Requested by:</p>
-                      <p className="font-semibold">{request.mechanic_name}</p>
+                      <p className="text-xs sm:text-sm text-gray-600">Requested by:</p>
+                      <p className="font-semibold text-sm sm:text-base truncate">{request.mechanic_name}</p>
                     </div>
                   </div>
 
                   {/* Description & Reason */}
-                  <div className="space-y-3">
-                    <div className="bg-white p-3 rounded border">
-                      <p className="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-                        <FileText className="w-4 h-4" />
+                  <div className="space-y-2 sm:space-y-3">
+                    <div className="bg-white p-2.5 sm:p-3 rounded border">
+                      <p className="text-xs sm:text-sm font-medium text-gray-700 mb-0.5 sm:mb-1 flex items-center gap-1.5 sm:gap-2">
+                        <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                         Description:
                       </p>
-                      <p className="text-sm text-gray-600">{request.description}</p>
+                      <p className="text-xs sm:text-sm text-gray-600">{request.description}</p>
                     </div>
 
-                    <div className="bg-white p-3 rounded border">
-                      <p className="text-sm font-medium text-gray-700 mb-1">Reason:</p>
-                      <p className="text-sm text-gray-600">{request.reason}</p>
+                    <div className="bg-white p-2.5 sm:p-3 rounded border">
+                      <p className="text-xs sm:text-sm font-medium text-gray-700 mb-0.5 sm:mb-1">Reason:</p>
+                      <p className="text-xs sm:text-sm text-gray-600">{request.reason}</p>
                     </div>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 pt-2 border-t">
+                  <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t">
                     <button
                       onClick={() => {
                         setSelectedRequest(request);
                         setApprovedAmount(request.amount.toString());
                         setShowApproveModal(true);
                       }}
-                      className="btn-primary flex-1 flex items-center justify-center gap-2"
+                      className="btn-primary flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                     >
-                      <CheckCircle className="w-4 h-4" />
+                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       Approve
                     </button>
                     <button
@@ -392,9 +392,9 @@ export default function ExtraWorkApprovalsPage() {
                         setSelectedRequest(request);
                         setShowRejectModal(true);
                       }}
-                      className="btn-secondary bg-red-600 hover:bg-red-700 text-white flex-1 flex items-center justify-center gap-2"
+                      className="btn-secondary bg-red-600 hover:bg-red-700 text-white flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                     >
-                      <XCircle className="w-4 h-4" />
+                      <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       Reject
                     </button>
                   </div>
@@ -406,58 +406,58 @@ export default function ExtraWorkApprovalsPage() {
 
         {/* Approve Modal */}
         {showApproveModal && selectedRequest && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <h3 className="text-xl font-bold mb-4 text-green-600">Approve Extra Work</h3>
-              <p className="text-gray-700 mb-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-green-600">Approve Extra Work</h3>
+              <p className="text-sm sm:text-base text-gray-700 mb-3 sm:mb-4">
                 Lead: <strong>{selectedRequest.lead_number}</strong>
               </p>
 
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
                     Requested Amount
                   </label>
-                  <p className="text-2xl font-bold text-orange-600">₹{selectedRequest.amount.toFixed(2)}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-orange-600">₹{selectedRequest.amount.toFixed(2)}</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
                     Approved Amount (₹) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     value={approvedAmount}
                     onChange={(e) => setApprovedAmount(e.target.value)}
-                    className="input w-full"
+                    className="input w-full text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                     placeholder="0.00"
                     min="0"
                     step="0.01"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
                     You can modify the amount if needed
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
                     Approval Notes (Optional)
                   </label>
                   <textarea
                     value={approvalNotes}
                     onChange={(e) => setApprovalNotes(e.target.value)}
-                    className="input w-full"
+                    className="input w-full text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                     rows={3}
                     placeholder="Any notes or conditions..."
                   />
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 border-t">
                 <button
                   onClick={handleApprove}
                   disabled={processing}
-                  className="btn-primary bg-green-600 hover:bg-green-700 flex-1"
+                  className="btn-primary bg-green-600 hover:bg-green-700 flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
                   {processing ? 'Approving...' : 'Approve'}
                 </button>
@@ -469,7 +469,7 @@ export default function ExtraWorkApprovalsPage() {
                     setApprovedAmount('');
                   }}
                   disabled={processing}
-                  className="btn-secondary flex-1"
+                  className="btn-secondary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
                   Cancel
                 </button>
@@ -480,23 +480,23 @@ export default function ExtraWorkApprovalsPage() {
 
         {/* Reject Modal */}
         {showRejectModal && selectedRequest && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <h3 className="text-xl font-bold mb-4 text-red-600">Reject Extra Work</h3>
-              <p className="text-gray-700 mb-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-red-600">Reject Extra Work</h3>
+              <p className="text-sm sm:text-base text-gray-700 mb-3 sm:mb-4">
                 Lead: <strong>{selectedRequest.lead_number}</strong><br />
                 Amount: <strong>₹{selectedRequest.amount.toFixed(2)}</strong>
               </p>
 
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
                     Rejection Reason <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     value={rejectionReason}
                     onChange={(e) => setRejectionReason(e.target.value)}
-                    className="input w-full"
+                    className="input w-full text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                     rows={3}
                     placeholder="Explain why this request is being rejected..."
                     required
@@ -504,24 +504,24 @@ export default function ExtraWorkApprovalsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
                     Additional Notes (Optional)
                   </label>
                   <textarea
                     value={approvalNotes}
                     onChange={(e) => setApprovalNotes(e.target.value)}
-                    className="input w-full"
+                    className="input w-full text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                     rows={2}
                     placeholder="Suggestions or alternative approaches..."
                   />
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 border-t">
                 <button
                   onClick={handleReject}
                   disabled={processing || !rejectionReason}
-                  className="btn-secondary bg-red-600 hover:bg-red-700 text-white flex-1"
+                  className="btn-secondary bg-red-600 hover:bg-red-700 text-white flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
                   {processing ? 'Rejecting...' : 'Reject Request'}
                 </button>
@@ -533,7 +533,7 @@ export default function ExtraWorkApprovalsPage() {
                     setApprovalNotes('');
                   }}
                   disabled={processing}
-                  className="btn-secondary flex-1"
+                  className="btn-secondary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >
                   Cancel
                 </button>

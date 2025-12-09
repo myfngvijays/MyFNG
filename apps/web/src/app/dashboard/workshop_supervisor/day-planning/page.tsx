@@ -268,8 +268,8 @@ export default function DayPlanningPage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_supervisor">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
         </div>
       </DashboardLayout>
     );
@@ -281,21 +281,21 @@ export default function DayPlanningPage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-text-heading flex items-center gap-3">
-              <Calendar className="w-8 h-8" />
-              Start of Day Planning
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading flex items-center gap-2 sm:gap-3">
+              <Calendar className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 flex-shrink-0" />
+              <span>Start of Day Planning</span>
             </h1>
-            <p className="text-text-body mt-2">
+            <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">
               Plan and prioritize today's workload • {jobs.length} jobs to manage
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-600">Today</p>
-            <p className="text-lg font-semibold">{new Date().toLocaleDateString('en-IN', { 
+          <div className="text-left sm:text-right flex-shrink-0">
+            <p className="text-xs sm:text-sm text-gray-600">Today</p>
+            <p className="text-sm sm:text-base md:text-lg font-semibold">{new Date().toLocaleDateString('en-IN', { 
               weekday: 'long', 
               year: 'numeric', 
               month: 'long', 
@@ -305,85 +305,85 @@ export default function DayPlanningPage() {
         </div>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="card bg-red-50 border-red-200">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Urgent Jobs</p>
-                <p className="text-3xl font-bold text-red-600">{urgentJobs.length}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Urgent Jobs</p>
+                <p className="text-2xl sm:text-3xl font-bold text-red-600">{urgentJobs.length}</p>
               </div>
-              <AlertTriangle className="w-8 h-8 text-red-600" />
+              <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-red-600 flex-shrink-0" />
             </div>
           </div>
 
           <div className="card bg-yellow-50 border-yellow-200">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">VIP Customers</p>
-                <p className="text-3xl font-bold text-yellow-600">{vipJobs.length}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">VIP Customers</p>
+                <p className="text-2xl sm:text-3xl font-bold text-yellow-600">{vipJobs.length}</p>
               </div>
-              <TrendingUp className="w-8 h-8 text-yellow-600" />
+              <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-yellow-600 flex-shrink-0" />
             </div>
           </div>
 
           <div className="card bg-orange-50 border-orange-200">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Repeat Complaints</p>
-                <p className="text-3xl font-bold text-orange-600">{repeatJobs.length}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Repeat Complaints</p>
+                <p className="text-2xl sm:text-3xl font-bold text-orange-600">{repeatJobs.length}</p>
               </div>
-              <AlertTriangle className="w-8 h-8 text-orange-600" />
+              <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-600 flex-shrink-0" />
             </div>
           </div>
 
-          <div className="card bg-blue-50 border-blue-200">
+          <div className="card bg-blue-50 border-blue-200 sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Selected Jobs</p>
-                <p className="text-3xl font-bold text-blue-600">{selectedJobs.size}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600">Selected Jobs</p>
+                <p className="text-2xl sm:text-3xl font-bold text-blue-600">{selectedJobs.size}</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-blue-600" />
+              <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-blue-600 flex-shrink-0" />
             </div>
           </div>
         </div>
 
         {/* Mechanics Overview */}
         <div className="card">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Wrench className="w-5 h-5" />
+          <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+            <Wrench className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
             Available Mechanics ({mechanics.length})
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
             {mechanics.map((mechanic) => (
               <div 
                 key={mechanic.id}
-                className={`p-3 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md ${
+                className={`p-2.5 sm:p-3 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md ${
                   mechanic.activeJobs === 0 ? 'bg-green-50 border-green-300' :
                   mechanic.activeJobs <= 2 ? 'bg-yellow-50 border-yellow-300' :
                   'bg-red-50 border-red-300'
                 }`}
                 onClick={() => selectedJobs.size > 0 && assignJobsToMechanic(mechanic.id)}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                   {mechanic.profile_image ? (
                     <img 
                       src={mechanic.profile_image} 
                       alt={mechanic.full_name}
-                      className="w-10 h-10 rounded-full"
+                      className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full flex-shrink-0"
                     />
                   ) : (
-                    <div className="w-10 h-10 rounded-full bg-brand-primary flex items-center justify-center">
-                      <User className="w-5 h-5 text-white" />
+                    <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-brand-primary flex items-center justify-center flex-shrink-0">
+                      <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                     </div>
                   )}
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm">{mechanic.full_name}</p>
-                    <p className="text-xs text-gray-600">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-xs sm:text-sm truncate">{mechanic.full_name}</p>
+                    <p className="text-[10px] sm:text-xs text-gray-600">
                       {mechanic.activeJobs} active job{mechanic.activeJobs !== 1 ? 's' : ''}
                     </p>
                   </div>
                   {selectedJobs.size > 0 && (
-                    <button className="btn btn-primary btn-sm">
+                    <button className="btn btn-primary btn-sm text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 flex-shrink-0">
                       Assign {selectedJobs.size}
                     </button>
                   )}
@@ -395,14 +395,14 @@ export default function DayPlanningPage() {
 
         {/* Controls */}
         <div className="card">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <ArrowUpDown className="w-4 h-4" />
-              <span className="text-sm font-medium">Sort by:</span>
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 sm:gap-4">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <ArrowUpDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span className="text-xs sm:text-sm font-medium">Sort by:</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="input input-sm"
+                className="input input-sm text-xs sm:text-sm flex-1 sm:flex-initial"
               >
                 <option value="priority">Priority</option>
                 <option value="sla">SLA Urgency</option>
@@ -410,23 +410,23 @@ export default function DayPlanningPage() {
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4" />
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <Filter className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+              <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={showOnlyUnassigned}
                   onChange={(e) => setShowOnlyUnassigned(e.target.checked)}
                   className="checkbox"
                 />
-                <span className="text-sm">Show only unassigned</span>
+                <span className="text-xs sm:text-sm">Show only unassigned</span>
               </label>
             </div>
 
             {selectedJobs.size > 0 && (
               <button
                 onClick={() => setSelectedJobs(new Set())}
-                className="btn btn-outline btn-sm ml-auto"
+                className="btn btn-outline btn-sm text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 ml-auto sm:ml-0"
               >
                 Clear Selection
               </button>
@@ -435,7 +435,7 @@ export default function DayPlanningPage() {
         </div>
 
         {/* Jobs List */}
-        <div className="space-y-3">
+        <div className="space-y-2 sm:space-y-3">
           {jobs.map((job) => (
             <div 
               key={job.id}
@@ -443,49 +443,51 @@ export default function DayPlanningPage() {
                 selectedJobs.has(job.id) ? 'ring-2 ring-brand-primary' : ''
               }`}
             >
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-2 sm:gap-3 md:gap-4">
                 {/* Checkbox */}
                 <input
                   type="checkbox"
                   checked={selectedJobs.has(job.id)}
                   onChange={() => toggleJobSelection(job.id)}
-                  className="checkbox mt-1"
+                  className="checkbox mt-1 flex-shrink-0"
                 />
 
                 {/* Job Info */}
-                <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="flex-1 min-w-0 grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4">
                   {/* Column 1: Basic Info */}
-                  <div>
-                    <p className="font-semibold text-sm text-gray-600">#{job.lead_number}</p>
-                    <p className="font-bold">{job.customer_name}</p>
-                    <p className="text-sm text-gray-600">{job.vehicle_number}</p>
-                    {job.is_vip_customer && (
-                      <span className="inline-block mt-1 px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded">
-                        VIP
-                      </span>
-                    )}
-                    {job.is_repeat_complaint && (
-                      <span className="inline-block mt-1 ml-1 px-2 py-1 bg-orange-100 text-orange-700 text-xs font-semibold rounded">
-                        REPEAT
-                      </span>
-                    )}
+                  <div className="min-w-0">
+                    <p className="font-semibold text-xs sm:text-sm text-gray-600">#{job.lead_number}</p>
+                    <p className="font-bold text-sm sm:text-base truncate">{job.customer_name}</p>
+                    <p className="text-xs sm:text-sm text-gray-600 truncate">{job.vehicle_number}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {job.is_vip_customer && (
+                        <span className="inline-block px-1.5 sm:px-2 py-0.5 sm:py-1 bg-yellow-100 text-yellow-700 text-[10px] sm:text-xs font-semibold rounded">
+                          VIP
+                        </span>
+                      )}
+                      {job.is_repeat_complaint && (
+                        <span className="inline-block px-1.5 sm:px-2 py-0.5 sm:py-1 bg-orange-100 text-orange-700 text-[10px] sm:text-xs font-semibold rounded">
+                          REPEAT
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Column 2: Service */}
-                  <div>
-                    <p className="text-xs text-gray-600 mb-1">Service Type</p>
-                    <p className="font-semibold text-sm">{job.service_type}</p>
-                    <p className="text-xs text-gray-600 mt-2">Est. Duration</p>
-                    <p className="text-sm">{job.estimated_duration || 'N/A'} min</p>
+                  <div className="min-w-0">
+                    <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">Service Type</p>
+                    <p className="font-semibold text-xs sm:text-sm truncate">{job.service_type}</p>
+                    <p className="text-[10px] sm:text-xs text-gray-600 mt-1.5 sm:mt-2">Est. Duration</p>
+                    <p className="text-xs sm:text-sm">{job.estimated_duration || 'N/A'} min</p>
                   </div>
 
                   {/* Column 3: Priority & SLA */}
-                  <div>
-                    <p className="text-xs text-gray-600 mb-1">Priority</p>
+                  <div className="min-w-0">
+                    <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">Priority</p>
                     <select
                       value={job.priority}
                       onChange={(e) => updateJobPriority(job.id, e.target.value)}
-                      className={`input input-sm ${getPriorityColor(job.priority)}`}
+                      className={`input input-sm text-xs sm:text-sm w-full ${getPriorityColor(job.priority)}`}
                     >
                       <option value="URGENT">URGENT</option>
                       <option value="HIGH">HIGH</option>
@@ -494,9 +496,9 @@ export default function DayPlanningPage() {
                     </select>
                     
                     {job.sla_remaining_minutes !== null && (
-                      <div className="mt-2">
-                        <p className="text-xs text-gray-600">SLA Remaining</p>
-                        <p className={`text-sm font-semibold ${getSLAColor(job.sla_remaining_minutes)}`}>
+                      <div className="mt-1.5 sm:mt-2">
+                        <p className="text-[10px] sm:text-xs text-gray-600">SLA Remaining</p>
+                        <p className={`text-xs sm:text-sm font-semibold ${getSLAColor(job.sla_remaining_minutes)}`}>
                           {job.sla_remaining_minutes < 0 
                             ? `OVERDUE by ${Math.abs(job.sla_remaining_minutes)} min` 
                             : `${Math.floor(job.sla_remaining_minutes / 60)}h ${job.sla_remaining_minutes % 60}m`
@@ -507,21 +509,21 @@ export default function DayPlanningPage() {
                   </div>
 
                   {/* Column 4: Assignment */}
-                  <div>
-                    <p className="text-xs text-gray-600 mb-1">Assigned Mechanic</p>
+                  <div className="min-w-0">
+                    <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">Assigned Mechanic</p>
                     {job.assigned_mechanic ? (
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        <span className="text-sm font-semibold">{job.assigned_mechanic.full_name}</span>
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                        <span className="text-xs sm:text-sm font-semibold truncate">{job.assigned_mechanic.full_name}</span>
                       </div>
                     ) : (
-                      <span className="text-sm text-red-600 font-semibold">UNASSIGNED</span>
+                      <span className="text-xs sm:text-sm text-red-600 font-semibold">UNASSIGNED</span>
                     )}
-                    <p className="text-xs text-gray-600 mt-2">Status: {job.status}</p>
+                    <p className="text-[10px] sm:text-xs text-gray-600 mt-1.5 sm:mt-2">Status: {job.status}</p>
                   </div>
 
                   {/* Column 5: Notes & Actions */}
-                  <div>
+                  <div className="min-w-0 lg:col-span-1">
                     <textarea
                       placeholder="Supervisor notes..."
                       value={job.supervisor_notes || ''}
@@ -532,12 +534,12 @@ export default function DayPlanningPage() {
                         setJobs(updatedJobs);
                       }}
                       onBlur={(e) => saveSupervisorNotes(job.id, e.target.value)}
-                      className="input input-sm w-full"
+                      className="input input-sm text-xs sm:text-sm w-full"
                       rows={2}
                     />
                     <button
                       onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}`)}
-                      className="btn btn-outline btn-sm w-full mt-2"
+                      className="btn btn-outline btn-sm w-full mt-1.5 sm:mt-2 text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5"
                     >
                       View Details
                     </button>
@@ -549,10 +551,10 @@ export default function DayPlanningPage() {
         </div>
 
         {jobs.length === 0 && (
-          <div className="card text-center py-12">
-            <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
-            <p className="text-xl font-semibold text-gray-700">All Clear! 🎉</p>
-            <p className="text-gray-600 mt-2">No jobs requiring planning for today</p>
+          <div className="card text-center py-8 sm:py-10 md:py-12">
+            <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-green-600 mx-auto mb-3 sm:mb-4" />
+            <p className="text-lg sm:text-xl font-semibold text-gray-700">All Clear! 🎉</p>
+            <p className="text-gray-600 text-sm sm:text-base mt-1.5 sm:mt-2">No jobs requiring planning for today</p>
           </div>
         )}
       </div>

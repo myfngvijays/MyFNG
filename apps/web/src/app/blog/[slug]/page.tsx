@@ -425,11 +425,11 @@ export default function BlogPostPage() {
 
   if (!post) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-3 sm:px-4">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Blog Post Not Found</h1>
-          <p className="text-gray-600 mb-8">The blog post you're looking for doesn't exist.</p>
-          <Link href="/blog" className="btn btn-primary">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4">Blog Post Not Found</h1>
+          <p className="text-gray-600 text-sm sm:text-base mb-6 sm:mb-8">The blog post you're looking for doesn't exist.</p>
+          <Link href="/blog" className="btn btn-primary text-xs sm:text-sm px-4 sm:px-6 py-2 sm:py-3">
             Back to Blogs
           </Link>
         </div>
@@ -452,47 +452,47 @@ export default function BlogPostPage() {
   const formatContent = (content: string) => {
     return content.split('\n').map((line, index) => {
       if (line.startsWith('## ')) {
-        return <h2 key={index} className="text-2xl font-bold text-brand-secondary mt-8 mb-4">{line.replace('## ', '')}</h2>;
+        return <h2 key={index} className="text-xl sm:text-2xl font-bold text-brand-secondary mt-6 sm:mt-7 md:mt-8 mb-3 sm:mb-4">{line.replace('## ', '')}</h2>;
       }
       if (line.startsWith('**') && line.endsWith('**')) {
-        return <p key={index} className="font-semibold text-gray-900 mb-2">{line.replace(/\*\*/g, '')}</p>;
+        return <p key={index} className="font-semibold text-sm sm:text-base text-gray-900 mb-1.5 sm:mb-2">{line.replace(/\*\*/g, '')}</p>;
       }
       if (line.trim() === '') {
         return <br key={index} />;
       }
       if (line.startsWith('- ')) {
-        return <li key={index} className="ml-6 mb-2 text-gray-700">{line.replace('- ', '')}</li>;
+        return <li key={index} className="ml-4 sm:ml-5 md:ml-6 mb-1.5 sm:mb-2 text-sm sm:text-base text-gray-700">{line.replace('- ', '')}</li>;
       }
-      return <p key={index} className="text-gray-700 mb-4 leading-relaxed">{line}</p>;
+      return <p key={index} className="text-sm sm:text-base text-gray-700 mb-3 sm:mb-4 leading-relaxed">{line}</p>;
     });
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <section className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 py-20">
-        <div className="container mx-auto px-4">
+      <section className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 py-12 sm:py-16 md:py-20">
+        <div className="container mx-auto px-3 sm:px-4">
           <div className="max-w-4xl mx-auto">
             <Link
               href="/blog"
-              className="inline-flex items-center gap-2 text-gray-200 hover:text-white mb-6 transition"
+              className="inline-flex items-center gap-1.5 sm:gap-2 text-gray-200 hover:text-white mb-4 sm:mb-5 md:mb-6 transition text-sm sm:text-base"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
               Back to Blogs
             </Link>
-            <div className="mb-4">
-              <span className="bg-brand-primary text-white px-4 py-1 rounded-full text-sm font-semibold">
+            <div className="mb-3 sm:mb-4">
+              <span className="bg-brand-primary text-white px-3 sm:px-4 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold">
                 {post.category}
               </span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-6 text-white">{post.title}</h1>
-            <div className="flex items-center gap-6 text-gray-200 text-sm">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-5 md:mb-6 text-white">{post.title}</h1>
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 md:gap-6 text-gray-200 text-xs sm:text-sm">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 {post.date}
               </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 {post.readTime}
               </div>
               <div>
@@ -504,10 +504,10 @@ export default function BlogPostPage() {
       </section>
 
       {/* Featured Image */}
-      <section className="py-8">
-        <div className="container mx-auto px-4">
+      <section className="py-6 sm:py-7 md:py-8">
+        <div className="container mx-auto px-3 sm:px-4">
           <div className="max-w-4xl mx-auto">
-            <div className="relative h-96 rounded-2xl overflow-hidden shadow-2xl">
+            <div className="relative h-48 sm:h-64 md:h-80 lg:h-96 rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl">
               <Image
                 src={post.image}
                 alt={post.title}
@@ -521,16 +521,16 @@ export default function BlogPostPage() {
       </section>
 
       {/* Content */}
-      <section className="py-8">
-        <div className="container mx-auto px-4">
+      <section className="py-6 sm:py-7 md:py-8">
+        <div className="container mx-auto px-3 sm:px-4">
           <div className="max-w-4xl mx-auto">
-            <article className="bg-white rounded-2xl shadow-lg p-8 md:p-12">
+            <article className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 lg:p-12">
               {/* Tags */}
-              <div className="flex flex-wrap gap-2 mb-8">
+              <div className="flex flex-wrap gap-2 mb-6 sm:mb-7 md:mb-8">
                 {post.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm"
+                    className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm"
                   >
                     <Tag className="w-3 h-3" />
                     {tag}
@@ -539,26 +539,26 @@ export default function BlogPostPage() {
               </div>
 
               {/* Content */}
-              <div className="prose prose-lg max-w-none">
+              <div className="prose prose-sm sm:prose-base md:prose-lg max-w-none">
                 {formatContent(post.content)}
               </div>
 
               {/* Share Button */}
-              <div className="mt-12 pt-8 border-t border-gray-200">
+              <div className="mt-8 sm:mt-10 md:mt-12 pt-6 sm:pt-7 md:pt-8 border-t border-gray-200">
                 <button
                   onClick={handleShare}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-gray-100 hover:bg-gray-200 rounded-full transition text-gray-700 font-semibold"
+                  className="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 md:px-6 py-2 sm:py-2.5 md:py-3 bg-gray-100 hover:bg-gray-200 rounded-full transition text-gray-700 text-xs sm:text-sm md:text-base font-semibold"
                 >
-                  <Share2 className="w-5 h-5" />
+                  <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
                   {copied ? 'Link Copied!' : 'Share this Article'}
                 </button>
               </div>
             </article>
 
             {/* Related Posts */}
-            <div className="mt-16">
-              <h2 className="text-3xl font-bold text-brand-secondary mb-8">Related Articles</h2>
-              <div className="grid md:grid-cols-3 gap-6">
+            <div className="mt-10 sm:mt-12 md:mt-16">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-brand-secondary mb-6 sm:mb-7 md:mb-8">Related Articles</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
                 {Object.values(blogPosts)
                   .filter(p => p.id !== post.id && p.category === post.category)
                   .slice(0, 3)
@@ -566,9 +566,9 @@ export default function BlogPostPage() {
                     <Link
                       key={relatedPost.id}
                       href={`/blog/${relatedPost.slug}`}
-                      className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition group"
+                      className="bg-white rounded-lg sm:rounded-xl shadow-md overflow-hidden hover:shadow-xl transition group"
                     >
-                      <div className="h-40 relative overflow-hidden">
+                      <div className="h-32 sm:h-36 md:h-40 relative overflow-hidden">
                         <Image
                           src={relatedPost.image}
                           alt={relatedPost.title}
@@ -576,11 +576,11 @@ export default function BlogPostPage() {
                           className="object-cover group-hover:scale-105 transition duration-500"
                         />
                       </div>
-                      <div className="p-4">
-                        <h3 className="font-bold text-brand-secondary mb-2 group-hover:text-brand-primary transition line-clamp-2">
+                      <div className="p-3 sm:p-4">
+                        <h3 className="font-bold text-sm sm:text-base text-brand-secondary mb-1.5 sm:mb-2 group-hover:text-brand-primary transition line-clamp-2">
                           {relatedPost.title}
                         </h3>
-                        <p className="text-xs text-gray-500">{relatedPost.date}</p>
+                        <p className="text-[10px] sm:text-xs text-gray-500">{relatedPost.date}</p>
                       </div>
                     </Link>
                   ))}

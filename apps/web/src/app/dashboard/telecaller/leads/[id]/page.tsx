@@ -234,10 +234,10 @@ export default function LeadDetailPage() {
   if (loading) {
     return (
       <DashboardLayout role="telecaller">
-        <div className="flex items-center justify-center h-64">
+        <div className="flex items-center justify-center h-48 sm:h-64">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading lead details...</p>
+            <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary mx-auto"></div>
+            <p className="mt-3 sm:mt-4 text-gray-600 text-sm sm:text-base">Loading lead details...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -260,25 +260,26 @@ export default function LeadDetailPage() {
 
   return (
     <DashboardLayout role="telecaller">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button onClick={() => router.back()} className="btn btn-outline">
-              <ArrowLeft className="w-5 h-5" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
+            <button onClick={() => router.back()} className="btn btn-outline flex-shrink-0 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2">
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
-            <div>
-              <h1 className="text-3xl font-bold text-text-heading">Lead Details</h1>
-              <p className="text-text-body mt-1">Lead #{lead.lead_number}</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading truncate">Lead Details</h1>
+              <p className="text-text-body text-xs sm:text-sm mt-0.5 sm:mt-1 truncate">Lead #{lead.lead_number}</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <a href={`tel:${lead.customer_phone}`} className="btn btn-primary">
-              <PhoneCall className="w-5 h-5 mr-2" />
-              Call Customer
+          <div className="flex gap-2 w-full sm:w-auto">
+            <a href={`tel:${lead.customer_phone}`} className="btn btn-primary flex-1 sm:flex-initial text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+              <PhoneCall className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
+              <span className="hidden sm:inline">Call Customer</span>
+              <span className="sm:hidden">Call</span>
             </a>
-            <Link href={`/dashboard/telecaller/leads/${leadId}/edit`} className="btn btn-outline">
-              <Edit className="w-5 h-5 mr-2" />
+            <Link href={`/dashboard/telecaller/leads/${leadId}/edit`} className="btn btn-outline flex-1 sm:flex-initial text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+              <Edit className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
               Edit
             </Link>
           </div>
@@ -292,32 +293,32 @@ export default function LeadDetailPage() {
           lead.status === 'REJECTED' ? 'bg-red-50 border-red-200' :
           'bg-gray-50 border-gray-200'
         }`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold">Status: {lead.status}</h3>
-              <p className="text-sm text-gray-600 mt-1">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base sm:text-lg font-semibold">Status: {lead.status}</h3>
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                 Created {new Date(lead.created_at).toLocaleString()}
               </p>
             </div>
             {lead.is_incomplete && (
-              <span className="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg font-semibold flex items-center gap-2">
-                <AlertCircle className="w-5 h-5" />
+              <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-yellow-100 text-yellow-700 rounded-lg font-semibold flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm flex-shrink-0">
+                <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                 Incomplete Lead
               </span>
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
           {/* Left Column - Main Info */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-5 md:space-y-6">
             {/* Customer Information */}
             <div className="card">
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <User className="w-6 h-6" />
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                <User className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
                 Customer Information
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <InfoItem icon={<User />} label="Name" value={lead.customer_name} />
                 <InfoItem icon={<Phone />} label="Phone" value={lead.customer_phone} />
                 {lead.customer_alternate_phone && (
@@ -338,11 +339,11 @@ export default function LeadDetailPage() {
 
             {/* Vehicle Information */}
             <div className="card">
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <Car className="w-6 h-6" />
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                <Car className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
                 Vehicle Information
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <InfoItem icon={<Car />} label="Registration" value={lead.vehicle_number || 'Not provided'} />
                 <InfoItem icon={<Car />} label="Make" value={lead.vehicle_make || 'N/A'} />
                 <InfoItem icon={<Car />} label="Model" value={lead.vehicle_model || 'N/A'} />
@@ -360,30 +361,30 @@ export default function LeadDetailPage() {
 
             {/* Service Details */}
             <div className="card">
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <FileText className="w-6 h-6" />
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
                 Service Details
               </h2>
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {/* Service Types - Show names instead of UUIDs */}
                 <div>
-                  <div className="flex items-start gap-2">
-                    <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-500 mb-1">Service Types:</p>
+                  <div className="flex items-start gap-1.5 sm:gap-2">
+                    <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Service Types:</p>
                       {serviceTypeNames.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
                           {serviceTypeNames.map((name, idx) => (
                             <span 
                               key={idx}
-                              className="inline-block px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
+                              className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-100 text-blue-800 rounded-full text-xs sm:text-sm font-medium"
                             >
                               {name}
                             </span>
                           ))}
                         </div>
                       ) : (
-                        <p className="text-gray-700">Not specified</p>
+                        <p className="text-sm sm:text-base text-gray-700">Not specified</p>
                       )}
                     </div>
                   </div>
@@ -392,15 +393,15 @@ export default function LeadDetailPage() {
                 {/* Subservices / Add-ons */}
                 {subserviceNames.length > 0 && (
                   <div>
-                    <div className="flex items-start gap-2">
-                      <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-500 mb-1">Add-ons / Sub-services:</p>
-                        <div className="flex flex-wrap gap-2">
+                    <div className="flex items-start gap-1.5 sm:gap-2">
+                      <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Add-ons / Sub-services:</p>
+                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
                           {subserviceNames.map((name, idx) => (
                             <span 
                               key={idx}
-                              className="inline-block px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium"
+                              className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 bg-green-100 text-green-800 rounded-full text-xs sm:text-sm font-medium"
                             >
                               {name}
                             </span>
@@ -441,26 +442,26 @@ export default function LeadDetailPage() {
             </div>
 
             {/* Call Logs */}
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <PhoneCall className="w-6 h-6" />
+            <div className="card p-3 sm:p-4 md:p-5">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
+                <h2 className="text-lg sm:text-xl font-bold flex items-center gap-1.5 sm:gap-2">
+                  <PhoneCall className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
                   Call History ({callLogs.length})
                 </h2>
                 <button 
                   onClick={() => setShowCallLogForm(!showCallLogForm)}
-                  className="btn btn-outline btn-sm"
+                  className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
                 >
                   Add Call Log
                 </button>
               </div>
 
               {showCallLogForm && (
-                <div className="mb-4 p-4 bg-gray-50 rounded-lg space-y-3">
+                <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg space-y-2 sm:space-y-3">
                   <select
                     value={callLogData.call_status}
                     onChange={(e) => setCallLogData({...callLogData, call_status: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg"
                   >
                     <option value="ANSWERED">Answered</option>
                     <option value="NO_ANSWER">No Answer</option>
@@ -474,13 +475,13 @@ export default function LeadDetailPage() {
                     placeholder="Call duration (seconds)"
                     value={callLogData.call_duration}
                     onChange={(e) => setCallLogData({...callLogData, call_duration: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg"
                   />
 
                   <select
                     value={callLogData.outcome}
                     onChange={(e) => setCallLogData({...callLogData, outcome: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg"
                   >
                     <option value="INFO_COLLECTED">Info Collected</option>
                     <option value="LEAD_CREATED">Lead Created</option>
@@ -493,31 +494,31 @@ export default function LeadDetailPage() {
                     placeholder="Call notes..."
                     value={callLogData.notes}
                     onChange={(e) => setCallLogData({...callLogData, notes: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg"
                     rows={3}
                   />
 
-                  <div className="flex gap-2">
-                    <button onClick={handleAddCallLog} className="btn btn-primary flex-1">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button onClick={handleAddCallLog} className="btn btn-primary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
                       Save Call Log
                     </button>
-                    <button onClick={() => setShowCallLogForm(false)} className="btn btn-outline">
+                    <button onClick={() => setShowCallLogForm(false)} className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
                       Cancel
                     </button>
                   </div>
                 </div>
               )}
 
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {callLogs.length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">No call logs yet</p>
+                  <p className="text-gray-500 text-center py-4 text-xs sm:text-sm">No call logs yet</p>
                 ) : (
                   callLogs.map((log) => (
-                    <div key={log.id} className="p-4 border border-gray-200 rounded-lg">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-1 text-xs rounded ${
+                    <div key={log.id} className="p-3 sm:p-4 border border-gray-200 rounded-lg">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                            <span className={`px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs rounded ${
                               log.call_status === 'ANSWERED' ? 'bg-green-100 text-green-700' :
                               log.call_status === 'NO_ANSWER' ? 'bg-orange-100 text-orange-700' :
                               'bg-gray-100 text-gray-700'
@@ -525,23 +526,23 @@ export default function LeadDetailPage() {
                               {log.call_status}
                             </span>
                             {log.call_duration && (
-                              <span className="text-sm text-gray-500">
+                              <span className="text-xs sm:text-sm text-gray-500">
                                 {Math.floor(log.call_duration / 60)}m {log.call_duration % 60}s
+                              </span>
+                            )}
+                            {log.outcome && (
+                              <span className="text-[10px] sm:text-xs px-2 py-0.5 sm:py-1 bg-blue-100 text-blue-700 rounded">
+                                {log.outcome}
                               </span>
                             )}
                           </div>
                           {log.notes && (
-                            <p className="text-sm text-gray-700 mt-2">{log.notes}</p>
+                            <p className="text-xs sm:text-sm text-gray-700 mt-1 sm:mt-2">{log.notes}</p>
                           )}
-                          <p className="text-xs text-gray-500 mt-2">
+                          <p className="text-[10px] sm:text-xs text-gray-500 mt-1.5 sm:mt-2">
                             {new Date(log.created_at).toLocaleString()} • {log.telecaller?.full_name}
                           </p>
                         </div>
-                        {log.outcome && (
-                          <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
-                            {log.outcome}
-                          </span>
-                        )}
                       </div>
                     </div>
                   ))
@@ -551,18 +552,18 @@ export default function LeadDetailPage() {
           </div>
 
           {/* Right Column - Additional Info */}
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-5 md:space-y-6">
             {/* Quick Stats */}
-            <div className="card">
-              <h3 className="font-bold mb-3">Quick Stats</h3>
-              <div className="space-y-3">
+            <div className="card p-3 sm:p-4 md:p-5">
+              <h3 className="font-bold mb-2 sm:mb-3 text-base sm:text-lg">Quick Stats</h3>
+              <div className="space-y-2 sm:space-y-3">
                 <StatItem label="Total Calls" value={lead.total_calls || 0} icon={<PhoneCall />} />
                 <StatItem label="Priority" value={lead.lead_priority || 'NORMAL'} icon={<TrendingUp />} />
                 <StatItem label="Source" value={lead.created_from || 'Unknown'} icon={<FileText />} />
                 {lead.last_call_at && (
                   <div>
-                    <p className="text-sm text-gray-500">Last Call:</p>
-                    <p className="text-sm font-semibold">{new Date(lead.last_call_at).toLocaleString()}</p>
+                    <p className="text-xs sm:text-sm text-gray-500">Last Call:</p>
+                    <p className="text-xs sm:text-sm font-semibold">{new Date(lead.last_call_at).toLocaleString()}</p>
                   </div>
                 )}
               </div>
@@ -570,12 +571,12 @@ export default function LeadDetailPage() {
 
             {/* Workshop Info */}
             {lead.workshop && (
-              <div className="card">
-                <h3 className="font-bold mb-3 flex items-center gap-2">
-                  <Building2 className="w-5 h-5" />
+              <div className="card p-3 sm:p-4 md:p-5">
+                <h3 className="font-bold mb-2 sm:mb-3 text-base sm:text-lg flex items-center gap-1.5 sm:gap-2">
+                  <Building2 className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                   Workshop Assigned
                 </h3>
-                <div className="space-y-2 text-sm">
+                <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
                   <p className="font-semibold">{lead.workshop.name}</p>
                   <p className="text-gray-600">{lead.workshop.city}</p>
                   <p className="text-gray-600">{lead.workshop.phone}</p>
@@ -584,23 +585,23 @@ export default function LeadDetailPage() {
             )}
 
             {/* Follow-ups */}
-            <div className="card">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold">Follow-ups</h3>
+            <div className="card p-3 sm:p-4 md:p-5">
+              <div className="flex items-center justify-between mb-2 sm:mb-3">
+                <h3 className="font-bold text-base sm:text-lg">Follow-ups</h3>
                 <button 
                   onClick={() => setShowFollowUpForm(!showFollowUpForm)}
-                  className="text-brand-primary text-sm hover:underline"
+                  className="text-brand-primary text-xs sm:text-sm hover:underline"
                 >
                   + Add
                 </button>
               </div>
 
               {showFollowUpForm && (
-                <div className="mb-4 space-y-3 p-3 bg-gray-50 rounded-lg">
+                <div className="mb-3 sm:mb-4 space-y-2 sm:space-y-3 p-3 bg-gray-50 rounded-lg">
                   <select
                     value={followUpData.follow_up_type}
                     onChange={(e) => setFollowUpData({...followUpData, follow_up_type: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm"
                   >
                     <option value="CALLBACK">Callback</option>
                     <option value="PRICE_CONFIRMATION">Price Confirmation</option>
@@ -612,21 +613,21 @@ export default function LeadDetailPage() {
                     type="datetime-local"
                     value={followUpData.scheduled_time}
                     onChange={(e) => setFollowUpData({...followUpData, scheduled_time: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm"
                   />
 
                   <textarea
                     placeholder="Reason..."
                     value={followUpData.reason}
                     onChange={(e) => setFollowUpData({...followUpData, reason: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm"
                     rows={2}
                   />
 
                   <select
                     value={followUpData.priority}
                     onChange={(e) => setFollowUpData({...followUpData, priority: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm"
                   >
                     <option value="LOW">Low</option>
                     <option value="NORMAL">Normal</option>
@@ -634,11 +635,11 @@ export default function LeadDetailPage() {
                     <option value="URGENT">Urgent</option>
                   </select>
 
-                  <div className="flex gap-2">
-                    <button onClick={handleAddFollowUp} className="btn btn-primary btn-sm flex-1">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button onClick={handleAddFollowUp} className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex-1">
                       Schedule
                     </button>
-                    <button onClick={() => setShowFollowUpForm(false)} className="btn btn-outline btn-sm">
+                    <button onClick={() => setShowFollowUpForm(false)} className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
                       Cancel
                     </button>
                   </div>
@@ -647,15 +648,15 @@ export default function LeadDetailPage() {
 
               <div className="space-y-2">
                 {followUps.length === 0 ? (
-                  <p className="text-gray-500 text-sm text-center py-4">No follow-ups</p>
+                  <p className="text-gray-500 text-xs sm:text-sm text-center py-3 sm:py-4">No follow-ups</p>
                 ) : (
                   followUps.map((fu) => (
-                    <div key={fu.id} className={`p-3 border rounded-lg text-sm ${
+                    <div key={fu.id} className={`p-2.5 sm:p-3 border rounded-lg text-xs sm:text-sm ${
                       fu.status === 'PENDING' ? 'border-purple-200 bg-purple-50' : 'border-gray-200'
                     }`}>
                       <div className="flex items-start justify-between mb-1">
-                        <span className="font-semibold text-xs">{fu.follow_up_type}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded ${
+                        <span className="font-semibold text-[10px] sm:text-xs">{fu.follow_up_type}</span>
+                        <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded ${
                           fu.priority === 'URGENT' ? 'bg-red-100 text-red-700' :
                           fu.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
                           'bg-gray-100 text-gray-700'
@@ -663,8 +664,8 @@ export default function LeadDetailPage() {
                           {fu.priority}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-600 mb-1">{fu.reason}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">{fu.reason}</p>
+                      <p className="text-[10px] sm:text-xs text-gray-500">
                         {new Date(fu.scheduled_time).toLocaleString()}
                       </p>
                     </div>
@@ -674,15 +675,15 @@ export default function LeadDetailPage() {
             </div>
 
             {/* Quick Actions */}
-            <div className="card">
-              <h3 className="font-bold mb-3">Quick Actions</h3>
+            <div className="card p-3 sm:p-4 md:p-5">
+              <h3 className="font-bold mb-2 sm:mb-3 text-base sm:text-lg">Quick Actions</h3>
               <div className="space-y-2">
-                <button className="btn btn-outline w-full text-sm">
-                  <MessageSquare className="w-4 h-4 mr-2" />
+                <button className="btn btn-outline w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2">
+                  <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   Send WhatsApp
                 </button>
-                <button className="btn btn-outline w-full text-sm">
-                  <Mail className="w-4 h-4 mr-2" />
+                <button className="btn btn-outline w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2">
+                  <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   Send Email
                 </button>
               </div>
@@ -703,11 +704,11 @@ interface InfoItemProps {
 
 function InfoItem({ icon, label, value, className = '' }: InfoItemProps) {
   return (
-    <div className={`flex items-start gap-3 ${className}`}>
-      <div className="text-gray-400 mt-1">{icon}</div>
+    <div className={`flex items-start gap-2 sm:gap-3 ${className}`}>
+      <div className="text-gray-400 mt-0.5 sm:mt-1 flex-shrink-0">{icon}</div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-500">{label}</p>
-        <p className="font-semibold text-gray-900 break-words">{value}</p>
+        <p className="text-xs sm:text-sm text-gray-500">{label}</p>
+        <p className="font-semibold text-gray-900 break-words text-xs sm:text-sm">{value}</p>
       </div>
     </div>
   );
@@ -722,11 +723,11 @@ interface StatItemProps {
 function StatItem({ label, value, icon }: StatItemProps) {
   return (
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <div className="text-gray-400">{icon}</div>
-        <span className="text-sm text-gray-600">{label}</span>
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="text-gray-400 flex-shrink-0">{icon}</div>
+        <span className="text-xs sm:text-sm text-gray-600">{label}</span>
       </div>
-      <span className="font-semibold">{value}</span>
+      <span className="font-semibold text-xs sm:text-sm">{value}</span>
     </div>
   );
 }

@@ -114,109 +114,109 @@ export default function RSAManagerDashboard() {
 
   return (
     <DashboardLayout role="rsa_manager">
-      <div className="p-6 max-w-7xl mx-auto">
+      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-red-600 to-orange-500 text-white p-6 rounded-lg shadow-lg -mx-6 -mt-6 mb-8">
-          <h1 className="text-3xl font-bold text-white drop-shadow-lg">🚨 RSA Manager Dashboard</h1>
-          <p className="text-white/90 font-medium mt-1">Roadside Assistance Lead Management & Mechanic Assignment</p>
+        <div className="bg-gradient-to-r from-red-600 to-orange-500 text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6 mb-6 sm:mb-7 md:mb-8">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white drop-shadow-lg">🚨 RSA Manager Dashboard</h1>
+          <p className="text-white/90 font-medium text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">Roadside Assistance Lead Management & Mechanic Assignment</p>
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-7 md:mb-8">
           <Link href="/dashboard/rsa_manager/leads?status=all">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Total Leads</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.total_leads}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm text-gray-600">Total Leads</p>
+                  <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_leads}</p>
                 </div>
-                <AlertCircle className="w-8 h-8 text-blue-500" />
+                <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-blue-500 flex-shrink-0" />
               </div>
             </div>
           </Link>
 
           <Link href="/dashboard/rsa_manager/leads?status=pending">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Pending</p>
-                  <p className="text-2xl font-bold text-yellow-600">{stats.pending_leads}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm text-gray-600">Pending</p>
+                  <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.pending_leads}</p>
                 </div>
-                <Clock className="w-8 h-8 text-yellow-500" />
+                <Clock className="w-7 h-7 sm:w-8 sm:h-8 text-yellow-500 flex-shrink-0" />
               </div>
             </div>
           </Link>
 
           <Link href="/dashboard/rsa_manager/leads?status=assigned">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Assigned to Me</p>
-                  <p className="text-2xl font-bold text-purple-600">{stats.assigned_to_me}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm text-gray-600">Assigned to Me</p>
+                  <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.assigned_to_me}</p>
                 </div>
-                <Users className="w-8 h-8 text-purple-500" />
+                <Users className="w-7 h-7 sm:w-8 sm:h-8 text-purple-500 flex-shrink-0" />
               </div>
             </div>
           </Link>
 
           <Link href="/dashboard/rsa_manager/leads?status=unassigned">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Unassigned</p>
-                  <p className="text-2xl font-bold text-orange-600">{stats.unassigned_leads}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm text-gray-600">Unassigned</p>
+                  <p className="text-xl sm:text-2xl font-bold text-orange-600">{stats.unassigned_leads}</p>
                 </div>
-                <AlertCircle className="w-8 h-8 text-orange-500" />
+                <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-orange-500 flex-shrink-0" />
               </div>
             </div>
           </Link>
 
           <Link href="/dashboard/rsa_manager/leads?status=completed">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Completed</p>
-                  <p className="text-2xl font-bold text-green-600">{stats.completed_leads}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm text-gray-600">Completed</p>
+                  <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.completed_leads}</p>
                 </div>
-                <CheckCircle className="w-8 h-8 text-green-500" />
+                <CheckCircle className="w-7 h-7 sm:w-8 sm:h-8 text-green-500 flex-shrink-0" />
               </div>
             </div>
           </Link>
 
-          <Link href="/dashboard/rsa_manager/leads?status=cancelled">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
+          <Link href="/dashboard/rsa_manager/leads?status=cancelled" className="sm:col-span-2 lg:col-span-1">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Cancelled</p>
-                  <p className="text-2xl font-bold text-red-600">{stats.cancelled_leads}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm text-gray-600">Cancelled</p>
+                  <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.cancelled_leads}</p>
                 </div>
-                <XCircle className="w-8 h-8 text-red-500" />
+                <XCircle className="w-7 h-7 sm:w-8 sm:h-8 text-red-500 flex-shrink-0" />
               </div>
             </div>
           </Link>
         </div>
 
         {/* Filters and Search */}
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4 mb-4 sm:mb-5 md:mb-6">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+            <div className="flex-1 min-w-0">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 <input
                   type="text"
                   placeholder="Search by customer name, phone, or vehicle number..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 />
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {(['all', 'assigned', 'unassigned', 'pending', 'completed'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition-colors text-xs sm:text-sm ${
                     filter === f
                       ? 'bg-red-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -231,77 +231,77 @@ export default function RSAManagerDashboard() {
 
         {/* Leads List */}
         <div className="bg-white rounded-lg shadow">
-          <div className="p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">RSA Leads</h2>
+          <div className="p-4 sm:p-5 md:p-6">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">RSA Leads</h2>
             
             {loading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto"></div>
-                <p className="mt-4 text-gray-600">Loading leads...</p>
+              <div className="text-center py-8 sm:py-10 md:py-12">
+                <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-red-600 mx-auto"></div>
+                <p className="mt-3 sm:mt-4 text-gray-600 text-sm sm:text-base">Loading leads...</p>
               </div>
             ) : filteredLeads.length === 0 ? (
-              <div className="text-center py-12">
-                <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">No leads found</p>
+              <div className="text-center py-8 sm:py-10 md:py-12">
+                <AlertCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
+                <p className="text-gray-600 text-sm sm:text-base">No leads found</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {filteredLeads.map((lead) => (
                   <Link
                     key={lead.id}
                     href={`/dashboard/rsa_manager/leads/${lead.id}`}
-                    className="block border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                    className="block border border-gray-200 rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-lg font-semibold text-gray-900">
+                    <div className="flex items-start justify-between gap-2 sm:gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                          <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
                             {lead.customer_name}
                           </h3>
                           {getStatusBadge(lead.lead_status || lead.complaint_status)}
                           {getPriorityBadge(lead.priority)}
                         </div>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4 mt-2 sm:mt-3">
+                          <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
                             <span className="font-medium">Phone:</span>
-                            <span>{lead.contact_number}</span>
+                            <span className="truncate">{lead.contact_number}</span>
                           </div>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
                             <span className="font-medium">Vehicle:</span>
-                            <span>{lead.vehicle_number} {lead.vehicle_model ? `(${lead.vehicle_model})` : ''}</span>
+                            <span className="truncate">{lead.vehicle_number} {lead.vehicle_model ? `(${lead.vehicle_model})` : ''}</span>
                           </div>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600 sm:col-span-2 lg:col-span-1">
                             <span className="font-medium">Service:</span>
-                            <span>{lead.service_type || 'N/A'}</span>
+                            <span className="truncate">{lead.service_type || 'N/A'}</span>
                           </div>
                         </div>
 
                         {lead.assigned_manager_name && (
-                          <div className="mt-2 text-sm text-gray-600">
-                            <span className="font-medium">Manager:</span> {lead.assigned_manager_name}
+                          <div className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-gray-600">
+                            <span className="font-medium">Manager:</span> <span className="truncate">{lead.assigned_manager_name}</span>
                           </div>
                         )}
 
                         {lead.assigned_mechanic_name && (
-                          <div className="mt-2 text-sm text-gray-600">
-                            <span className="font-medium">Mechanic:</span> {lead.assigned_mechanic_name}
+                          <div className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-gray-600">
+                            <span className="font-medium">Mechanic:</span> <span className="truncate">{lead.assigned_mechanic_name}</span>
                           </div>
                         )}
 
                         {lead.address && (
-                          <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                            <MapPin className="w-4 h-4" />
-                            <span>{lead.address} {lead.pincode ? `- ${lead.pincode}` : ''}</span>
+                          <div className="mt-1.5 sm:mt-2 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
+                            <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                            <span className="truncate">{lead.address} {lead.pincode ? `- ${lead.pincode}` : ''}</span>
                           </div>
                         )}
 
-                        <div className="mt-3 text-xs text-gray-500">
+                        <div className="mt-2 sm:mt-3 text-[10px] sm:text-xs text-gray-500">
                           Registered: {new Date(lead.lead_registered_at || lead.requested_at).toLocaleString()}
                         </div>
                       </div>
                       
-                      <ChevronRight className="w-6 h-6 text-gray-400 ml-4" />
+                      <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-gray-400 ml-2 sm:ml-4 flex-shrink-0" />
                     </div>
                   </Link>
                 ))}

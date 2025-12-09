@@ -94,8 +94,8 @@ export default function ReportsAnalyticsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading reports...</p>
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-blue-600 mx-auto mb-3 sm:mb-4"></div>
+          <p className="text-gray-600 text-xs sm:text-sm md:text-base">Loading reports...</p>
         </div>
       </div>
     );
@@ -105,39 +105,39 @@ export default function ReportsAnalyticsPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <BarChart3 className="w-6 h-6" />
-                Reports & Analytics
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-1.5 sm:gap-2">
+                <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+                <span className="truncate">Reports & Analytics</span>
               </h1>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                 Comprehensive performance and financial reports
               </p>
             </div>
 
             {/* Export Buttons */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               <button
                 onClick={() => handleExport('csv')}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm flex-1 sm:flex-none justify-center"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 CSV
               </button>
               <button
                 onClick={() => handleExport('pdf')}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2 text-sm"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm flex-1 sm:flex-none justify-center"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 PDF
               </button>
               <button
                 onClick={() => handleExport('excel')}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm flex-1 sm:flex-none justify-center"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 Excel
               </button>
             </div>
@@ -145,15 +145,15 @@ export default function ReportsAnalyticsPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-5 md:py-6 space-y-4 sm:space-y-5 md:space-y-6">
         {/* Period Selector */}
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex gap-2">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <div className="flex flex-wrap gap-2">
             {['today', 'week', 'month', 'year'].map((p) => (
               <button
                 key={p}
                 onClick={() => setPeriod(p as any)}
-                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                className={`px-4 sm:px-5 md:px-6 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                   period === p
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -167,79 +167,79 @@ export default function ReportsAnalyticsPage() {
 
         {/* Operational Metrics */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">📊 Operational Performance</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white rounded-lg shadow p-6">
-              <TrendingUp className="w-8 h-8 text-blue-600 mb-2" />
-              <p className="text-sm text-gray-600">Total Leads</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.totalLeads}</p>
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">📊 Operational Performance</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+              <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-blue-600 mb-1.5 sm:mb-2" />
+              <p className="text-xs sm:text-sm text-gray-600">Total Leads</p>
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{stats.totalLeads}</p>
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <TrendingUp className="w-8 h-8 text-green-600 mb-2" />
-              <p className="text-sm text-gray-600">Converted</p>
-              <p className="text-3xl font-bold text-green-600">{stats.convertedLeads}</p>
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+              <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-600 mb-1.5 sm:mb-2" />
+              <p className="text-xs sm:text-sm text-gray-600">Converted</p>
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-green-600">{stats.convertedLeads}</p>
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <TrendingUp className="w-8 h-8 text-purple-600 mb-2" />
-              <p className="text-sm text-gray-600">Conversion Rate</p>
-              <p className="text-3xl font-bold text-purple-600">{stats.conversionRate.toFixed(1)}%</p>
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+              <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-600 mb-1.5 sm:mb-2" />
+              <p className="text-xs sm:text-sm text-gray-600">Conversion Rate</p>
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-purple-600">{stats.conversionRate.toFixed(1)}%</p>
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <Users className="w-8 h-8 text-orange-600 mb-2" />
-              <p className="text-sm text-gray-600">Active Workshops</p>
-              <p className="text-3xl font-bold text-orange-600">{stats.activeWorkshops}</p>
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+              <Users className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-600 mb-1.5 sm:mb-2" />
+              <p className="text-xs sm:text-sm text-gray-600">Active Workshops</p>
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-orange-600">{stats.activeWorkshops}</p>
             </div>
           </div>
         </div>
 
         {/* Financial Metrics */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">💰 Financial Performance</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow p-6 text-white">
-              <DollarSign className="w-10 h-10 mb-2" />
-              <p className="text-sm opacity-90">Total Revenue</p>
-              <p className="text-4xl font-bold">₹{(stats.totalRevenue / 100000).toFixed(1)}L</p>
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">💰 Financial Performance</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow p-4 sm:p-5 md:p-6 text-white">
+              <DollarSign className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 mb-1.5 sm:mb-2" />
+              <p className="text-xs sm:text-sm opacity-90">Total Revenue</p>
+              <p className="text-2xl sm:text-3xl md:text-4xl font-bold">₹{(stats.totalRevenue / 100000).toFixed(1)}L</p>
             </div>
 
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-6 text-white">
-              <DollarSign className="w-10 h-10 mb-2" />
-              <p className="text-sm opacity-90">Avg Order Value</p>
-              <p className="text-4xl font-bold">₹{stats.avgOrderValue.toFixed(0)}</p>
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-4 sm:p-5 md:p-6 text-white">
+              <DollarSign className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 mb-1.5 sm:mb-2" />
+              <p className="text-xs sm:text-sm opacity-90">Avg Order Value</p>
+              <p className="text-2xl sm:text-3xl md:text-4xl font-bold">₹{stats.avgOrderValue.toFixed(0)}</p>
             </div>
 
-            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow p-6 text-white">
-              <Award className="w-10 h-10 mb-2" />
-              <p className="text-sm opacity-90">Avg Rating</p>
-              <p className="text-4xl font-bold">{stats.avgRating}⭐</p>
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow p-4 sm:p-5 md:p-6 text-white sm:col-span-2 lg:col-span-1">
+              <Award className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 mb-1.5 sm:mb-2" />
+              <p className="text-xs sm:text-sm opacity-90">Avg Rating</p>
+              <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{stats.avgRating}⭐</p>
             </div>
           </div>
         </div>
 
         {/* Quality Metrics */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">⭐ Quality Metrics</h2>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">⭐ Quality Metrics</h2>
+          <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
               <div className="text-center">
-                <Award className="w-12 h-12 text-orange-500 mx-auto mb-2" />
-                <p className="text-3xl font-bold text-gray-900">{stats.avgRating}⭐</p>
-                <p className="text-sm text-gray-600 mt-1">Average Rating</p>
+                <Award className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-orange-500 mx-auto mb-1.5 sm:mb-2" />
+                <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-gray-900">{stats.avgRating}⭐</p>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Average Rating</p>
               </div>
 
               <div className="text-center">
-                <TrendingUp className="w-12 h-12 text-blue-500 mx-auto mb-2" />
-                <p className="text-3xl font-bold text-gray-900">94%</p>
-                <p className="text-sm text-gray-600 mt-1">SLA Compliance</p>
+                <TrendingUp className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-blue-500 mx-auto mb-1.5 sm:mb-2" />
+                <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-gray-900">94%</p>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">SLA Compliance</p>
               </div>
 
               <div className="text-center">
-                <Users className="w-12 h-12 text-red-500 mx-auto mb-2" />
-                <p className="text-3xl font-bold text-gray-900">{stats.totalComplaints}</p>
-                <p className="text-sm text-gray-600 mt-1">Total Complaints</p>
+                <Users className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-red-500 mx-auto mb-1.5 sm:mb-2" />
+                <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-gray-900">{stats.totalComplaints}</p>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Total Complaints</p>
               </div>
             </div>
           </div>
@@ -247,7 +247,7 @@ export default function ReportsAnalyticsPage() {
 
         {/* Department Performance */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">👥 Department Performance</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">👥 Department Performance</h2>
           <div className="bg-white rounded-lg shadow divide-y">
             {[
               { name: 'Telecaller', score: 85, color: 'blue' },
@@ -256,14 +256,14 @@ export default function ReportsAnalyticsPage() {
               { name: 'RSA', score: 91, color: 'red' },
               { name: 'Auditors', score: 90, color: 'indigo' }
             ].map((dept) => (
-              <div key={dept.name} className="p-6">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-gray-900">{dept.name}</h3>
-                  <span className="text-2xl font-bold text-gray-900">{dept.score}/100</span>
+              <div key={dept.name} className="p-4 sm:p-5 md:p-6">
+                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-900">{dept.name}</h3>
+                  <span className="text-xl sm:text-2xl font-bold text-gray-900">{dept.score}/100</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
                   <div
-                    className={`bg-${dept.color}-600 h-2 rounded-full transition-all`}
+                    className={`bg-${dept.color}-600 h-1.5 sm:h-2 rounded-full transition-all`}
                     style={{ width: `${dept.score}%` }}
                   ></div>
                 </div>

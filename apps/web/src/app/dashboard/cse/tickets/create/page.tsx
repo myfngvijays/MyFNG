@@ -64,30 +64,30 @@ function CreateTicketContent() {
 
   return (
     <DashboardLayout role="customer_service_executive">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <FileText className="w-8 h-8 text-indigo-600" />
-              Create Support Ticket
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
+              <FileText className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-indigo-600 flex-shrink-0" />
+              <span>Create Support Ticket</span>
             </h1>
-            <p className="text-gray-600 mt-1">Create a new customer support ticket</p>
+            <p className="text-gray-600 text-xs sm:text-sm mt-0.5 sm:mt-1">Create a new customer support ticket</p>
           </div>
           <Link
             href="/dashboard/cse/tickets"
-            className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+            className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-xs sm:text-sm w-full sm:w-auto"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
             Cancel
           </Link>
         </div>
 
         {/* Form */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="bg-white p-4 sm:p-5 md:p-6 rounded-lg shadow">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5 md:space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                 Lead ID <span className="text-red-500">*</span>
               </label>
               <input
@@ -95,19 +95,19 @@ function CreateTicketContent() {
                 value={formData.lead_id}
                 onChange={(e) => setFormData({ ...formData, lead_id: e.target.value })}
                 placeholder="Enter Lead ID"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                 Issue Category <span className="text-red-500">*</span>
               </label>
               <select
                 value={formData.issue_category}
                 onChange={(e) => setFormData({ ...formData, issue_category: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 required
               >
                 <option value="PICKUP_DELAY">Pickup Delay</option>
@@ -125,13 +125,13 @@ function CreateTicketContent() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                 Severity <span className="text-red-500">*</span>
               </label>
               <select
                 value={formData.severity}
                 onChange={(e) => setFormData({ ...formData, severity: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 required
               >
                 <option value="LOW">Low</option>
@@ -143,7 +143,7 @@ function CreateTicketContent() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                 Title <span className="text-red-500">*</span>
               </label>
               <input
@@ -151,13 +151,13 @@ function CreateTicketContent() {
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="Brief title for the ticket"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                 Description <span className="text-red-500">*</span>
               </label>
               <textarea
@@ -165,13 +165,13 @@ function CreateTicketContent() {
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={6}
                 placeholder="Detailed description of the issue..."
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                 Customer Expected Resolution
               </label>
               <textarea
@@ -179,26 +179,26 @@ function CreateTicketContent() {
                 onChange={(e) => setFormData({ ...formData, customer_expected_resolution: e.target.value })}
                 rows={3}
                 placeholder="What does the customer expect as resolution?"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4 border-t">
               <button
                 type="submit"
                 disabled={loading}
-                className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                className="flex items-center justify-center gap-1.5 sm:gap-2 px-4 sm:px-5 md:px-6 py-2 sm:py-2.5 md:py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-xs sm:text-sm w-full sm:w-auto"
               >
                 {loading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
                 ) : (
-                  <Save className="w-5 h-5" />
+                  <Save className="w-4 h-4 sm:w-5 sm:h-5" />
                 )}
                 Create Ticket
               </button>
               <Link
                 href="/dashboard/cse/tickets"
-                className="flex items-center gap-2 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                className="flex items-center justify-center gap-1.5 sm:gap-2 px-4 sm:px-5 md:px-6 py-2 sm:py-2.5 md:py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-xs sm:text-sm w-full sm:w-auto"
               >
                 Cancel
               </Link>
@@ -215,7 +215,7 @@ export default function CreateTicketPage() {
     <Suspense fallback={
       <DashboardLayout role="CUSTOMER_SERVICE_EXECUTIVE">
         <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <Loader2 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 animate-spin text-blue-600" />
         </div>
       </DashboardLayout>
     }>

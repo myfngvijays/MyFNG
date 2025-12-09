@@ -160,15 +160,15 @@ export default function TelecallerDashboard() {
 
   return (
     <DashboardLayout role="telecaller">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg -mx-6 -mt-6 mb-6">
-          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">📞 Telecaller Dashboard</h1>
-          <p className="text-white font-medium mt-1">Manage customer calls and lead bookings</p>
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6 mb-4 sm:mb-5 md:mb-6">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">📞 Telecaller Dashboard</h1>
+          <p className="text-white font-medium mt-0.5 sm:mt-1 text-sm sm:text-base">Manage customer calls and lead bookings</p>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
           <Link href="/dashboard/telecaller/leads?filter=new">
             <StatCard
               title="New Leads"
@@ -246,29 +246,29 @@ export default function TelecallerDashboard() {
 
         {/* Quick Actions */}
         <div className="card">
-          <h2 className="text-xl font-bold text-text-heading mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">Quick Actions</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <Link href="/dashboard/telecaller/leads/create">
-              <button className="btn btn-primary w-full">
-                <Phone className="w-5 h-5 mr-2" />
+              <button className="btn btn-primary w-full text-xs sm:text-sm py-2 sm:py-2.5">
+                <Phone className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
                 Create Lead
               </button>
             </Link>
             <Link href="/dashboard/telecaller/leads?filter=new">
-              <button className="btn btn-outline w-full">
-                <Users className="w-5 h-5 mr-2" />
+              <button className="btn btn-outline w-full text-xs sm:text-sm py-2 sm:py-2.5">
+                <Users className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
                 View Queue
               </button>
             </Link>
             <Link href="/dashboard/telecaller/followups">
-              <button className="btn btn-outline w-full">
-                <Calendar className="w-5 h-5 mr-2" />
+              <button className="btn btn-outline w-full text-xs sm:text-sm py-2 sm:py-2.5">
+                <Calendar className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
                 Follow-ups
               </button>
             </Link>
             <Link href="/dashboard/telecaller/scripts">
-              <button className="btn btn-outline w-full">
-                <Clock className="w-5 h-5 mr-2" />
+              <button className="btn btn-outline w-full text-xs sm:text-sm py-2 sm:py-2.5">
+                <Clock className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
                 Call Scripts
               </button>
             </Link>
@@ -276,42 +276,42 @@ export default function TelecallerDashboard() {
         </div>
 
         {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
           {/* Recent Leads */}
           <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-text-heading">Recent Leads</h2>
-              <Link href="/dashboard/telecaller/leads" className="text-brand-primary hover:underline text-sm">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <h2 className="text-lg sm:text-xl font-bold text-text-heading">Recent Leads</h2>
+              <Link href="/dashboard/telecaller/leads" className="text-brand-primary hover:underline text-xs sm:text-sm">
                 View All →
               </Link>
             </div>
             
             {recentLeads.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No recent leads</p>
+              <p className="text-gray-500 text-center py-6 sm:py-8 text-sm sm:text-base">No recent leads</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {recentLeads.map((lead) => (
                   <Link 
                     key={lead.id} 
                     href={`/dashboard/telecaller/leads/${lead.id}`}
-                    className="block p-4 border border-gray-200 rounded-lg hover:border-brand-primary hover:shadow-md transition"
+                    className="block p-3 sm:p-4 border border-gray-200 rounded-lg hover:border-brand-primary hover:shadow-md transition"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{lead.customer_name}</span>
-                          <span className="text-xs px-2 py-1 bg-gray-100 rounded">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                          <span className="font-semibold text-sm sm:text-base truncate">{lead.customer_name}</span>
+                          <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-100 rounded whitespace-nowrap">
                             {lead.lead_number}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 truncate">
                           {lead.vehicle_make} {lead.vehicle_model} • {lead.customer_phone}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
                           {new Date(lead.created_at).toLocaleString()}
                         </p>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 ${
                         lead.status === 'NEW' ? 'bg-blue-100 text-blue-700' :
                         lead.status === 'ASSIGNED' ? 'bg-green-100 text-green-700' :
                         'bg-gray-100 text-gray-700'
@@ -327,37 +327,37 @@ export default function TelecallerDashboard() {
 
           {/* Upcoming Follow-ups */}
           <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-text-heading">Upcoming Follow-ups</h2>
-              <Link href="/dashboard/telecaller/followups" className="text-brand-primary hover:underline text-sm">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <h2 className="text-lg sm:text-xl font-bold text-text-heading">Upcoming Follow-ups</h2>
+              <Link href="/dashboard/telecaller/followups" className="text-brand-primary hover:underline text-xs sm:text-sm">
                 View All →
               </Link>
             </div>
             
             {upcomingFollowUps.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No follow-ups scheduled</p>
+              <p className="text-gray-500 text-center py-6 sm:py-8 text-sm sm:text-base">No follow-ups scheduled</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {upcomingFollowUps.map((followUp) => (
                   <div 
                     key={followUp.id}
-                    className="p-4 border border-gray-200 rounded-lg"
+                    className="p-3 sm:p-4 border border-gray-200 rounded-lg"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{followUp.lead?.customer_name}</span>
-                          <span className="text-xs px-2 py-1 bg-gray-100 rounded">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                          <span className="font-semibold text-sm sm:text-base truncate">{followUp.lead?.customer_name}</span>
+                          <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-100 rounded whitespace-nowrap">
                             {followUp.lead?.lead_number}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 mt-1">{followUp.reason}</p>
-                        <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {new Date(followUp.scheduled_time).toLocaleString()}
+                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 line-clamp-2">{followUp.reason}</p>
+                        <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 flex items-center gap-1">
+                          <Clock className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{new Date(followUp.scheduled_time).toLocaleString()}</span>
                         </p>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 ${
                         followUp.priority === 'URGENT' ? 'bg-red-100 text-red-700' :
                         followUp.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
                         'bg-gray-100 text-gray-700'
@@ -365,12 +365,12 @@ export default function TelecallerDashboard() {
                         {followUp.priority}
                       </span>
                     </div>
-                    <div className="mt-3 flex gap-2">
-                      <button className="btn btn-primary btn-sm flex-1">
-                        <Phone className="w-4 h-4 mr-1" />
+                    <div className="mt-2 sm:mt-3 flex flex-col sm:flex-row gap-2">
+                      <button className="btn btn-primary btn-sm flex-1 text-xs sm:text-sm py-1.5 sm:py-2">
+                        <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
                         Call Now
                       </button>
-                      <button className="btn btn-outline btn-sm">
+                      <button className="btn btn-outline btn-sm text-xs sm:text-sm py-1.5 sm:py-2">
                         Reschedule
                       </button>
                     </div>
@@ -398,15 +398,15 @@ interface StatCardProps {
 function StatCard({ title, value, icon, bgColor = 'bg-gray-50', textColor = 'text-text-body', subtitle, urgent }: StatCardProps) {
   return (
     <div className={`card hover:shadow-lg transition ${urgent ? 'ring-2 ring-orange-500 animate-pulse' : ''}`}>
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-sm text-text-body mb-1">{title}</p>
-          <p className={`text-3xl font-bold ${textColor}`}>{value}</p>
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs sm:text-sm text-text-body mb-0.5 sm:mb-1">{title}</p>
+          <p className={`text-2xl sm:text-3xl font-bold ${textColor}`}>{value}</p>
           {subtitle && (
-            <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">{subtitle}</p>
           )}
         </div>
-        <div className={`p-3 rounded-lg ${bgColor}`}>
+        <div className={`p-2 sm:p-3 rounded-lg ${bgColor} flex-shrink-0`}>
           {icon}
         </div>
       </div>

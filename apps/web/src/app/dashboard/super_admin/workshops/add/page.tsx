@@ -138,127 +138,127 @@ export default function AddWorkshopPage() {
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
+    <div className="min-h-screen bg-gray-50 pb-8 sm:pb-10 md:pb-12">
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-4">
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
             <button 
               onClick={() => router.back()}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
             </button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Add New Workshop</h1>
-              <p className="text-sm text-gray-600">Enter workshop details, contact info, and banking details</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Add New Workshop</h1>
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Enter workshop details, contact info, and banking details</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <form onSubmit={handleSubmit} className="space-y-8">
+      <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6 md:space-y-8">
           
           {/* Workshop Details Section */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center gap-2">
-              <Store className="w-5 h-5 text-blue-600" />
-              <h2 className="font-semibold text-gray-800">Workshop Details</h2>
+            <div className="bg-gray-50 px-4 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center gap-1.5 sm:gap-2">
+              <Store className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
+              <h2 className="font-semibold text-sm sm:text-base text-gray-800">Workshop Details</h2>
             </div>
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Service Centre Name *</label>
-                <input type="text" name="name" value={formData.name} onChange={handleChange} className="input w-full" required />
+            <div className="p-4 sm:p-5 md:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Service Centre Name *</label>
+                <input type="text" name="name" value={formData.name} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
               </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Workshop Type</label>
-                <select name="workshop_type" value={formData.workshop_type} onChange={handleChange} className="input w-full">
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Workshop Type</label>
+                <select name="workshop_type" value={formData.workshop_type} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
                   <option>Car Service Center</option>
                   <option>Bike Service Center</option>
                   <option>Tyre Shop</option>
                   <option>Detailing Studio</option>
                 </select>
               </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">GST No</label>
-                <input type="text" name="gst_number" value={formData.gst_number} onChange={handleChange} className="input w-full" />
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">GST No</label>
+                <input type="text" name="gst_number" value={formData.gst_number} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
               </div>
 
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Map Link</label>
-                <input type="text" name="map_link" value={formData.map_link} onChange={handleChange} className="input w-full" placeholder="https://maps.google.com/..." />
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Map Link</label>
+                <input type="text" name="map_link" value={formData.map_link} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" placeholder="https://maps.google.com/..." />
               </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Google Place ID</label>
-                <input type="text" name="google_place_id" value={formData.google_place_id} onChange={handleChange} className="input w-full" />
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Google Place ID</label>
+                <input type="text" name="google_place_id" value={formData.google_place_id} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
               </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">RTO Code *</label>
-                <input type="text" name="rto_code" value={formData.rto_code} onChange={handleChange} className="input w-full" required />
-              </div>
-
-              <div className="md:col-span-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
-                <textarea name="address" value={formData.address} onChange={handleChange} className="input w-full" rows={2} required />
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">RTO Code *</label>
+                <input type="text" name="rto_code" value={formData.rto_code} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
               </div>
 
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">State *</label>
-                <input type="text" name="state" value={formData.state} onChange={handleChange} className="input w-full" required />
-              </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">District *</label>
-                <input type="text" name="district" value={formData.district} onChange={handleChange} className="input w-full" required />
-              </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
-                <input type="text" name="city" value={formData.city} onChange={handleChange} className="input w-full" required />
+              <div className="sm:col-span-2 lg:col-span-3">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Address *</label>
+                <textarea name="address" value={formData.address} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" rows={2} required />
               </div>
 
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Pincode *</label>
-                <input type="text" name="pincode" value={formData.pincode} onChange={handleChange} className="input w-full" required />
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">State *</label>
+                <input type="text" name="state" value={formData.state} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Mapping Pincodes (Comma Separated) *</label>
-                <input type="text" name="mapping_pincodes" value={formData.mapping_pincodes} onChange={handleChange} className="input w-full" placeholder="400601, 400602, 400603" />
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">District *</label>
+                <input type="text" name="district" value={formData.district} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
               </div>
-
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Pickup & Drop Range (Km) *</label>
-                <input type="number" name="pickup_drop_km" value={formData.pickup_drop_km} onChange={handleChange} className="input w-full" required />
-              </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">One Day Capacity (Cars) *</label>
-                <input type="number" name="one_day_capacity" value={formData.one_day_capacity} onChange={handleChange} className="input w-full" required />
-              </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Working Time *</label>
-                <input type="text" name="working_time" value={formData.working_time} onChange={handleChange} className="input w-full" required />
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">City *</label>
+                <input type="text" name="city" value={formData.city} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
               </div>
 
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>
-                <input type="text" name="latitude" value={formData.latitude} onChange={handleChange} className="input w-full" />
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Pincode *</label>
+                <input type="text" name="pincode" value={formData.pincode} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
               </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Longitude</label>
-                <input type="text" name="longitude" value={formData.longitude} onChange={handleChange} className="input w-full" />
+              <div className="sm:col-span-1 lg:col-span-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Mapping Pincodes (Comma Separated) *</label>
+                <input type="text" name="mapping_pincodes" value={formData.mapping_pincodes} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" placeholder="400601, 400602, 400603" />
+              </div>
+
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Pickup & Drop Range (Km) *</label>
+                <input type="number" name="pickup_drop_km" value={formData.pickup_drop_km} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
+              </div>
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">One Day Capacity (Cars) *</label>
+                <input type="number" name="one_day_capacity" value={formData.one_day_capacity} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
+              </div>
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Working Time *</label>
+                <input type="text" name="working_time" value={formData.working_time} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
+              </div>
+
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Latitude</label>
+                <input type="text" name="latitude" value={formData.latitude} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+              </div>
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Longitude</label>
+                <input type="text" name="longitude" value={formData.longitude} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
               </div>
               
-              <div className="md:col-span-3">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Working Days *</label>
-                <div className="flex flex-wrap gap-3">
+              <div className="sm:col-span-2 lg:col-span-3">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Working Days *</label>
+                <div className="flex flex-wrap gap-2 sm:gap-3">
                   {daysOfWeek.map(day => (
-                    <label key={day} className="flex items-center gap-2 cursor-pointer bg-gray-50 px-3 py-2 rounded border hover:bg-gray-100">
+                    <label key={day} className="flex items-center gap-1.5 sm:gap-2 cursor-pointer bg-gray-50 px-2 sm:px-3 py-1.5 sm:py-2 rounded border hover:bg-gray-100">
                       <input 
                         type="checkbox" 
                         checked={formData.working_days.includes(day)} 
                         onChange={() => handleDayChange(day)}
-                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 rounded focus:ring-blue-500"
                       />
-                      <span className="text-sm text-gray-700">{day}</span>
+                      <span className="text-xs sm:text-sm text-gray-700">{day}</span>
                     </label>
                   ))}
                 </div>

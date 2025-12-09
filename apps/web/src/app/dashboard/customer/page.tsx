@@ -105,10 +105,10 @@ export default function CustomerDashboard() {
   if (loading) {
     return (
       <DashboardLayout role="customer">
-        <div className="flex items-center justify-center h-64">
+        <div className="flex items-center justify-center h-48 sm:h-64">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-text-body">Loading dashboard...</p>
+            <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-brand-primary mx-auto"></div>
+            <p className="mt-3 sm:mt-4 text-text-body text-sm sm:text-base">Loading dashboard...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -117,18 +117,18 @@ export default function CustomerDashboard() {
 
   return (
     <DashboardLayout role="customer">
-      <div className="space-y-6">
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg -mx-6 -mt-6 mb-6">
-          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🚗 My Dashboard</h1>
-          <p className="text-white font-medium mt-1">Track your vehicle services</p>
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6 mb-4 sm:mb-5 md:mb-6">
+          <h1 className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">🚗 My Dashboard</h1>
+          <p className="text-white font-medium text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">Track your vehicle services</p>
         </div>
 
         {/* Quick Action - Book New Service */}
-        <div className="card bg-gradient-to-r from-brand-secondary to-brand-primary text-white">
-          <h2 className="text-2xl font-bold mb-2">Need Service?</h2>
-          <p className="mb-4">Book a service for your vehicle in just a few clicks</p>
-          <button className="btn bg-white text-brand-primary hover:bg-gray-100">
-            <Car className="w-5 h-5" />
+        <div className="card bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6">
+          <h2 className="text-xl sm:text-2xl font-bold mb-1.5 sm:mb-2">Need Service?</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">Book a service for your vehicle in just a few clicks</p>
+          <button className="btn bg-white text-brand-primary hover:bg-gray-100 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+            <Car className="w-4 h-4 sm:w-5 sm:h-5" />
             Book New Service
           </button>
         </div>
@@ -210,7 +210,7 @@ export default function CustomerDashboard() {
         </DashboardCard>
 
         {/* Quick Links */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <QuickLink title="My Vehicles" icon={<Car />} />
           <QuickLink title="Service History" icon={<Clock />} />
           <QuickLink title="Support" icon={<Phone />} />
@@ -223,10 +223,10 @@ export default function CustomerDashboard() {
 
 function QuickLink({ title, icon }: { title: string; icon: React.ReactNode }) {
   return (
-    <button className="card hover:shadow-lg transition text-center">
-      <div className="flex flex-col items-center gap-2">
-        <div className="text-brand-primary">{icon}</div>
-        <span className="text-sm font-medium text-text-heading">{title}</span>
+    <button className="card hover:shadow-lg transition text-center p-3 sm:p-4">
+      <div className="flex flex-col items-center gap-1.5 sm:gap-2">
+        <div className="text-brand-primary text-xl sm:text-2xl">{icon}</div>
+        <span className="text-xs sm:text-sm font-medium text-text-heading">{title}</span>
       </div>
     </button>
   );

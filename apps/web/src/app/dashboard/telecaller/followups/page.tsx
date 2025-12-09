@@ -154,10 +154,10 @@ export default function FollowUpsPage() {
   if (loading) {
     return (
       <DashboardLayout role="telecaller">
-        <div className="flex items-center justify-center h-64">
+        <div className="flex items-center justify-center h-48 sm:h-64">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading follow-ups...</p>
+            <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary mx-auto"></div>
+            <p className="mt-3 sm:mt-4 text-gray-600 text-sm sm:text-base">Loading follow-ups...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -166,33 +166,33 @@ export default function FollowUpsPage() {
 
   return (
     <DashboardLayout role="telecaller">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-text-heading">Follow-up Management</h1>
-          <p className="text-text-body mt-2">Manage and track customer follow-ups</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Follow-up Management</h1>
+          <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Manage and track customer follow-ups</p>
         </div>
 
         {/* Filters & Search */}
         <div className="card">
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             {/* Search */}
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <div className="flex-1 min-w-0 relative">
+              <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
               <input
                 type="text"
                 placeholder="Search by customer name, phone, lead number..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
             {/* Filter Buttons */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 overflow-x-auto">
               <button
                 onClick={() => setFilter('pending')}
-                className={`px-4 py-2 rounded-lg font-semibold text-sm ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm whitespace-nowrap ${
                   filter === 'pending' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
@@ -200,7 +200,7 @@ export default function FollowUpsPage() {
               </button>
               <button
                 onClick={() => setFilter('today')}
-                className={`px-4 py-2 rounded-lg font-semibold text-sm ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm whitespace-nowrap ${
                   filter === 'today' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
                 }`}
               >
@@ -208,7 +208,7 @@ export default function FollowUpsPage() {
               </button>
               <button
                 onClick={() => setFilter('overdue')}
-                className={`px-4 py-2 rounded-lg font-semibold text-sm ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm whitespace-nowrap ${
                   filter === 'overdue' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
                 }`}
               >
@@ -216,7 +216,7 @@ export default function FollowUpsPage() {
               </button>
               <button
                 onClick={() => setFilter('completed')}
-                className={`px-4 py-2 rounded-lg font-semibold text-sm ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm whitespace-nowrap ${
                   filter === 'completed' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
                 }`}
               >
@@ -227,11 +227,11 @@ export default function FollowUpsPage() {
         </div>
 
         {/* Follow-ups List */}
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {filteredFollowUps.length === 0 ? (
-            <div className="card text-center py-12">
-              <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No follow-ups found</p>
+            <div className="card text-center py-8 sm:py-10 md:py-12">
+              <Calendar className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+              <p className="text-gray-500 text-sm sm:text-base">No follow-ups found</p>
             </div>
           ) : (
             filteredFollowUps.map((followUp) => {
@@ -244,20 +244,20 @@ export default function FollowUpsPage() {
                     timeStatus.urgent ? 'ring-2 ring-orange-500' : ''
                   }`}
                 >
-                  <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex flex-col lg:flex-row gap-3 sm:gap-4">
                     {/* Main Info */}
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       {/* Row 1: Customer & Lead Info */}
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-lg font-semibold">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                            <h3 className="text-base sm:text-lg font-semibold truncate">
                               {followUp.lead?.customer_name || 'Unknown'}
                             </h3>
-                            <span className="text-xs px-2 py-1 bg-gray-100 rounded font-mono">
+                            <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-100 rounded font-mono">
                               {followUp.lead?.lead_number}
                             </span>
-                            <span className={`text-xs px-3 py-1 rounded-full font-semibold ${
+                            <span className={`text-[10px] sm:text-xs px-2 sm:px-3 py-0.5 sm:py-1 rounded-full font-semibold ${
                               followUp.priority === 'URGENT' ? 'bg-red-100 text-red-700' :
                               followUp.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
                               followUp.priority === 'LOW' ? 'bg-gray-100 text-gray-700' :
@@ -266,11 +266,11 @@ export default function FollowUpsPage() {
                               {followUp.priority}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-600 mt-1">
+                          <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 truncate">
                             {followUp.lead?.vehicle_make} {followUp.lead?.vehicle_model} • {followUp.lead?.customer_phone}
                           </p>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
+                        <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold whitespace-nowrap flex-shrink-0 ${
                           timeStatus.color === 'red' ? 'bg-red-100 text-red-700' :
                           timeStatus.color === 'orange' ? 'bg-orange-100 text-orange-700' :
                           timeStatus.color === 'blue' ? 'bg-blue-100 text-blue-700' :
@@ -281,15 +281,15 @@ export default function FollowUpsPage() {
                       </div>
 
                       {/* Row 2: Follow-up Details */}
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Calendar className="w-4 h-4 text-gray-400" />
+                      <div className="space-y-1.5 sm:space-y-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                          <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
                           <span className="font-semibold">Type:</span>
-                          <span className="text-gray-700">{followUp.follow_up_type}</span>
+                          <span className="text-gray-700 truncate">{followUp.follow_up_type}</span>
                         </div>
                         
-                        <div className="flex items-center gap-2 text-sm">
-                          <Clock className="w-4 h-4 text-gray-400" />
+                        <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                          <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
                           <span className="font-semibold">Scheduled:</span>
                           <span className="text-gray-700">
                             {new Date(followUp.scheduled_time).toLocaleString()}
@@ -297,24 +297,24 @@ export default function FollowUpsPage() {
                         </div>
 
                         {followUp.reason && (
-                          <div className="text-sm">
+                          <div className="text-xs sm:text-sm">
                             <span className="font-semibold">Reason:</span>
-                            <p className="text-gray-700 mt-1">{followUp.reason}</p>
+                            <p className="text-gray-700 mt-0.5 sm:mt-1">{followUp.reason}</p>
                           </div>
                         )}
 
                         {followUp.context_notes && (
-                          <div className="text-sm">
+                          <div className="text-xs sm:text-sm">
                             <span className="font-semibold">Context:</span>
-                            <p className="text-gray-600 italic mt-1">{followUp.context_notes}</p>
+                            <p className="text-gray-600 italic mt-0.5 sm:mt-1">{followUp.context_notes}</p>
                           </div>
                         )}
 
                         {followUp.status === 'COMPLETED' && followUp.completion_notes && (
-                          <div className="bg-green-50 p-3 rounded-lg text-sm mt-2">
-                            <p className="font-semibold text-green-700 mb-1">Completion Notes:</p>
+                          <div className="bg-green-50 p-2.5 sm:p-3 rounded-lg text-xs sm:text-sm mt-1.5 sm:mt-2">
+                            <p className="font-semibold text-green-700 mb-0.5 sm:mb-1">Completion Notes:</p>
                             <p className="text-gray-700">{followUp.completion_notes}</p>
-                            <p className="text-xs text-gray-500 mt-1">
+                            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
                               Completed on {new Date(followUp.completed_at).toLocaleString()}
                             </p>
                           </div>
@@ -324,17 +324,17 @@ export default function FollowUpsPage() {
 
                     {/* Actions */}
                     {followUp.status === 'PENDING' && (
-                      <div className="flex flex-col gap-2 md:w-48">
+                      <div className="flex flex-row sm:flex-col gap-2 lg:w-48">
                         <a 
                           href={`tel:${followUp.lead?.customer_phone}`}
-                          className="btn btn-primary w-full"
+                          className="btn btn-primary flex-1 sm:w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                         >
-                          <Phone className="w-4 h-4 mr-2" />
+                          <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
                           Call Now
                         </a>
                         <Link 
                           href={`/dashboard/telecaller/leads/${followUp.lead_id}`}
-                          className="btn btn-outline w-full"
+                          className="btn btn-outline flex-1 sm:w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                         >
                           View Lead
                         </Link>
@@ -345,9 +345,9 @@ export default function FollowUpsPage() {
                               markAsCompleted(followUp.id, notes);
                             }
                           }}
-                          className="btn btn-outline w-full text-green-600 hover:bg-green-50"
+                          className="btn btn-outline flex-1 sm:w-full text-green-600 hover:bg-green-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                         >
-                          <CheckCircle className="w-4 h-4 mr-2" />
+                          <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
                           Mark Done
                         </button>
                         <button
@@ -356,19 +356,19 @@ export default function FollowUpsPage() {
                               cancelFollowUp(followUp.id);
                             }
                           }}
-                          className="btn btn-outline w-full text-red-600 hover:bg-red-50"
+                          className="btn btn-outline flex-1 sm:w-full text-red-600 hover:bg-red-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                         >
-                          <XCircle className="w-4 h-4 mr-2" />
+                          <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
                           Cancel
                         </button>
                       </div>
                     )}
 
                     {followUp.status === 'COMPLETED' && (
-                      <div className="flex items-center justify-center md:w-48">
+                      <div className="flex items-center justify-center lg:w-48">
                         <div className="text-center">
-                          <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
-                          <p className="text-sm font-semibold text-green-700">Completed</p>
+                          <CheckCircle className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-green-500 mx-auto mb-1.5 sm:mb-2" />
+                          <p className="text-xs sm:text-sm font-semibold text-green-700">Completed</p>
                         </div>
                       </div>
                     )}

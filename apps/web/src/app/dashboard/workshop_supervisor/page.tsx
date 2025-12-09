@@ -175,77 +175,77 @@ export default function WorkshopSupervisorDashboard() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg p-6 text-white">
-          <h1 className="text-3xl font-bold mb-2">👨‍💼 Supervisor Dashboard</h1>
-          <p className="text-blue-100">Oversee team performance and quality control</p>
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg p-4 sm:p-5 md:p-6 text-white">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-1 sm:mb-2">👨‍💼 Supervisor Dashboard</h1>
+          <p className="text-blue-100 text-xs sm:text-sm md:text-base">Oversee team performance and quality control</p>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
           <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
-            <div className="flex items-center gap-3">
-              <Users className="w-8 h-8 text-brand-primary" />
-              <div>
-                <p className="text-sm text-text-body">Total Mechanics</p>
-                <p className="text-2xl font-bold text-text-heading">{stats.total_mechanics}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Users className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-brand-primary flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-text-body">Total Mechanics</p>
+                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.total_mechanics}</p>
               </div>
             </div>
           </div>
 
           <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100">
-            <div className="flex items-center gap-3">
-              <Wrench className="w-8 h-8 text-yellow-600" />
-              <div>
-                <p className="text-sm text-text-body">Active Jobs</p>
-                <p className="text-2xl font-bold text-text-heading">{stats.active_jobs}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Wrench className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-yellow-600 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-text-body">Active Jobs</p>
+                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.active_jobs}</p>
               </div>
             </div>
           </div>
 
           <div className="card bg-gradient-to-br from-green-50 to-green-100">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="w-8 h-8 text-green-600" />
-              <div>
-                <p className="text-sm text-text-body">Completed Today</p>
-                <p className="text-2xl font-bold text-text-heading">{stats.completed_today}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-600 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-text-body">Completed Today</p>
+                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.completed_today}</p>
               </div>
             </div>
           </div>
 
           <div className="card bg-gradient-to-br from-purple-50 to-purple-100">
-            <div className="flex items-center gap-3">
-              <Clock className="w-8 h-8 text-purple-600" />
-              <div>
-                <p className="text-sm text-text-body">Pending QC</p>
-                <p className="text-2xl font-bold text-text-heading">{stats.pending_qc}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-600 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-text-body">Pending QC</p>
+                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.pending_qc}</p>
               </div>
             </div>
           </div>
 
           <div className="card bg-gradient-to-br from-red-50 to-red-100">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-8 h-8 text-red-600" />
-              <div>
-                <p className="text-sm text-text-body">Overdue Jobs</p>
-                <p className="text-2xl font-bold text-text-heading">{stats.overdue_jobs}</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-red-600 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-text-body">Overdue Jobs</p>
+                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.overdue_jobs}</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           <button
             onClick={() => router.push('/dashboard/workshop_supervisor/job-assignments')}
             className="card hover:shadow-lg transition cursor-pointer"
           >
-            <div className="flex items-center gap-3">
-              <Wrench className="w-6 h-6 text-brand-primary" />
-              <div className="text-left">
-                <p className="font-semibold">Job Assignments</p>
-                <p className="text-sm text-gray-600">Assign and monitor jobs</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Wrench className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
+              <div className="text-left min-w-0">
+                <p className="font-semibold text-sm sm:text-base">Job Assignments</p>
+                <p className="text-xs sm:text-sm text-gray-600">Assign and monitor jobs</p>
               </div>
             </div>
           </button>
@@ -254,11 +254,11 @@ export default function WorkshopSupervisorDashboard() {
             onClick={() => router.push('/dashboard/workshop_supervisor/team-overview')}
             className="card hover:shadow-lg transition cursor-pointer"
           >
-            <div className="flex items-center gap-3">
-              <Users className="w-6 h-6 text-brand-primary" />
-              <div className="text-left">
-                <p className="font-semibold">Team Overview</p>
-                <p className="text-sm text-gray-600">View team performance</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
+              <div className="text-left min-w-0">
+                <p className="font-semibold text-sm sm:text-base">Team Overview</p>
+                <p className="text-xs sm:text-sm text-gray-600">View team performance</p>
               </div>
             </div>
           </button>
@@ -267,11 +267,11 @@ export default function WorkshopSupervisorDashboard() {
             onClick={() => router.push('/dashboard/workshop_supervisor/performance')}
             className="card hover:shadow-lg transition cursor-pointer"
           >
-            <div className="flex items-center gap-3">
-              <TrendingUp className="w-6 h-6 text-brand-primary" />
-              <div className="text-left">
-                <p className="font-semibold">Performance</p>
-                <p className="text-sm text-gray-600">Analyze metrics</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
+              <div className="text-left min-w-0">
+                <p className="font-semibold text-sm sm:text-base">Performance</p>
+                <p className="text-xs sm:text-sm text-gray-600">Analyze metrics</p>
               </div>
             </div>
           </button>
@@ -279,17 +279,17 @@ export default function WorkshopSupervisorDashboard() {
 
         {/* Recent Jobs */}
         <div className="card">
-          <h2 className="text-xl font-bold mb-4">Recent Jobs</h2>
-          <div className="space-y-3">
+          <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Recent Jobs</h2>
+          <div className="space-y-2 sm:space-y-3">
             {recentJobs.slice(0, 5).map((job) => (
-              <div key={job.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex-1">
-                  <p className="font-semibold">{job.service_leads?.lead_number}</p>
-                  <p className="text-sm text-gray-600">
+              <div key={job.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 p-2.5 sm:p-3 bg-gray-50 rounded-lg">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm sm:text-base truncate">{job.service_leads?.lead_number}</p>
+                  <p className="text-xs sm:text-sm text-gray-600 truncate">
                     {job.mechanic?.full_name} - {job.service_leads?.customer_name}
                   </p>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 ${
                   job.mechanic_status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
                   job.mechanic_status === 'ASSIGNED' ? 'bg-green-100 text-green-700' :
                   'bg-yellow-100 text-yellow-700'
@@ -299,7 +299,7 @@ export default function WorkshopSupervisorDashboard() {
               </div>
             ))}
             {recentJobs.length === 0 && (
-              <p className="text-center text-gray-500 py-4">No active jobs</p>
+              <p className="text-center text-gray-500 py-3 sm:py-4 text-sm sm:text-base">No active jobs</p>
             )}
           </div>
         </div>
