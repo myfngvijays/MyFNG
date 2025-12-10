@@ -21,9 +21,13 @@ interface BookingFormData {
   customerPhone: string;
   vehicleNumber: string;
   selectedServices: string[]; // Service type IDs
+  pickupRequired: boolean; // true = pickup, false = self come
+  selectedWorkshop: any | null; // Selected workshop for self come
   pickupDate: string;
   pickupTime: string;
-  pickupAddress: string;
+  pickupAddress: string; // Auto-detected: area, city, state, pincode
+  flatNumber: string;
+  landmark: string;
   paymentMethod: string;
   paymentStatus: string; // 'PAY_NOW' | 'PAY_LATER'
 }
@@ -41,9 +45,13 @@ export default function BookServicePage() {
     customerPhone: '',
     vehicleNumber: '',
     selectedServices: [],
+    pickupRequired: true, // Default: pickup required
+    selectedWorkshop: null, // Workshop for self come
     pickupDate: '',
     pickupTime: '',
-    pickupAddress: '',
+    pickupAddress: '', // Auto-detected address (area, city, state, pincode)
+    flatNumber: '',
+    landmark: '',
     paymentMethod: '',
     paymentStatus: 'PAY_LATER'
   });
@@ -64,6 +72,8 @@ export default function BookServicePage() {
 
   // Service Types & Pricing State
   const [serviceTypes, setServiceTypes] = useState<any[]>([]);
+  const [serviceCategories, setServiceCategories] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [servicePricing, setServicePricing] = useState<Record<string, number>>({});
   const [loadingPricing, setLoadingPricing] = useState(false);
   const [loadingServiceTypes, setLoadingServiceTypes] = useState(false);
@@ -71,6 +81,10 @@ export default function BookServicePage() {
   // Payment State
   const [razorpayLoaded, setRazorpayLoaded] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  
+  // Workshop State (for self come option)
+  const [workshops, setWorkshops] = useState<any[]>([]);
+  const [loadingWorkshops, setLoadingWorkshops] = useState(false);
 
   const steps = [
     {
@@ -113,6 +127,16 @@ export default function BookServicePage() {
     loadData();
   }, []);
 
+  // Fetch workshops when city is selected and pickup is not required (self come)
+  useEffect(() => {
+    if (formData.city && !formData.pickupRequired) {
+      fetchWorkshops();
+    } else {
+      setWorkshops([]);
+      setFormData(prev => ({ ...prev, selectedWorkshop: null }));
+    }
+  }, [formData.city?.id, formData.pickupRequired]);
+
   // Load Razorpay script when component mounts
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -153,6 +177,13 @@ export default function BookServicePage() {
       return () => clearTimeout(timer);
     }
   }, [serviceTypes.length, currentStep, formData.city?.id, formData.carModel?.id]);
+
+  // Auto-select first category when categories are loaded
+  useEffect(() => {
+    if (serviceCategories.length > 0 && !selectedCategory) {
+      setSelectedCategory(serviceCategories[0].id);
+    }
+  }, [serviceCategories.length]);
 
   // Filter car suggestions
   useEffect(() => {
@@ -216,6 +247,34 @@ export default function BookServicePage() {
     }
   }
 
+  async function fetchWorkshops() {
+    if (!formData.city) return;
+    
+    setLoadingWorkshops(true);
+    try {
+      const supabase = createClient();
+      const { data: workshopsData, error } = await supabase
+        .from('workshops')
+        .select('id, name, address, city, state, pincode, phone, email, contact_person')
+        .eq('is_active', true)
+        .eq('is_verified', true)
+        .ilike('city', `%${formData.city.name}%`)
+        .order('name');
+      
+      if (error) {
+        console.error('Error fetching workshops:', error);
+        setWorkshops([]);
+      } else {
+        setWorkshops(workshopsData || []);
+      }
+    } catch (error) {
+      console.error('Error fetching workshops:', error);
+      setWorkshops([]);
+    } finally {
+      setLoadingWorkshops(false);
+    }
+  }
+
   async function fetchCarModels() {
     try {
       console.log('🚗 Fetching car models from database...');
@@ -241,50 +300,167 @@ export default function BookServicePage() {
     }
   }
 
+  // Category mapping based on service names - Precise matching with exclusions
+  const getServiceCategory = (serviceName: string): string => {
+    const name = serviceName.toLowerCase().trim();
+    
+    // Helper: Check if service belongs to another specific category (exclusions)
+    const hasBrake = name.includes('brake') || name.includes('braking');
+    const hasClutch = name.includes('clutch');
+    const hasAC = name.match(/\bac\b/i) || name.includes('air conditioning') || name.includes('air conditioner');
+    const hasBattery = name.includes('battery') || name.includes('jump start');
+    const hasEngine = name.includes('engine') || name.includes('motor');
+    const hasTyreWheel = name.includes('tire') || name.includes('tyre') || name.includes('wheel');
+    const hasPaint = name.includes('paint') || name.includes('denting');
+    const hasCleaning = name.includes('cleaning') || name.includes('wash') || name.includes('detailing');
+    
+    // Periodic Service (Maintenance packages) - Check first
+    // Match exact service package patterns (only if not other specific categories)
+    if (!hasAC && !hasBrake && !hasClutch && !hasBattery && !hasEngine &&
+        (name.includes('basic service') || name.includes('general service') || 
+         name.includes('premium service') || name.includes('platinum service') ||
+         name.includes('periodic service') || name.match(/\d+\s*points?/i) ||
+         (name.includes('service') && (name.includes('point') || name.match(/\d+/))))) {
+      return 'PERIODIC SERVICE';
+    }
+    
+    // AC Service - Must have AC specifically, exclude brake/clutch
+    if (hasAC && !hasBrake && !hasClutch && !hasBattery) {
+      return 'AC SERVICE';
+    }
+    
+    // Battery Service - Check before engine
+    if (hasBattery) {
+      return 'BATTERY SERVICE';
+    }
+    
+    // Brake Service - Must be specific to brakes, exclude AC/clutch
+    if (hasBrake && !hasAC && !hasClutch) {
+      return 'BRAKE SERVICE';
+    }
+    
+    // Clutch Service - Must be specific to clutch, exclude AC/brake
+    if (hasClutch && !hasAC && !hasBrake) {
+      return 'CLUTCH SERVICE';
+    }
+    
+    // Tyre & Wheel Care - Specific wheel/tire services
+    if (hasTyreWheel && !hasBrake && !hasClutch && !hasAC) {
+      return 'TYRE & WHEEL CARE';
+    }
+    
+    // Denting Painting - Body work and paint (exclude cleaning/detailing)
+    if (hasPaint && !hasCleaning && 
+        (name.includes('denting') || 
+         name.includes('bonnet') ||
+         name.includes('antirust') ||
+         (name.includes('coating') && (name.includes('underbody') || name.includes('antirust') || name.includes('body'))))) {
+      return 'DENTING PAINTING';
+    }
+    
+    // Detailing Service - Cleaning, wash, polishing, wax
+    if (hasCleaning || 
+        name.includes('wax') || 
+        name.includes('polish') ||
+        name.includes('teflon') ||
+        (name.includes('3m') && (name.includes('cleaning') || name.includes('wax') || name.includes('polish')))) {
+      return 'DETAILING SERVICE';
+    }
+    
+    // Engine Service - Must be engine/oil specific
+    if (hasEngine && !hasAC && !hasBrake && !hasClutch) {
+      return 'ENGINE SERVICE';
+    }
+    // Oil change specifically
+    if (name.includes('oil change') || (name.includes('oil') && name.includes('change') && !hasCleaning)) {
+      return 'ENGINE SERVICE';
+    }
+    // Transmission service
+    if (name.includes('transmission')) {
+      return 'ENGINE SERVICE';
+    }
+    
+    // Default category for unmatched services
+    return 'OTHER SERVICES';
+  };
+
   async function fetchServiceTypes() {
     setLoadingServiceTypes(true);
     try {
       const supabase = createClient();
-      // Fetch all active services and filter for the 4 we need
-      const { data: servicesData, error } = await supabase
+      
+      // Fetch all active services with error handling
+      const { data: servicesData, error, status, statusText } = await supabase
         .from('service_types')
         .select('id, name, description')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .order('name');
       
       if (error) {
-        console.error('Error fetching service types:', error);
-        toast.error('Failed to load services. Please try again.');
+        console.error('Error fetching service types:', {
+          error,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          status,
+          statusText
+        });
+        
+        // Show more detailed error message
+        const errorMsg = error.message || 'Failed to load services. Please check database permissions.';
+        toast.error(errorMsg);
         setServiceTypes([]);
+        setServiceCategories([]);
       } else {
-        // Filter and sort in specific order: Basic Service, General, Premium, Platinum
-        const servicePatterns = [
-          { pattern: /basic service/i, order: 1, points: 15 },
-          { pattern: /general service/i, order: 2, points: 30 },
-          { pattern: /premium service/i, order: 3, points: 50 },
-          { pattern: /platinum service/i, order: 4, points: 60 }
-        ];
+        const allServices = (servicesData || []).map((service: any) => {
+          // Extract points from service name if available
+          const pointsMatch = service.name.match(/(\d+)\s*points?/i);
+          const points = pointsMatch ? parseInt(pointsMatch[1]) : null;
+          
+          const category = getServiceCategory(service.name);
+          
+          // Debug logging for category assignment
+          console.log(`Service: "${service.name}" -> Category: "${category}"`);
+          
+          return {
+            ...service,
+            category: category,
+            points: points
+          };
+        });
         
-        const matchedServices = (servicesData || [])
-          .map(service => {
-            const match = servicePatterns.find(sp => sp.pattern.test(service.name));
-            if (match) {
-              return {
-                ...service,
-                order: match.order,
-                points: match.points
-              };
-            }
-            return null;
+        setServiceTypes(allServices);
+        
+        // Extract unique categories
+        const categories = Array.from(new Set(allServices.map((s: any) => s.category)))
+          .map(category => {
+            const categoryServices = allServices.filter((s: any) => s.category === category);
+            return {
+              id: category,
+              name: category,
+              count: categoryServices.length
+            };
           })
-          .filter(Boolean)
-          .sort((a: any, b: any) => a.order - b.order) as any[];
+          .sort((a, b) => {
+            // Sort: PERIODIC SERVICE first, then alphabetical
+            if (a.name === 'PERIODIC SERVICE') return -1;
+            if (b.name === 'PERIODIC SERVICE') return 1;
+            return a.name.localeCompare(b.name);
+          });
         
-        setServiceTypes(matchedServices);
+        setServiceCategories(categories);
+        
+        // Auto-select first category if none selected
+        if (!selectedCategory && categories.length > 0) {
+          setSelectedCategory(categories[0].id);
+        }
       }
     } catch (error) {
       console.error('Error fetching service types:', error);
       toast.error('Failed to load services. Please try again.');
       setServiceTypes([]);
+      setServiceCategories([]);
     } finally {
       setLoadingServiceTypes(false);
     }
@@ -545,24 +721,42 @@ export default function BookServicePage() {
                 const data = await response.json();
                 const address = data.address || {};
                 
-                // Build full address string
+                // Extract only: area, city, state, pincode
                 const addressParts = [];
-                if (address.house_number) addressParts.push(address.house_number);
-                if (address.road) addressParts.push(address.road);
-                if (address.neighbourhood) addressParts.push(address.neighbourhood);
-                if (address.suburb) addressParts.push(address.suburb);
-                if (address.city || address.town || address.village) {
-                  addressParts.push(address.city || address.town || address.village);
+                
+                // Area (neighbourhood, suburb, or locality)
+                if (address.neighbourhood) {
+                  addressParts.push(address.neighbourhood);
+                } else if (address.suburb) {
+                  addressParts.push(address.suburb);
+                } else if (address.locality) {
+                  addressParts.push(address.locality);
                 }
-                if (address.state_district) addressParts.push(address.state_district);
-                if (address.state) addressParts.push(address.state);
-                if (address.postcode) addressParts.push(address.postcode);
+                
+                // City (city, town, or village)
+                if (address.city) {
+                  addressParts.push(address.city);
+                } else if (address.town) {
+                  addressParts.push(address.town);
+                } else if (address.village) {
+                  addressParts.push(address.village);
+                }
+                
+                // State
+                if (address.state) {
+                  addressParts.push(address.state);
+                }
+                
+                // Pincode
+                if (address.postcode) {
+                  addressParts.push(address.postcode);
+                }
                 
                 const fullAddress = addressParts.join(', ');
                 
                 if (fullAddress) {
                   setFormData(prev => ({ ...prev, pickupAddress: fullAddress }));
-                  toast.success('Address detected successfully!');
+                  toast.success('Address detected successfully! Please add flat number and landmark.');
                 } else {
                   toast.error('Could not detect address. Please enter manually.');
                 }
@@ -643,19 +837,32 @@ export default function BookServicePage() {
       }
     }
 
-    // Step 4 validation: Pickup details required
+    // Step 4 validation: Pickup details or Workshop selection
     if (currentStep === 3) {
-      if (!formData.pickupDate) {
-        toast.error('Please select a pickup date');
-        return;
-      }
-      if (!formData.pickupTime) {
-        toast.error('Please select a pickup time');
-        return;
-      }
-      if (!formData.pickupAddress.trim()) {
-        toast.error('Please enter pickup address');
-        return;
+      if (formData.pickupRequired) {
+        // Pickup required - validate pickup details
+        if (!formData.pickupDate) {
+          toast.error('Please select a pickup date');
+          return;
+        }
+        if (!formData.pickupTime) {
+          toast.error('Please select a pickup time');
+          return;
+        }
+        if (!formData.pickupAddress.trim()) {
+          toast.error('Please auto-detect or enter address (area, city, state, pincode)');
+          return;
+        }
+        if (!formData.landmark.trim()) {
+          toast.error('Please enter a landmark');
+          return;
+        }
+      } else {
+        // Self come - validate workshop selection
+        if (!formData.selectedWorkshop) {
+          toast.error('Please select a workshop');
+          return;
+        }
       }
     }
 
@@ -690,6 +897,14 @@ export default function BookServicePage() {
     const supabase = createClient();
     const leadNumber = `L-${Date.now().toString().slice(-8)}`;
 
+    // Combine address fields: pickupAddress (auto-detected) + flatNumber (optional) + landmark (mandatory)
+    const addressParts = [formData.pickupAddress.trim()];
+    if (formData.flatNumber.trim()) {
+      addressParts.unshift(formData.flatNumber.trim()); // Add flat number at start if provided
+    }
+    addressParts.push(formData.landmark.trim()); // Landmark is mandatory
+    const completeAddress = addressParts.filter(part => part.length > 0).join(', ');
+
     const { data: lead, error: leadError } = await supabase
       .from('service_leads')
       .insert([{
@@ -706,8 +921,14 @@ export default function BookServicePage() {
         vehicle_model: formData.carModel.model_name,
         vehicle_variant: formData.carModel.variant || null,
         service_type_ids: formData.selectedServices.length > 0 ? formData.selectedServices : null,
-        address: formData.pickupAddress,
-        customer_address: formData.pickupAddress,
+        pickup_required: formData.pickupRequired,
+        assigned_workshop_id: formData.pickupRequired ? null : formData.selectedWorkshop?.id || null,
+        address: formData.pickupRequired ? completeAddress : (formData.selectedWorkshop?.address || completeAddress),
+        customer_address: formData.pickupRequired ? completeAddress : (formData.selectedWorkshop?.address || completeAddress),
+        pickup_address: formData.pickupRequired ? completeAddress : null,
+        preferred_slot_start: formData.pickupRequired && formData.pickupDate && formData.pickupTime 
+          ? `${formData.pickupDate}T${formData.pickupTime}:00` 
+          : null,
         estimated_amount: totalPrice > 0 ? totalPrice : null,
         lead_priority: 'NORMAL',
         created_at: new Date().toISOString()
@@ -733,6 +954,16 @@ export default function BookServicePage() {
     setIsProcessingPayment(true);
 
     try {
+      // Validate customer details before creating payment order
+      if (!formData.customerPhone || !formData.customerPhone.trim()) {
+        toast.error('Customer phone number is required for payment');
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      // Use customer name if available, otherwise use a default or phone number
+      const customerName = formData.customerName?.trim() || `Customer_${formData.customerPhone.slice(-4)}`;
+
       // Create payment order
       const response = await fetch('/api/payments/create-booking-order', {
         method: 'POST',
@@ -741,8 +972,8 @@ export default function BookServicePage() {
         },
         body: JSON.stringify({
           amount: totalPrice,
-          customerName: formData.customerName || '',
-          customerPhone: formData.customerPhone,
+          customerName: customerName,
+          customerPhone: formData.customerPhone.trim(),
           customerEmail: '', // Optional
         }),
       });
@@ -842,10 +1073,31 @@ export default function BookServicePage() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.city || !formData.carModel || !formData.customerPhone || 
-        !formData.pickupDate || !formData.pickupTime || !formData.pickupAddress || !formData.paymentMethod) {
+    // Base validation
+    if (!formData.city || !formData.carModel || !formData.customerPhone || !formData.paymentMethod) {
       toast.error('Please complete all required fields');
       return;
+    }
+    
+    // Pickup/Workshop validation
+    if (formData.pickupRequired) {
+      if (!formData.pickupDate || !formData.pickupTime || !formData.pickupAddress) {
+        toast.error('Please complete pickup details');
+        return;
+      }
+    } else {
+      if (!formData.selectedWorkshop) {
+        toast.error('Please select a workshop');
+        return;
+      }
+    }
+
+    // Validate customer phone for payment
+    if (formData.paymentStatus === 'PAY_NOW' && totalPrice > 0) {
+      if (!formData.customerPhone || !formData.customerPhone.trim() || formData.customerPhone.length !== 10) {
+        toast.error('Valid 10-digit phone number is required for payment');
+        return;
+      }
     }
 
     // If Pay Now is selected, initiate payment
@@ -876,6 +1128,136 @@ export default function BookServicePage() {
   const progress = ((currentStep + 1) / steps.length) * 100;
   const isLastStep = currentStep === steps.length - 1;
   
+  // Helper functions for date selection (Step 4)
+  // Always get today's date in India timezone (IST - UTC+5:30)
+  const getIndiaDate = () => {
+    const now = new Date();
+    // Get IST date string (Asia/Kolkata timezone)
+    const istDateStr = now.toLocaleString('en-US', { 
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    // Parse it back to get the correct date
+    const [month, day, year] = istDateStr.split('/');
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  };
+  
+  const getCurrentDate = () => {
+    const today = getIndiaDate();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  const getNextDate = () => {
+    const today = getIndiaDate();
+    const next = new Date(today);
+    next.setDate(next.getDate() + 1);
+    const year = next.getFullYear();
+    const month = String(next.getMonth() + 1).padStart(2, '0');
+    const day = String(next.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  const getNextNextDate = () => {
+    const today = getIndiaDate();
+    const next = new Date(today);
+    next.setDate(next.getDate() + 2);
+    const year = next.getFullYear();
+    const month = String(next.getMonth() + 1).padStart(2, '0');
+    const day = String(next.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  // Helper to compare dates in IST
+  const compareISTDates = (dateStr1: string, dateStr2: string) => {
+    const d1 = new Date(dateStr1 + 'T00:00:00+05:30'); // IST
+    const d2 = new Date(dateStr2 + 'T00:00:00+05:30'); // IST
+    return d1.getTime() === d2.getTime();
+  };
+  
+  const formatDateDisplay = (dateStr: string) => {
+    if (!dateStr) return '';
+    const todayIST = getCurrentDate();
+    const tomorrowIST = getNextDate();
+    const dayAfterIST = getNextNextDate();
+    
+    // Parse date and format in IST timezone
+    const date = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone issues
+    const istDateStr = date.toLocaleString('en-US', { 
+      timeZone: 'Asia/Kolkata',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short'
+    });
+    
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const [dayName, monthName, day] = istDateStr.split(' ');
+    
+    if (compareISTDates(dateStr, todayIST)) return 'Today';
+    if (compareISTDates(dateStr, tomorrowIST)) return 'Tomorrow';
+    if (compareISTDates(dateStr, dayAfterIST)) {
+      return `${dayName}, ${day} ${monthName}`;
+    }
+    
+    return `${dayName}, ${day} ${monthName}`;
+  };
+  
+  // Format date for button labels (shorter format)
+  const formatDateForButton = (dateStr: string) => {
+    if (!dateStr) return '';
+    const todayIST = getCurrentDate();
+    const tomorrowIST = getNextDate();
+    const dayAfterIST = getNextNextDate();
+    
+    // Parse date and format in IST timezone
+    const date = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone issues
+    const istDateStr = date.toLocaleString('en-US', { 
+      timeZone: 'Asia/Kolkata',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short'
+    });
+    
+    const [dayName, monthName, day] = istDateStr.split(' ');
+    
+    if (compareISTDates(dateStr, todayIST)) {
+      return `Today, ${day} ${monthName}`;
+    }
+    if (compareISTDates(dateStr, tomorrowIST)) {
+      return `Tomorrow, ${day} ${monthName}`;
+    }
+    if (compareISTDates(dateStr, dayAfterIST)) {
+      return `${dayName}, ${day} ${monthName}`;
+    }
+    
+    return `${dayName}, ${day} ${monthName}`;
+  };
+  
+  // Generate time slots: 9 AM to 9 PM (hourly) - Display as "hh:mm am/pm - hh:mm am/pm"
+  const timeSlots = Array.from({ length: 13 }, (_, i) => {
+    const hour = 9 + i;
+    const time24 = `${hour.toString().padStart(2, '0')}:00`;
+    const nextHour = hour + 1;
+    
+    // Format start time
+    const startHour = hour === 12 ? 12 : hour > 12 ? hour - 12 : hour;
+    const startPeriod = hour >= 12 ? 'PM' : 'AM';
+    const startTime = `${startHour}:00 ${startPeriod}`;
+    
+    // Format end time
+    const endHour = nextHour === 12 ? 12 : nextHour > 12 ? nextHour - 12 : nextHour;
+    const endPeriod = nextHour >= 12 ? 'PM' : 'AM';
+    const endTime = `${endHour}:00 ${endPeriod}`;
+    
+    // Format as range: "9:00 AM - 10:00 AM"
+    const rangeLabel = `${startTime} - ${endTime}`;
+    return { value: time24, label: rangeLabel };
+  });
+  
   const canProceed = currentStep === 0 
     ? formData.city !== null && formData.carModel !== null
     : currentStep === 1
@@ -883,7 +1265,9 @@ export default function BookServicePage() {
     : currentStep === 2
     ? formData.selectedServices.length > 0
     : currentStep === 3
-    ? formData.pickupDate !== '' && formData.pickupTime !== '' && formData.pickupAddress.trim() !== ''
+    ? formData.pickupRequired
+      ? formData.pickupDate !== '' && formData.pickupTime !== '' && formData.pickupAddress.trim() !== '' && formData.landmark.trim() !== ''
+      : formData.selectedWorkshop !== null
     : formData.paymentMethod !== '';
 
   const totalPrice = formData.selectedServices.reduce((sum, serviceId) => {
@@ -1223,59 +1607,100 @@ export default function BookServicePage() {
                     </div>
                   </div>
 
-                        {/* Service Types Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
-                          {serviceTypes.map((service) => {
-                            const isSelected = formData.selectedServices.includes(service.id);
-                            const price = servicePricing[service.id] || service.base_price || 0;
-                            
-                            return (
-                        <button
-                          key={service.id}
-                                onClick={() => handleServiceToggle(service.id)}
-                                className={`p-6 rounded-xl border-2 transition-all transform hover:scale-[1.02] text-left ${
-                              isSelected
-                                    ? 'border-brand-primary bg-gradient-to-br from-brand-primary/10 to-brand-secondary/10 shadow-lg'
-                                    : 'border-gray-200 bg-white hover:border-brand-primary/50 hover:shadow-md'
-                          }`}
-                        >
-                                <div className="flex items-start justify-between mb-3">
-                                  <div className="flex items-center gap-3">
-                                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                        {/* Category Selection - Simple Filter Style */}
+                        {serviceCategories.length > 0 && (
+                          <div className="mb-4 sm:mb-6">
+                            <h3 className="text-sm sm:text-base font-semibold text-gray-700 mb-2">Select Service Category</h3>
+                            <div className="flex flex-wrap gap-2">
+                              {serviceCategories.map((category) => {
+                                const isSelected = selectedCategory === category.id;
+                                return (
+                                  <button
+                                    key={category.id}
+                                    onClick={() => setSelectedCategory(category.id)}
+                                    className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg border transition-all text-sm font-medium ${
                                       isSelected
-                                        ? 'bg-gradient-to-br from-brand-primary to-brand-secondary'
-                                        : 'bg-gray-100'
-                                    }`}>
-                                      <Wrench className={`w-6 h-6 ${
-                                        isSelected ? 'text-white' : 'text-gray-600'
-                                      }`} />
-                              </div>
-                                    <div>
-                                      <h3 className="font-bold text-lg text-gray-900">{service.name}</h3>
-                                      {service.points && (
-                                        <p className="text-sm text-brand-primary font-semibold mt-1">
-                                          {service.points} Points
-                                        </p>
-                                      )}
-                                      {service.description && (
-                                        <p className="text-sm text-gray-600 mt-1">{service.description}</p>
-                                      )}
+                                        ? 'border-brand-primary bg-brand-primary text-white shadow-sm'
+                                        : 'border-gray-300 bg-white text-gray-700 hover:border-brand-primary/50 hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    {category.name} <span className="text-xs opacity-75">({category.count})</span>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
-                                  {isSelected && (
-                                    <CheckCircle className="w-6 h-6 text-brand-primary flex-shrink-0" />
-                    )}
-                  </div>
-                                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-                                  <span className="text-xs text-gray-500">Price</span>
-                                  <span className="text-2xl font-bold text-brand-primary">
-                                    {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'Price on request'}
-                                  </span>
+                        )}
+
+                        {/* Service Types Grid - Filtered by Category */}
+                        {selectedCategory && (
+                          <div className="mb-4 sm:mb-6">
+                            <h3 className="text-sm sm:text-base font-semibold text-gray-700 mb-3">
+                              Services in {selectedCategory}
+                            </h3>
+                            {serviceTypes.filter((service: any) => service.category === selectedCategory).length === 0 ? (
+                              <div className="text-center py-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                                <Wrench className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                                <p className="text-gray-600 text-sm">No services available in this category.</p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                {serviceTypes
+                                  .filter((service: any) => service.category === selectedCategory)
+                                  .map((service) => {
+                                  const isSelected = formData.selectedServices.includes(service.id);
+                                  const price = servicePricing[service.id] || 0;
+                                  
+                                  return (
+                                    <button
+                                      key={service.id}
+                                      onClick={() => handleServiceToggle(service.id)}
+                                      className={`p-4 sm:p-6 rounded-xl border-2 transition-all transform hover:scale-[1.02] text-left ${
+                                        isSelected
+                                          ? 'border-brand-primary bg-gradient-to-br from-brand-primary/10 to-brand-secondary/10 shadow-lg'
+                                          : 'border-gray-200 bg-white hover:border-brand-primary/50 hover:shadow-md'
+                                      }`}
+                                    >
+                                      <div className="flex items-start justify-between mb-3">
+                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                            isSelected
+                                              ? 'bg-gradient-to-br from-brand-primary to-brand-secondary'
+                                              : 'bg-gray-100'
+                                          }`}>
+                                            <Wrench className={`w-5 h-5 sm:w-6 sm:h-6 ${
+                                              isSelected ? 'text-white' : 'text-gray-600'
+                                            }`} />
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <h3 className="font-bold text-base sm:text-lg text-gray-900 break-words">{service.name}</h3>
+                                            {service.points && (
+                                              <p className="text-xs sm:text-sm text-brand-primary font-semibold mt-1">
+                                                {service.points} Points
+                                              </p>
+                                            )}
+                                            {service.description && (
+                                              <p className="text-xs sm:text-sm text-gray-600 mt-1 line-clamp-2 break-words">{service.description}</p>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {isSelected && (
+                                          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0 ml-2" />
+                                        )}
+                                      </div>
+                                      <div className="flex items-center justify-between mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-200">
+                                        <span className="text-xs text-gray-500">Price</span>
+                                        <span className="text-lg sm:text-2xl font-bold text-brand-primary">
+                                          {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'Price on request'}
+                                        </span>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        </button>
-                            );
-                          })}
-                  </div>
+                        )}
 
                         {/* Total Price Display */}
                         {formData.selectedServices.length > 0 && (
@@ -1306,130 +1731,491 @@ export default function BookServicePage() {
                 </div>
               )}
 
-              {/* Step 4: Pickup Details */}
+              {/* Step 4: Pickup Details / Self Come Option */}
               {currentStep === 3 && (
-                <div className="mb-8 sm:mb-10 md:mb-12 space-y-4 sm:space-y-6">
-                  {/* Pickup Date */}
-                  <div className="relative">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-brand-primary" />
-                      Pickup Date <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.pickupDate}
-                      onChange={(e) => handleInputChange('pickupDate', e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
-                      className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
-                        formData.pickupDate
-                          ? 'border-brand-primary bg-brand-primary/5'
-                          : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
-                      }`}
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && canProceed) {
-                          handleNext();
-                        }
-                      }}
-                    />
-                    {formData.pickupDate && (
-                      <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 mt-4 sm:mt-6">
-                        <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Pickup Time */}
-                  <div className="relative">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-brand-primary" />
-                      Pickup Time <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="time"
-                      value={formData.pickupTime}
-                      onChange={(e) => handleInputChange('pickupTime', e.target.value)}
-                      className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
-                        formData.pickupTime
-                          ? 'border-brand-primary bg-brand-primary/5'
-                          : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
-                      }`}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && canProceed) {
-                          handleNext();
-                        }
-                      }}
-                    />
-                    {formData.pickupTime && (
-                      <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 mt-4 sm:mt-6">
-                        <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Pickup Address */}
-                  <div className="relative">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-semibold text-gray-700 flex items-center gap-2">
-                        <AddressIcon className="w-4 h-4 text-brand-primary" />
-                        Pickup Address <span className="text-red-500">*</span>
+                  <div className="mb-8 sm:mb-10 md:mb-12 space-y-5 sm:space-y-6">
+                    {/* Pickup Required / Self Come Toggle Switch - Show First */}
+                    <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm mb-6">
+                      <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
+                        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md">
+                          <Car className="w-4 h-4 text-white" />
+                        </div>
+                        Service Preference
+                        <span className="text-red-500 text-lg">*</span>
                       </label>
-                      <button
-                        type="button"
-                        onClick={autoDetectAddress}
-                        disabled={isDetectingAddress}
-                        className="text-xs text-brand-primary hover:text-brand-secondary font-semibold flex items-center gap-1 disabled:opacity-50"
-                      >
-                        {isDetectingAddress ? (
+                      
+                      {/* Toggle Switch */}
+                      <div className="flex items-center justify-between gap-4">
+                        {/* Left Label - Pickup Required */}
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+                            formData.pickupRequired
+                              ? 'bg-indigo-500'
+                              : 'bg-gray-300'
+                          }`}>
+                            <Navigation className={`w-5 h-5 ${
+                              formData.pickupRequired ? 'text-white' : 'text-gray-500'
+                            }`} />
+                          </div>
+                          <div>
+                            <h4 className={`font-bold text-base sm:text-lg transition-all ${
+                              formData.pickupRequired ? 'text-indigo-700' : 'text-gray-500'
+                            }`}>
+                              Pickup Required
+                            </h4>
+                            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+                              We'll pick up your vehicle
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Toggle Switch */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (formData.pickupRequired) {
+                              setFormData(prev => ({ ...prev, pickupRequired: false, pickupDate: '', pickupTime: '', pickupAddress: '', flatNumber: '', landmark: '' }));
+                            } else {
+                              setFormData(prev => ({ ...prev, pickupRequired: true, selectedWorkshop: null }));
+                            }
+                          }}
+                          className={`relative inline-flex h-12 w-24 sm:h-14 sm:w-28 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                            formData.pickupRequired
+                              ? 'bg-indigo-500 focus:ring-indigo-500'
+                              : 'bg-green-500 focus:ring-green-500'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-10 w-10 sm:h-12 sm:w-12 transform rounded-full bg-white shadow-lg transition-transform ${
+                              formData.pickupRequired ? 'translate-x-2 sm:translate-x-3' : 'translate-x-12 sm:translate-x-14'
+                            }`}
+                          >
+                            <div className="flex h-full w-full items-center justify-center">
+                              {formData.pickupRequired ? (
+                                <Navigation className="h-5 w-5 text-indigo-500" />
+                              ) : (
+                                <MapPin className="h-5 w-5 text-green-500" />
+                              )}
+                            </div>
+                          </span>
+                        </button>
+
+                        {/* Right Label - Self Come */}
+                        <div className="flex items-center gap-3 flex-1 justify-end">
+                          <div>
+                            <h4 className={`font-bold text-base sm:text-lg text-right transition-all ${
+                              !formData.pickupRequired ? 'text-green-700' : 'text-gray-500'
+                            }`}>
+                              Self Come
+                            </h4>
+                            <p className="text-xs sm:text-sm text-gray-500 mt-0.5 text-right">
+                              Visit our workshop
+                            </p>
+                          </div>
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+                            !formData.pickupRequired
+                              ? 'bg-green-500'
+                              : 'bg-gray-300'
+                          }`}>
+                            <MapPin className={`w-5 h-5 ${
+                              !formData.pickupRequired ? 'text-white' : 'text-gray-500'
+                            }`} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Modern Progress Indicator */}
+                    <div className="flex items-center justify-between mb-6 sm:mb-8">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center shadow-lg">
+                          <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg sm:text-xl font-bold text-gray-900">Step 4 of 5</h3>
+                          <p className="text-xs sm:text-sm text-gray-500">
+                            {formData.pickupRequired ? 'Pickup Details' : 'Workshop Selection'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((step) => (
+                          <div
+                            key={step}
+                            className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full transition-all ${
+                              step <= 4
+                                ? 'bg-gradient-to-r from-brand-primary to-brand-secondary'
+                                : 'bg-gray-300'
+                            } ${step === 4 ? 'ring-2 ring-brand-primary/30 ring-offset-2' : ''}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Pickup Details - Only show when pickup required */}
+                    {formData.pickupRequired && (
+                      <>
+                        {/* Pickup Date - With Current/Next/Next Buttons + Calendar Icon */}
+                        <div className="relative group">
+                          <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                              <label className="block text-sm sm:text-base font-bold text-gray-800 flex items-center gap-2.5">
+                                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
+                                  <Calendar className="w-4 h-4 text-white" />
+                                </div>
+                                Pickup Date
+                                {formData.pickupDate && (
+                                  <span className="text-lg sm:text-xl font-bold text-blue-600 ml-2">
+                                    {new Date(formData.pickupDate).toLocaleDateString('en-GB', { 
+                                      day: '2-digit', 
+                                      month: '2-digit', 
+                                      year: 'numeric' 
+                                    })}
+                                  </span>
+                                )}
+                                <span className="text-red-500 text-lg">*</span>
+                              </label>
+                            </div>
+                            
+                            {/* Date Quick Select Buttons */}
+                            <div className="flex flex-wrap gap-2 sm:gap-3 mb-4">
+                              <button
+                                type="button"
+                                onClick={() => handleInputChange('pickupDate', getCurrentDate())}
+                                className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all ${
+                                  formData.pickupDate === getCurrentDate()
+                                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
+                                    : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-blue-300 hover:shadow-md'
+                                }`}
+                              >
+                                {formatDateForButton(getCurrentDate())}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleInputChange('pickupDate', getNextDate())}
+                                className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all ${
+                                  formData.pickupDate === getNextDate()
+                                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
+                                    : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-blue-300 hover:shadow-md'
+                                }`}
+                              >
+                                {formatDateForButton(getNextDate())}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleInputChange('pickupDate', getNextNextDate())}
+                                className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all ${
+                                  formData.pickupDate === getNextNextDate()
+                                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
+                                    : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-blue-300 hover:shadow-md'
+                                }`}
+                              >
+                                {formatDateForButton(getNextNextDate())}
+                              </button>
+                              
+                              {/* Date Picker Icon next to third button */}
+                              <div className="relative">
+                                <input
+                                  type="date"
+                                  value={formData.pickupDate}
+                                  onChange={(e) => {
+                                    const selectedDate = e.target.value;
+                                    const today = getCurrentDate();
+                                    if (selectedDate >= today) {
+                                      handleInputChange('pickupDate', selectedDate);
+                                    } else {
+                                      toast.error('Please select today or a future date');
+                                    }
+                                  }}
+                                  min={getCurrentDate()}
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                  id="date-picker-hidden"
+                                />
+                                <label
+                                  htmlFor="date-picker-hidden"
+                                  className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md cursor-pointer hover:shadow-lg transition-all flex-shrink-0"
+                                >
+                                  <Calendar className="w-5 h-5 text-white" />
+                                </label>
+                              </div>
+                              
+                              {/* Display selected date next to calendar icon */}
+                              {formData.pickupDate && (
+                                <div className="px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-xl">
+                                  <p className="text-xs sm:text-sm font-bold text-blue-700">
+                                    {new Date(formData.pickupDate).toLocaleDateString('en-GB', { 
+                                      day: '2-digit', 
+                                      month: '2-digit', 
+                                      year: 'numeric' 
+                                    })}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {formData.pickupDate && (
+                              <p className="mt-3 text-sm font-semibold text-blue-600">
+                                Selected: {formatDateDisplay(formData.pickupDate)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Pickup Time - Hourly Slots (9 AM to 9 PM) */}
+                        <div className="relative group">
+                          <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                            <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
+                              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
+                                <Clock className="w-4 h-4 text-white" />
+                              </div>
+                              Pickup Time
+                              <span className="text-red-500 text-lg">*</span>
+                            </label>
+                            
+                            {/* Time Slot Grid */}
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
+                              {timeSlots.map((slot) => {
+                                const isSelected = formData.pickupTime === slot.value;
+                                return (
+                                  <button
+                                    key={slot.value}
+                                    type="button"
+                                    onClick={() => handleInputChange('pickupTime', slot.value)}
+                                    className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all ${
+                                      isSelected
+                                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg scale-105 ring-2 ring-purple-300'
+                                        : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-purple-300 hover:shadow-md'
+                                    }`}
+                                  >
+                                    {slot.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            
+                            {formData.pickupTime && (
+                              <p className="mt-4 text-sm font-semibold text-purple-600 flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4" />
+                                Selected: {timeSlots.find(s => s.value === formData.pickupTime)?.label}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Pickup Address - Auto Detect (Area, City, State, Pincode) */}
+                        <div className="relative group">
+                          <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                              <label className="block text-sm sm:text-base font-bold text-gray-800 flex items-center gap-2.5">
+                                <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
+                                  <AddressIcon className="w-4 h-4 text-white" />
+                                </div>
+                                Address (Auto-detected)
+                                <span className="text-red-500 text-lg">*</span>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={autoDetectAddress}
+                                disabled={isDetectingAddress}
+                                className="px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-bold text-xs sm:text-sm hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2 shadow-md"
+                              >
+                                {isDetectingAddress ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>Detecting...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Navigation className="w-4 h-4" />
+                                    <span>Auto Detect</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                            
+                            {isDetectingAddress && (
+                              <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl animate-fade-in shadow-sm">
+                                <div className="flex items-center gap-3">
+                                  <Loader2 className="w-5 h-5 text-brand-primary animate-spin flex-shrink-0" />
+                                  <p className="text-sm text-blue-700 font-semibold">Detecting area, city, state, and pincode...</p>
+                                </div>
+                              </div>
+                            )}
+                            
+                            <div className="relative">
+                              <textarea
+                                value={formData.pickupAddress}
+                                onChange={(e) => handleInputChange('pickupAddress', e.target.value)}
+                                placeholder="Area, City, State, Pincode (auto-detected or enter manually)"
+                                rows={3}
+                                className={`w-full px-4 sm:px-5 py-3.5 sm:py-4 text-sm sm:text-base font-medium border-2 rounded-xl focus:ring-4 outline-none transition-all resize-none shadow-sm ${
+                                  formData.pickupAddress
+                                    ? 'border-green-500 bg-gradient-to-br from-green-50 to-green-100/50 text-gray-900 shadow-md'
+                                    : 'border-gray-200 bg-white focus:border-green-500 focus:ring-green-500/20 hover:border-gray-300'
+                                }`}
+                              />
+                              {formData.pickupAddress && (
+                                <div className="absolute right-4 top-4">
+                                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center shadow-lg animate-scale-in">
+                                    <CheckCircle className="w-5 h-5 text-white" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <p className="mt-3 text-xs sm:text-sm text-gray-500 italic">
+                              This field will be auto-filled with area, city, state, and pincode when you click "Auto Detect"
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Flat Number & Landmark - Only show when address is filled */}
+                        {formData.pickupAddress.trim() && (
                           <>
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Detecting...
-                          </>
-                        ) : (
-                          <>
-                            <Navigation className="w-3 h-3" />
-                            Auto Detect
+                            {/* Flat Number - Optional */}
+                            <div className="relative group">
+                              <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                                <label className="block text-sm sm:text-base font-bold text-gray-800 mb-3 flex items-center gap-2.5">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center shadow-md">
+                                    <span className="text-white text-xs font-bold">#</span>
+                                  </div>
+                                  Flat / House Number
+                                  <span className="text-xs text-gray-500 font-normal ml-1">(Optional)</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={formData.flatNumber}
+                                  onChange={(e) => handleInputChange('flatNumber', e.target.value)}
+                                  placeholder="e.g., Flat 201, House No. 123"
+                                  className={`w-full px-4 sm:px-5 py-3.5 sm:py-4 text-base sm:text-lg font-medium border-2 rounded-xl focus:ring-4 outline-none transition-all shadow-sm ${
+                                    formData.flatNumber
+                                      ? 'border-orange-500 bg-gradient-to-br from-orange-50 to-orange-100/50 text-gray-900 shadow-md'
+                                      : 'border-gray-200 bg-white focus:border-orange-500 focus:ring-orange-500/20 hover:border-gray-300'
+                                  }`}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Landmark - Mandatory */}
+                            <div className="relative group">
+                              <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                                <label className="block text-sm sm:text-base font-bold text-gray-800 mb-3 flex items-center gap-2.5">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-pink-500 to-pink-600 rounded-lg flex items-center justify-center shadow-md">
+                                    <MapPin className="w-4 h-4 text-white" />
+                                  </div>
+                                  Landmark
+                                  <span className="text-red-500 text-lg">*</span>
+                                  <span className="text-xs text-gray-600 font-normal ml-1">(Mandatory)</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={formData.landmark}
+                                  onChange={(e) => handleInputChange('landmark', e.target.value)}
+                                  placeholder="e.g., Near ABC Mall, Behind XYZ Bank"
+                                  className={`w-full px-4 sm:px-5 py-3.5 sm:py-4 text-base sm:text-lg font-medium border-2 rounded-xl focus:ring-4 outline-none transition-all shadow-sm ${
+                                    formData.landmark
+                                      ? 'border-pink-500 bg-gradient-to-br from-pink-50 to-pink-100/50 text-gray-900 shadow-md'
+                                      : 'border-gray-200 bg-white focus:border-pink-500 focus:ring-pink-500/20 hover:border-gray-300'
+                                  }`}
+                                />
+                              </div>
+                            </div>
                           </>
                         )}
-                      </button>
-                    </div>
-                    
-                    {isDetectingAddress && (
-                      <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl animate-fade-in">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 text-brand-primary animate-spin" />
-                          <p className="text-xs text-blue-700 font-medium">Detecting your current location...</p>
+                      </>
+                    )}
+
+                    {/* Workshop Selection - Only show when self come is selected */}
+                    {!formData.pickupRequired && (
+                      <div className="space-y-5 sm:space-y-6">
+                        <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm">
+                          <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
+                            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
+                              <MapPin className="w-4 h-4 text-white" />
+                            </div>
+                            Select Workshop
+                            <span className="text-red-500 text-lg">*</span>
+                          </label>
+
+                          {loadingWorkshops ? (
+                            <div className="text-center py-8">
+                              <Loader2 className="w-8 h-8 animate-spin text-brand-primary mx-auto mb-3" />
+                              <p className="text-sm text-gray-600">Loading workshops...</p>
+                            </div>
+                          ) : workshops.length === 0 ? (
+                            <div className="text-center py-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                              <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                              <p className="text-sm font-semibold text-gray-700 mb-1">No workshops available</p>
+                              <p className="text-xs text-gray-500">No active workshops found in {formData.city?.name || 'selected city'}</p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                              {workshops.map((workshop) => {
+                                const isSelected = formData.selectedWorkshop?.id === workshop.id;
+                                return (
+                                  <button
+                                    key={workshop.id}
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, selectedWorkshop: workshop }))}
+                                    className={`p-4 sm:p-5 rounded-xl border-2 transition-all text-left ${
+                                      isSelected
+                                        ? 'border-green-500 bg-gradient-to-br from-green-50 to-green-100/50 shadow-md ring-2 ring-green-200'
+                                        : 'border-gray-200 bg-white hover:border-green-300 hover:shadow-sm'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-3 mb-2">
+                                      <div className="flex-1 min-w-0">
+                                        <h4 className={`font-bold text-base sm:text-lg mb-1 ${
+                                          isSelected ? 'text-green-700' : 'text-gray-800'
+                                        }`}>
+                                          {workshop.name}
+                                        </h4>
+                                        <div className="space-y-1 text-xs sm:text-sm">
+                                          {workshop.address && (
+                                            <p className={`flex items-start gap-2 ${
+                                              isSelected ? 'text-green-700' : 'text-gray-600'
+                                            }`}>
+                                              <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                              <span className="break-words">{workshop.address}</span>
+                                            </p>
+                                          )}
+                                          {(workshop.city || workshop.state || workshop.pincode) && (
+                                            <p className={isSelected ? 'text-green-600' : 'text-gray-500'}>
+                                              {[workshop.city, workshop.state, workshop.pincode].filter(Boolean).join(', ')}
+                                            </p>
+                                          )}
+                                          {workshop.phone && (
+                                            <p className={`flex items-center gap-2 ${
+                                              isSelected ? 'text-green-700' : 'text-gray-600'
+                                            }`}>
+                                              <Phone className="w-4 h-4" />
+                                              {workshop.phone}
+                                            </p>
+                                          )}
+                                          {workshop.contact_person && (
+                                            <p className={isSelected ? 'text-green-600' : 'text-gray-500'}>
+                                              Contact: {workshop.contact_person}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {isSelected && (
+                                        <CheckCircle className="w-6 h-6 text-green-500 flex-shrink-0" />
+                                      )}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
-                    
-                    <textarea
-                      value={formData.pickupAddress}
-                      onChange={(e) => handleInputChange('pickupAddress', e.target.value)}
-                      placeholder="Enter complete address with landmark or click 'Auto Detect'"
-                      rows={4}
-                      className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-sm sm:text-base md:text-lg border-2 rounded-xl focus:ring-2 outline-none transition-all resize-none ${
-                        formData.pickupAddress
-                          ? 'border-brand-primary bg-brand-primary/5'
-                          : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
-                      }`}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && e.ctrlKey && canProceed) {
-                          handleNext();
-                        }
-                      }}
-                    />
-                    {formData.pickupAddress && (
-                      <div className="absolute right-3 sm:right-4 top-16 sm:top-20">
-                        <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
-                      </div>
-                    )}
-                    <p className="mt-2 text-xs text-gray-500">
-                      Include street, area, landmark for easy pickup. You can edit the auto-detected address.
-                    </p>
                   </div>
+              )}
 
-                  {/* Summary Card */}
+              {/* Summary Card - Step 4 */}
+              {currentStep === 3 && (
                   <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
                     <h4 className="font-bold text-sm sm:text-base text-gray-900 mb-2 sm:mb-3">Booking Summary</h4>
                     <div className="space-y-2 text-xs sm:text-sm">
@@ -1445,7 +2231,7 @@ export default function BookServicePage() {
                         <span className="text-gray-600">Services:</span>
                         <span className="font-semibold">{formData.selectedServices.length} selected</span>
                       </div>
-                      {formData.pickupDate && (
+                      {formData.pickupRequired && formData.pickupDate && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">Pickup:</span>
                           <span className="font-semibold">
@@ -1458,9 +2244,14 @@ export default function BookServicePage() {
                           </span>
                         </div>
                       )}
+                      {!formData.pickupRequired && formData.selectedWorkshop && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Workshop:</span>
+                          <span className="font-semibold">{formData.selectedWorkshop.name}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
               )}
 
               {/* Step 5: Payment Options */}

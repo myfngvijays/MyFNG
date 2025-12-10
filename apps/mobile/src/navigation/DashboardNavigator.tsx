@@ -14,6 +14,8 @@ import WorkshopAdminDashboard from '../screens/dashboard/WorkshopAdminDashboard'
 import WorkshopSupervisorDashboard from '../screens/dashboard/WorkshopSupervisorDashboard';
 import WorkshopMechanicDashboard from '../screens/dashboard/WorkshopMechanicDashboard';
 import WorkshopPickupBoyDashboard from '../screens/dashboard/WorkshopPickupBoyDashboard';
+import CustomerDashboard from '../screens/dashboard/CustomerDashboard';
+import DigitalMarketingDashboard from '../screens/dashboard/DigitalMarketingDashboard';
 
 // Workshop Supervisor screens
 import TeamOverviewScreen from '../screens/dashboard/workshop_supervisor/TeamOverviewScreen';
@@ -247,6 +249,10 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
 
   // CSE Navigation
   if (roleCode === 'CSE' || roleCode === 'CUSTOMER_SERVICE_EXECUTIVE') {
+    const CSECallbacksScreen = require('../screens/dashboard/cse/CSECallbacksScreen').default;
+    const CSERatingsScreen = require('../screens/dashboard/cse/CSERatingsScreen').default;
+    const CSEProfileScreen = require('../screens/dashboard/cse/CSEProfileScreen').default;
+    
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
@@ -288,6 +294,21 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="CSEFollowUps" 
           component={CSEFollowUpsScreen}
           options={{ title: 'Follow-ups' }}
+        />
+        <Stack.Screen 
+          name="CSECallbacks" 
+          component={CSECallbacksScreen}
+          options={{ title: 'Callbacks' }}
+        />
+        <Stack.Screen 
+          name="CSERatings" 
+          component={CSERatingsScreen}
+          options={{ title: 'Customer Ratings' }}
+        />
+        <Stack.Screen 
+          name="CSEProfile" 
+          component={CSEProfileScreen}
+          options={{ title: 'My Profile' }}
         />
         <Stack.Screen 
           name="CloseComplaint" 
@@ -353,6 +374,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
 
   // Auditor Navigation
   if (roleCode === 'AUDITOR') {
+    const AuditorWorkshopsScreen = require('../screens/dashboard/auditor/AuditorWorkshopsScreen').default;
+    const AuditorEscalationsScreen = require('../screens/dashboard/auditor/AuditorEscalationsScreen').default;
+    const AuditorPerformanceScreen = require('../screens/dashboard/auditor/AuditorPerformanceScreen').default;
+    const AuditorProfileScreen = require('../screens/dashboard/auditor/AuditorProfileScreen').default;
+    
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
@@ -375,12 +401,35 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={LeadAuditDetailScreen}
           options={{ title: 'Audit Lead' }}
         />
+        <Stack.Screen 
+          name="AuditorWorkshops" 
+          component={AuditorWorkshopsScreen}
+          options={{ title: 'Workshops' }}
+        />
+        <Stack.Screen 
+          name="AuditorEscalations" 
+          component={AuditorEscalationsScreen}
+          options={{ title: 'Escalations' }}
+        />
+        <Stack.Screen 
+          name="AuditorPerformance" 
+          component={AuditorPerformanceScreen}
+          options={{ title: 'Performance' }}
+        />
+        <Stack.Screen 
+          name="AuditorProfile" 
+          component={AuditorProfileScreen}
+          options={{ title: 'My Profile' }}
+        />
       </Stack.Navigator>
     );
   }
 
   // Workshop Admin Navigation
   if (roleCode === 'WORKSHOP_ADMIN') {
+    const PendingLeadsScreen = require('../screens/dashboard/workshop_admin/PendingLeadsScreen').default;
+    const ActiveJobsScreen = require('../screens/dashboard/workshop_admin/ActiveJobsScreen').default;
+    
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
@@ -389,14 +438,24 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           options={{ title: 'Dashboard' }}
         />
         <Stack.Screen 
+          name="PendingLeads" 
+          component={PendingLeadsScreen}
+          options={{ title: 'Pending Leads' }}
+        />
+        <Stack.Screen 
           name="WorkshopAdminLeadsList" 
           component={WorkshopAdminLeadsListScreen}
-          options={{ title: 'Leads' }}
+          options={{ title: 'All Leads' }}
         />
         <Stack.Screen 
           name="WorkshopAdminLeadDetail" 
           component={WorkshopAdminLeadDetailScreen}
           options={{ title: 'Lead Details' }}
+        />
+        <Stack.Screen 
+          name="ActiveJobs" 
+          component={ActiveJobsScreen}
+          options={{ title: 'Active Jobs' }}
         />
         <Stack.Screen 
           name="WorkshopAdminStaffManagement" 
@@ -429,6 +488,9 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
 
   // Workshop Supervisor Navigation
   if (roleCode === 'WORKSHOP_SUPERVISOR') {
+    const SupervisorPerformanceScreen = require('../screens/dashboard/workshop_supervisor/SupervisorPerformanceScreen').default;
+    const SupervisorJobsScreen = require('../screens/dashboard/workshop_supervisor/SupervisorJobsScreen').default;
+    
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
@@ -440,6 +502,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="SupervisorMenu" 
           component={SupervisorMenuScreen}
           options={{ title: 'All Features' }}
+        />
+        <Stack.Screen 
+          name="SupervisorJobs" 
+          component={SupervisorJobsScreen}
+          options={{ title: 'Jobs' }}
         />
         <Stack.Screen 
           name="DayPlanning" 
@@ -497,6 +564,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           options={{ title: 'Analytics' }}
         />
         <Stack.Screen 
+          name="SupervisorPerformance" 
+          component={SupervisorPerformanceScreen}
+          options={{ title: 'Performance' }}
+        />
+        <Stack.Screen 
           name="SupervisorProfile" 
           component={SupervisorProfileScreen}
           options={{ title: 'My Profile' }}
@@ -522,6 +594,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     const MechanicLeadDetailScreen = require('../screens/dashboard/workshop_mechanic/MechanicLeadDetailScreen').default;
     const MechanicJobDetailScreen = require('../screens/dashboard/workshop_mechanic/MechanicJobDetailScreen').default;
     const BeforeInspectionScreen = require('../screens/dashboard/workshop_mechanic/BeforeInspectionScreen').default;
+    const PerformanceScreen = require('../screens/dashboard/workshop_mechanic/PerformanceScreen').default;
     
     return (
       <Stack.Navigator screenOptions={screenOptions}>
@@ -556,6 +629,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           options={{ title: 'Job History' }}
         />
         <Stack.Screen 
+          name="Performance" 
+          component={PerformanceScreen}
+          options={{ title: 'Performance' }}
+        />
+        <Stack.Screen 
           name="Profile" 
           component={MechanicProfileScreen}
           options={{ title: 'My Profile' }}
@@ -573,12 +651,38 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={WorkshopPickupBoyDashboard}
           options={{ title: 'Pickup Dashboard' }}
         />
+        <Stack.Screen 
+          name="PickupTasks" 
+          component={require('../screens/dashboard/workshop_pickup_boy/TasksListScreen').default}
+          options={{ title: 'My Tasks' }}
+        />
+        <Stack.Screen 
+          name="PickupJobDetail" 
+          component={require('../screens/dashboard/workshop_pickup_boy/PickupJobDetailScreen').default}
+          options={{ title: 'Task Details' }}
+        />
+        <Stack.Screen 
+          name="PickupBoyProfile" 
+          component={require('../screens/pickup/PickupBoyProfileScreen').default}
+          options={{ title: 'My Profile' }}
+        />
+        <Stack.Screen 
+          name="TaskHistory" 
+          component={require('../screens/pickup/TaskHistoryScreen').default}
+          options={{ title: 'Task History' }}
+        />
       </Stack.Navigator>
     );
   }
 
   // RSA Manager Navigation
   if (roleCode === 'RSA_MANAGER') {
+    const RSALeadsScreen = require('../screens/dashboard/rsa/RSALeadsScreen').default;
+    const RSALeadDetailScreen = require('../screens/dashboard/rsa/RSALeadDetailScreen').default;
+    const RSAMechanicsScreen = require('../screens/dashboard/rsa/RSAMechanicsScreen').default;
+    const RSAMechanicDetailScreen = require('../screens/dashboard/rsa/RSAMechanicDetailScreen').default;
+    const AddMechanicScreen = require('../screens/dashboard/rsa/AddMechanicScreen').default;
+    
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
@@ -586,12 +690,43 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={RSAManagerDashboard}
           options={{ title: 'RSA Manager Dashboard' }}
         />
+        <Stack.Screen 
+          name="RSALeads" 
+          component={RSALeadsScreen}
+          options={{ title: 'RSA Leads' }}
+        />
+        <Stack.Screen 
+          name="RSALeadDetail" 
+          component={RSALeadDetailScreen}
+          options={{ title: 'Lead Details' }}
+        />
+        <Stack.Screen 
+          name="RSAMechanics" 
+          component={RSAMechanicsScreen}
+          options={{ title: 'RSA Mechanics' }}
+        />
+        <Stack.Screen 
+          name="RSAMechanicDetail" 
+          component={RSAMechanicDetailScreen}
+          options={{ title: 'Mechanic Details' }}
+        />
+        <Stack.Screen 
+          name="AddMechanic" 
+          component={AddMechanicScreen}
+          options={{ title: 'Add Mechanic' }}
+        />
       </Stack.Navigator>
     );
   }
 
   // Super Admin Navigation
   if (roleCode === 'SUPER_ADMIN') {
+    const SuperAdminAnalyticsScreen = require('../screens/dashboard/superadmin/SuperAdminAnalyticsScreen').default;
+    const SecurityEventsScreen = require('../screens/dashboard/superadmin/SecurityEventsScreen').default;
+    const ConfigChangesScreen = require('../screens/dashboard/superadmin/ConfigChangesScreen').default;
+    const ComplianceReportsScreen = require('../screens/dashboard/superadmin/ComplianceReportsScreen').default;
+    const BrandsScreen = require('../screens/dashboard/superadmin/BrandsScreen').default;
+    
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
@@ -615,9 +750,425 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           options={{ title: 'Reports & Analytics' }}
         />
         <Stack.Screen 
+          name="SuperAdminAnalytics" 
+          component={SuperAdminAnalyticsScreen}
+          options={{ title: 'Analytics' }}
+        />
+        <Stack.Screen 
           name="SystemSettings" 
           component={SystemSettingsScreen}
           options={{ title: 'System Settings' }}
+        />
+        <Stack.Screen 
+          name="LeadsManagement" 
+          component={LeadsManagementScreen}
+          options={{ title: 'Leads Management' }}
+        />
+        <Stack.Screen 
+          name="FinancePayout" 
+          component={FinancePayoutScreen}
+          options={{ title: 'Finance & Payouts' }}
+        />
+        <Stack.Screen 
+          name="FraudDetection" 
+          component={FraudDetectionScreen}
+          options={{ title: 'Fraud Detection' }}
+        />
+        <Stack.Screen 
+          name="AuditLogs" 
+          component={AuditLogsScreen}
+          options={{ title: 'Audit Logs' }}
+        />
+        <Stack.Screen 
+          name="SecurityEvents" 
+          component={SecurityEventsScreen}
+          options={{ title: 'Security Events' }}
+        />
+        <Stack.Screen 
+          name="ConfigChanges" 
+          component={ConfigChangesScreen}
+          options={{ title: 'Config Changes' }}
+        />
+        <Stack.Screen 
+          name="ComplianceReports" 
+          component={ComplianceReportsScreen}
+          options={{ title: 'Compliance Reports' }}
+        />
+        <Stack.Screen 
+          name="Brands" 
+          component={BrandsScreen}
+          options={{ title: 'Brands' }}
+        />
+        <Stack.Screen 
+          name="InventoryProducts" 
+          component={InventoryProductsScreen}
+          options={{ title: 'Inventory Products' }}
+        />
+        <Stack.Screen 
+          name="InventoryPackages" 
+          component={InventoryPackagesScreen}
+          options={{ title: 'Inventory Packages' }}
+        />
+        <Stack.Screen 
+          name="InventoryPackageDetail" 
+          component={InventoryPackageDetailScreen}
+          options={{ title: 'Package Details' }}
+        />
+        <Stack.Screen 
+          name="InventoryZones" 
+          component={InventoryZonesScreen}
+          options={{ title: 'Inventory Zones' }}
+        />
+        <Stack.Screen 
+          name="InventoryPricing" 
+          component={InventoryPricingScreen}
+          options={{ title: 'Inventory Pricing' }}
+        />
+        <Stack.Screen 
+          name="InventoryServicePricing" 
+          component={InventoryServicePricingScreen}
+          options={{ title: 'Service Pricing' }}
+        />
+        <Stack.Screen 
+          name="WorkshopRates" 
+          component={WorkshopRatesScreen}
+          options={{ title: 'Workshop Rates' }}
+        />
+        <Stack.Screen 
+          name="SuperAdminLeads" 
+          component={LeadsManagementScreen}
+          options={{ title: 'Leads Overview' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // Billing Navigation
+  if (roleCode === 'ACCOUNTS_TEAM' || roleCode === 'BILLING') {
+    const BillingInvoiceDetailScreen = require('../screens/dashboard/billing/BillingInvoiceDetailScreen').default;
+    const BillingDashboardScreen = require('../screens/dashboard/billing/BillingDashboardScreen').default;
+    const BillingInvoiceReviewScreen = require('../screens/dashboard/billing/BillingInvoiceReviewScreen').default;
+    const BillingGenerateInvoiceScreen = require('../screens/dashboard/billing/BillingGenerateInvoiceScreen').default;
+    const BillingPaymentTrackingScreen = require('../screens/dashboard/billing/BillingPaymentTrackingScreen').default;
+    
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen 
+          name="BillingDashboard" 
+          component={BillingDashboardScreen}
+          options={{ title: 'Billing Dashboard' }}
+        />
+        <Stack.Screen 
+          name="InvoiceReview" 
+          component={BillingInvoiceReviewScreen}
+          options={{ title: 'Invoice Review' }}
+        />
+        <Stack.Screen 
+          name="BillingInvoiceDetail" 
+          component={BillingInvoiceDetailScreen}
+          options={{ title: 'Invoice Detail' }}
+        />
+        <Stack.Screen 
+          name="GenerateInvoice" 
+          component={BillingGenerateInvoiceScreen}
+          options={{ title: 'Generate Invoice' }}
+        />
+        <Stack.Screen 
+          name="PaymentTracking" 
+          component={BillingPaymentTrackingScreen}
+          options={{ title: 'Payment Tracking' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // Finance Navigation
+  if (roleCode === 'FINANCE') {
+    const FinancePayoutsScreen = require('../screens/dashboard/finance/FinancePayoutsScreen').default;
+    const FinanceRefundsScreen = require('../screens/dashboard/finance/FinanceRefundsScreen').default;
+    const FinanceReconciliationScreen = require('../screens/dashboard/finance/FinanceReconciliationScreen').default;
+    const FinanceChargebacksScreen = require('../screens/dashboard/finance/FinanceChargebacksScreen').default;
+    const FinanceAuditTrailScreen = require('../screens/dashboard/finance/FinanceAuditTrailScreen').default;
+    
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen 
+          name="FinanceDashboard" 
+          component={require('../screens/dashboard/finance/FinanceDashboardScreen').default}
+          options={{ title: 'Finance Dashboard' }}
+        />
+        <Stack.Screen 
+          name="FinancePayouts" 
+          component={FinancePayoutsScreen}
+          options={{ title: 'Payouts' }}
+        />
+        <Stack.Screen 
+          name="FinanceRefunds" 
+          component={FinanceRefundsScreen}
+          options={{ title: 'Refunds' }}
+        />
+        <Stack.Screen 
+          name="FinanceReconciliation" 
+          component={FinanceReconciliationScreen}
+          options={{ title: 'Reconciliation' }}
+        />
+        <Stack.Screen 
+          name="FinanceChargebacks" 
+          component={FinanceChargebacksScreen}
+          options={{ title: 'Chargebacks' }}
+        />
+        <Stack.Screen 
+          name="FinanceAuditTrail" 
+          component={FinanceAuditTrailScreen}
+          options={{ title: 'Audit Trail' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // Home Service Manager Navigation
+  if (roleCode === 'HOME_SERVICE_MANAGER') {
+    const HSMDashboardScreen = require('../screens/dashboard/home_service_manager/HSMDashboardScreen').default;
+    const HSMLeadsScreen = require('../screens/dashboard/home_service_manager/HSMLeadsScreen').default;
+    const HSMLeadDetailScreen = require('../screens/dashboard/home_service_manager/HSMLeadDetailScreen').default;
+    const HSMVansScreen = require('../screens/dashboard/home_service_manager/HSMVansScreen').default;
+    const HSMTechniciansScreen = require('../screens/dashboard/home_service_manager/HSMTechniciansScreen').default;
+    const HSMReportsScreen = require('../screens/dashboard/home_service_manager/HSMReportsScreen').default;
+    
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen 
+          name="HSMDashboard" 
+          component={HSMDashboardScreen}
+          options={{ title: 'Home Service Manager' }}
+        />
+        <Stack.Screen 
+          name="HSMLeads" 
+          component={HSMLeadsScreen}
+          options={{ title: 'Leads' }}
+        />
+        <Stack.Screen 
+          name="HSMLeadDetail" 
+          component={HSMLeadDetailScreen}
+          options={{ title: 'Lead Details' }}
+        />
+        <Stack.Screen 
+          name="HSMVans" 
+          component={HSMVansScreen}
+          options={{ title: 'Service Vans' }}
+        />
+        <Stack.Screen 
+          name="HSMTechnicians" 
+          component={HSMTechniciansScreen}
+          options={{ title: 'Technicians' }}
+        />
+        <Stack.Screen 
+          name="HSMReports" 
+          component={HSMReportsScreen}
+          options={{ title: 'Reports' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // Company Mechanic RSA Navigation
+  if (roleCode === 'COMPANY_MECHANIC_RSA') {
+    const CMRSADashboardScreen = require('../screens/dashboard/company_mechanic_rsa/CMRSADashboardScreen').default;
+    const CMRSATasksScreen = require('../screens/dashboard/company_mechanic_rsa/CMRSATasksScreen').default;
+    const CMRSATaskDetailScreen = require('../screens/dashboard/company_mechanic_rsa/CMRSATaskDetailScreen').default;
+    const CMRSAHistoryScreen = require('../screens/dashboard/company_mechanic_rsa/CMRSAHistoryScreen').default;
+    const CMRSAProfileScreen = require('../screens/dashboard/company_mechanic_rsa/CMRSAProfileScreen').default;
+    
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen 
+          name="CMRSADashboard" 
+          component={CMRSADashboardScreen}
+          options={{ title: 'RSA Mechanic Dashboard' }}
+        />
+        <Stack.Screen 
+          name="CMRSATasks" 
+          component={CMRSATasksScreen}
+          options={{ title: 'My Tasks' }}
+        />
+        <Stack.Screen 
+          name="CMRSATaskDetail" 
+          component={CMRSATaskDetailScreen}
+          options={{ title: 'Task Details' }}
+        />
+        <Stack.Screen 
+          name="CMRSAHistory" 
+          component={CMRSAHistoryScreen}
+          options={{ title: 'Job History' }}
+        />
+        <Stack.Screen 
+          name="CMRSAProfile" 
+          component={CMRSAProfileScreen}
+          options={{ title: 'My Profile' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // Company Van Technician Navigation
+  if (roleCode === 'COMPANY_VAN_TECHNICIAN') {
+    const CVTDashboardScreen = require('../screens/dashboard/company_van_technician/CVTDashboardScreen').default;
+    const CVTTasksScreen = require('../screens/dashboard/company_van_technician/CVTTasksScreen').default;
+    const CVTTaskDetailScreen = require('../screens/dashboard/company_van_technician/CVTTaskDetailScreen').default;
+    const CVTHistoryScreen = require('../screens/dashboard/company_van_technician/CVTHistoryScreen').default;
+    const CVTProfileScreen = require('../screens/dashboard/company_van_technician/CVTProfileScreen').default;
+    
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen 
+          name="CVTDashboard" 
+          component={CVTDashboardScreen}
+          options={{ title: 'Van Technician Dashboard' }}
+        />
+        <Stack.Screen 
+          name="CVTTasks" 
+          component={CVTTasksScreen}
+          options={{ title: 'My Tasks' }}
+        />
+        <Stack.Screen 
+          name="CVTTaskDetail" 
+          component={CVTTaskDetailScreen}
+          options={{ title: 'Task Details' }}
+        />
+        <Stack.Screen 
+          name="CVTHistory" 
+          component={CVTHistoryScreen}
+          options={{ title: 'Job History' }}
+        />
+        <Stack.Screen 
+          name="CVTProfile" 
+          component={CVTProfileScreen}
+          options={{ title: 'My Profile' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // Company Van Driver Navigation
+  if (roleCode === 'COMPANY_VAN_DRIVER') {
+    const CVDDashboardScreen = require('../screens/dashboard/company_van_driver/CVDDashboardScreen').default;
+    const CVDTasksScreen = require('../screens/dashboard/company_van_driver/CVDTasksScreen').default;
+    const CVDTaskDetailScreen = require('../screens/dashboard/company_van_driver/CVDTaskDetailScreen').default;
+    const CVDHistoryScreen = require('../screens/dashboard/company_van_driver/CVDHistoryScreen').default;
+    const CVDProfileScreen = require('../screens/dashboard/company_van_driver/CVDProfileScreen').default;
+    
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen 
+          name="CVDDashboard" 
+          component={CVDDashboardScreen}
+          options={{ title: 'Van Driver Dashboard' }}
+        />
+        <Stack.Screen 
+          name="CVDTasks" 
+          component={CVDTasksScreen}
+          options={{ title: 'My Trips' }}
+        />
+        <Stack.Screen 
+          name="CVDTaskDetail" 
+          component={CVDTaskDetailScreen}
+          options={{ title: 'Trip Details' }}
+        />
+        <Stack.Screen 
+          name="CVDHistory" 
+          component={CVDHistoryScreen}
+          options={{ title: 'Trip History' }}
+        />
+        <Stack.Screen 
+          name="CVDProfile" 
+          component={CVDProfileScreen}
+          options={{ title: 'My Profile' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // Customer Navigation
+  if (roleCode === 'CUSTOMER') {
+    const CustomerServiceHistoryScreen = require('../screens/dashboard/customer/CustomerServiceHistoryScreen').default;
+    const CustomerInvoicesScreen = require('../screens/dashboard/customer/CustomerInvoicesScreen').default;
+    const CustomerSupportScreen = require('../screens/dashboard/customer/CustomerSupportScreen').default;
+    
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen 
+          name="CustomerDashboard" 
+          component={CustomerDashboard}
+          options={{ title: 'Dashboard' }}
+        />
+        <Stack.Screen 
+          name="BookService" 
+          component={require('../screens/dashboard/customer/BookServiceScreen').default}
+          options={{ title: 'Book Service' }}
+        />
+        <Stack.Screen 
+          name="TrackBooking" 
+          component={require('../screens/dashboard/customer/TrackBookingScreen').default}
+          options={{ title: 'Track Booking' }}
+        />
+        <Stack.Screen 
+          name="CustomerServiceHistory" 
+          component={CustomerServiceHistoryScreen}
+          options={{ title: 'Service History' }}
+        />
+        <Stack.Screen 
+          name="CustomerInvoices" 
+          component={CustomerInvoicesScreen}
+          options={{ title: 'My Invoices' }}
+        />
+        <Stack.Screen 
+          name="CustomerSupport" 
+          component={CustomerSupportScreen}
+          options={{ title: 'Support' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // Digital Marketing Navigation
+  if (roleCode === 'DIGITAL_MARKETING') {
+    const DMCampaignsScreen = require('../screens/dashboard/digital_marketing/DMCampaignsScreen').default;
+    const DMAnalyticsScreen = require('../screens/dashboard/digital_marketing/DMAnalyticsScreen').default;
+    const DMContentScreen = require('../screens/dashboard/digital_marketing/DMContentScreen').default;
+    const DMLeadsScreen = require('../screens/dashboard/digital_marketing/DMLeadsScreen').default;
+    const DMProfileScreen = require('../screens/dashboard/digital_marketing/DMProfileScreen').default;
+    
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen 
+          name="DigitalMarketingDashboard" 
+          component={DigitalMarketingDashboard}
+          options={{ title: 'Digital Marketing Dashboard' }}
+        />
+        <Stack.Screen 
+          name="DMCampaigns" 
+          component={DMCampaignsScreen}
+          options={{ title: 'Campaigns' }}
+        />
+        <Stack.Screen 
+          name="DMAnalytics" 
+          component={DMAnalyticsScreen}
+          options={{ title: 'Analytics' }}
+        />
+        <Stack.Screen 
+          name="DMContent" 
+          component={DMContentScreen}
+          options={{ title: 'Content' }}
+        />
+        <Stack.Screen 
+          name="DMLeads" 
+          component={DMLeadsScreen}
+          options={{ title: 'Leads' }}
+        />
+        <Stack.Screen 
+          name="DMProfile" 
+          component={DMProfileScreen}
+          options={{ title: 'My Profile' }}
         />
       </Stack.Navigator>
     );

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
-import { Store, Search, Plus, MapPin, Edit2, X, Building } from 'lucide-react';
+import { Store, Search, Plus, MapPin, Edit2, X, Building, Globe } from 'lucide-react';
 
 export default function WorkshopManagementPage() {
   const router = useRouter();
@@ -146,14 +146,24 @@ export default function WorkshopManagementPage() {
               </h1>
               <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Manage workshops, approvals, and zones</p>
             </div>
-            <button 
-              onClick={() => router.push('/dashboard/super_admin/workshops/add')}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base whitespace-nowrap w-full sm:w-auto justify-center"
-            >
-              <Plus className="w-4 h-4 flex-shrink-0" />
-              <span className="hidden sm:inline">Add Workshop</span>
-              <span className="sm:hidden">Add</span>
-            </button>
+            <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
+              <button 
+                onClick={() => router.push('/dashboard/super_admin/workshops/public-pages')}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base whitespace-nowrap w-full sm:w-auto justify-center"
+              >
+                <Globe className="w-4 h-4 flex-shrink-0" />
+                <span className="hidden sm:inline">Public Pages</span>
+                <span className="sm:hidden">Public</span>
+              </button>
+              <button 
+                onClick={() => router.push('/dashboard/super_admin/workshops/add')}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base whitespace-nowrap w-full sm:w-auto justify-center"
+              >
+                <Plus className="w-4 h-4 flex-shrink-0" />
+                <span className="hidden sm:inline">Add Workshop</span>
+                <span className="sm:hidden">Add</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

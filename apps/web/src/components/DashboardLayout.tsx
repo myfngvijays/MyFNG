@@ -30,7 +30,8 @@ import {
   AlertTriangle,
   Star,
   Megaphone,
-  BarChart3
+  BarChart3,
+  Globe
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -107,6 +108,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/super_admin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/super_admin/users', icon: <Users className="w-5 h-5" />, label: 'User Management' },
         { href: '/dashboard/super_admin/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
+        { href: '/dashboard/super_admin/workshops/public-pages', icon: <Globe className="w-5 h-5" />, label: 'Public Pages' },
         { href: '/dashboard/super_admin/leads', icon: <FileText className="w-5 h-5" />, label: 'All Leads' },
         { href: '/dashboard/super_admin/reports', icon: <TrendingUp className="w-5 h-5" />, label: 'Reports & Analytics' },
         { href: '/dashboard/super_admin/audit-logs', icon: <Shield className="w-5 h-5" />, label: 'Audit Logs' },
@@ -116,6 +118,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/workshop_admin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/workshop_admin/pending-leads', icon: <Clock className="w-5 h-5" />, label: 'Pending Approvals' },
         { href: '/dashboard/workshop_admin/leads', icon: <FileText className="w-5 h-5" />, label: 'All Leads' },
+        { href: '/dashboard/workshop_admin/public-page', icon: <Globe className="w-5 h-5" />, label: 'Public Page' },
         { href: '/dashboard/workshop_admin/staff', icon: <Users className="w-5 h-5" />, label: 'Staff Management' },
         { href: '/dashboard/workshop_admin/jobs', icon: <Wrench className="w-5 h-5" />, label: 'Active Jobs' },
         { href: '/dashboard/workshop_admin/settings', icon: <Settings className="w-5 h-5" />, label: 'Settings' },
@@ -203,11 +206,16 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       ],
       'DIGITAL_MARKETING': [
         { href: '/dashboard/digital_marketing', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/digital_marketing/blogs', icon: <FileText className="w-5 h-5" />, label: 'Blogs' },
         { href: '/dashboard/digital_marketing/campaigns', icon: <Megaphone className="w-5 h-5" />, label: 'Campaigns' },
         { href: '/dashboard/digital_marketing/analytics', icon: <BarChart3 className="w-5 h-5" />, label: 'Analytics' },
-        { href: '/dashboard/digital_marketing/content', icon: <FileText className="w-5 h-5" />, label: 'Content' },
         { href: '/dashboard/digital_marketing/leads', icon: <Users className="w-5 h-5" />, label: 'Leads' },
         { href: '/dashboard/digital_marketing/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
+      ],
+      'DIGITAL_AUTHOR': [
+        { href: '/dashboard/digital_author', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/digital_author/blogs', icon: <FileText className="w-5 h-5" />, label: 'My Blogs' },
+        { href: '/dashboard/digital_author/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
       ],
     };
 

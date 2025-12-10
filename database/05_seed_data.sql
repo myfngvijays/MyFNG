@@ -21,6 +21,8 @@ INSERT INTO public.roles (role_code, role_name, description, permissions) VALUES
 ('COMPANY_MECHANIC_RSA', 'Company Mechanic (RSA)', 'Company-registered mechanic for RSA jobs', '{"handle_rsa_jobs": true, "update_status": true}'::jsonb),
 ('COMPANY_VAN_TECHNICIAN', 'Company Van Technician', 'Technician for Service at Home operations', '{"handle_home_service": true, "update_status": true}'::jsonb),
 ('COMPANY_VAN_DRIVER', 'Company Van Driver', 'Driver for service vans', '{"drive_vans": true, "assist_technician": true}'::jsonb),
+('DIGITAL_MARKETING', 'Digital Marketing', 'Manages marketing campaigns, analytics, lead generation, and promotional activities', '{"manage_campaigns": true, "view_analytics": true, "manage_content": true, "edit_blogs": true, "approve_blogs": true, "publish_blogs": true, "delete_blogs": true, "manage_categories": true, "manage_tags": true, "restore_versions": true}'::jsonb),
+('DIGITAL_AUTHOR', 'Digital Author', 'Creates and manages blog content, saves drafts, and writes articles', '{"create_blogs": true, "save_drafts": true, "edit_own_blogs": true}'::jsonb),
 ('CUSTOMER', 'Customer', 'End user booking services', '{"book_services": true, "track_vehicle": true}'::jsonb)
 ON CONFLICT (role_code) DO NOTHING;
 

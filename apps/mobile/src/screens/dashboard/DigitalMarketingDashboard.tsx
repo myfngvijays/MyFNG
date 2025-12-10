@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Dimensions
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';
@@ -17,8 +18,8 @@ import { COLORS, SPACING } from '../../constants/theme';
 const { width } = Dimensions.get('window');
 
 export default function DigitalMarketingDashboard() {
+  const navigation = useNavigation();
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
@@ -107,6 +108,22 @@ export default function DigitalMarketingDashboard() {
     setRefreshing(false);
   };
 
+  const handleNavigation = (screen: string) => {
+    if (screen === 'dashboard') {
+      // Already on dashboard
+      return;
+    }
+    navigation.navigate(screen as never);
+  };
+
+  const tabs = [
+    { id: 'dashboard', label: 'Home', icon: 'home' },
+    { id: 'DMCampaigns', label: 'Campaigns', icon: 'bell' },
+    { id: 'DMAnalytics', label: 'Analytics', icon: 'chart-line' },
+    { id: 'DMContent', label: 'Content', icon: 'document' },
+    { id: 'DMProfile', label: 'Profile', icon: 'account' },
+  ];
+
   const renderDashboard = () => (
     <ScrollView
       style={styles.container}
@@ -163,19 +180,31 @@ export default function DigitalMarketingDashboard() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleNavigation('DMCampaigns')}
+          >
             <Text style={styles.actionEmoji}>📢</Text>
-            <Text style={styles.actionText}>Create Campaign</Text>
+            <Text style={styles.actionText}>Campaigns</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleNavigation('DMAnalytics')}
+          >
             <Text style={styles.actionEmoji}>📊</Text>
             <Text style={styles.actionText}>Analytics</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleNavigation('DMContent')}
+          >
             <Text style={styles.actionEmoji}>📝</Text>
             <Text style={styles.actionText}>Content</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleNavigation('DMLeads')}
+          >
             <Text style={styles.actionEmoji}>👥</Text>
             <Text style={styles.actionText}>Leads</Text>
           </TouchableOpacity>
@@ -224,8 +253,12 @@ export default function DigitalMarketingDashboard() {
 
   return (
     <View style={styles.container}>
-      {currentScreen === 'dashboard' && renderDashboard()}
-      <BottomNav currentScreen={currentScreen} setCurrentScreen={setCurrentScreen} />
+      {renderDashboard()}
+      <BottomNav
+        activeTab="dashboard"
+        onTabChange={handleNavigation}
+        tabs={tabs}
+      />
     </View>
   );
 }

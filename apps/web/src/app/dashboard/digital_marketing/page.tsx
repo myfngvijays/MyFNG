@@ -202,11 +202,11 @@ export default function DigitalMarketingDashboard() {
                 <span className="sm:hidden">Analytics</span>
               </button>
             </Link>
-            <Link href="/dashboard/digital_marketing/content">
+            <Link href="/dashboard/digital_marketing/blogs">
               <button className="btn btn-outline w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2">
                 <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden sm:inline">Manage Content</span>
-                <span className="sm:hidden">Content</span>
+                <span className="hidden sm:inline">Manage Blogs</span>
+                <span className="sm:hidden">Blogs</span>
               </button>
             </Link>
             <Link href="/dashboard/digital_marketing/leads">
