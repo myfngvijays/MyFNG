@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { 
@@ -13,10 +14,12 @@ import {
   Battery,
   Droplets,
   Gauge,
-  Sparkles
+  Sparkles,
+  Calendar
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useParams } from 'next/navigation';
 
 const services = [
   {
@@ -237,7 +240,30 @@ const services = [
   }
 ];
 
-export default function ServicesPage() {
+export default function ServiceDetailPage() {
+  const params = useParams();
+  const slug = params?.slug as string;
+  const service = services.find(s => s.slug === slug);
+  const IconComponent = service?.icon;
+
+  if (!service) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">Service Not Found</h1>
+            <p className="text-gray-600 mb-6">The service you're looking for doesn't exist.</p>
+            <Link href="/services" className="btn btn-primary">
+              View All Services
+            </Link>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
@@ -245,101 +271,98 @@ export default function ServicesPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 text-white py-12 sm:py-16 md:py-20 mt-16 sm:mt-18 md:mt-20">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
-          <div className="max-w-4xl mx-auto text-center">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-5 md:mb-6">Complete Car Care Services</h1>
-            <p className="text-base sm:text-lg md:text-xl text-gray-200 max-w-2xl mx-auto px-4">
-              From routine maintenance to complex repairs - our AI-powered diagnostics and expert technicians keep your car running like new.
-              <span className="font-semibold text-white"> 100% transparent pricing</span> with no hidden charges.
+          <div className="max-w-4xl mx-auto">
+            <Link
+              href="/services"
+              className="inline-flex items-center gap-2 text-gray-200 hover:text-white mb-4 sm:mb-5 md:mb-6 transition text-sm sm:text-base"
+            >
+              <ArrowRight className="w-4 h-4 rotate-180" />
+              Back to All Services
+            </Link>
+            <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
+              {IconComponent && (
+                <div className="bg-white/10 backdrop-blur-sm p-3 sm:p-4 rounded-xl">
+                  <IconComponent className="w-8 h-8 sm:w-10 sm:h-10" />
+                </div>
+              )}
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold">{service.title}</h1>
+            </div>
+            <p className="text-base sm:text-lg md:text-xl text-gray-200 max-w-2xl">
+              {service.longDescription}
             </p>
           </div>
         </div>
       </section>
 
-      {/* Services Grid */}
-      <section className="py-12 sm:py-16 md:py-20 bg-gray-50">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6 mb-12 sm:mb-14 md:mb-16">
-            {services.map((service) => {
-              const IconComponent = service.icon;
-              return (
-                <div
-                  key={service.id}
-                  className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all group"
-                >
-                  <div className="p-4 sm:p-5 md:p-6">
-                    <div className="bg-brand-primary/10 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl flex items-center justify-center text-brand-primary mb-3 sm:mb-4 group-hover:bg-brand-primary group-hover:text-white transition">
-                      <IconComponent className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />
-                    </div>
-                    <h3 className="text-lg sm:text-xl font-bold text-brand-secondary mb-1.5 sm:mb-2 group-hover:text-brand-primary transition">
-                      {service.title}
-                    </h3>
-                    <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4 line-clamp-2">
-                      {service.description}
-                    </p>
-                    <ul className="space-y-1.5 sm:space-y-2 mb-3 sm:mb-4">
-                      {service.features.slice(0, 4).map((feature, idx) => (
-                        <li key={idx} className="flex items-start gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-700">
-                          <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                          <span className="line-clamp-1">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Link
-                      href={`/services/${service.slug}`}
-                      className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition"
-                    >
-                      Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Service Cards - Now link to individual pages */}
+      {/* Service Details */}
       <section className="py-12 sm:py-16 md:py-20 bg-white">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
-          <div className="text-center mb-10 sm:mb-12 md:mb-16">
-            <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto px-2 sm:px-0">
-              Click on any service below to view detailed information, pricing, and book your service.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
-            {services.map((service) => {
-              const IconComponent = service.icon;
-              return (
-                <Link
-                  key={service.id}
-                  href={`/services/${service.slug}`}
-                  className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all group"
-                >
-                  <div className="p-4 sm:p-5 md:p-6">
-                    <div className="bg-brand-primary/10 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl flex items-center justify-center text-brand-primary mb-3 sm:mb-4 group-hover:bg-brand-primary group-hover:text-white transition">
-                      <IconComponent className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />
-                    </div>
-                    <h3 className="text-lg sm:text-xl font-bold text-brand-secondary mb-1.5 sm:mb-2 group-hover:text-brand-primary transition">
-                      {service.title}
-                    </h3>
-                    <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4 line-clamp-2">
-                      {service.description}
-                    </p>
-                    <ul className="space-y-1.5 sm:space-y-2 mb-3 sm:mb-4">
-                      {service.features.slice(0, 4).map((feature, idx) => (
-                        <li key={idx} className="flex items-start gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-700">
-                          <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                          <span className="line-clamp-1">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition">
-                      Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    </div>
+          <div className="max-w-6xl mx-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-10 md:gap-12">
+              {/* Content */}
+              <div>
+                {/* Service Info */}
+                <div className="flex flex-wrap gap-4 sm:gap-6 mb-6 sm:mb-7 md:mb-8">
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Activity className="w-5 h-5 text-brand-primary" />
+                    <span className="font-semibold">{service.duration}</span>
                   </div>
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Shield className="w-5 h-5 text-brand-primary" />
+                    <span className="font-semibold">{service.warranty}</span>
+                  </div>
+                </div>
+
+                {/* Features */}
+                <div className="mb-6 sm:mb-7 md:mb-8">
+                  <h3 className="text-lg sm:text-xl font-bold text-brand-secondary mb-3 sm:mb-4">What's Included:</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                    {service.features.map((feature, idx) => (
+                      <div key={idx} className="flex items-start gap-2 sm:gap-3">
+                        <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-gray-700 text-xs sm:text-sm">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Benefits */}
+                <div className="mb-6 sm:mb-7 md:mb-8">
+                  <h3 className="text-lg sm:text-xl font-bold text-brand-secondary mb-3 sm:mb-4">Benefits:</h3>
+                  <div className="flex flex-wrap gap-2 sm:gap-3">
+                    {service.benefits.map((benefit, idx) => (
+                      <span
+                        key={idx}
+                        className="bg-green-50 text-green-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-semibold"
+                      >
+                        {benefit}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* CTA Button */}
+                <Link
+                  href="/book-service"
+                  className="btn btn-primary inline-flex items-center gap-2 text-sm sm:text-base px-6 sm:px-8 py-3 sm:py-4"
+                >
+                  Book {service.title}
+                  <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
                 </Link>
-              );
-            })}
+              </div>
+
+              {/* Image */}
+              <div>
+                <div className="relative h-[300px] sm:h-[400px] md:h-[500px] rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl">
+                  <Image
+                    src={service.image}
+                    alt={service.title}
+                    fill
+                    className="object-cover"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -347,12 +370,12 @@ export default function ServicesPage() {
       {/* CTA Section */}
       <section className="py-12 sm:py-16 md:py-20 bg-gradient-to-br from-brand-primary to-brand-secondary text-white">
         <div className="container mx-auto px-3 sm:px-4 md:px-6 text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">Ready to Book Your Service?</h2>
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">Ready to Book {service.title}?</h2>
           <p className="text-base sm:text-lg md:text-xl text-blue-100 mb-6 sm:mb-7 md:mb-8 max-w-2xl mx-auto px-4">
-            Get transparent pricing, expert service, and AI-powered diagnostics. Book now and experience the MyFNG difference.
+            Get transparent pricing, expert service, and AI-powered booking. Book now and experience the MyFNG difference.
           </p>
           <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-4">
-            <Link href="/customer/register" className="btn btn-white text-sm sm:text-base md:text-lg px-6 sm:px-7 md:px-8 py-2.5 sm:py-3 md:py-4">
+            <Link href="/book-service" className="btn btn-white text-sm sm:text-base md:text-lg px-6 sm:px-7 md:px-8 py-2.5 sm:py-3 md:py-4">
               Book Service Now
               <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-1.5 sm:ml-2" />
             </Link>

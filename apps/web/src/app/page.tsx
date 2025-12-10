@@ -85,8 +85,8 @@ export default function HomePage() {
 
       {/* 1. Hero Section: AI-Powered & Futuristic */}
       <section className="relative pt-20 sm:pt-24 md:pt-28 lg:pt-32 pb-12 sm:pb-16 md:pb-20 lg:pb-24 overflow-hidden">
-        {/* Animated Gradient Background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 animate-gradient" style={{backgroundSize: '200% 200%'}}></div>
+        {/* Animated Gradient Background - Improved contrast */}
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-900 animate-gradient" style={{backgroundSize: '200% 200%'}}></div>
         
         {/* Floating Orbs - Hidden on mobile for performance */}
         <div className="hidden md:block absolute top-20 right-20 w-48 md:w-72 h-48 md:h-72 bg-blue-500/30 rounded-full blur-3xl animate-float"></div>
@@ -106,10 +106,10 @@ export default function HomePage() {
                 <AIFeatureBadge text="Powered by Advanced AI Technology" />
               </div>
               
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 leading-tight tracking-tight animate-fade-in-up text-white">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 leading-tight tracking-tight animate-fade-in-up text-white drop-shadow-lg">
                 India's First <br />
                 <span className="relative inline-block">
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 neon-text">
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-purple-500 neon-text">
                     AI-Powered
                   </span>
                 </span> <br />
@@ -117,7 +117,7 @@ export default function HomePage() {
               </h1>
               
               <p className="text-base sm:text-lg text-gray-200 mb-6 sm:mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed animate-fade-in-up px-2 sm:px-0" style={{animationDelay: '0.2s'}}>
-                Experience the future of car care with our <span className="text-white font-semibold">AI-powered diagnostics</span> and instant service booking. 
+                Experience the future of car care with our <span className="text-white font-semibold">AI-powered booking platform</span> and instant service booking. 
                 No waiting, no hassle - just smart car care.
               </p>
 
@@ -125,7 +125,7 @@ export default function HomePage() {
               <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-6 sm:mb-8 animate-fade-in-up" style={{animationDelay: '0.3s'}}>
                 <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-300">
                   <Cpu className="w-3 h-3 sm:w-4 sm:h-4 text-cyan-400 flex-shrink-0" />
-                  <span>AI Diagnostics</span>
+                  <span>AI-Powered Booking</span>
                 </div>
                 <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-300">
                   <Shield className="w-3 h-3 sm:w-4 sm:h-4 text-cyan-400 flex-shrink-0" />
@@ -177,7 +177,7 @@ export default function HomePage() {
                   <img 
                     src="https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000" 
                     alt="Futuristic Car" 
-                    className="w-full object-cover h-[300px] sm:h-[400px] md:h-[500px]"
+                    className="w-full object-cover h-[200px] sm:h-[250px] md:h-[300px]"
                   />
                   {/* Overlay Gradient */}
                   <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
@@ -237,7 +237,7 @@ export default function HomePage() {
             <AIFeatureBadge text="Real-Time Analytics" />
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-3 sm:mt-4 mb-3 sm:mb-4 text-brand-secondary">Trusted by Thousands</h2>
             <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto px-2 sm:px-0">
-              Join India's fastest-growing AI-powered car service platform
+              Join India's fastest-growing AI-powered car service booking platform
             </p>
           </div>
           <LiveStats />
@@ -262,48 +262,56 @@ export default function HomePage() {
               title="Periodic Service"
               desc="AI-powered scheduled maintenance with digital health reports"
               features={['Oil Change', 'Filter Replacement', 'Fluid Top-up', 'AI Health Report']}
+              slug="periodic-service"
             />
             <ServiceTypeCard 
               icon={<Zap className="w-8 h-8" />}
               title="Engine Service"
               desc="Complete engine diagnostics powered by AI"
               features={['Engine Diagnostics', 'Oil Service', 'Filter Change', 'Performance Check']}
+              slug="engine-service"
             />
             <ServiceTypeCard 
               icon={<Shield className="w-8 h-8" />}
               title="AC Service"
               desc="Complete climate control solutions"
               features={['AC Cleaning', 'Gas Refill', 'Filter Change', 'Sanitization']}
+              slug="ac-service"
             />
             <ServiceTypeCard 
               icon={<Zap className="w-8 h-8" />}
               title="Battery Service"
               desc="AI-powered battery health analysis"
               features={['Battery Check', 'Charging Test', 'Replacement', 'Warranty']}
+              slug="battery-service"
             />
             <ServiceTypeCard 
               icon={<Shield className="w-8 h-8" />}
               title="Brake Service"
               desc="Complete brake system inspection"
               features={['Brake Pad Check', 'Fluid Replacement', 'Disc Inspection', 'Safety Test']}
+              slug="brake-service"
             />
             <ServiceTypeCard 
               icon={<Car className="w-8 h-8" />}
               title="Tyre & Wheel Care"
               desc="Professional tyre and wheel services"
               features={['Tyre Rotation', 'Wheel Alignment', 'Balancing', 'Replacement']}
+              slug="tyre-wheel-care"
             />
             <ServiceTypeCard 
               icon={<Activity className="w-8 h-8" />}
               title="Detailing Service"
               desc="Premium car detailing and protection"
               features={['Interior Cleaning', 'Exterior Polish', 'Waxing', 'Ceramic Coating']}
+              slug="detailing-service"
             />
             <ServiceTypeCard 
               icon={<Car className="w-8 h-8" />}
               title="Denting & Painting"
               desc="High-precision body work"
               features={['Dent Removal', 'Color Matching', 'Paint Protection', 'Quality Check']}
+              slug="denting-painting"
             />
           </div>
 
@@ -403,9 +411,9 @@ export default function HomePage() {
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
             <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">How It Works</span>
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">Hassle-Free Car Maintenance with MY FNG AI</h2>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">Hassle-Free Car Maintenance with MY FNG AI Booking</h2>
             <p className="text-sm sm:text-base text-gray-600 mt-3 sm:mt-4 max-w-2xl mx-auto px-4">
-              Experience the future of car servicing. Our AI chatbot books your service directly - no employee needed. 
+              Experience the future of car service booking. Our AI-powered booking platform helps you book services directly - no employee needed. 
               Complete transparency in pricing and real-time tracking.
             </p>
           </div>
@@ -418,8 +426,8 @@ export default function HomePage() {
             />
             <StepCard 
               number="02" 
-              title="Transparent AI Pricing" 
-              desc="Get instant, transparent pricing based on your car model and location. No hidden charges - our AI ensures complete pricing transparency."
+              title="Transparent Pricing" 
+              desc="Get instant, transparent pricing based on your car model and location. No hidden charges - our AI-powered booking platform ensures complete pricing transparency."
             />
             <StepCard 
               number="03" 
@@ -929,7 +937,7 @@ function RSAService({ icon, title }: { icon: React.ReactNode; title: string }) {
   );
 }
 
-function ServiceTypeCard({ icon, title, desc, features }: { icon: React.ReactNode; title: string; desc: string; features: string[] }) {
+function ServiceTypeCard({ icon, title, desc, features, slug }: { icon: React.ReactNode; title: string; desc: string; features: string[]; slug?: string }) {
   return (
     <div className="bg-white p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl hover:border-brand-primary/30 transition group">
       <div className="mb-4 sm:mb-5 md:mb-6 bg-brand-primary/10 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl flex items-center justify-center text-brand-primary group-hover:bg-brand-primary group-hover:text-white transition-colors">
@@ -937,7 +945,7 @@ function ServiceTypeCard({ icon, title, desc, features }: { icon: React.ReactNod
       </div>
       <h3 className="text-base sm:text-lg md:text-xl font-bold mb-1.5 sm:mb-2 text-brand-secondary">{title}</h3>
       <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">{desc}</p>
-      <ul className="space-y-1.5 sm:space-y-2">
+      <ul className="space-y-1.5 sm:space-y-2 mb-4">
         {features.map((feature, idx) => (
           <li key={idx} className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-gray-500">
             <CheckCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-green-500 flex-shrink-0" />
@@ -945,6 +953,14 @@ function ServiceTypeCard({ icon, title, desc, features }: { icon: React.ReactNod
           </li>
         ))}
       </ul>
+      {slug && (
+        <Link
+          href={`/services/${slug}`}
+          className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition"
+        >
+          Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </Link>
+      )}
     </div>
   );
 }

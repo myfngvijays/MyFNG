@@ -275,22 +275,33 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-14 sm:top-16 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-transform duration-300 ease-in-out lg:translate-x-0 w-56 sm:w-64 z-30 overflow-y-auto ${
+        className={`fixed left-0 top-14 sm:top-16 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-transform duration-300 ease-in-out lg:translate-x-0 w-56 sm:w-64 z-30 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <nav className="p-2 sm:p-3 md:p-4 space-y-1 sm:space-y-2">
-          {getMenuItems().map((item) => (
-            <NavLink 
-              key={item.href} 
-              href={item.href} 
-              icon={item.icon}
-              active={pathname === item.href}
+        <div className="h-full flex flex-col overflow-hidden">
+          <nav className="flex-1 overflow-y-auto overscroll-contain p-2 sm:p-3 md:p-4 space-y-1 sm:space-y-2">
+            {getMenuItems().map((item) => (
+              <NavLink 
+                key={item.href} 
+                href={item.href} 
+                icon={item.icon}
+                active={pathname === item.href}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+          <div className="p-2 sm:p-3 md:p-4 border-t border-blue-500/30">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base text-white hover:bg-red-500/30 font-medium"
             >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
+              <LogOut className="w-5 h-5 flex-shrink-0" />
+              <span className="truncate">Logout</span>
+            </button>
+          </div>
+        </div>
       </aside>
 
       {/* Main Content */}

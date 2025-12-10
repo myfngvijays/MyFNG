@@ -266,7 +266,7 @@ export default function BookingForm({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full relative overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-xl w-full relative overflow-hidden">
         {/* Progress Bar */}
         <div className="h-1 bg-gray-100">
           <div 
@@ -278,7 +278,8 @@ export default function BookingForm({ onClose }: { onClose: () => void }) {
         {/* Close Button */}
         <button 
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition z-10"
+          className="absolute top-4 right-4 text-gray-600 hover:text-gray-900 text-3xl font-bold w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition z-10 shadow-md"
+          aria-label="Close"
         >
           ×
         </button>

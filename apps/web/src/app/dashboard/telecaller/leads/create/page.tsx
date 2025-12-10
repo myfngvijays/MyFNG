@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
@@ -65,6 +65,33 @@ export default function CreateLeadPage() {
   const [serviceTypes, setServiceTypes] = useState<any[]>([]);
   const [serviceAddons, setServiceAddons] = useState<any[]>([]);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  
+  // Sort service types: basic, general, premium, platinum first, then others
+  const sortedServiceTypes = useMemo(() => {
+    const priorityServices = ['basic', 'general', 'premium', 'platinum'];
+    
+    const priority: any[] = [];
+    const others: any[] = [];
+    
+    serviceTypes.forEach(service => {
+      const nameLower = service.name.toLowerCase();
+      const priorityIndex = priorityServices.findIndex(p => nameLower.includes(p));
+      
+      if (priorityIndex !== -1) {
+        priority.push({ ...service, priorityIndex });
+      } else {
+        others.push(service);
+      }
+    });
+    
+    // Sort priority services by their order (basic, general, premium, platinum)
+    priority.sort((a, b) => a.priorityIndex - b.priorityIndex);
+    
+    // Sort others alphabetically
+    others.sort((a, b) => a.name.localeCompare(b.name));
+    
+    return [...priority, ...others];
+  }, [serviceTypes]);
   
   // Fetch options on component mount
   useEffect(() => {
@@ -827,7 +854,7 @@ export default function CreateLeadPage() {
                   Service Types <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-                  {serviceTypes.map(service => (
+                  {sortedServiceTypes.map(service => (
                     <label key={service.id} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
                       <input
                         type="checkbox"

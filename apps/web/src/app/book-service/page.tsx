@@ -627,12 +627,8 @@ export default function BookServicePage() {
       }
     }
 
-    // Step 2 validation: Name and Phone required
+    // Step 2 validation: Phone required
     if (currentStep === 1) {
-      if (!formData.customerName.trim()) {
-        toast.error('Please enter your name');
-        return;
-      }
       if (!formData.customerPhone.trim() || formData.customerPhone.length !== 10) {
         toast.error('Please enter a valid 10-digit phone number');
         return;
@@ -700,7 +696,7 @@ export default function BookServicePage() {
         lead_number: leadNumber,
         created_from: 'WEB',
         status: 'NEW',
-        customer_name: formData.customerName,
+        customer_name: formData.customerName || null,
         customer_phone: formData.customerPhone,
         vehicle_number: formData.vehicleNumber || null,
         city: formData.city.name,
@@ -745,7 +741,7 @@ export default function BookServicePage() {
         },
         body: JSON.stringify({
           amount: totalPrice,
-          customerName: formData.customerName,
+          customerName: formData.customerName || '',
           customerPhone: formData.customerPhone,
           customerEmail: '', // Optional
         }),
@@ -821,7 +817,7 @@ export default function BookServicePage() {
           }
         },
         prefill: {
-          name: formData.customerName,
+          name: formData.customerName || '',
           email: '', // Optional
           contact: formData.customerPhone,
         },
@@ -846,7 +842,7 @@ export default function BookServicePage() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.city || !formData.carModel || !formData.customerName || !formData.customerPhone || 
+    if (!formData.city || !formData.carModel || !formData.customerPhone || 
         !formData.pickupDate || !formData.pickupTime || !formData.pickupAddress || !formData.paymentMethod) {
       toast.error('Please complete all required fields');
       return;
@@ -883,7 +879,7 @@ export default function BookServicePage() {
   const canProceed = currentStep === 0 
     ? formData.city !== null && formData.carModel !== null
     : currentStep === 1
-    ? formData.customerName.trim() !== '' && formData.customerPhone.trim().length === 10
+    ? formData.customerPhone.trim().length === 10
     : currentStep === 2
     ? formData.selectedServices.length > 0
     : currentStep === 3
@@ -939,22 +935,22 @@ export default function BookServicePage() {
             </div>
             
             {/* Form Content */}
-            <div className="p-4 sm:p-6 md:p-8 lg:p-12">
+            <div className="p-4 sm:p-5 md:p-6 lg:p-8">
               {/* Step Counter */}
-              <div className="text-right mb-4 sm:mb-6 md:mb-8">
+              <div className="text-right mb-3 sm:mb-4 md:mb-5">
                 <span className="text-xs sm:text-sm text-gray-500">
                   Step {currentStep + 1} of {steps.length}
                   </span>
           </div>
 
               {/* Step Content */}
-              <div className={`min-h-[300px] sm:min-h-[400px] flex flex-col justify-center ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} transition-all duration-300`}>
+              <div className={`min-h-[250px] sm:min-h-[300px] flex flex-col justify-center ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} transition-all duration-300`}>
                 {/* Title & Subtitle */}
-                <div className="mb-6 sm:mb-8 md:mb-12">
-                  <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-2 sm:mb-3">
+                <div className="mb-4 sm:mb-5 md:mb-6">
+                  <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1.5 sm:mb-2">
                     {currentStepData.title}
                   </h2>
-                  <p className="text-base sm:text-lg text-gray-600">
+                  <p className="text-sm sm:text-base text-gray-600">
                     {currentStepData.subtitle}
                   </p>
         </div>
@@ -1120,39 +1116,9 @@ export default function BookServicePage() {
                   </div>
                 )}
 
-                {/* Step 2: Name, Phone, Vehicle Number */}
+                {/* Step 2: Phone, Vehicle Number */}
                 {currentStep === 1 && (
                   <div className="mb-8 sm:mb-10 md:mb-12 space-y-4 sm:space-y-6">
-                    {/* Name - Required */}
-                    <div className="relative">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                        <User className="w-4 h-4 text-brand-primary" />
-                        Your Name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.customerName}
-                        onChange={(e) => handleInputChange('customerName', e.target.value)}
-                        placeholder="Enter your full name"
-                        className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
-                          formData.customerName
-                            ? 'border-brand-primary bg-brand-primary/5'
-                            : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
-                        }`}
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && canProceed) {
-                            handleNext();
-                          }
-                        }}
-                      />
-                      {formData.customerName && (
-                        <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 mt-4 sm:mt-6">
-                          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
-                        </div>
-                      )}
-                    </div>
-
                     {/* Phone - Required */}
                     <div className="relative">
                       <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
@@ -1170,6 +1136,7 @@ export default function BookServicePage() {
                             ? 'border-brand-primary bg-brand-primary/5'
                             : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
                         }`}
+                        autoFocus
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && canProceed) {
                             handleNext();
