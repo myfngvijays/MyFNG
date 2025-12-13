@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyQCDecision, notifyAccountsTeam } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export async function POST(
     // Get user profile
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, workshop_id, role_id')
+      .select('id, workshop_id, role_id, full_name')
       .eq('id', user.id)
       .single();
 
@@ -66,6 +67,14 @@ export async function POST(
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if (lead.read_only) {
+      return NextResponse.json({
+        error: 'Lead is archived/read-only',
+        hint: 'This job is closed and cannot be modified'
+      }, { status: 400 });
+    }
+
     // Verify lead is from this workshop
     if (lead.workshop_id !== userProfile.workshop_id) {
       return NextResponse.json({ error: 'Job not in your workshop' }, { status: 403 });
@@ -88,12 +97,12 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Update lead status to QC_APPROVED
-    const { data: updatedLead, error: updateError } = await supabase
+    // Update lead status to QC_APPROVED (QC passed)
+    const { data: qcApprovedLead, error: updateError } = await supabase
       .from('service_leads')
       .update({
         status: 'QC_APPROVED',
-        qc_status: 'APPROVED',
+        qc_status: 'PASSED',
         qc_performed_by: userProfile.id,
         qc_performed_at: now,
         qc_notes: notes || 'Quality check approved',
@@ -119,7 +128,7 @@ export async function POST(
       .upsert({
         lead_id: leadId,
         supervisor_id: userProfile.id,
-        qc_status: 'APPROVED',
+        qc_status: 'PASSED',
         images_verified: true,
         parts_verified: true,
         mechanic_notes_approved: true,
@@ -165,15 +174,18 @@ export async function POST(
 
     // Check if audit is required
     let nextStep = 'Job ready for billing/invoice generation';
+    let finalLeadStatus: string = 'READY_FOR_BILLING';
     if (lead.audit_required) {
       await supabase
         .from('service_leads')
         .update({
           status: 'AUDIT_PENDING',
-          audit_status: 'PENDING'
+          audit_status: 'PENDING',
+          updated_at: now
         })
         .eq('id', leadId);
 
+      finalLeadStatus = 'AUDIT_PENDING';
       nextStep = 'Job sent to auditor for final verification';
     } else {
       // Move to invoice generation - Update status to READY_FOR_BILLING
@@ -199,14 +211,70 @@ export async function POST(
         });
     }
 
+    // Lead events (analytics/audit trail)
+    await supabase.from('lead_events').insert([
+      {
+        lead_id: leadId,
+        event_type: 'QC_APPROVED',
+        event_description: 'Supervisor approved QC',
+        event_data: { quality_score, checklist_data, notes },
+        created_by: userProfile.id,
+        created_at: now,
+      },
+      {
+        lead_id: leadId,
+        event_type: finalLeadStatus,
+        event_description: finalLeadStatus === 'AUDIT_PENDING'
+          ? 'Lead sent for audit after QC approval'
+          : 'Lead ready for billing after QC approval',
+        created_by: userProfile.id,
+        created_at: now,
+      },
+    ]);
+
     // TODO: Send notification to workshop admin
     // TODO: Send notification to billing team
     // TODO: Send notification to auditor (if audit required)
+    try {
+      // Notify mechanic about QC decision
+      if (lead.assigned_mechanic_id) {
+        await notifyQCDecision(
+          leadId,
+          lead.lead_number || leadId,
+          lead.assigned_mechanic_id,
+          true,
+          userProfile.full_name || 'Supervisor',
+          notes
+        );
+      }
+
+      // Notify accounts team when billing is ready (no audit)
+      if (finalLeadStatus === 'READY_FOR_BILLING') {
+        await notifyAccountsTeam(
+          lead.workshop_id,
+          leadId,
+          lead.lead_number || leadId,
+          'Ready for Billing',
+          `QC approved for lead ${lead.lead_number || leadId}. Please generate invoice.`,
+          `/dashboard/billing/leads/${leadId}/generate-invoice`,
+          'HIGH'
+        );
+      }
+    } catch (e) {
+      console.warn('Notification dispatch failed (non-blocking):', e);
+    }
+
+    // Fetch final lead snapshot (after workflow transition)
+    const { data: finalLead } = await supabase
+      .from('service_leads')
+      .select('*')
+      .eq('id', leadId)
+      .single();
 
     return NextResponse.json({
       success: true,
       message: 'Quality check approved successfully',
-      lead: updatedLead,
+      lead: finalLead || qcApprovedLead,
       next_step: nextStep,
       quality_score: quality_score
     }, { status: 200 });

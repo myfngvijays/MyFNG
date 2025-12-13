@@ -310,7 +310,7 @@ export async function GET(request: Request) {
       // Priority 2: If mechanic completed, show COMPLETED (unless QC approved)
       else if (mechanicStatus === 'COMPLETED') {
         // If mechanic completed, check QC status
-        if (job.qc_status === 'APPROVED' || job.status === 'READY_FOR_BILLING' || job.status === 'QC_APPROVED') {
+        if (job.qc_status === 'PASSED' || job.status === 'READY_FOR_BILLING' || job.status === 'QC_APPROVED') {
           // QC already approved - show READY_FOR_BILLING or QC_APPROVED
           displayStatus = job.status === 'READY_FOR_BILLING' ? 'READY_FOR_BILLING' : (job.status === 'QC_APPROVED' ? 'QC_APPROVED' : 'READY_FOR_BILLING');
         } else {

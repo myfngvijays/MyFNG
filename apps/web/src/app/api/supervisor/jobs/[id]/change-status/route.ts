@@ -43,8 +43,8 @@ export async function POST(
       return NextResponse.json({ error: 'new_status is required' }, { status: 400 });
     }
 
-    // Valid status transitions for supervisor
-    const validStatuses = ['IN_PROGRESS', 'INSPECTED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_DELIVERY'];
+    // Valid status transitions for supervisor (workflow-aligned)
+    const validStatuses = ['IN_PROGRESS', 'REWORK_REQUIRED', 'INSPECTED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_DELIVERY'];
     if (!validStatuses.includes(new_status)) {
       return NextResponse.json({ 
         error: 'Invalid status for supervisor',
@@ -63,6 +63,11 @@ export async function POST(
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if (lead.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
     // Verify lead is from this workshop
     if (lead.workshop_id !== userProfile.workshop_id) {
       return NextResponse.json({ error: 'Job not in your workshop' }, { status: 403 });
@@ -72,13 +77,17 @@ export async function POST(
     const currentStatus = lead.status;
     let isValidTransition = false;
 
-    // After pickup completion, status is DELIVERED
+    // After delivery completion, status is DELIVERED_TO_CUSTOMER (legacy: DELIVERED)
     // Supervisor can change to IN_PROGRESS or INSPECTED
-    if (currentStatus === 'DELIVERED' && (new_status === 'IN_PROGRESS' || new_status === 'INSPECTED')) {
+    if ((currentStatus === 'DELIVERED_TO_CUSTOMER' || currentStatus === 'DELIVERED') && (new_status === 'IN_PROGRESS' || new_status === 'INSPECTED')) {
       isValidTransition = true;
     }
     // From IN_PROGRESS to QC_PENDING or QC_APPROVED
     else if (currentStatus === 'IN_PROGRESS' && (new_status === 'QC_PENDING' || new_status === 'QC_APPROVED')) {
+      isValidTransition = true;
+    }
+    // From REWORK_REQUIRED to IN_PROGRESS
+    else if (currentStatus === 'REWORK_REQUIRED' && new_status === 'IN_PROGRESS') {
       isValidTransition = true;
     }
     // From INSPECTED to QC_PENDING or QC_APPROVED
@@ -119,7 +128,7 @@ export async function POST(
     if (new_status === 'IN_PROGRESS') {
       updateData.mechanic_started_at = now;
     } else if (new_status === 'QC_APPROVED') {
-      updateData.qc_status = 'APPROVED';
+      updateData.qc_status = 'PASSED';
       updateData.qc_performed_by = userProfile.id;
       updateData.qc_performed_at = now;
     } else if (new_status === 'READY_FOR_DELIVERY') {

@@ -9,6 +9,7 @@ import {
   roundOff,
 } from '@/lib/utils/invoiceUtils';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
+import { createNotification, notifyWorkshopAdmin } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +55,31 @@ export async function POST(
       return NextResponse.json({ error: 'Lead ID is required' }, { status: 400 });
     }
 
+    // Optional billing finalization payload (UI can send checklist + overrides)
+    let billingPayload: any = {};
+    try {
+      billingPayload = await request.json();
+    } catch {
+      billingPayload = {};
+    }
+
+    const billingChecklist: Record<string, boolean> | undefined = billingPayload?.billing_checklist;
+    if (billingChecklist) {
+      const incomplete = Object.entries(billingChecklist)
+        .filter(([, v]) => v !== true)
+        .map(([k]) => k);
+      if (incomplete.length > 0) {
+        return NextResponse.json(
+          {
+            error: 'Billing finalization checklist is incomplete',
+            missing_checks: incomplete,
+            hint: 'Complete all billing verification checks before generating invoice',
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     console.log('[Generate Invoice API] Fetching lead:', leadId);
 
     // Get lead details first (without join to avoid RLS issues)
@@ -88,6 +114,14 @@ export async function POST(
       }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if (lead.read_only) {
+      return NextResponse.json({
+        error: 'Lead is archived/read-only',
+        hint: 'This lead is closed and cannot generate/regenerate invoices'
+      }, { status: 400 });
+    }
+
     // Fetch workshop details separately if workshop_id exists
     let workshop: any = null;
     if (lead.workshop_id) {
@@ -106,7 +140,7 @@ export async function POST(
     }
 
     // Verify lead is ready for billing - allow READY_FOR_DELIVERY for advisor
-    const validStatuses = ['QC_APPROVED', 'READY_FOR_BILLING', 'AUDIT_APPROVED', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
+    const validStatuses = ['WORK_COMPLETED', 'QC_APPROVED', 'READY_FOR_BILLING', 'AUDIT_APPROVED', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
     if (!validStatuses.includes(lead.status)) {
       return NextResponse.json({ 
         error: 'Lead not ready for billing',
@@ -378,10 +412,24 @@ export async function POST(
     const laborChargesFromJobCard = parseFloat(jobCard?.labor_charges || '0');
     
     // If baseAmount is 0 but labor_charges exists, use it
-    const finalBaseAmount = baseAmount > 0 ? baseAmount : (laborChargesFromJobCard > 0 ? laborChargesFromJobCard : 0);
+    const computedBaseAmount = baseAmount > 0 ? baseAmount : (laborChargesFromJobCard > 0 ? laborChargesFromJobCard : 0);
+
+    // Allow UI overrides (billing finalization)
+    const overrideBaseAmount = billingPayload?.base_amount;
+    const overrideDiscountAmount = billingPayload?.discount_amount;
+    const overrideCouponCode = billingPayload?.coupon_code;
+
+    const finalBaseAmount =
+      typeof overrideBaseAmount === 'number' && overrideBaseAmount >= 0
+        ? overrideBaseAmount
+        : computedBaseAmount;
     
-    const discount = parseFloat(lead.discount_amount || '0');
-    const couponCode = lead.coupon_code || null;
+    const discount =
+      typeof overrideDiscountAmount === 'number'
+        ? overrideDiscountAmount
+        : parseFloat(lead.discount_amount || '0');
+
+    const couponCode = overrideCouponCode || lead.coupon_code || null;
 
     // Calculate subtotal (base amount + parts + extra charges - discount)
     const subtotal = finalBaseAmount + extraChargesTotal + partsTotal - discount;
@@ -605,6 +653,24 @@ export async function POST(
       }, { status: 500 });
     }
 
+    // Record billing finalization checklist snapshot (optional)
+    if (billingChecklist) {
+      await supabase
+        .from('invoice_reviews')
+        .insert({
+          invoice_id: invoice.id,
+          reviewed_by: userProfile.id,
+          review_status: 'BILLING_FINALIZED',
+          review_notes: billingPayload?.billing_notes || 'Billing checklist completed and invoice generated',
+          items_verified: true,
+          taxes_verified: true,
+          customer_details_verified: true,
+          reviewed_at: nowISO,
+          checklist_data: billingChecklist,
+          review_stage: 'BILLING_FINALIZATION',
+        } as any);
+    }
+
     // Update lead with invoice details (Step 0: System actions)
     // Status should be INVOICE_GENERATED initially, will change to AWAITING_PAYMENT after approval
     await supabase
@@ -737,13 +803,41 @@ export async function POST(
     // TODO: Generate PDF invoice
     // TODO: Send invoice to customer (Email/WhatsApp)
     // TODO: Send notification to workshop admin
+    try {
+      // Notify workshop admin(s)
+      if (lead.workshop_id) {
+        await notifyWorkshopAdmin(
+          lead.workshop_id,
+          leadId,
+          lead.lead_number || leadId,
+          'Billing System'
+        );
+      }
+
+      // Notify supervisor (if assigned)
+      if (lead.assigned_supervisor_id) {
+        await createNotification({
+          userId: lead.assigned_supervisor_id,
+          type: 'INVOICE_GENERATED',
+          title: 'Invoice Generated',
+          message: `Invoice ${invoiceNumber} generated for lead ${lead.lead_number || leadId}.`,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber: lead.lead_number,
+          actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`,
+          metadata: { invoice_id: invoice.id, invoice_number: invoiceNumber },
+        });
+      }
+    } catch (e) {
+      console.warn('Notification dispatch failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Invoice generated successfully',
       invoice: invoice,
       breakdown: {
-        base_amount: baseAmount,
+        base_amount: finalBaseAmount,
         parts_cost: partsTotal,
         extra_charges: extraChargesTotal,
         discount: discount,

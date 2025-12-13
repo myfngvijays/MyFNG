@@ -33,6 +33,21 @@ export async function POST(
     const body = await request.json();
     const { latitude, longitude } = body;
 
+    // Fetch lead for read-only protection + status validation
+    const { data: lead, error: leadError } = await supabase
+      .from('service_leads')
+      .select('id, status, read_only')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !lead) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    }
+
+    if (lead.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
     // Get pickup tracking
     const { data: tracking, error: trackingError } = await supabase
       .from('pickup_tracking')
@@ -54,6 +69,24 @@ export async function POST(
       return NextResponse.json({ error: 'Not assigned to this drop' }, { status: 403 });
     }
 
+    // Ensure lead is ready for delivery
+    const allowedLeadStatuses = ['READY_FOR_DELIVERY', 'COD_PENDING'];
+    if (!allowedLeadStatuses.includes(lead.status)) {
+      return NextResponse.json({
+        error: 'Lead is not ready for delivery',
+        current_status: lead.status,
+        allowed_statuses: allowedLeadStatuses,
+      }, { status: 400 });
+    }
+
+    // Generate a DROP OTP (stored in pickup_otps via DB function) and cache on tracking
+    const { data: otp, error: otpError } = await supabase
+      .rpc('generate_pickup_otp', { p_lead_id: leadId, p_otp_type: 'DROP' });
+
+    if (otpError) {
+      return NextResponse.json({ error: 'Failed to generate delivery OTP', details: otpError.message }, { status: 500 });
+    }
+
     // Update drop tracking - Start delivery (OUT_FOR_DELIVERY status)
     const { data: updated, error: updateError } = await supabase
       .from('pickup_tracking')
@@ -61,6 +94,7 @@ export async function POST(
         drop_status: 'OUT_FOR_DELIVERY',          // ✨ NEW: Out for delivery to customer
         drop_start_time: new Date().toISOString(),
         drop_out_for_delivery_at: new Date().toISOString(), // ✨ NEW: When status changed to OUT_FOR_DELIVERY
+        drop_otp: otp || tracking.drop_otp || null,
         updated_at: new Date().toISOString(),
       })
       .eq('lead_id', leadId)
@@ -88,13 +122,14 @@ export async function POST(
       user_id: user.id,
       activity_type: 'DROP_STARTED',
       description: 'Drop process started',
-      metadata: { latitude, longitude },
+      metadata: { latitude, longitude, otp_generated: true },
     });
 
     return NextResponse.json({
       success: true,
       data: updated,
       message: 'Drop started successfully',
+      otp: otp, // Returned for testing; remove for production if needed
     });
   } catch (error: any) {
     console.error('Error starting drop:', error);

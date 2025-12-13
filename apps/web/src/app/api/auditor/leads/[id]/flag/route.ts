@@ -69,12 +69,18 @@ export async function POST(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if ((lead as any).read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
     const now = new Date().toISOString();
 
     // Update lead with audit flag
     const { data: updatedLead, error: updateError } = await supabase
       .from('service_leads')
       .update({
+        status: 'AUDIT_FLAGGED',
         audit_status: 'AUDIT_FLAGGED',
         audit_performed_by: userProfile.id,
         audit_performed_at: now,
@@ -125,12 +131,27 @@ export async function POST(
       .insert({
         lead_id: leadId,
         old_status: lead.status,
-        new_status: lead.status,
-        changed_by_id: userProfile.id,
+        new_status: 'AUDIT_FLAGGED',
+        changed_by: userProfile.id,
         changed_at: now,
         reason: `Audit flagged: ${body.flag_reason}`,
         notes: body.description,
       });
+
+    await supabase.from('lead_events').insert({
+      lead_id: leadId,
+      event_type: 'AUDIT_FLAGGED',
+      event_description: `Lead flagged by auditor: ${body.flag_reason} (${body.severity})`,
+      event_data: {
+        flag_reason: body.flag_reason,
+        severity: body.severity,
+        description: body.description,
+        evidence: body.evidence,
+        action_required: body.action_required,
+      },
+      created_by: userProfile.id,
+      created_at: now,
+    });
 
     // If escalated, notify super admin
     if (body.escalate_to_super_admin || body.severity === 'CRITICAL') {

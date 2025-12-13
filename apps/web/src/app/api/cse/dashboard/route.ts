@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     const { count: customerRatingsPending } = await supabase
       .from('service_leads')
       .select('*', { count: 'exact', head: true })
-      .in('status', ['COMPLETED', 'DELIVERED', 'CLOSED'])
+      .in('status', ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'CLOSED'])
       .is('customer_satisfaction_score', null);
 
     return NextResponse.json({

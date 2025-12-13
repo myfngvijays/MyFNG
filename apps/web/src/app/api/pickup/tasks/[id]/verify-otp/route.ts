@@ -116,7 +116,9 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Mark OTP as verified in pickup_otps table if record exists
+    // Mark OTP as verified in pickup_otps table.
+    // IMPORTANT: even if we validated via test OTP (123456) or service_leads.pickup_otp fallback,
+    // we still create/update a verified record so downstream APIs (pickup complete) won't fail.
     if (otpRecord) {
       await supabase
         .from('pickup_otps')
@@ -126,6 +128,19 @@ export async function POST(
           verified_by: userProfile.id
         })
         .eq('id', otpRecord.id);
+    } else {
+      await supabase
+        .from('pickup_otps')
+        .insert({
+          lead_id: leadId,
+          otp_type: 'PICKUP',
+          otp_code: otp,
+          is_verified: true,
+          verified_at: now,
+          verified_by: userProfile.id,
+          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          created_by: userProfile.id
+        });
     }
 
     // Update service_leads status to VEHICLE_IN_TRANSIT (vehicle picked up, driving to workshop)

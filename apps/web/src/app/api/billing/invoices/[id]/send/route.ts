@@ -10,6 +10,7 @@ import { sendSMS } from '@/lib/services/smsService';
 import { sendInvoiceViaWhatsApp } from '@/lib/services/whatsappService';
 import { createShortUrl } from '@/lib/services/urlShortener';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
+import { createNotification, notifyWorkshopAdmin } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -58,6 +59,10 @@ export async function POST(
         *,
         lead:service_leads!lead_id(
           id,
+          lead_number,
+          workshop_id,
+          assigned_supervisor_id,
+          status,
           customer_name,
           customer_email,
           customer_phone,
@@ -69,6 +74,11 @@ export async function POST(
 
     if (invoiceError || !invoice) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+    }
+
+    // Prevent sending invoices after lead closure/archival
+    if ((invoice.lead as any)?.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
     }
 
     // Verify invoice is approved
@@ -83,12 +93,29 @@ export async function POST(
     const results: any = {};
     const sendFailures: any[] = [];
 
-    // Generate PDF and short URL first
+    // Generate short URL first
     const invoiceLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/invoice/${invoice.invoice_number}`;
     const { shortUrl } = await createShortUrl(invoiceLink, 'invoice', invoiceId);
     
-    // Generate PDF URL
-    const pdfUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/billing/invoices/${invoiceId}/generate-pdf`;
+    // Persist a printable invoice document and use it for sharing/attachments when possible
+    let documentUrl = (invoice as any).document_url as string | undefined;
+    if (!documentUrl) {
+      try {
+        const persistRes = await fetch(
+          `${request.nextUrl.origin}/api/billing/invoices/${invoiceId}/persist-document`,
+          { method: 'POST' }
+        );
+        if (persistRes.ok) {
+          const persisted = await persistRes.json();
+          documentUrl = persisted.document_url;
+        }
+      } catch (e) {
+        // Non-fatal: fallback to generator endpoint
+      }
+    }
+
+    // Fallback generator (HTML)
+    const pdfUrl = documentUrl || `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/billing/invoices/${invoiceId}/generate-pdf`;
 
     // Helper function to record send failure
     const recordFailure = (method: string, error: string) => {
@@ -128,7 +155,7 @@ export async function POST(
     // Send via Email
     if (methods.includes('EMAIL') && invoice.lead?.customer_email) {
       try {
-        // Fetch PDF for attachment
+        // Fetch invoice document for attachment (currently HTML)
         const pdfResponse = await fetch(pdfUrl);
         let pdfAttachment: { filename: string; content: string } | undefined;
         
@@ -136,7 +163,7 @@ export async function POST(
           const pdfBlob = await pdfResponse.blob();
           const pdfBase64 = Buffer.from(await pdfBlob.arrayBuffer()).toString('base64');
           pdfAttachment = {
-            filename: `Invoice-${invoice.invoice_number}.pdf`,
+            filename: `Invoice-${invoice.invoice_number}.html`,
             content: pdfBase64,
           };
         }
@@ -367,6 +394,34 @@ export async function POST(
         ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
         userAgent: request.headers.get('user-agent') || undefined,
       });
+
+      // In-app notifications (no WhatsApp dependency)
+      try {
+        const lead = invoice.lead as any;
+        if (lead?.workshop_id) {
+          await notifyWorkshopAdmin(
+            lead.workshop_id,
+            invoice.lead_id,
+            lead.lead_number || invoice.lead_id,
+            userProfile.name || 'Billing'
+          );
+        }
+        if (lead?.assigned_supervisor_id) {
+          await createNotification({
+            userId: lead.assigned_supervisor_id,
+            type: 'INVOICE_SENT',
+            title: 'Invoice Sent to Customer',
+            message: `Invoice ${invoice.invoice_number} sent to customer. Status: AWAITING_PAYMENT.`,
+            priority: 'MEDIUM',
+            leadId: invoice.lead_id,
+            leadNumber: lead?.lead_number,
+            actionUrl: `/dashboard/workshop_supervisor/jobs/${invoice.lead_id}`,
+            metadata: { invoice_id: invoiceId, methods },
+          });
+        }
+      } catch (e) {
+        console.warn('Notification dispatch failed (non-blocking):', e);
+      }
     }
 
     // Create lead_event entries

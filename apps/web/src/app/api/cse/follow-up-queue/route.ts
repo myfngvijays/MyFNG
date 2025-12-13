@@ -70,7 +70,8 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq('cse_followup_due', true)
-      .eq('status', 'DELIVERED')
+      // workflow-aligned delivery status
+      .in('status', ['DELIVERED_TO_CUSTOMER', 'DELIVERED'])
       .gte('delivered_at', windowStart.toISOString())
       .order('delivered_at', { ascending: true });
 

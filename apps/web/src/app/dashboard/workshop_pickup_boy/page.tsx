@@ -85,7 +85,7 @@ export default function WorkshopPickupBoyDashboard() {
       ).length || 0;
 
       const deliveryCount = allTasks?.filter(t => 
-        t.status === 'COMPLETED' || t.status === 'READY_FOR_DELIVERY'
+        t.status === 'COMPLETED' || t.status === 'READY_FOR_DELIVERY' || t.status === 'DELIVERED_TO_CUSTOMER'
       ).length || 0;
 
       const inTransitCount = allTasks?.filter(t => 
@@ -99,9 +99,9 @@ export default function WorkshopPickupBoyDashboard() {
       today.setHours(0, 0, 0, 0);
 
       const completedToday = allTasks?.filter(t => 
-        (t.status === 'DELIVERED' || t.status === 'CLOSED') && 
-        t.completed_at &&
-        new Date(t.completed_at) >= today
+        (t.status === 'DELIVERED_TO_CUSTOMER' || t.status === 'DELIVERED' || t.status === 'CLOSED') && 
+        (t.delivered_at || t.completed_at) &&
+        new Date(t.delivered_at || t.completed_at) >= today
       ).length || 0;
 
       setTasks(assignedTasks || []);

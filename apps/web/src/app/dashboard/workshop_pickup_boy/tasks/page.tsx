@@ -100,7 +100,7 @@ export default function PickupTasksPage() {
       } else if (filter === 'in_transit') {
         query = query.in('status', ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS']);
       } else if (filter === 'completed') {
-        query = query.in('status', ['COMPLETED', 'DELIVERED', 'CLOSED']);
+        query = query.in('status', ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'CLOSED']);
       } else {
         // All active tasks (assigned but not completed)
         query = query.in('status', [

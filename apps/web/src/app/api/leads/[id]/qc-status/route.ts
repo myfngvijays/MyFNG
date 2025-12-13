@@ -74,10 +74,13 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden: Lead belongs to different workshop' }, { status: 403 });
     }
 
-    // Verify lead is in COMPLETED status
-    if (lead.status !== 'COMPLETED') {
+    // Verify lead is ready for QC (mechanic has completed work)
+    // NOTE: "WORK_COMPLETED" is the canonical mechanic-done state.
+    if (lead.status !== 'WORK_COMPLETED' && lead.status !== 'QC_PENDING') {
       return NextResponse.json({ 
-        error: 'QC can only be performed on completed jobs' 
+        error: 'QC can only be performed on work-completed jobs',
+        current_status: lead.status,
+        allowed_statuses: ['WORK_COMPLETED', 'QC_PENDING'],
       }, { status: 400 });
     }
 
@@ -140,16 +143,14 @@ export async function POST(
 
     // Update lead status based on QC result
     if (qc_status === 'PASSED') {
-      // Move to READY_FOR_DELIVERY
+      // Move to READY_FOR_BILLING (billing must happen after QC)
       await supabase
         .from('service_leads')
         .update({
-          status: 'READY_FOR_DELIVERY',
+          status: 'READY_FOR_BILLING',
           qc_status: 'PASSED',
           qc_performed_by: user.id,
           qc_performed_at: new Date().toISOString(),
-          ready_for_delivery_at: new Date().toISOString(),
-          marked_ready_by: user.id,
           updated_at: new Date().toISOString()
         })
         .eq('id', leadId);
@@ -158,7 +159,7 @@ export async function POST(
       await supabase.from('lead_events').insert({
         lead_id: leadId,
         event_type: 'QC_PASSED',
-        event_description: `QC passed by supervisor ${userProfile.full_name}. Job ready for delivery.`,
+        event_description: `QC passed by supervisor ${userProfile.full_name}. Job ready for billing.`,
         created_by: user.id
       });
     } else {
@@ -195,7 +196,7 @@ export async function POST(
         leadId,
         leadNumber: lead.lead_number,
         qcStatus: qc_status,
-        newLeadStatus: qc_status === 'PASSED' ? 'READY_FOR_DELIVERY' : 'IN_PROGRESS'
+        newLeadStatus: qc_status === 'PASSED' ? 'READY_FOR_BILLING' : 'IN_PROGRESS'
       }
     });
 

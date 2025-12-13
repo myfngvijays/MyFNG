@@ -61,7 +61,7 @@ export async function POST(
     }
 
     // Validate lead can be closed
-    const validStatuses = ['COMPLETED', 'DELIVERED', 'PAYMENT_COMPLETED'];
+    const validStatuses = ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'PAYMENT_COMPLETED'];
     if (!validStatuses.includes(lead.status)) {
       return NextResponse.json({ 
         error: 'Lead cannot be closed yet',

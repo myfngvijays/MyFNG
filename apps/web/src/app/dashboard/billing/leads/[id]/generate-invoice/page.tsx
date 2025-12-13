@@ -14,6 +14,17 @@ interface InvoiceItem {
   category: string;
 }
 
+const BILLING_CHECKLIST_ITEMS: { key: string; label: string }[] = [
+  { key: 'parts_quantity_correct', label: 'Correct quantity of parts' },
+  { key: 'oil_grade_correct', label: 'Correct oil grade (if applicable)' },
+  { key: 'labour_charges_correct', label: 'Correct labour charges' },
+  { key: 'no_duplicate_items', label: 'Duplicate items NOT added' },
+  { key: 'no_incorrect_items', label: 'No incorrect items added' },
+  { key: 'coupons_applied_correctly', label: 'Coupons/discounts applied correctly' },
+  { key: 'gst_config_verified', label: 'GST configuration verified (state/place of supply)' },
+  { key: 'final_amount_verified', label: 'Final amount looks accurate' },
+];
+
 export default function GenerateInvoicePage() {
   const router = useRouter();
   const params = useParams();
@@ -31,6 +42,12 @@ export default function GenerateInvoicePage() {
   
   const [paymentTerms, setPaymentTerms] = useState('');
   const [notes, setNotes] = useState('');
+  const [billingNotes, setBillingNotes] = useState('');
+  const [billingChecklist, setBillingChecklist] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    BILLING_CHECKLIST_ITEMS.forEach((i) => (initial[i.key] = false));
+    return initial;
+  });
 
   useEffect(() => {
     fetchLeadDetails();
@@ -110,6 +127,12 @@ export default function GenerateInvoicePage() {
       return;
     }
 
+    const incomplete = Object.entries(billingChecklist).filter(([, v]) => v !== true).map(([k]) => k);
+    if (incomplete.length > 0) {
+      toast.error('Please complete the billing checklist before generating invoice');
+      return;
+    }
+
     setProcessing(true);
 
     try {
@@ -128,7 +151,9 @@ export default function GenerateInvoicePage() {
           tax_amount: totals.tax,
           total_amount: totals.total,
           payment_terms: paymentTerms,
-          notes: notes
+          notes: notes,
+          billing_notes: billingNotes,
+          billing_checklist: billingChecklist,
         })
       });
 
@@ -419,6 +444,44 @@ export default function GenerateInvoicePage() {
                 {processing ? 'Generating...' : 'Generate Invoice'}
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Billing Finalization Checklist */}
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Save className="w-5 h-5 text-brand-primary" />
+            Billing Finalization Checklist (Mandatory)
+          </h3>
+          <div className="space-y-2">
+            {BILLING_CHECKLIST_ITEMS.map((item) => (
+              <label key={item.key} className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={billingChecklist[item.key] === true}
+                  onChange={(e) =>
+                    setBillingChecklist((prev) => ({
+                      ...prev,
+                      [item.key]: e.target.checked,
+                    }))
+                  }
+                />
+                <span className="text-sm text-gray-800 font-medium">{item.label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Billing Notes (optional)
+            </label>
+            <textarea
+              value={billingNotes}
+              onChange={(e) => setBillingNotes(e.target.value)}
+              className="input w-full"
+              rows={3}
+              placeholder="Any remarks: oil grade verified, coupon applied, corrections made, etc."
+            />
           </div>
         </div>
       </div>

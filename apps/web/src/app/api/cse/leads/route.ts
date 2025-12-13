@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
     } else if (filter === 'completed') {
       // Completed but not yet closed
       query = query
-        .in('status', ['COMPLETED', 'PAYMENT_COMPLETED', 'DELIVERED'])
+        .in('status', ['COMPLETED', 'PAYMENT_COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED'])
         .is('closed_at', null);
     } else if (filter === 'closed') {
       // Already closed leads
@@ -76,6 +76,7 @@ export async function GET(request: NextRequest) {
         'AWAITING_PAYMENT', 
         'PAYMENT_COMPLETED',
         'AWAITING_DELIVERY',
+        'DELIVERED_TO_CUSTOMER',
         'DELIVERED',
         'COMPLETED',
         'CLOSED'
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
       total: leads?.length || 0,
       pendingFollowUps: leads?.filter(l => l.follow_up_required && l.status !== 'CLOSED').length || 0,
       awaitingPayment: leads?.filter(l => l.status === 'AWAITING_PAYMENT').length || 0,
-      readyToClose: leads?.filter(l => ['COMPLETED', 'DELIVERED'].includes(l.status) && !l.closed_at).length || 0,
+      readyToClose: leads?.filter(l => ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED'].includes(l.status) && !l.closed_at).length || 0,
       closedToday: leads?.filter(l => {
         if (!l.closed_at) return false;
         const closedDate = new Date(l.closed_at);

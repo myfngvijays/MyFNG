@@ -79,7 +79,7 @@ export default function SupervisorJobDetailPage() {
               // Always prioritize mechanic_status over lead status
               if (prevLead.mechanic_status === 'COMPLETED') {
                 // If mechanic completed, check QC status
-                if (prevLead.qc_status === 'APPROVED' || newStatus === 'READY_FOR_BILLING' || newStatus === 'QC_APPROVED') {
+                if (prevLead.qc_status === 'PASSED' || newStatus === 'READY_FOR_BILLING' || newStatus === 'QC_APPROVED') {
                   // QC already approved - show READY_FOR_BILLING or QC_APPROVED
                   displayStatus = newStatus === 'READY_FOR_BILLING' ? 'READY_FOR_BILLING' : (newStatus === 'QC_APPROVED' ? 'QC_APPROVED' : 'READY_FOR_BILLING');
                 } else {
@@ -323,7 +323,7 @@ export default function SupervisorJobDetailPage() {
           data.display_status = 'IN_PROGRESS';
         } else if (mechanicJob.mechanic_status === 'COMPLETED') {
           // If mechanic completed, check QC status
-          if (data.qc_status === 'APPROVED' || data.status === 'READY_FOR_BILLING' || data.status === 'QC_APPROVED') {
+          if (data.qc_status === 'PASSED' || data.status === 'READY_FOR_BILLING' || data.status === 'QC_APPROVED') {
             // QC already approved - show READY_FOR_BILLING or QC_APPROVED
             data.display_status = data.status === 'READY_FOR_BILLING' ? 'READY_FOR_BILLING' : (data.status === 'QC_APPROVED' ? 'QC_APPROVED' : 'READY_FOR_BILLING');
           } else {
@@ -1064,7 +1064,7 @@ export default function SupervisorJobDetailPage() {
         </div>
 
         {/* Section 9: Invoice Section - Show when car is ready for billing, delivery or completed */}
-        {['COMPLETED', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
+        {['WORK_COMPLETED', 'COMPLETED', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
           <InvoiceSection lead={lead} onUpdate={fetchJobDetails} />
         )}
 
@@ -1121,7 +1121,7 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Section 9: QC Section */}
-        {lead.status === 'COMPLETED' && lead.qc_status === 'PENDING' && !showQC && (
+        {['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING' && !showQC && (
           <div className="card bg-purple-50 border-purple-200">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
               <div className="flex-1 min-w-0">

@@ -58,6 +58,8 @@ interface Invoice {
   bank_account_number?: string;
   bank_ifsc?: string;
   bank_branch?: string;
+  document_url?: string;
+  document_type?: string;
   created_at: string;
   status?: string;
 }
@@ -174,8 +176,23 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
 
     try {
-      // Open PDF in new window and trigger print dialog
-      const printUrl = `/api/billing/invoices/${invoice.id}/generate-pdf`;
+      // Prefer persisted document URL (stable); otherwise generate/persist first
+      let printUrl = invoice.document_url;
+
+      if (!printUrl) {
+        const persistRes = await fetch(`/api/billing/invoices/${invoice.id}/persist-document`, {
+          method: 'POST',
+        });
+        if (persistRes.ok) {
+          const persisted = await persistRes.json();
+          printUrl = persisted.document_url;
+        }
+      }
+
+      if (!printUrl) {
+        printUrl = `/api/billing/invoices/${invoice.id}/generate-pdf`;
+      }
+
       const printWindow = window.open(printUrl, '_blank');
       
       if (printWindow) {
@@ -191,6 +208,9 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
           window.print();
         }, 1000);
       }
+
+      // Refresh invoice to capture document_url if it was generated
+      await fetchInvoice();
     } catch (error: any) {
       console.error('Error printing invoice:', error);
       alert(`Failed to print invoice: ${error.message}`);
@@ -204,29 +224,36 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
 
     try {
-      const response = await fetch(`/api/billing/invoices/${invoice.id}/generate-pdf`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to generate PDF');
+      // Prefer persisted document URL (stable)
+      let urlToDownload = invoice.document_url;
+
+      // If not persisted yet, persist first (best-effort)
+      if (!urlToDownload) {
+        const persistRes = await fetch(`/api/billing/invoices/${invoice.id}/persist-document`, {
+          method: 'POST',
+        });
+        if (persistRes.ok) {
+          const persisted = await persistRes.json();
+          urlToDownload = persisted.document_url;
+        }
       }
 
-      const htmlContent = await response.text();
-      
-      // Create a blob from HTML content
-      const blob = new Blob([htmlContent], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      
-      // Create download link
+      // Fallback to generator endpoint (HTML)
+      if (!urlToDownload) {
+        urlToDownload = `/api/billing/invoices/${invoice.id}/generate-pdf`;
+      }
+
       const link = document.createElement('a');
-      link.href = url;
-      link.download = `Invoice-${invoice.invoice_number}.html`;
+      link.href = urlToDownload;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.download = `Invoice-${invoice.invoice_number}.${(invoice.document_type || 'HTML').toLowerCase()}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      // Clean up
-      URL.revokeObjectURL(url);
-      
+
+      // Refresh invoice to capture document_url if it was generated
+      await fetchInvoice();
       alert('✅ Invoice download started!');
     } catch (error: any) {
       console.error('Error downloading invoice:', error);
@@ -280,7 +307,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
   }
 
-  const canGenerateInvoice = ['QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status);
+  // Allow supervisor/admin to generate invoice once mechanic has submitted work completion as well.
+  const canGenerateInvoice = ['WORK_COMPLETED', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status);
 
   return (
     <div className="card">
@@ -306,7 +334,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
             </button>
           ) : (
             <p className="text-sm text-gray-500">
-              Invoice can only be generated when lead status is QC_APPROVED, READY_FOR_BILLING, READY_FOR_DELIVERY, DELIVERED, or CLOSED
+              Invoice can only be generated when lead status is WORK_COMPLETED, QC_APPROVED, READY_FOR_BILLING, READY_FOR_DELIVERY, DELIVERED, or CLOSED
             </p>
           )}
         </div>

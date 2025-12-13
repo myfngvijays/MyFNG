@@ -44,6 +44,81 @@ export async function POST(
       invoice_id               // ✨ NEW: Reference to invoice
     } = body;
 
+    // Fetch lead for read-only protection + payment/state checks
+    const { data: lead, error: leadError } = await supabase
+      .from('service_leads')
+      .select('id, status, read_only, invoice_id')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !lead) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    }
+
+    if (lead.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
+    // Validate tracking + assignment
+    const { data: tracking, error: trackingError } = await supabase
+      .from('pickup_tracking')
+      .select('drop_required, drop_assigned_to, drop_status, drop_otp_verified_at')
+      .eq('lead_id', leadId)
+      .single();
+
+    if (trackingError || !tracking) {
+      return NextResponse.json({ error: 'Pickup tracking not found' }, { status: 404 });
+    }
+
+    if (!tracking.drop_required) {
+      return NextResponse.json({ error: 'Drop not required for this lead' }, { status: 400 });
+    }
+
+    if (tracking.drop_assigned_to !== user.id) {
+      return NextResponse.json({ error: 'Not assigned to this drop' }, { status: 403 });
+    }
+
+    // Ensure lead is in correct state for delivery completion
+    const allowedLeadStatuses = ['READY_FOR_DELIVERY', 'COD_PENDING'];
+    if (!allowedLeadStatuses.includes(lead.status)) {
+      return NextResponse.json({
+        error: 'Lead is not ready for delivery completion',
+        current_status: lead.status,
+        allowed_statuses: allowedLeadStatuses
+      }, { status: 400 });
+    }
+
+    // Require DROP OTP verification before completing delivery
+    if (!tracking.drop_otp_verified_at) {
+      return NextResponse.json({
+        error: 'Delivery OTP must be verified before completing drop',
+        hint: 'Verify DROP OTP first'
+      }, { status: 400 });
+    }
+
+    // Verify invoice payment status (PAID or COD_PENDING) if invoice exists
+    const effectiveInvoiceId = invoice_id || lead.invoice_id;
+    if (effectiveInvoiceId) {
+      const { data: inv, error: invError } = await supabase
+        .from('invoices')
+        .select('id, payment_status, status, final_amount, balance_due')
+        .eq('id', effectiveInvoiceId)
+        .single();
+
+      if (invError || !inv) {
+        return NextResponse.json({ error: 'Invoice not found for lead' }, { status: 404 });
+      }
+
+      const okPayment = inv.payment_status === 'PAID' || inv.payment_status === 'COD_PENDING';
+      if (!okPayment && invoice_paid !== true) {
+        return NextResponse.json({
+          error: 'Payment required before delivery',
+          payment_status: inv.payment_status,
+          balance_due: inv.balance_due ?? inv.final_amount,
+        }, { status: 400 });
+      }
+    }
+
     // Check if minimum drop photos are uploaded
     const { count: photoCount, error: photoCountError } = await supabase
       .from('vehicle_condition_photos')
@@ -116,15 +191,46 @@ export async function POST(
       });
     }
 
-    // Update lead status to COMPLETED
+    // Update lead status to DELIVERED_TO_CUSTOMER (workflow-aligned)
+    const deliveredAt = new Date().toISOString();
     await supabase
       .from('service_leads')
-      .update({ 
-        status: 'COMPLETED', 
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString() 
+      .update({
+        status: 'DELIVERED_TO_CUSTOMER',
+        delivered_at: deliveredAt,
+        delivered_by: user.id,
+        // Mark CSE follow-up as due (24 hours after delivery)
+        cse_followup_due: true,
+        cse_followup_due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        updated_at: deliveredAt,
+        read_only: true // Lock lead after delivery (post-job workflow)
       })
       .eq('id', leadId);
+
+    // Log status change
+    await supabase.from('lead_status_history').insert({
+      lead_id: leadId,
+      old_status: lead.status,
+      new_status: 'DELIVERED_TO_CUSTOMER',
+      changed_by: user.id,
+      changed_at: deliveredAt,
+      reason: 'Vehicle delivered to customer (drop completed)',
+      notes: notes || 'Drop completed'
+    });
+
+    // Lead event for analytics/audit
+    await supabase.from('lead_events').insert({
+      lead_id: leadId,
+      event_type: 'DELIVERED_TO_CUSTOMER',
+      event_description: 'Vehicle delivered to customer (pickup/drop flow)',
+      event_data: {
+        delivered_by: user.id,
+        drop_status: 'DELIVERED',
+        odometer_reading,
+      },
+      created_by: user.id,
+      created_at: deliveredAt,
+    });
 
     // Create activity log
     await supabase.from('lead_activities').insert({

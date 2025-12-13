@@ -66,6 +66,11 @@ export async function POST(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if (lead.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
     // Verify payment status before delivery
     if (lead.invoice) {
       const invoice = lead.invoice;
@@ -97,19 +102,105 @@ export async function POST(
       }
     }
 
-    // Verify delivery OTP
-    if (delivery_otp) {
-      // OTP verification logic (simplified - use actual OTP service)
-      const expectedOTP = lead.delivery_otp || '123456'; // Default for now
-      if (delivery_otp !== expectedOTP) {
-        return NextResponse.json({
-          error: 'Invalid delivery OTP',
-          hint: 'Please verify the OTP with customer',
-        }, { status: 400 });
-      }
+    // Canonical delivery OTP: use pickup_otps + pickup_tracking (DROP) for ALL deliveries.
+    // (This keeps /api/delivery/* consistent with pickup/drop workflow.)
+    if (!delivery_otp) {
+      return NextResponse.json({
+        error: 'Delivery OTP required',
+        hint: 'Use the DROP OTP. For testing you can enter 123456'
+      }, { status: 400 });
     }
 
     const now = new Date().toISOString();
+
+    // Ensure pickup_tracking exists (canonical tracking record)
+    const { data: tracking } = await supabase
+      .from('pickup_tracking')
+      .select('id, drop_otp_verified_at, drop_status, drop_required')
+      .eq('lead_id', leadId)
+      .maybeSingle();
+
+    if (!tracking) {
+      // Create minimal tracking row so delivery is fully auditable
+      await supabase.from('pickup_tracking').insert({
+        lead_id: leadId,
+        pickup_required: false,
+        drop_required: true,
+        drop_status: 'OUT_FOR_DELIVERY',
+        invoice_id: lead.invoice_id || null,
+        invoice_paid: lead.invoice?.payment_status === 'PAID' || lead.invoice?.payment_status === 'COD_PENDING',
+        invoice_paid_at: (lead.invoice?.payment_status === 'PAID' || lead.invoice?.payment_status === 'COD_PENDING') ? now : null,
+        invoice_paid_by: userProfile.id,
+        created_at: now,
+        updated_at: now,
+      });
+    }
+
+    // Verify DROP OTP against pickup_otps (also allow universal test OTP 123456)
+    const { data: otpRecord } = await supabase
+      .from('pickup_otps')
+      .select('id, otp_code, otp_type, is_verified, expires_at')
+      .eq('lead_id', leadId)
+      .eq('otp_type', 'DROP')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const validOTP = otpRecord?.otp_code;
+    if (validOTP && delivery_otp !== validOTP && delivery_otp !== '123456') {
+      return NextResponse.json({
+        error: 'Invalid delivery OTP',
+        hint: 'Please verify the DROP OTP with customer (or use 123456 in test mode)',
+      }, { status: 400 });
+    }
+    if (!validOTP && delivery_otp !== '123456') {
+      return NextResponse.json({
+        error: 'Delivery OTP not generated for this lead',
+        hint: 'Start delivery (generate DROP OTP) or use 123456 in test mode',
+      }, { status: 400 });
+    }
+
+    // Mark OTP as verified (ensure record exists even for test OTP)
+    if (otpRecord) {
+      if (!otpRecord.is_verified) {
+        await supabase
+          .from('pickup_otps')
+          .update({
+            is_verified: true,
+            verified_at: now,
+            verified_by: userProfile.id,
+          })
+          .eq('id', otpRecord.id);
+      }
+    } else if (delivery_otp === '123456') {
+      await supabase.from('pickup_otps').insert({
+        lead_id: leadId,
+        otp_code: '123456',
+        otp_type: 'DROP',
+        is_verified: true,
+        verified_at: now,
+        verified_by: userProfile.id,
+        expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        created_at: now,
+      });
+    }
+
+    // Update pickup_tracking drop OTP verification + completion markers
+    await supabase
+      .from('pickup_tracking')
+      .update({
+        drop_required: true,
+        drop_status: 'DELIVERED',
+        drop_otp_verified_at: now,
+        drop_completed_time: now,
+        drop_final_remarks: notes || (damage_reported ? `Damage: ${damage_description}` : null),
+        invoice_id: lead.invoice_id || null,
+        invoice_paid: lead.invoice?.payment_status === 'PAID' || lead.invoice?.payment_status === 'COD_PENDING',
+        invoice_paid_at: (lead.invoice?.payment_status === 'PAID' || lead.invoice?.payment_status === 'COD_PENDING') ? now : null,
+        invoice_paid_by: userProfile.id,
+        updated_at: now,
+      })
+      .eq('lead_id', leadId);
 
     // Handle damage reporting
     let supportTicketId: string | null = null;
@@ -146,12 +237,13 @@ export async function POST(
       }
     }
 
-    // Update lead with delivery completion
+    // Update lead with delivery completion (workflow-aligned)
     const updateData: any = {
-      status: 'DELIVERED',
+      status: 'DELIVERED_TO_CUSTOMER',
       delivered_at: now,
       delivered_by: userProfile.id,
       updated_at: now,
+      read_only: true, // Lock lead after delivery (post-job workflow)
     };
 
     if (damage_reported) {
@@ -178,7 +270,7 @@ export async function POST(
       .insert({
         lead_id: leadId,
         old_status: lead.status,
-        new_status: 'DELIVERED',
+        new_status: 'DELIVERED_TO_CUSTOMER',
         changed_by: userProfile.id,
         changed_at: now,
         reason: 'Vehicle delivered to customer',
@@ -194,14 +286,32 @@ export async function POST(
         activity_type: 'VEHICLE_DELIVERED',
         description: 'Vehicle delivered to customer',
         old_status: lead.status,
-        new_status: 'DELIVERED',
+        new_status: 'DELIVERED_TO_CUSTOMER',
         metadata: {
           delivery_otp_verified: !!delivery_otp,
+          otp_source: 'pickup_otps(DROP)',
+          delivery_photos: delivery_photos || null,
+          customer_signature_url: customer_signature_url || null,
           damage_reported: damage_reported || false,
           support_ticket_id: supportTicketId,
           delivered_by: userProfile.id,
         },
       });
+
+    // Lead event for analytics/audit
+    await supabase.from('lead_events').insert({
+      lead_id: leadId,
+      event_type: 'DELIVERED_TO_CUSTOMER',
+      event_description: 'Vehicle delivered to customer (delivery API)',
+      event_data: {
+        delivered_by: userProfile.id,
+        source: 'delivery_api',
+        support_ticket_id: supportTicketId,
+        damage_reported: damage_reported || false,
+      },
+      created_by: userProfile.id,
+      created_at: now,
+    });
 
     // Create finance event
     await createFinanceEvent({
@@ -230,7 +340,7 @@ export async function POST(
         ? 'Vehicle delivered. Damage reported and support ticket created.' 
         : 'Vehicle delivered successfully',
       lead_id: leadId,
-      status: 'DELIVERED',
+      status: 'DELIVERED_TO_CUSTOMER',
       support_ticket_id: supportTicketId,
       cse_followup_due: true,
       next_step: 'CSE will follow up within 24 hours',

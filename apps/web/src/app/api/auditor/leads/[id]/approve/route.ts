@@ -69,6 +69,11 @@ export async function POST(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if (lead.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
     // Validate lead requires audit
     if (!lead.audit_required) {
       return NextResponse.json({ 
@@ -98,6 +103,7 @@ export async function POST(
         audit_performed_at: now,
         audit_notes: body.audit_notes,
         audit_score: body.audit_score,
+        status: 'AUDIT_APPROVED',
         updated_at: now,
       })
       .eq('id', leadId)
@@ -127,18 +133,57 @@ export async function POST(
         },
       });
 
-    // Create status history entry
+    // Create status history entry (audit approved)
     await supabase
       .from('lead_status_history')
       .insert({
         lead_id: leadId,
         old_status: lead.status,
-        new_status: lead.status, // Status doesn't change, just audit status
-        changed_by_id: userProfile.id,
+        new_status: 'AUDIT_APPROVED',
+        changed_by: userProfile.id,
         changed_at: now,
         reason: 'Audit approved',
         notes: body.audit_notes || 'Audit completed successfully. All checks passed.',
       });
+
+    // Move to READY_FOR_BILLING after audit approval (billing starts now)
+    await supabase
+      .from('service_leads')
+      .update({
+        status: 'READY_FOR_BILLING',
+        updated_at: now,
+      })
+      .eq('id', leadId);
+
+    await supabase
+      .from('lead_status_history')
+      .insert({
+        lead_id: leadId,
+        old_status: 'AUDIT_APPROVED',
+        new_status: 'READY_FOR_BILLING',
+        changed_by: userProfile.id,
+        changed_at: now,
+        reason: 'Audit approved - ready for billing',
+        notes: 'Lead moved to billing after audit approval',
+      });
+
+    await supabase.from('lead_events').insert([
+      {
+        lead_id: leadId,
+        event_type: 'AUDIT_APPROVED',
+        event_description: `Audit approved by ${userProfile.full_name}`,
+        event_data: { audit_score: body.audit_score, recommendations: body.recommendations },
+        created_by: userProfile.id,
+        created_at: now,
+      },
+      {
+        lead_id: leadId,
+        event_type: 'READY_FOR_BILLING',
+        event_description: 'Ready for billing after audit approval',
+        created_by: userProfile.id,
+        created_at: now,
+      },
+    ]);
 
     // Update workshop audit score if applicable
     if (lead.workshop_id && body.audit_score) {
@@ -171,6 +216,7 @@ export async function POST(
         approved_at: now,
         checklist_passed: body.checklist,
       },
+      next_step: 'Billing team can now generate invoice',
     }, { status: 200 });
 
   } catch (error) {

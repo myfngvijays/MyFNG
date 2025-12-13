@@ -232,9 +232,9 @@ export default function ManageJobPage() {
     );
   }
 
-  const canStart = ['TEAM_ASSIGNED', 'DELIVERED', 'ACCEPTED'].includes(lead.status);
-  const canComplete = lead.status === 'IN_PROGRESS';
-  const canRequestExtraWork = lead.status === 'IN_PROGRESS';
+  const canStart = ['TEAM_ASSIGNED', 'DELIVERED', 'ACCEPTED', 'VEHICLE_DROPPED_AT_WORKSHOP', 'REWORK_REQUIRED'].includes(lead.status);
+  const canComplete = ['IN_PROGRESS', 'MECHANIC_WORKING', 'REWORK_REQUIRED'].includes(lead.status);
+  const canRequestExtraWork = ['IN_PROGRESS', 'MECHANIC_WORKING', 'REWORK_REQUIRED'].includes(lead.status);
 
   return (
     <DashboardLayout role="workshop_mechanic">
@@ -406,8 +406,8 @@ export default function ManageJobPage() {
           </div>
         )}
 
-        {/* Images Gallery - Show when job is completed */}
-        {lead.status === 'COMPLETED' && (
+        {/* Images Gallery - Show when mechanic has submitted work completion */}
+        {['WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'INVOICE_GENERATED', 'AWAITING_PAYMENT', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Before Images */}
           <div className="card">

@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    // Get today's pickups
+    // Get today's pickups (in-progress)
     const { data: todayPickups, error: pickupsError } = await supabase
       .from('pickup_tracking')
       .select(`
@@ -60,10 +60,10 @@ export async function GET(request: NextRequest) {
       .eq('pickup_assigned_to', user.id)
       .gte('pickup_assigned_at', todayStart.toISOString())
       .lte('pickup_assigned_at', todayEnd.toISOString())
-      .in('pickup_status', ['PENDING', 'OTP_VERIFIED', 'PICKED', 'IN_TRANSIT'])
+      .in('pickup_status', ['PENDING', 'ON_THE_WAY', 'ARRIVED', 'OTP_VERIFIED', 'PICKED', 'VEHICLE_IN_TRANSIT', 'ARRIVED_AT_WORKSHOP'])
       .order('pickup_assigned_at', { ascending: true });
 
-    // Get today's drops
+    // Get today's drops (in-progress)
     const { data: todayDrops, error: dropsError } = await supabase
       .from('pickup_tracking')
       .select(`
@@ -73,10 +73,10 @@ export async function GET(request: NextRequest) {
       .eq('drop_assigned_to', user.id)
       .gte('drop_assigned_at', todayStart.toISOString())
       .lte('drop_assigned_at', todayEnd.toISOString())
-      .in('drop_status', ['PENDING', 'ASSIGNED', 'IN_TRANSIT'])
+      .in('drop_status', ['PENDING', 'ASSIGNED', 'OUT_FOR_DELIVERY', 'IN_TRANSIT', 'ARRIVED_AT_CUSTOMER'])
       .order('drop_assigned_at', { ascending: true });
 
-    // Get pending OTP verifications
+    // Get pending OTP verifications (either pickup OTP pending, or delivery arrived-at-customer awaiting DROP OTP)
     const { data: pendingOTP, error: otpError } = await supabase
       .from('pickup_tracking')
       .select(`
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
         lead:service_leads(*)
       `)
       .or(`pickup_assigned_to.eq.${user.id},drop_assigned_to.eq.${user.id}`)
-      .or('pickup_status.eq.PENDING,drop_status.eq.PENDING')
+      .or('pickup_status.eq.PENDING,drop_status.eq.ARRIVED_AT_CUSTOMER')
       .order('created_at', { ascending: true });
 
     // Get completed pickups (today)

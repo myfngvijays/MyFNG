@@ -120,14 +120,15 @@ Please address all issues and resubmit.
 
       const oldStatus = currentLead?.status || 'UNKNOWN';
 
-      // Update lead status to IN_PROGRESS (send back to mechanic) and add notes
+      // Update lead status to REWORK_REQUIRED (send back to mechanic) and add notes
       const { error: updateError } = await supabase
         .from('service_leads')
         .update({
-          status: 'IN_PROGRESS', // Send back to mechanic for rework
+          status: 'REWORK_REQUIRED', // Send back to mechanic for rework (workflow-aligned)
           priority: priority,
           notes_internal: sendBackMessage,
-          updated_at: now
+          updated_at: now,
+          read_only: false
         })
         .eq('id', leadId);
 
@@ -156,7 +157,7 @@ Please address all issues and resubmit.
         .insert({
           lead_id: leadId,
           old_status: oldStatus,
-          new_status: 'IN_PROGRESS',
+          new_status: 'REWORK_REQUIRED',
           changed_by: supervisorId,
           changed_at: now,
           reason: 'Job sent back to mechanic for rework',

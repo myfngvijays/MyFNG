@@ -41,21 +41,21 @@ export interface PaymentDetails {
  */
 export async function createPaymentOrder(
   invoiceId: string,
-  amount: number,
-  customerEmail: string,
-  customerPhone: string
+  _amount: number,
+  _customerEmail: string,
+  _customerPhone: string
 ): Promise<PaymentOrder | null> {
   try {
-    const response = await fetch('/api/payments/create-order', {
+    // Use create-intent because it supports both authenticated (staff) and unauthenticated (customer invoice link) flows.
+    // Amount is computed server-side from invoice.final_amount - paid_amount for safety.
+    const response = await fetch('/api/payments/create-intent', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        invoiceId,
-        amount,
-        customerEmail,
-        customerPhone,
+        invoice_id: invoiceId,
+        payment_method: 'RAZORPAY',
       }),
     });
 
@@ -64,7 +64,7 @@ export async function createPaymentOrder(
     }
 
     const data = await response.json();
-    return data.order;
+    return data.order || null;
   } catch (error) {
     console.error('Error creating payment order:', error);
     return null;

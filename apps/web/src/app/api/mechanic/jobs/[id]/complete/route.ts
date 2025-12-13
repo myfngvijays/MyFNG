@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyReadyForQC } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -47,15 +48,25 @@ export async function POST(
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if (lead.read_only) {
+      return NextResponse.json({
+        error: 'Lead is archived/read-only',
+        hint: 'This job is closed and cannot be modified'
+      }, { status: 400 });
+    }
+
     // Verify lead is assigned to this mechanic
     if (lead.assigned_mechanic_id !== userProfile.id) {
       return NextResponse.json({ error: 'Job not assigned to you' }, { status: 403 });
     }
 
-    // Verify lead is in a valid status for completion
-    // Allow multiple statuses: IN_PROGRESS, MECHANIC_WORKING, VEHICLE_DROPPED_AT_WORKSHOP
-    // Also allow if already COMPLETED (idempotent operation)
-    const allowedStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'VEHICLE_DROPPED_AT_WORKSHOP', 'COMPLETED'];
+    // Verify lead is in a valid status for completion (work finished by mechanic)
+    // Allow multiple statuses where mechanic can submit completion:
+    // - IN_PROGRESS / MECHANIC_WORKING: active repair
+    // - VEHICLE_DROPPED_AT_WORKSHOP: vehicle arrived but mechanic may directly complete quick jobs
+    // Also allow if already WORK_COMPLETED (idempotent operation)
+    const allowedStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'REWORK_REQUIRED', 'VEHICLE_DROPPED_AT_WORKSHOP', 'WORK_COMPLETED'];
     if (!allowedStatuses.includes(lead.status)) {
       return NextResponse.json({ 
         error: 'Job must be in progress to mark complete',
@@ -64,48 +75,115 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // If already COMPLETED, just return success (idempotent)
-    if (lead.status === 'COMPLETED') {
+    // If already WORK_COMPLETED, just return success (idempotent)
+    if (lead.status === 'WORK_COMPLETED') {
       return NextResponse.json({
         success: true,
-        message: 'Job already completed',
+        message: 'Job already marked as work completed',
         lead: lead,
-        status: 'COMPLETED'
+        status: 'WORK_COMPLETED'
       }, { status: 200 });
     }
 
-    // Check if required images are uploaded
-    const { count: beforeImages } = await supabase
-      .from('lead_media')
-      .select('*', { count: 'exact', head: true })
-      .eq('lead_id', leadId)
-      .eq('category', 'BEFORE');
+    // Check if required images are uploaded (EXTREME DETAIL):
+    // Prefer mechanic_job_photos (structured BEFORE/DURING/AFTER), and fallback to legacy lead_media counts.
+    const REQUIRED_BEFORE_TYPES = [
+      'BEFORE_FRONT',
+      'BEFORE_REAR',
+      'BEFORE_LEFT',
+      'BEFORE_RIGHT',
+      'BEFORE_DASHBOARD',
+      'BEFORE_ENGINE_BAY',
+    ];
+    const REQUIRED_AFTER_TYPES = [
+      'AFTER_FRONT',
+      'AFTER_REAR',
+      'AFTER_LEFT',
+      'AFTER_RIGHT',
+      'AFTER_ENGINE_BAY',
+      'AFTER_OLD_PARTS', // mandatory old-vs-new parts proof (at least old parts)
+      'AFTER_ODOMETER',
+    ];
+    const MIN_DURING_PHOTOS = 1; // at least one DURING proof is mandatory
 
-    const { count: afterImages } = await supabase
-      .from('lead_media')
-      .select('*', { count: 'exact', head: true })
+    // Get job_id for this lead (mechanic_job_photos is keyed by job_id)
+    const { data: jobRow } = await supabase
+      .from('mechanic_jobs')
+      .select('id')
       .eq('lead_id', leadId)
-      .eq('category', 'AFTER');
+      .maybeSingle();
 
-    if (!beforeImages || beforeImages < 1) {
-      return NextResponse.json({ 
-        error: 'Before images are required',
-        hint: 'Please upload at least 1 before image'
-      }, { status: 400 });
+    let beforeImagesCount = 0;
+    let afterImagesCount = 0;
+    let duringImagesCount = 0;
+    let missing: string[] = [];
+
+    if (jobRow?.id) {
+      const { data: photos } = await supabase
+        .from('mechanic_job_photos')
+        .select('photo_category, photo_type')
+        .eq('job_id', jobRow.id);
+
+      const beforeTypes = new Set(
+        (photos || []).filter(p => p.photo_category === 'before').map(p => p.photo_type)
+      );
+      const afterTypes = new Set(
+        (photos || []).filter(p => p.photo_category === 'after').map(p => p.photo_type)
+      );
+      const duringCount = (photos || []).filter(p => p.photo_category === 'during').length;
+
+      REQUIRED_BEFORE_TYPES.forEach(t => {
+        if (!beforeTypes.has(t)) missing.push(t);
+      });
+      REQUIRED_AFTER_TYPES.forEach(t => {
+        if (!afterTypes.has(t)) missing.push(t);
+      });
+      if (duringCount < MIN_DURING_PHOTOS) {
+        missing.push('DURING_* (at least 1 during-service photo)');
+      }
+
+      beforeImagesCount = beforeTypes.size;
+      afterImagesCount = afterTypes.size;
+      duringImagesCount = duringCount;
+    } else {
+      // Legacy fallback (older flow): only checks basic before/after counts.
+      const { count: beforeImages } = await supabase
+        .from('lead_media')
+        .select('*', { count: 'exact', head: true })
+        .eq('lead_id', leadId)
+        .eq('category', 'BEFORE');
+
+      const { count: afterImages } = await supabase
+        .from('lead_media')
+        .select('*', { count: 'exact', head: true })
+        .eq('lead_id', leadId)
+        .eq('category', 'AFTER');
+
+      beforeImagesCount = beforeImages || 0;
+      afterImagesCount = afterImages || 0;
+
+      if (beforeImagesCount < 1) missing.push('BEFORE_* (at least 1 before photo)');
+      if (afterImagesCount < 1) missing.push('AFTER_* (at least 1 after photo)');
     }
 
-    if (!afterImages || afterImages < 1) {
-      return NextResponse.json({ 
-        error: 'After images are required',
-        hint: 'Please upload at least 1 after image'
-      }, { status: 400 });
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Required photos are missing',
+          hint: 'Upload all mandatory BEFORE, DURING, AFTER photos and old parts proof before completing the job',
+          missing,
+        },
+        { status: 400 }
+      );
     }
 
     const now = new Date().toISOString();
 
-    // Set status to COMPLETED when mechanic completes job
-    // Supervisor will see this status and can perform QC or generate invoice
-    const finalStatus = 'COMPLETED';
+    // IMPORTANT:
+    // "Mechanic job complete" means work is finished and job is READY FOR QC.
+    // It must NOT jump to final completion/closure states (those happen after:
+    // QC -> Billing -> Invoice -> Payment -> Delivery -> CSE -> Closure).
+    const finalStatus = 'WORK_COMPLETED';
 
     // Update lead status - set to COMPLETED
     const updateData: any = {
@@ -115,10 +193,9 @@ export async function POST(
       updated_at: now
     };
 
-    // If supervisor is assigned, set QC status to PENDING
-    if (lead.assigned_supervisor_id) {
-      updateData.qc_status = 'PENDING';
-    }
+    // Always set QC status to PENDING when mechanic completes/resubmits work.
+    // Supervisor QC will set qc_status to PASSED/FAILED.
+    updateData.qc_status = 'PENDING';
 
     // Use a WHERE clause to ensure we only update if status hasn't changed
     // This prevents race conditions where status might be changed by another process
@@ -139,13 +216,13 @@ export async function POST(
         .eq('id', leadId)
         .single();
       
-      if (currentLead?.status === 'COMPLETED') {
+      if (currentLead?.status === 'WORK_COMPLETED') {
         // Status was already updated, return success
         return NextResponse.json({
           success: true,
-          message: 'Job already completed',
+          message: 'Job already marked as work completed',
           lead: currentLead,
-          status: 'COMPLETED'
+          status: 'WORK_COMPLETED'
         }, { status: 200 });
       }
       
@@ -161,12 +238,12 @@ export async function POST(
         .eq('id', leadId)
         .single();
       
-      if (currentLead?.status === 'COMPLETED') {
+      if (currentLead?.status === 'WORK_COMPLETED') {
         return NextResponse.json({
           success: true,
-          message: 'Job already completed',
+          message: 'Job already marked as work completed',
           lead: currentLead,
-          status: 'COMPLETED'
+          status: 'WORK_COMPLETED'
         }, { status: 200 });
       }
       
@@ -204,9 +281,28 @@ export async function POST(
           completed_at: now,
           work_summary: work_summary,
           notes: notes,
-          before_images_count: beforeImages,
-          after_images_count: afterImages
+          before_images_count: beforeImagesCount,
+          during_images_count: duringImagesCount,
+          after_images_count: afterImagesCount
         }
+      });
+
+    // Lead event for analytics/audit trail
+    await supabase
+      .from('lead_events')
+      .insert({
+        lead_id: leadId,
+        event_type: 'WORK_COMPLETED',
+        event_description: 'Mechanic submitted job completion for QC',
+        event_data: {
+          mechanic_id: userProfile.id,
+          completed_at: now,
+          before_images_count: beforeImagesCount,
+          during_images_count: duringImagesCount,
+          after_images_count: afterImagesCount,
+        },
+        created_by: userProfile.id,
+        created_at: now,
       });
 
     // Update mechanic assignment status
@@ -239,6 +335,7 @@ export async function POST(
 
     // TODO: Send notification to workshop admin
     // TODO: Send notification to customer
+    await notifyReadyForQC(leadId, updatedLead.lead_number || lead.lead_number || leadId, lead.assigned_supervisor_id, lead.workshop_id);
 
     return NextResponse.json({
       success: true,
@@ -249,8 +346,9 @@ export async function POST(
         ? 'Job sent to supervisor for Quality Check (QC)'
         : 'Job completed. Awaiting workshop admin approval',
       images: {
-        before: beforeImages,
-        after: afterImages
+        before: beforeImagesCount,
+        during: duringImagesCount,
+        after: afterImagesCount
       }
     }, { status: 200 });
 

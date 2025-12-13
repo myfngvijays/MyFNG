@@ -49,6 +49,11 @@ export async function POST(
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if ((invoice.lead as any)?.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
     const body = await request.json();
     const { rejection_reason, review_notes } = body;
 

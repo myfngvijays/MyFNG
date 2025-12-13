@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyQCDecision } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export async function POST(
     // Get user profile with role
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, workshop_id, roles!inner(role_code)')
+      .select('id, workshop_id, full_name, roles!inner(role_code)')
       .eq('id', user.id)
       .single();
 
@@ -54,6 +55,14 @@ export async function POST(
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if (lead.read_only) {
+      return NextResponse.json({
+        error: 'Lead is archived/read-only',
+        hint: 'This job is closed and cannot be modified'
+      }, { status: 400 });
+    }
+
     // Verify lead is from this workshop
     if (lead.workshop_id !== userProfile.workshop_id) {
       return NextResponse.json({ error: 'Job not in your workshop' }, { status: 403 });
@@ -76,16 +85,17 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Send job back to IN_PROGRESS for mechanic to rework
+    // QC rejected -> REWORK_REQUIRED (as per workflow spec)
     const { data: updatedLead, error: updateError } = await supabase
       .from('service_leads')
       .update({
-        status: 'IN_PROGRESS',
-        qc_status: 'REJECTED',
+        status: 'REWORK_REQUIRED',
+        qc_status: 'FAILED',
         qc_performed_by: userProfile.id,
         qc_performed_at: now,
         qc_notes: reason,
-        updated_at: now
+        updated_at: now,
+        read_only: false
       })
       .eq('id', leadId)
       .select()
@@ -135,7 +145,7 @@ export async function POST(
       .insert({
         lead_id: leadId,
         old_status: lead.status,
-        new_status: 'IN_PROGRESS',
+        new_status: 'REWORK_REQUIRED',
         changed_by: userProfile.id,
         changed_at: now,
         reason: 'Quality check rejected - requires rework',
@@ -151,7 +161,7 @@ export async function POST(
         activity_type: 'QC_REJECTED',
         description: `Supervisor rejected quality check: ${reason}`,
         old_status: lead.status,
-        new_status: 'IN_PROGRESS',
+        new_status: 'REWORK_REQUIRED',
         metadata: {
           supervisor_id: userProfile.id,
           rejected_at: now,
@@ -161,8 +171,41 @@ export async function POST(
         }
       });
 
+    // Lead events (analytics/audit trail)
+    await supabase.from('lead_events').insert([
+      {
+        lead_id: leadId,
+        event_type: 'QC_REJECTED',
+        event_description: `QC rejected: ${reason}`,
+        event_data: { reason, notes, failed_checklist_items },
+        created_by: userProfile.id,
+        created_at: now,
+      },
+      {
+        lead_id: leadId,
+        event_type: 'REWORK_REQUIRED',
+        event_description: 'Job sent back to mechanic for rework',
+        created_by: userProfile.id,
+        created_at: now,
+      },
+    ]);
+
     // TODO: Send notification to mechanic (job needs rework)
     // TODO: Send notification to workshop admin
+    try {
+      if (lead.assigned_mechanic_id) {
+        await notifyQCDecision(
+          leadId,
+          lead.lead_number || leadId,
+          lead.assigned_mechanic_id,
+          false,
+          userProfile.full_name || 'Supervisor',
+          reason
+        );
+      }
+    } catch (e) {
+      console.warn('Notification dispatch failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

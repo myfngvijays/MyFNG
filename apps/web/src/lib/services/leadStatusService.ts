@@ -6,25 +6,16 @@
 
 import { createClient } from '../supabase/client';
 
-export type LeadStatus = 
-  | 'NEW' 
-  | 'ASSIGNED' 
-  | 'ACCEPTED' 
-  | 'REJECTED' 
-  | 'IN_PROGRESS' 
-  | 'READY_FOR_DELIVERY' 
-  | 'DELIVERED' 
-  | 'COMPLETED' 
-  | 'CANCELLED';
+/**
+ * NOTE:
+ * This project has multiple workflow phases and status enums have expanded over time
+ * (QC/Billing/Invoice/Payment/Delivery/CSE/Audit).
+ * To avoid UI breakage when new enum values are added in DB, we treat statuses as open strings
+ * and provide labels/colors for known values.
+ */
+export type LeadStatus = string;
 
-export type UserRole = 
-  | 'SUPER_ADMIN'
-  | 'SUB_ADMIN'
-  | 'LEAD_MANAGER'
-  | 'WORKSHOP_ADMIN'
-  | 'WORKSHOP_SUPERVISOR'
-  | 'WORKSHOP_MECHANIC'
-  | 'WORKSHOP_PICKUP_BOY';
+export type UserRole = string;
 
 /**
  * Status Workflow Definition
@@ -36,52 +27,89 @@ export type UserRole =
  * ASSIGNED → REJECTED (Workshop rejects)
  * Any status → CANCELLED (Admin cancels)
  */
-const STATUS_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
+const STATUS_TRANSITIONS: Record<string, string[]> = {
+  // Basic intake flow
   NEW: ['ASSIGNED', 'CANCELLED'],
   ASSIGNED: ['ACCEPTED', 'REJECTED', 'CANCELLED'],
   ACCEPTED: ['IN_PROGRESS', 'CANCELLED'],
-  REJECTED: [], // Terminal state for workshop
-  IN_PROGRESS: ['READY_FOR_DELIVERY', 'CANCELLED'],
-  READY_FOR_DELIVERY: ['DELIVERED', 'IN_PROGRESS'], // Can go back if issue found
-  DELIVERED: ['COMPLETED', 'READY_FOR_DELIVERY'], // Can go back if customer not satisfied
-  COMPLETED: [], // Terminal state
-  CANCELLED: [], // Terminal state
+  TEAM_ASSIGNED: ['IN_PROGRESS', 'CANCELLED'],
+
+  // Mechanic work
+  IN_PROGRESS: ['WORK_COMPLETED', 'REWORK_REQUIRED', 'CANCELLED'],
+  MECHANIC_WORKING: ['WORK_COMPLETED', 'REWORK_REQUIRED', 'CANCELLED'],
+  REWORK_REQUIRED: ['IN_PROGRESS', 'WORK_COMPLETED', 'CANCELLED'],
+  WORK_COMPLETED: ['QC_APPROVED', 'REWORK_REQUIRED', 'READY_FOR_BILLING'],
+  QC_PENDING: ['QC_APPROVED', 'REWORK_REQUIRED'],
+  QC_APPROVED: ['READY_FOR_BILLING', 'AUDIT_PENDING'],
+
+  // Audit (optional)
+  AUDIT_PENDING: ['AUDIT_APPROVED', 'AUDIT_FLAGGED'],
+  AUDIT_APPROVED: ['READY_FOR_BILLING'],
+  AUDIT_FLAGGED: ['REWORK_REQUIRED', 'IN_PROGRESS'],
+
+  // Billing / Invoice / Payment
+  READY_FOR_BILLING: ['INVOICE_GENERATED'],
+  INVOICE_GENERATED: ['AWAITING_PAYMENT', 'READY_FOR_BILLING'],
+  AWAITING_PAYMENT: ['PARTIAL_PAYMENT', 'PAID', 'COD_PENDING'],
+  PARTIAL_PAYMENT: ['AWAITING_PAYMENT', 'PAID', 'COD_PENDING'],
+  PAID: ['READY_FOR_DELIVERY'],
+  COD_PENDING: ['READY_FOR_DELIVERY'],
+
+  // Delivery
+  READY_FOR_DELIVERY: ['DELIVERED_TO_CUSTOMER'],
+  DELIVERED_TO_CUSTOMER: ['COMPLETED', 'COMPLAINT_OPENED'],
+
+  // Post delivery / CSE
+  COMPLAINT_OPENED: ['COMPLETED'],
+  CUSTOMER_UNHAPPY: ['COMPLAINT_OPENED', 'COMPLETED'],
+  COMPLETED: ['CLOSED'],
+  CLOSED: [],
+
+  // Legacy statuses
+  DELIVERED: ['COMPLETED', 'READY_FOR_DELIVERY'],
+  REJECTED: [],
+  CANCELLED: [],
 };
 
 /**
  * Role-based permissions for status transitions
  */
-const ROLE_PERMISSIONS: Record<UserRole, {
-  canTransitionFrom: LeadStatus[];
-  canTransitionTo: LeadStatus[];
-}> = {
+const ROLE_PERMISSIONS: Record<string, { canTransitionFrom: string[]; canTransitionTo: string[] }> = {
   SUPER_ADMIN: {
-    canTransitionFrom: ['NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'READY_FOR_DELIVERY', 'DELIVERED', 'COMPLETED'],
-    canTransitionTo: ['ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'READY_FOR_DELIVERY', 'DELIVERED', 'COMPLETED', 'CANCELLED'],
+    canTransitionFrom: ['*'],
+    canTransitionTo: ['*'],
   },
   SUB_ADMIN: {
-    canTransitionFrom: ['NEW', 'ASSIGNED', 'ACCEPTED', 'IN_PROGRESS'],
-    canTransitionTo: ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'CANCELLED'],
+    canTransitionFrom: ['*'],
+    canTransitionTo: ['*'],
   },
   LEAD_MANAGER: {
     canTransitionFrom: ['NEW'],
     canTransitionTo: ['ASSIGNED', 'CANCELLED'],
   },
   WORKSHOP_ADMIN: {
-    canTransitionFrom: ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS'],
-    canTransitionTo: ['ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'CANCELLED'],
+    canTransitionFrom: ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'REWORK_REQUIRED', 'READY_FOR_DELIVERY'],
+    canTransitionTo: ['ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'REWORK_REQUIRED', 'READY_FOR_DELIVERY', 'CANCELLED'],
   },
   WORKSHOP_SUPERVISOR: {
-    canTransitionFrom: ['ACCEPTED', 'IN_PROGRESS'],
-    canTransitionTo: ['IN_PROGRESS', 'READY_FOR_DELIVERY'],
+    canTransitionFrom: ['WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'REWORK_REQUIRED'],
+    canTransitionTo: ['QC_APPROVED', 'REWORK_REQUIRED', 'READY_FOR_BILLING', 'AUDIT_PENDING'],
   },
   WORKSHOP_MECHANIC: {
-    canTransitionFrom: ['IN_PROGRESS'],
-    canTransitionTo: ['READY_FOR_DELIVERY'],
+    canTransitionFrom: ['IN_PROGRESS', 'MECHANIC_WORKING', 'REWORK_REQUIRED'],
+    canTransitionTo: ['WORK_COMPLETED'],
   },
   WORKSHOP_PICKUP_BOY: {
     canTransitionFrom: ['READY_FOR_DELIVERY'],
-    canTransitionTo: ['DELIVERED'],
+    canTransitionTo: ['DELIVERED_TO_CUSTOMER'],
+  },
+  BILLING: {
+    canTransitionFrom: ['READY_FOR_BILLING', 'INVOICE_GENERATED', 'AWAITING_PAYMENT'],
+    canTransitionTo: ['INVOICE_GENERATED', 'AWAITING_PAYMENT', 'READY_FOR_DELIVERY', 'PARTIAL_PAYMENT', 'COD_PENDING'],
+  },
+  CSE: {
+    canTransitionFrom: ['DELIVERED_TO_CUSTOMER', 'DELIVERED', 'COMPLAINT_OPENED'],
+    canTransitionTo: ['COMPLETED', 'COMPLAINT_OPENED'],
   },
 };
 
@@ -94,18 +122,16 @@ export function canTransitionTo(
   userRole: UserRole
 ): boolean {
   // Check if transition is allowed in workflow
-  const allowedTransitions = STATUS_TRANSITIONS[currentStatus];
-  if (!allowedTransitions.includes(newStatus)) {
-    return false;
-  }
+  const allowedTransitions = STATUS_TRANSITIONS[currentStatus] || [];
+  if (allowedTransitions.length > 0 && !allowedTransitions.includes(newStatus)) return false;
 
   // Check if user role has permission
   const rolePermissions = ROLE_PERMISSIONS[userRole];
-  if (!rolePermissions.canTransitionFrom.includes(currentStatus)) {
-    return false;
-  }
-  if (!rolePermissions.canTransitionTo.includes(newStatus)) {
-    return false;
+  if (rolePermissions) {
+    const anyFrom = rolePermissions.canTransitionFrom.includes('*');
+    const anyTo = rolePermissions.canTransitionTo.includes('*');
+    if (!anyFrom && !rolePermissions.canTransitionFrom.includes(currentStatus)) return false;
+    if (!anyTo && !rolePermissions.canTransitionTo.includes(newStatus)) return false;
   }
 
   return true;
@@ -120,30 +146,44 @@ export function getAvailableTransitions(
 ): LeadStatus[] {
   const workflowTransitions = STATUS_TRANSITIONS[currentStatus] || [];
   const rolePermissions = ROLE_PERMISSIONS[userRole];
+  if (!rolePermissions) return workflowTransitions;
 
-  // Filter by role permissions
-  return workflowTransitions.filter(status => 
-    rolePermissions.canTransitionFrom.includes(currentStatus) &&
-    rolePermissions.canTransitionTo.includes(status)
-  );
+  const anyFrom = rolePermissions.canTransitionFrom.includes('*');
+  const anyTo = rolePermissions.canTransitionTo.includes('*');
+  if (!anyFrom && !rolePermissions.canTransitionFrom.includes(currentStatus)) return [];
+
+  return workflowTransitions.filter((status) => anyTo || rolePermissions.canTransitionTo.includes(status));
 }
 
 /**
  * Get status label for display
  */
 export function getStatusLabel(status: LeadStatus): string {
-  const labels: Record<LeadStatus, string> = {
+  const labels: Record<string, string> = {
     NEW: 'New',
     ASSIGNED: 'Assigned to Workshop',
     ACCEPTED: 'Accepted',
     REJECTED: 'Rejected',
     IN_PROGRESS: 'In Progress',
+    REWORK_REQUIRED: 'Rework Required',
+    WORK_COMPLETED: 'Work Completed (QC Pending)',
+    QC_PENDING: 'QC Pending',
+    QC_APPROVED: 'QC Approved',
+    READY_FOR_BILLING: 'Ready for Billing',
+    INVOICE_GENERATED: 'Invoice Generated',
+    AWAITING_PAYMENT: 'Awaiting Payment',
+    PARTIAL_PAYMENT: 'Partial Payment',
+    COD_PENDING: 'COD Pending',
     READY_FOR_DELIVERY: 'Ready for Delivery',
-    DELIVERED: 'Delivered',
+    DELIVERED_TO_CUSTOMER: 'Delivered to Customer',
+    DELIVERED: 'Delivered (Legacy)',
+    COMPLAINT_OPENED: 'Complaint Opened',
+    CUSTOMER_UNHAPPY: 'Customer Unhappy',
     COMPLETED: 'Completed',
+    CLOSED: 'Closed',
     CANCELLED: 'Cancelled',
   };
-  return labels[status] || status;
+  return labels[status] || String(status).replace(/_/g, ' ');
 }
 
 /**
@@ -154,15 +194,25 @@ export function getStatusColor(status: LeadStatus): {
   text: string;
   border: string;
 } {
-  const colors: Record<LeadStatus, { bg: string; text: string; border: string }> = {
+  const colors: Record<string, { bg: string; text: string; border: string }> = {
     NEW: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
     ASSIGNED: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' },
     ACCEPTED: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
     REJECTED: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
     IN_PROGRESS: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+    REWORK_REQUIRED: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+    WORK_COMPLETED: { bg: 'bg-sky-50', text: 'text-sky-700', border: 'border-sky-200' },
+    QC_PENDING: { bg: 'bg-sky-50', text: 'text-sky-700', border: 'border-sky-200' },
+    QC_APPROVED: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+    READY_FOR_BILLING: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+    INVOICE_GENERATED: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+    AWAITING_PAYMENT: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
     READY_FOR_DELIVERY: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
-    DELIVERED: { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+    DELIVERED_TO_CUSTOMER: { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+    COMPLAINT_OPENED: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+    CUSTOMER_UNHAPPY: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
     COMPLETED: { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' },
+    CLOSED: { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-300' },
     CANCELLED: { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-300' },
   };
   return colors[status] || { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' };
@@ -172,15 +222,24 @@ export function getStatusColor(status: LeadStatus): {
  * Get status icon for UI
  */
 export function getStatusIcon(status: LeadStatus): string {
-  const icons: Record<LeadStatus, string> = {
+  const icons: Record<string, string> = {
     NEW: '🆕',
     ASSIGNED: '📋',
     ACCEPTED: '✅',
     REJECTED: '❌',
     IN_PROGRESS: '🔧',
+    REWORK_REQUIRED: '🔁',
+    WORK_COMPLETED: '🧾',
+    QC_PENDING: '🧾',
+    QC_APPROVED: '✅',
+    READY_FOR_BILLING: '🧾',
+    INVOICE_GENERATED: '📄',
+    AWAITING_PAYMENT: '💳',
     READY_FOR_DELIVERY: '📦',
+    DELIVERED_TO_CUSTOMER: '🚚',
     DELIVERED: '🚚',
     COMPLETED: '✔️',
+    CLOSED: '🔒',
     CANCELLED: '🚫',
   };
   return icons[status] || '•';
@@ -200,8 +259,8 @@ export function validateTransition(
   }
 
   // Check workflow validity
-  const allowedTransitions = STATUS_TRANSITIONS[currentStatus];
-  if (!allowedTransitions.includes(newStatus)) {
+  const allowedTransitions = STATUS_TRANSITIONS[currentStatus] || [];
+  if (allowedTransitions.length > 0 && !allowedTransitions.includes(newStatus)) {
     return {
       valid: false,
       error: `Cannot transition from ${getStatusLabel(currentStatus)} to ${getStatusLabel(newStatus)}. Invalid workflow.`,
@@ -210,16 +269,25 @@ export function validateTransition(
 
   // Check role permissions
   const rolePermissions = ROLE_PERMISSIONS[userRole];
-  if (!rolePermissions.canTransitionFrom.includes(currentStatus)) {
+  if (rolePermissions) {
+    const anyFrom = rolePermissions.canTransitionFrom.includes('*');
+    const anyTo = rolePermissions.canTransitionTo.includes('*');
+    if (!anyFrom && !rolePermissions.canTransitionFrom.includes(currentStatus)) {
+      return {
+        valid: false,
+        error: `Your role (${userRole}) cannot modify leads with status ${getStatusLabel(currentStatus)}`,
+      };
+    }
+    if (!anyTo && !rolePermissions.canTransitionTo.includes(newStatus)) {
+      return {
+        valid: false,
+        error: `Your role (${userRole}) cannot set status to ${getStatusLabel(newStatus)}`,
+      };
+    }
+  } else if (userRole !== 'SUPER_ADMIN' && userRole !== 'SUB_ADMIN') {
     return {
       valid: false,
       error: `Your role (${userRole}) cannot modify leads with status ${getStatusLabel(currentStatus)}`,
-    };
-  }
-  if (!rolePermissions.canTransitionTo.includes(newStatus)) {
-    return {
-      valid: false,
-      error: `Your role (${userRole}) cannot set status to ${getStatusLabel(newStatus)}`,
     };
   }
 

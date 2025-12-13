@@ -202,39 +202,71 @@ export async function POST(
       }, { status: 403 });
     }
 
-    // Restrict mechanics to only upload "during" (work in progress) and parts-related photos
-    // Supervisors and Super Admins can upload all types (before, during, after)
+    // Mechanics MUST be able to upload BEFORE / DURING / AFTER as per the post-job workflow.
+    // We still keep strong validation so mechanics can only upload appropriate types for each category.
     if (isAssignedMechanic && !isSuperAdmin && roleCode !== 'WORKSHOP_SUPERVISOR') {
-      // Mechanics can only upload:
-      // 1. "during" category photos (work in progress)
-      // 2. Photos with part_id (parts used) - any category allowed if partId is present
-      
-      const allowedCategoriesForMechanic = ['during'];
-      const allowedPhotoTypesForMechanic = [
-        'DURING_OIL_DRAIN', 'DURING_OIL_POUR', 'DURING_FILTER_OLD', 'DURING_FILTER_NEW',
-        'DURING_BRAKE_BEFORE', 'DURING_BRAKE_AFTER', 'DURING_AC_BEFORE', 'DURING_AC_AFTER',
-        'DURING_PART_REMOVAL', 'DURING_PART_INSTALL'
-      ];
+      const allowedCategoriesForMechanic = ['before', 'during', 'after'];
 
-      // If partId is provided, allow any category (parts used photos)
+      // If partId is provided, allow any category + dynamic type (parts used photos).
+      // Otherwise enforce category+type mapping.
       if (!partId) {
-        // No partId - must be "during" category only
-        if (!allowedCategoriesForMechanic.includes(photoCategory as string)) {
-          return NextResponse.json({ 
-            error: 'Mechanics can only upload work in progress photos. Please contact supervisor for before/after photos.',
-            allowed_categories: allowedCategoriesForMechanic
-          }, { status: 403 });
+        if (!allowedCategoriesForMechanic.includes(String(photoCategory))) {
+          return NextResponse.json(
+            {
+              error: 'Invalid photo category for mechanic',
+              allowed_categories: allowedCategoriesForMechanic,
+            },
+            { status: 403 }
+          );
         }
 
-        // Check if photo type is allowed (additional validation)
-        if (!allowedPhotoTypesForMechanic.includes(photoType as string)) {
-          return NextResponse.json({ 
-            error: 'Invalid photo type for mechanic. Only work in progress photos are allowed.',
-            allowed_types: allowedPhotoTypesForMechanic
-          }, { status: 403 });
+        const allowedTypesByCategory: Record<string, string[]> = {
+          before: [
+            'BEFORE_FRONT',
+            'BEFORE_REAR',
+            'BEFORE_LEFT',
+            'BEFORE_RIGHT',
+            'BEFORE_DASHBOARD',
+            'BEFORE_ENGINE_BAY',
+            'BEFORE_DAMAGE',
+            'BEFORE_TYRE',
+          ],
+          during: [
+            'DURING_OIL_DRAIN',
+            'DURING_OIL_POUR',
+            'DURING_FILTER_OLD',
+            'DURING_FILTER_NEW',
+            'DURING_BRAKE_BEFORE',
+            'DURING_BRAKE_AFTER',
+            'DURING_AC_BEFORE',
+            'DURING_AC_AFTER',
+            'DURING_PART_REMOVAL',
+            'DURING_PART_INSTALL',
+          ],
+          after: [
+            'AFTER_FRONT',
+            'AFTER_REAR',
+            'AFTER_LEFT',
+            'AFTER_RIGHT',
+            'AFTER_ENGINE_BAY',
+            'AFTER_OLD_PARTS',
+            'AFTER_NEW_PARTS',
+            'AFTER_ODOMETER',
+          ],
+        };
+
+        const allowedTypes = allowedTypesByCategory[String(photoCategory)] || [];
+        if (allowedTypes.length > 0 && !allowedTypes.includes(String(photoType))) {
+          return NextResponse.json(
+            {
+              error: 'Invalid photo type for the selected category',
+              category: photoCategory,
+              allowed_types: allowedTypes,
+            },
+            { status: 403 }
+          );
         }
       }
-      // If partId is present, allow the upload (parts used photos can be any category)
     }
 
     // Upload file to Supabase Storage

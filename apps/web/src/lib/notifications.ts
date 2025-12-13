@@ -206,12 +206,20 @@ export async function notifyWorkshopAdmin(
 ) {
   const supabase = await createClient();
 
-  // Get all workshop admins for this workshop
+  // Get all workshop admins for this workshop (role-based)
+  const { data: roles } = await supabase
+    .from('roles')
+    .select('id')
+    .eq('role_code', 'WORKSHOP_ADMIN');
+
+  const roleId = roles?.[0]?.id;
+  if (!roleId) return;
+
   const { data: admins } = await supabase
     .from('users_login')
     .select('id')
     .eq('workshop_id', workshopId)
-    .eq('role', 'workshop_admin')
+    .eq('role_id', roleId)
     .eq('is_active', true);
 
   if (admins && admins.length > 0) {
@@ -251,5 +259,120 @@ export async function notifySLAWarning(
   }));
 
   await createBulkNotifications(notifications);
+}
+
+async function getRoleIds(roleCodes: string[]) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('roles')
+    .select('id, role_code')
+    .in('role_code', roleCodes);
+  return (data || []).map((r: any) => r.id);
+}
+
+async function getUsersInWorkshopByRoleCodes(workshopId: string, roleCodes: string[]) {
+  const supabase = await createClient();
+  const roleIds = await getRoleIds(roleCodes);
+  if (roleIds.length === 0) return [];
+
+  const { data } = await supabase
+    .from('users_login')
+    .select('id, full_name')
+    .eq('workshop_id', workshopId)
+    .in('role_id', roleIds)
+    .eq('is_active', true);
+
+  return (data || []) as Array<{ id: string; full_name?: string }>;
+}
+
+export async function notifyReadyForQC(
+  leadId: string,
+  leadNumber: string,
+  supervisorId?: string | null,
+  workshopId?: string | null
+) {
+  const notifications: CreateNotificationParams[] = [];
+
+  if (supervisorId) {
+    notifications.push({
+      userId: supervisorId,
+      type: 'JOB_COMPLETED',
+      title: 'Job submitted for QC',
+      message: `Lead ${leadNumber} is now WORK_COMPLETED and ready for supervisor QC.`,
+      priority: 'HIGH',
+      leadId,
+      leadNumber,
+      actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`,
+    });
+  }
+
+  // Fallback: notify workshop admin(s) in case supervisor is not assigned
+  if (!supervisorId && workshopId) {
+    await notifyWorkshopAdmin(workshopId, leadId, leadNumber, 'System');
+  }
+
+  if (notifications.length > 0) {
+    await createBulkNotifications(notifications);
+  }
+}
+
+export async function notifyAccountsTeam(
+  workshopId: string,
+  leadId: string,
+  leadNumber: string,
+  title: string,
+  message: string,
+  actionUrl?: string,
+  priority: NotificationPriority = 'MEDIUM'
+) {
+  const users = await getUsersInWorkshopByRoleCodes(workshopId, ['ACCOUNTS_TEAM']);
+  if (users.length === 0) return;
+
+  await createBulkNotifications(
+    users.map(u => ({
+      userId: u.id,
+      type: 'INVOICE_GENERATED',
+      title,
+      message,
+      priority,
+      leadId,
+      leadNumber,
+      actionUrl: actionUrl || `/dashboard/billing/leads/${leadId}/generate-invoice`,
+    }))
+  );
+}
+
+export async function notifyCSETeam(
+  leadId: string,
+  leadNumber: string,
+  title: string,
+  message: string,
+  priority: NotificationPriority = 'MEDIUM',
+  actionUrl: string = `/dashboard/cse/leads/${leadId}`
+) {
+  const supabase = await createClient();
+  const roleIds = await getRoleIds(['CUSTOMER_SERVICE_EXECUTIVE', 'CSE']);
+  if (roleIds.length === 0) return;
+
+  const { data: users } = await supabase
+    .from('users_login')
+    .select('id')
+    .in('role_id', roleIds)
+    .eq('is_active', true);
+
+  if (!users || users.length === 0) return;
+
+  await createBulkNotifications(
+    users.map((u: any) => ({
+      userId: u.id,
+      type: 'FOLLOW_UP_SCHEDULED',
+      title,
+      message,
+      priority,
+      leadId,
+      leadNumber,
+      actionUrl,
+    }))
+  );
 }
 

@@ -6,6 +6,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
+import { createNotification, notifyWorkshopAdmin, notifyCSETeam } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -42,6 +43,14 @@ export async function POST(
 
     if (invoiceError || !invoice) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+    }
+
+    // Prevent edits after archival/closure
+    if (invoice.lead?.read_only) {
+      return NextResponse.json({
+        error: 'Lead is archived/read-only',
+        hint: 'This lead is closed and payments cannot be modified'
+      }, { status: 400 });
     }
 
     // Verify invoice is ready for payment
@@ -258,6 +267,44 @@ export async function POST(
             payment_remarks: payment_remarks,
           },
         });
+
+      // In-app notifications (no WhatsApp dependency)
+      try {
+        const leadAny = invoice.lead as any;
+        const leadNumber = leadAny?.lead_number || invoice.lead_id;
+
+        if (leadAny?.workshop_id) {
+          await notifyWorkshopAdmin(leadAny.workshop_id, invoice.lead_id, leadNumber, userProfile.name || 'Accounts');
+        }
+
+        if (leadAny?.assigned_supervisor_id) {
+          await createNotification({
+            userId: leadAny.assigned_supervisor_id,
+            type: 'PAYMENT_RECEIVED',
+            title: 'Payment Updated',
+            message: isFullPayment
+              ? `Full payment received for lead ${leadNumber}. Vehicle is ready for delivery.`
+              : `Payment recorded for lead ${leadNumber}. Balance pending.`,
+            priority: isFullPayment ? 'HIGH' : 'MEDIUM',
+            leadId: invoice.lead_id,
+            leadNumber,
+            actionUrl: `/dashboard/workshop_supervisor/jobs/${invoice.lead_id}`,
+            metadata: { invoice_id: invoiceId, payment_mode, paid_amount: paidAmount, is_cod },
+          });
+        }
+
+        if (newLeadStatus === 'READY_FOR_DELIVERY') {
+          await notifyCSETeam(
+            invoice.lead_id,
+            leadNumber,
+            'Ready for Delivery',
+            `Lead ${leadNumber} is fully paid and ready for delivery.`,
+            'MEDIUM'
+          );
+        }
+      } catch (e) {
+        console.warn('Notification dispatch failed (non-blocking):', e);
+      }
 
       // Create lead event for payment (Step 13: Notifications & Audit Trail)
       await supabase

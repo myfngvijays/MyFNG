@@ -50,6 +50,11 @@ export async function POST(
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if ((invoice.lead as any)?.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
     // Verify invoice is in GENERATED status
     if (invoice.status !== 'GENERATED') {
       return NextResponse.json({ 
@@ -170,6 +175,15 @@ export async function POST(
           updated_at: now,
         })
         .eq('id', invoice.lead_id);
+
+      // Best-effort: persist invoice document to storage after approval (so sharing has stable URL)
+      try {
+        await fetch(`${request.nextUrl.origin}/api/billing/invoices/${invoiceId}/persist-document`, {
+          method: 'POST',
+        });
+      } catch {
+        // non-fatal
+      }
 
       // Log status change
       await supabase

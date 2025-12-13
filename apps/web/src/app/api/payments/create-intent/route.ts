@@ -44,35 +44,64 @@ export async function POST(request: NextRequest) {
     }
 
     const lead = invoice.lead as any;
-    const amountInPaise = Math.round(parseFloat(invoice.total_amount) * 100);
+    const invoiceAmount = parseFloat(invoice.final_amount || invoice.total_amount || '0');
+    const currentPaid = parseFloat(invoice.paid_amount || '0');
+    const remaining = Math.max(0, invoiceAmount - currentPaid);
+
+    if (remaining <= 0) {
+      return NextResponse.json({
+        error: 'Invoice already settled',
+        payment_status: invoice.payment_status,
+        remaining_amount: remaining
+      }, { status: 400 });
+    }
+
+    const amountInPaise = Math.round(remaining * 100);
+
+    const razorpayKeyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+    const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
+    if (!razorpayKeyId || !razorpayKeySecret) {
+      return NextResponse.json({
+        error: 'Payment gateway not configured',
+        hint: 'Missing RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET'
+      }, { status: 500 });
+    }
 
     // Create Razorpay order
-    // TODO: Install razorpay package and configure
-    // const Razorpay = require('razorpay');
-    // For now, create a mock order ID
-    const razorpayOrder = {
-      id: `order_${Date.now()}`,
-      receipt: `INV_${invoice.invoice_number}`,
+    const receipt = `INV_${invoice.invoice_number || invoice_id.substring(0, 8)}`;
+    const orderData = {
       amount: amountInPaise,
-      currency: 'INR'
+      currency: 'INR',
+      receipt,
+      notes: {
+        invoice_id: invoice_id,
+        invoice_number: invoice.invoice_number,
+        lead_id: lead.id,
+        lead_number: lead.lead_number,
+        customer_name: lead.customer_name,
+        customer_phone: lead.customer_phone,
+      },
     };
-    
-    // Uncomment when razorpay is installed:
-    // const razorpay = new Razorpay({
-    //   key_id: process.env.RAZORPAY_KEY_ID,
-    //   key_secret: process.env.RAZORPAY_KEY_SECRET
-    // });
-    // const razorpayOrder = await razorpay.orders.create({
-    //   amount: amountInPaise,
-    //   currency: 'INR',
-    //   receipt: `INV_${invoice.invoice_number}`,
-    //   notes: {
-    //     invoice_id: invoice_id,
-    //     lead_id: lead.id,
-    //     lead_number: lead.lead_number,
-    //     customer_name: lead.customer_name
-    //   }
-    // });
+
+    const razorpayResponse = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString('base64')}`,
+      },
+      body: JSON.stringify(orderData),
+    });
+
+    if (!razorpayResponse.ok) {
+      let errMsg = 'Failed to create Razorpay order';
+      try {
+        const err = await razorpayResponse.json();
+        errMsg = err?.error?.description || errMsg;
+      } catch {}
+      return NextResponse.json({ error: errMsg }, { status: razorpayResponse.status });
+    }
+
+    const razorpayOrder = await razorpayResponse.json();
 
     // Create payment transaction record
     const { data: paymentTxn, error: txnError } = await supabase
@@ -80,13 +109,14 @@ export async function POST(request: NextRequest) {
       .insert({
         invoice_id,
         lead_id: lead.id,
-        amount: invoice.total_amount,
-        payment_method,
-        gateway_payment_id: razorpayOrder.id,
-        transaction_id: razorpayOrder.receipt,
-        status: 'PENDING',
+        amount: remaining,
+        payment_method: payment_method === 'RAZORPAY' ? 'ONLINE' : payment_method,
         payment_gateway: 'RAZORPAY',
-        initiated_at: new Date().toISOString()
+        gateway_order_id: razorpayOrder.id,
+        transaction_id: `TXN-${Date.now()}-${invoice_id.substring(0, 8)}`,
+        status: 'PENDING',
+        initiated_at: new Date().toISOString(),
+        created_by: user?.id || null,
       })
       .select()
       .single();
@@ -101,18 +131,27 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      order: {
+        orderId: razorpayOrder.id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+        receipt: razorpayOrder.receipt,
+      },
       payment_intent: {
         id: paymentTxn.id,
         order_id: razorpayOrder.id,
-        amount: invoice.total_amount,
+        amount: remaining,
         amount_paise: amountInPaise,
         currency: 'INR',
-        razorpay_key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
+        razorpay_key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID
       },
       invoice: {
         id: invoice.id,
         invoice_number: invoice.invoice_number,
-        total_amount: invoice.total_amount
+        total_amount: invoice.total_amount,
+        final_amount: invoice.final_amount,
+        paid_amount: invoice.paid_amount,
+        remaining_amount: remaining,
       },
       customer: {
         name: lead.customer_name,

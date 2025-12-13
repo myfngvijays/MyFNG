@@ -59,6 +59,11 @@ export async function POST(
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if (lead.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
     // Verify lead is assigned to this mechanic
     if (lead.assigned_mechanic_id !== userProfile.id) {
       return NextResponse.json({ error: 'Job not assigned to you' }, { status: 403 });

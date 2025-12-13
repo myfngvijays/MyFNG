@@ -66,6 +66,11 @@ export async function POST(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
+    // Prevent edits after archival/closure
+    if (lead.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
     const now = new Date().toISOString();
 
     // Update lead to pending re-audit
@@ -73,6 +78,7 @@ export async function POST(
       .from('service_leads')
       .update({
         audit_status: 'AUDIT_PENDING',
+        status: 'AUDIT_PENDING',
         audit_notes: `Re-audit requested: ${body.reason}`,
         updated_at: now,
       })
@@ -102,6 +108,25 @@ export async function POST(
           requested_at: now,
         },
       });
+
+    await supabase.from('lead_status_history').insert({
+      lead_id: leadId,
+      old_status: lead.status,
+      new_status: 'AUDIT_PENDING',
+      changed_by: userProfile.id,
+      changed_at: now,
+      reason: 'Re-audit requested',
+      notes: body.reason,
+    });
+
+    await supabase.from('lead_events').insert({
+      lead_id: leadId,
+      event_type: 'REAUDIT_REQUESTED',
+      event_description: `Re-audit requested by auditor: ${body.reason}`,
+      event_data: { concerns: body.specific_concerns },
+      created_by: userProfile.id,
+      created_at: now,
+    });
 
     // Notify supervisor if required
     if (body.supervisor_review_required && lead.assigned_supervisor_id) {

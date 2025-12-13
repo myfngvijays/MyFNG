@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { X, Image as ImageIcon, CheckCircle, XCircle, ZoomIn, AlertTriangle } from 'lucide-react';
+import { X, Image as ImageIcon, CheckCircle, ZoomIn, AlertTriangle } from 'lucide-react';
 
 interface PhotoValidationModalProps {
   isOpen: boolean;
@@ -12,55 +12,59 @@ interface PhotoValidationModalProps {
   onSuccess: () => void;
 }
 
+type NormalizedPhoto = {
+  id: string;
+  url: string;
+  category: 'before' | 'during' | 'after' | 'other';
+  type?: string | null;
+  created_at?: string | null;
+  source: 'mechanic_job_photos';
+};
+
 interface PhotoGroup {
   type: 'BEFORE' | 'DURING' | 'AFTER';
-  photos: any[];
+  photos: NormalizedPhoto[];
   required: string[];
-  validated: boolean;
+  complete: boolean;
 }
 
-const REQUIRED_BEFORE_PHOTOS = [
-  'Front view',
-  'Rear view',
-  'Left side',
-  'Right side',
-  'Dashboard/Odometer',
-  'Engine bay',
-  'Existing damage'
+// Canonical required types (align with mechanic_job_photos + JOB COMPLETE enforcement)
+const REQUIRED_BEFORE_TYPES = [
+  'BEFORE_FRONT',
+  'BEFORE_REAR',
+  'BEFORE_LEFT',
+  'BEFORE_RIGHT',
+  'BEFORE_DASHBOARD',
+  'BEFORE_ENGINE_BAY',
 ];
 
-const REQUIRED_DURING_PHOTOS = [
-  'Work in progress',
-  'Parts being replaced',
-  'Old vs New parts comparison'
+const REQUIRED_AFTER_TYPES = [
+  'AFTER_FRONT',
+  'AFTER_REAR',
+  'AFTER_LEFT',
+  'AFTER_RIGHT',
+  'AFTER_ENGINE_BAY',
+  'AFTER_OLD_PARTS',
+  'AFTER_ODOMETER',
 ];
 
-const REQUIRED_AFTER_PHOTOS = [
-  'Front view (clean)',
-  'Rear view (clean)',
-  'Engine bay (clean)',
-  'Dashboard/Final odometer',
-  'Replaced parts',
-  'Work completed area'
-];
+const MIN_DURING_COUNT = 1;
 
 export default function PhotoValidationModal({
   isOpen,
   onClose,
   leadId,
   leadNumber,
-  onSuccess
 }: PhotoValidationModalProps) {
-  const [photos, setPhotos] = useState<any[]>([]);
+  const [photos, setPhotos] = useState<NormalizedPhoto[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedPhoto, setSelectedPhoto] = useState<any | null>(null);
-  const [validation, setValidation] = useState<Record<string, boolean>>({});
-  const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
+  const [selectedPhoto, setSelectedPhoto] = useState<NormalizedPhoto | null>(null);
+  const [missing, setMissing] = useState<string[]>([]);
+  const [duringCount, setDuringCount] = useState(0);
 
   useEffect(() => {
-    if (isOpen) {
-      fetchPhotos();
-    }
+    if (isOpen) fetchPhotos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, leadId]);
 
   async function fetchPhotos() {
@@ -68,139 +72,62 @@ export default function PhotoValidationModal({
       setLoading(true);
       const supabase = createClient();
 
-      // Fetch all photos for this lead
-      const { data, error } = await supabase
-        .from('lead_media')
-        .select('*')
+      const { data: jobPhotos, error } = await supabase
+        .from('mechanic_job_photos')
+        .select('id, photo_url, photo_category, photo_type, created_at')
         .eq('lead_id', leadId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setPhotos(data || []);
 
-      // Initialize validation state
-      const initialValidation: Record<string, boolean> = {};
-      (data || []).forEach(photo => {
-        initialValidation[photo.id] = true; // Default to approved
-      });
-      setValidation(initialValidation);
-    } catch (error) {
-      console.error('Error fetching photos:', error);
+      const normalized: NormalizedPhoto[] = (jobPhotos || []).map((p: any) => ({
+        id: String(p.id),
+        url: p.photo_url,
+        category: (p.photo_category === 'before' || p.photo_category === 'during' || p.photo_category === 'after')
+          ? p.photo_category
+          : 'other',
+        type: p.photo_type,
+        created_at: p.created_at,
+        source: 'mechanic_job_photos',
+      }));
+
+      setPhotos(normalized);
+
+      const beforeTypes = new Set(normalized.filter(p => p.category === 'before').map(p => p.type).filter(Boolean) as string[]);
+      const afterTypes = new Set(normalized.filter(p => p.category === 'after').map(p => p.type).filter(Boolean) as string[]);
+      const dCount = normalized.filter(p => p.category === 'during').length;
+      setDuringCount(dCount);
+
+      const missingList: string[] = [];
+      REQUIRED_BEFORE_TYPES.forEach((t) => { if (!beforeTypes.has(t)) missingList.push(t); });
+      REQUIRED_AFTER_TYPES.forEach((t) => { if (!afterTypes.has(t)) missingList.push(t); });
+      if (dCount < MIN_DURING_COUNT) missingList.push('DURING_* (at least 1)');
+      setMissing(missingList);
+    } catch (e) {
+      console.error('Error fetching photos:', e);
+      setPhotos([]);
+      setMissing(['Unable to load photos (check permissions/RLS)']);
+      setDuringCount(0);
     } finally {
       setLoading(false);
     }
   }
 
-  function groupPhotosByType(): PhotoGroup[] {
-    const beforePhotos = photos.filter(p => p.media_type === 'BEFORE' || p.photo_type === 'BEFORE');
-    const duringPhotos = photos.filter(p => p.media_type === 'DURING' || p.media_type === 'PROGRESS' || p.photo_type === 'DURING');
-    const afterPhotos = photos.filter(p => p.media_type === 'AFTER' || p.photo_type === 'AFTER');
+  const photoGroups: PhotoGroup[] = useMemo(() => {
+    const beforePhotos = photos.filter(p => p.category === 'before');
+    const duringPhotos = photos.filter(p => p.category === 'during');
+    const afterPhotos = photos.filter(p => p.category === 'after');
+
+    const beforeComplete = REQUIRED_BEFORE_TYPES.every(t => beforePhotos.some(p => p.type === t));
+    const afterComplete = REQUIRED_AFTER_TYPES.every(t => afterPhotos.some(p => p.type === t));
+    const duringComplete = duringPhotos.length >= MIN_DURING_COUNT;
 
     return [
-      {
-        type: 'BEFORE',
-        photos: beforePhotos,
-        required: REQUIRED_BEFORE_PHOTOS,
-        validated: beforePhotos.length >= REQUIRED_BEFORE_PHOTOS.length
-      },
-      {
-        type: 'DURING',
-        photos: duringPhotos,
-        required: REQUIRED_DURING_PHOTOS,
-        validated: duringPhotos.length >= REQUIRED_DURING_PHOTOS.length
-      },
-      {
-        type: 'AFTER',
-        photos: afterPhotos,
-        required: REQUIRED_AFTER_PHOTOS,
-        validated: afterPhotos.length >= REQUIRED_AFTER_PHOTOS.length
-      }
+      { type: 'BEFORE', photos: beforePhotos, required: REQUIRED_BEFORE_TYPES, complete: beforeComplete },
+      { type: 'DURING', photos: duringPhotos, required: ['DURING_* (at least 1)'], complete: duringComplete },
+      { type: 'AFTER', photos: afterPhotos, required: REQUIRED_AFTER_TYPES, complete: afterComplete },
     ];
-  }
-
-  function togglePhotoValidation(photoId: string) {
-    setValidation(prev => ({
-      ...prev,
-      [photoId]: !prev[photoId]
-    }));
-  }
-
-  async function submitValidation() {
-    try {
-      setLoading(true);
-      const supabase = createClient();
-
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
-
-      const supervisorId = userProfile?.id;
-
-      // Update validation status for each photo
-      for (const [photoId, isApproved] of Object.entries(validation)) {
-        const reason = rejectionReasons[photoId] || null;
-        
-        await supabase
-          .from('lead_media')
-          .update({
-            validation_status: isApproved ? 'APPROVED' : 'REJECTED',
-            validated_by: supervisorId,
-            validated_at: new Date().toISOString(),
-            rejection_reason: reason
-          })
-          .eq('id', photoId);
-      }
-
-      // Create supervisor action
-      const rejectedCount = Object.values(validation).filter(v => !v).length;
-      await supabase
-        .from('supervisor_actions')
-        .insert({
-          supervisor_id: supervisorId,
-          lead_id: leadId,
-          action_type: 'PHOTOS_VALIDATED',
-          action_description: `Validated ${photos.length} photos. ${rejectedCount} rejected.`,
-          action_data: {
-            total_photos: photos.length,
-            approved: photos.length - rejectedCount,
-            rejected: rejectedCount
-          }
-        });
-
-      // If any photos rejected, send back to mechanic
-      if (rejectedCount > 0) {
-        await supabase
-          .from('service_leads')
-          .update({
-            status: 'PHOTOS_REJECTED',
-            photo_rejection_notes: Object.entries(rejectionReasons)
-              .filter(([id]) => !validation[id])
-              .map(([_, reason]) => reason)
-              .join('; ')
-          })
-          .eq('id', leadId);
-      }
-
-      alert(`Photo validation completed. ${rejectedCount} photo(s) rejected.`);
-      onSuccess();
-      onClose();
-    } catch (error) {
-      console.error('Error submitting validation:', error);
-      alert('Failed to submit validation');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const photoGroups = groupPhotosByType();
-  const allPhotosValidated = photos.length > 0 && Object.keys(validation).length === photos.length;
-  const hasRejections = Object.values(validation).some(v => !v);
+  }, [photos]);
 
   if (!isOpen) return null;
 
@@ -212,23 +139,19 @@ export default function PhotoValidationModal({
           <div>
             <h2 className="text-2xl font-bold text-text-heading flex items-center gap-2">
               <ImageIcon className="w-6 h-6" />
-              Photo Validation
+              Photo Review (QC Proofs)
             </h2>
             <p className="text-sm text-gray-600 mt-1">
-              Job #{leadNumber} • {photos.length} photos to review
+              Job #{leadNumber} • {photos.length} photos • DURING count: {duringCount}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="btn btn-outline btn-sm"
-            disabled={loading}
-          >
+          <button onClick={onClose} className="btn btn-outline btn-sm" disabled={loading}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
           {loading && photos.length === 0 ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
@@ -237,11 +160,33 @@ export default function PhotoValidationModal({
             <div className="text-center py-12">
               <AlertTriangle className="w-16 h-16 text-yellow-600 mx-auto mb-4" />
               <p className="text-xl font-semibold text-gray-700">No Photos Found</p>
-              <p className="text-gray-600 mt-2">Mechanic hasn't uploaded any photos yet</p>
+              <p className="text-gray-600 mt-2">Mechanic hasn&apos;t uploaded photos yet</p>
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Photo Groups */}
+              {/* Summary */}
+              {missing.length > 0 ? (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="font-semibold text-yellow-800">Missing mandatory proofs:</p>
+                  <ul className="list-disc ml-5 text-sm text-yellow-800 mt-1">
+                    {missing.map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
+                  <p className="text-sm text-yellow-800 mt-2">
+                    Tip: Use <strong>QC Failed</strong> to send job back as <strong>REWORK_REQUIRED</strong>.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-700" />
+                  <p className="text-sm text-green-800 font-semibold">
+                    All mandatory BEFORE/DURING/AFTER proofs are present
+                  </p>
+                </div>
+              )}
+
+              {/* Groups */}
               {photoGroups.map((group) => (
                 <div key={group.type} className="card">
                   <div className="flex items-center justify-between mb-4">
@@ -251,7 +196,7 @@ export default function PhotoValidationModal({
                       </h3>
                       <p className="text-sm text-gray-600">Required: {group.required.join(', ')}</p>
                     </div>
-                    {group.validated ? (
+                    {group.complete ? (
                       <div className="flex items-center gap-2 px-3 py-1 bg-green-100 text-green-700 rounded-full">
                         <CheckCircle className="w-4 h-4" />
                         <span className="text-sm font-semibold">Complete</span>
@@ -267,22 +212,12 @@ export default function PhotoValidationModal({
                   {group.photos.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       {group.photos.map((photo) => (
-                        <div 
-                          key={photo.id}
-                          className={`relative rounded-lg overflow-hidden border-2 ${
-                            validation[photo.id] 
-                              ? 'border-green-500' 
-                              : 'border-red-500'
-                          }`}
-                        >
-                          {/* Photo */}
+                        <div key={photo.id} className="relative rounded-lg overflow-hidden border-2 border-gray-200">
                           <img
-                            src={photo.file_url}
-                            alt={photo.description || 'Vehicle photo'}
+                            src={photo.url}
+                            alt={photo.type || 'Vehicle photo'}
                             className="w-full h-48 object-cover"
                           />
-
-                          {/* Overlay with zoom button */}
                           <div className="absolute top-2 right-2">
                             <button
                               onClick={() => setSelectedPhoto(photo)}
@@ -291,70 +226,9 @@ export default function PhotoValidationModal({
                               <ZoomIn className="w-4 h-4 text-white" />
                             </button>
                           </div>
-
-                          {/* Validation Badge */}
-                          <div className="absolute top-2 left-2">
-                            {validation[photo.id] ? (
-                              <div className="p-2 bg-green-500 rounded-full">
-                                <CheckCircle className="w-4 h-4 text-white" />
-                              </div>
-                            ) : (
-                              <div className="p-2 bg-red-500 rounded-full">
-                                <XCircle className="w-4 h-4 text-white" />
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Photo Info */}
                           <div className="p-3 bg-white">
-                            <p className="text-xs text-gray-600 mb-2">
-                              {photo.description || 'No description'}
-                            </p>
-                            
-                            {/* Approve/Reject Buttons */}
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => {
-                                  setValidation(prev => ({ ...prev, [photo.id]: true }));
-                                  setRejectionReasons(prev => {
-                                    const updated = { ...prev };
-                                    delete updated[photo.id];
-                                    return updated;
-                                  });
-                                }}
-                                className={`flex-1 px-2 py-1 text-xs rounded ${
-                                  validation[photo.id]
-                                    ? 'bg-green-600 text-white'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-green-100'
-                                }`}
-                              >
-                                ✓ Approve
-                              </button>
-                              <button
-                                onClick={() => togglePhotoValidation(photo.id)}
-                                className={`flex-1 px-2 py-1 text-xs rounded ${
-                                  !validation[photo.id]
-                                    ? 'bg-red-600 text-white'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-red-100'
-                                }`}
-                              >
-                                ✗ Reject
-                              </button>
-                            </div>
-
-                            {/* Rejection Reason */}
-                            {!validation[photo.id] && (
-                              <textarea
-                                placeholder="Reason for rejection..."
-                                value={rejectionReasons[photo.id] || ''}
-                                onChange={(e) => setRejectionReasons(prev => ({
-                                  ...prev,
-                                  [photo.id]: e.target.value
-                                }))}
-                                className="input input-sm w-full mt-2"
-                                rows={2}
-                              />
-                            )}
+                            <p className="text-xs text-gray-700 font-semibold">{photo.type || 'UNKNOWN_TYPE'}</p>
+                            <p className="text-[11px] text-gray-500 mt-1">{photo.source}</p>
                           </div>
                         </div>
                       ))}
@@ -370,77 +244,27 @@ export default function PhotoValidationModal({
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        {photos.length > 0 && (
-          <div className="p-6 border-t border-gray-200 bg-gray-50">
-            <div className="flex items-center justify-between">
-              <div>
-                {hasRejections && (
-                  <p className="text-sm text-orange-600 font-semibold">
-                    ⚠️ Some photos will be rejected. Job will be sent back to mechanic.
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={onClose}
-                  className="btn btn-outline"
-                  disabled={loading}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={submitValidation}
-                  disabled={loading || !allPhotosValidated}
-                  className="btn btn-primary flex items-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Submitting...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-4 h-4" />
-                      Submit Validation
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Photo Zoom Modal */}
+      {/* Zoom */}
       {selectedPhoto && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[60] p-4"
           onClick={() => setSelectedPhoto(null)}
         >
-          <div className="relative max-w-5xl max-h-[90vh]">
+          <div className="relative max-w-5xl w-full max-h-[90vh]">
+            <img src={selectedPhoto.url} alt="Zoomed" className="w-full h-full object-contain rounded-lg" />
             <button
               onClick={() => setSelectedPhoto(null)}
-              className="absolute -top-12 right-0 text-white hover:text-gray-300"
+              className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-lg"
             >
-              <X className="w-8 h-8" />
+              <X className="w-5 h-5 text-gray-700" />
             </button>
-            <img
-              src={selectedPhoto.file_url}
-              alt={selectedPhoto.description}
-              className="max-w-full max-h-[85vh] rounded-lg"
-            />
-            <div className="mt-4 text-white text-center">
-              <p className="text-lg font-semibold">{selectedPhoto.description || 'Vehicle Photo'}</p>
-              <p className="text-sm text-gray-300 mt-1">
-                Uploaded: {new Date(selectedPhoto.created_at).toLocaleString()}
-              </p>
-            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
+
 

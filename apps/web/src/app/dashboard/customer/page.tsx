@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Car, Clock, CheckCircle, MapPin, Phone } from 'lucide-react';
 import { DashboardCard, StatsGrid, ListItem } from '@/components/RoleDashboards';
 import { createClient } from '@/lib/supabase/client';
 
 export default function CustomerDashboard() {
+  const router = useRouter();
   const [activeServices, setActiveServices] = useState<any[]>([]);
   const [serviceHistory, setServiceHistory] = useState<any[]>([]);
   const [stats, setStats] = useState([
@@ -211,19 +213,19 @@ export default function CustomerDashboard() {
 
         {/* Quick Links */}
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          <QuickLink title="My Vehicles" icon={<Car />} />
-          <QuickLink title="Service History" icon={<Clock />} />
-          <QuickLink title="Support" icon={<Phone />} />
-          <QuickLink title="Profile" icon={<CheckCircle />} />
+          <QuickLink title="My Vehicles" icon={<Car />} onClick={() => router.push('/dashboard/customer/vehicles')} />
+          <QuickLink title="Service History" icon={<Clock />} onClick={() => router.push('/dashboard/customer/service-history')} />
+          <QuickLink title="Support" icon={<Phone />} onClick={() => router.push('/dashboard/customer/support')} />
+          <QuickLink title="Profile" icon={<CheckCircle />} onClick={() => router.push('/dashboard/customer/profile')} />
         </div>
       </div>
     </DashboardLayout>
   );
 }
 
-function QuickLink({ title, icon }: { title: string; icon: React.ReactNode }) {
+function QuickLink({ title, icon, onClick }: { title: string; icon: React.ReactNode; onClick?: () => void }) {
   return (
-    <button className="card hover:shadow-lg transition text-center p-3 sm:p-4">
+    <button onClick={onClick} className="card hover:shadow-lg transition text-center p-3 sm:p-4">
       <div className="flex flex-col items-center gap-1.5 sm:gap-2">
         <div className="text-brand-primary text-xl sm:text-2xl">{icon}</div>
         <span className="text-xs sm:text-sm font-medium text-text-heading">{title}</span>

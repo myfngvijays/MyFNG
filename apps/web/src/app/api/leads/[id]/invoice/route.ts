@@ -77,7 +77,7 @@ export async function POST(
     }
 
     // Check if lead status allows invoice generation
-    if (!['READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status)) {
+    if (!['READY_FOR_DELIVERY', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'CLOSED'].includes(lead.status)) {
       return NextResponse.json(
         { error: 'Invoice can only be generated for completed leads' },
         { status: 400 }

@@ -35,6 +35,50 @@ export async function POST(
     const body = await request.json();
     const { latitude, longitude } = body;
 
+    // Fetch lead for read-only protection + status validation
+    const { data: lead, error: leadError } = await supabase
+      .from('service_leads')
+      .select('id, status, read_only')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !lead) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    }
+
+    if (lead.read_only) {
+      return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+    }
+
+    // Validate assignment from pickup_tracking
+    const { data: tracking, error: trackingError } = await supabase
+      .from('pickup_tracking')
+      .select('drop_required, drop_assigned_to, drop_status')
+      .eq('lead_id', leadId)
+      .single();
+
+    if (trackingError || !tracking) {
+      return NextResponse.json({ error: 'Pickup tracking not found' }, { status: 404 });
+    }
+
+    if (!tracking.drop_required) {
+      return NextResponse.json({ error: 'Drop not required for this lead' }, { status: 400 });
+    }
+
+    if (tracking.drop_assigned_to !== user.id) {
+      return NextResponse.json({ error: 'Not assigned to this drop' }, { status: 403 });
+    }
+
+    // Ensure lead is ready for delivery
+    const allowedLeadStatuses = ['READY_FOR_DELIVERY', 'COD_PENDING'];
+    if (!allowedLeadStatuses.includes(lead.status)) {
+      return NextResponse.json({
+        error: 'Lead is not ready for delivery',
+        current_status: lead.status,
+        allowed_statuses: allowedLeadStatuses,
+      }, { status: 400 });
+    }
+
     // Update drop tracking - Arrived at customer location for delivery
     const { data: updated, error: updateError } = await supabase
       .from('pickup_tracking')
