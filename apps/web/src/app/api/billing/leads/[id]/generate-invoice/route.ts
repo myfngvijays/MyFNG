@@ -27,25 +27,51 @@ export async function POST(
     }
 
     // Get user profile with role join
-    const { data: userProfile, error: profileError } = await supabase
+    // NOTE: In this codebase, `users_login.id` is not always the same as Supabase Auth `user.id`.
+    // Prefer email lookup and fallback to id.
+    const { data: userProfileByEmail } = await supabase
       .from('users_login')
-      .select('id, role_id, workshop_id, roles(role_code, role_name)')
-      .eq('id', user.id)
-      .single();
+      .select('id, email, role, role_id, workshop_id, roles(role_code, role_name)')
+      .eq('email', user.email)
+      .maybeSingle();
 
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    const { data: userProfileById, error: profileErrorById } = !userProfileByEmail
+      ? await supabase
+          .from('users_login')
+          .select('id, email, role, role_id, workshop_id, roles(role_code, role_name)')
+          .eq('id', user.id)
+          .maybeSingle()
+      : { data: null, error: null };
+
+    const userProfile = userProfileByEmail || userProfileById;
+
+    if (!userProfile) {
+      return NextResponse.json(
+        {
+          error: 'User profile not found',
+          hint: 'No matching users_login row for this session user',
+          user_email: user.email,
+          profile_lookup_error: profileErrorById?.message,
+        },
+        { status: 404 }
+      );
     }
 
-    // Get role code
+    // Get role code (support both joined roles + legacy `role` string)
     const roleCode = (userProfile.roles as any)?.role_code;
+    const legacyRole = (userProfile as any)?.role;
 
     // Verify user has billing permissions - allow advisor and admin
     const allowedRoles = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'];
-    if (!allowedRoles.includes(roleCode)) {
+    const normalizedLegacy =
+      typeof legacyRole === 'string'
+        ? legacyRole.toUpperCase()
+        : null;
+
+    if (!allowedRoles.includes(roleCode) && !allowedRoles.includes(normalizedLegacy || '')) {
       return NextResponse.json({ 
         error: 'Forbidden: Insufficient permissions',
-        current_role: roleCode
+        current_role: roleCode || legacyRole
       }, { status: 403 });
     }
 

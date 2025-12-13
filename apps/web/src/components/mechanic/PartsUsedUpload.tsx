@@ -116,11 +116,27 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
   const fetchExistingPhotos = async (partsList: Part[]) => {
     try {
       const supabase = createClient();
+      const partIds = (partsList || []).map(p => p.id).filter(Boolean);
+
+      // NOTE:
+      // Historically, some uploads stored dynamic `photo_type` like:
+      //   "oil filter - Old Part Removed"
+      // instead of stable codes like:
+      //   "DURING_PART_REMOVAL"
+      // So we fetch broadly and match client-side for backward compatibility.
       const { data, error } = await supabase
         .from('mechanic_job_photos')
         .select('*')
         .eq('job_id', jobId)
-        .in('photo_type', ['DURING_PART_REMOVAL', 'DURING_PART_INSTALL', 'AFTER_OLD_PARTS'])
+        .or(
+          [
+            `photo_type.in.(${['DURING_PART_REMOVAL', 'DURING_PART_INSTALL', 'AFTER_OLD_PARTS'].join(',')})`,
+            // legacy dynamic part photos + any part-specific rows
+            partIds.length ? `part_id.in.(${partIds.join(',')})` : '',
+          ]
+            .filter(Boolean)
+            .join(',')
+        )
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -131,7 +147,16 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
             // Match by part_id if available, or by type
             const existing = data.find((d) => {
               if (photo.partId && d.part_id) {
-                return d.part_id === photo.partId && d.photo_type === photo.type;
+                if (d.part_id !== photo.partId) return false;
+
+                // Preferred: stable codes
+                if (d.photo_type === photo.type) return true;
+
+                // Back-compat: dynamic strings like "<part> - Old Part Removed"
+                const t = String(d.photo_type || '').toLowerCase();
+                if (photo.type === 'DURING_PART_REMOVAL') return t.includes('old part removed');
+                if (photo.type === 'DURING_PART_INSTALL') return t.includes('new part installed');
+                return false;
               }
               return d.photo_type === photo.type && !photo.partId;
             });
@@ -263,13 +288,11 @@ export default function PartsUsedUpload({ leadId, jobId, onUploadComplete }: Pro
       const formData = new FormData();
       formData.append('file', photo.file);
       
-      // For parts-specific photos, use dynamic label as photo_type
-      // For general photos, use fixed type
-      const photoType = photo.partId && photo.partName 
-        ? `${photo.partName} - ${photo.type === 'DURING_PART_REMOVAL' ? 'Old Part Removed' : 'New Part Installed'}`
-        : photo.type;
-      
-      formData.append('photoType', photoType);
+      // IMPORTANT:
+      // Always store a stable photo_type code in DB so the photo shows up later.
+      // Human-readable label goes into notes for QC/reference.
+      formData.append('photoType', photo.type);
+      formData.append('notes', photo.label);
       const category = photo.type.startsWith('AFTER_') ? 'after' : 'during';
       formData.append('photoCategory', category);
       if (photo.partId) {

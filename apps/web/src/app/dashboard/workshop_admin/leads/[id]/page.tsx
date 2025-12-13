@@ -603,7 +603,8 @@ export default function LeadDetailPage() {
         )}
 
         {/* Section 9: Media Section */}
-        <MediaSection lead={lead} onUpdate={fetchLeadDetails} />
+        {/* Owner view: media is view-only (upload removed as requested) */}
+        <MediaSection lead={lead} onUpdate={fetchLeadDetails} canUpload={false} />
 
         {/* Section 10: Extra Charges */}
         {lead.status !== 'NEW' && lead.status !== 'REJECTED' && (
@@ -615,8 +616,19 @@ export default function LeadDetailPage() {
           <AuditSection lead={lead} onUpdate={fetchLeadDetails} />
         )}
 
-        {/* Section 12: Invoice */}
-        {(lead.status === 'READY_FOR_DELIVERY' || lead.status === 'DELIVERED' || lead.status === 'CLOSED') && (
+        {/* Section 12: Invoice (keep visible after invoice generation too) */}
+        {[
+          'READY_FOR_BILLING',
+          'INVOICE_GENERATED',
+          'AWAITING_PAYMENT',
+          'PARTIAL_PAYMENT',
+          'PAID',
+          'COD_PENDING',
+          'READY_FOR_DELIVERY',
+          'DELIVERED_TO_CUSTOMER',
+          'DELIVERED',
+          'CLOSED',
+        ].includes(lead.status) && (
           <InvoiceSection lead={lead} onUpdate={fetchLeadDetails} />
         )}
 

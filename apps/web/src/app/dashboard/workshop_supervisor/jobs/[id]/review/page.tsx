@@ -31,6 +31,7 @@ export default function QCReviewPage() {
   const [beforePhotos, setBeforePhotos] = useState<any[]>([]);
   const [afterPhotos, setAfterPhotos] = useState<any[]>([]);
   const [duringPhotos, setDuringPhotos] = useState<any[]>([]);
+  const [showAllPhotos, setShowAllPhotos] = useState(false);
   const [partsUsed, setPartsUsed] = useState<any[]>([]);
   const [checklist, setChecklist] = useState<any[]>([]);
   const [mechanic, setMechanic] = useState<any>(null);
@@ -459,9 +460,18 @@ export default function QCReviewPage() {
               <Camera className="w-5 h-5" />
               Before Photos ({beforePhotos.length})
             </h3>
+            {beforePhotos.length > 4 && (
+              <button
+                type="button"
+                onClick={() => setShowAllPhotos(v => !v)}
+                className="text-xs text-blue-700 underline mb-2"
+              >
+                {showAllPhotos ? 'Show less' : 'Show all'}
+              </button>
+            )}
             {beforePhotos.length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
-                {beforePhotos.slice(0, 4).map((photo: any) => (
+                {(showAllPhotos ? beforePhotos : beforePhotos.slice(0, 4)).map((photo: any) => (
                   <div key={photo.id} className="relative">
                     <img
                       src={photo.photo_url || photo.file_url || photo.media_url}
@@ -487,9 +497,18 @@ export default function QCReviewPage() {
               <Camera className="w-5 h-5" />
               During Photos ({duringPhotos.length})
             </h3>
+            {duringPhotos.length > 4 && (
+              <button
+                type="button"
+                onClick={() => setShowAllPhotos(v => !v)}
+                className="text-xs text-orange-700 underline mb-2"
+              >
+                {showAllPhotos ? 'Show less' : 'Show all'}
+              </button>
+            )}
             {duringPhotos.length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
-                {duringPhotos.slice(0, 4).map((photo: any) => (
+                {(showAllPhotos ? duringPhotos : duringPhotos.slice(0, 4)).map((photo: any) => (
                   <div key={photo.id} className="relative">
                     <img
                       src={photo.photo_url || photo.file_url || photo.media_url}
@@ -515,9 +534,18 @@ export default function QCReviewPage() {
               <Camera className="w-5 h-5" />
               After Photos ({afterPhotos.length})
             </h3>
+            {afterPhotos.length > 4 && (
+              <button
+                type="button"
+                onClick={() => setShowAllPhotos(v => !v)}
+                className="text-xs text-green-700 underline mb-2"
+              >
+                {showAllPhotos ? 'Show less' : 'Show all'}
+              </button>
+            )}
             {afterPhotos.length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
-                {afterPhotos.slice(0, 4).map((photo: any) => (
+                {(showAllPhotos ? afterPhotos : afterPhotos.slice(0, 4)).map((photo: any) => (
                   <div key={photo.id} className="relative">
                     <img
                       src={photo.photo_url || photo.file_url || photo.media_url}

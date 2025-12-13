@@ -15,6 +15,7 @@ import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
 import JobCardSection from '@/components/lead-detail/JobCardSection';
 import InternalAssignment from '@/components/lead-detail/InternalAssignment';
 import InvoiceSection from '@/components/lead-detail/InvoiceSection';
+import MediaSection from '@/components/lead-detail/MediaSection';
 import { 
   ArrowLeft, Clock, User, Car, Calendar, Wrench, 
   CheckCircle, AlertTriangle, Image as ImageIcon, Package,
@@ -1063,10 +1064,27 @@ export default function SupervisorJobDetailPage() {
           </div>
         </div>
 
-        {/* Section 9: Invoice Section - Show when car is ready for billing, delivery or completed */}
-        {['WORK_COMPLETED', 'COMPLETED', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
+        {/* Invoice Section - should stay visible through billing/payment/delivery */}
+        {[
+          'WORK_COMPLETED',
+          'COMPLETED',
+          'QC_APPROVED',
+          'READY_FOR_BILLING',
+          'INVOICE_GENERATED',
+          'AWAITING_PAYMENT',
+          'PARTIAL_PAYMENT',
+          'PAID',
+          'COD_PENDING',
+          'READY_FOR_DELIVERY',
+          'DELIVERED_TO_CUSTOMER',
+          'DELIVERED',
+          'CLOSED',
+        ].includes(lead.status) && (
           <InvoiceSection lead={lead} onUpdate={fetchJobDetails} />
         )}
+
+        {/* Media Section (Adviser can upload; owner upload removed elsewhere) */}
+        <MediaSection lead={lead} onUpdate={fetchJobDetails} canUpload={true} />
 
         {/* Section 8: Status Management */}
         {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS' || lead.status === 'INSPECTED' || lead.status === 'QC_PENDING' || lead.status === 'COMPLETED' || lead.status === 'WORK_COMPLETED') && (

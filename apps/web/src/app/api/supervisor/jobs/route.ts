@@ -152,7 +152,8 @@ export async function GET(request: Request) {
       { data: mechanicsData },
       { data: pickupBoysData },
       { data: extraChargesData },
-      { data: mediaData }
+      { data: mediaData },
+      { data: jobPhotosData }
     ] = await Promise.all([
       // Mechanic jobs
       supabase
@@ -178,6 +179,11 @@ export async function GET(request: Request) {
       supabase
         .from('mechanic_media')
         .select('lead_id, media_category')
+        .in('lead_id', leadIds),
+      // Mechanic job photos (primary upload source: before/during/after)
+      supabase
+        .from('mechanic_job_photos')
+        .select('lead_id, photo_category')
         .in('lead_id', leadIds)
     ]);
 
@@ -211,6 +217,18 @@ export async function GET(request: Request) {
         mediaMap.set(m.lead_id, []);
       }
       mediaMap.get(m.lead_id).push(m);
+    });
+
+    const jobPhotosMap = new Map<string, { before: boolean; during: boolean; after: boolean }>();
+    (jobPhotosData || []).forEach((p: any) => {
+      const leadId = p?.lead_id;
+      const cat = p?.photo_category;
+      if (!leadId) return;
+      const prev = jobPhotosMap.get(leadId) || { before: false, during: false, after: false };
+      if (cat === 'before') prev.before = true;
+      if (cat === 'during') prev.during = true;
+      if (cat === 'after') prev.after = true;
+      jobPhotosMap.set(leadId, prev);
     });
 
     // Collect all unique service_type_ids for batch fetching
@@ -277,10 +295,13 @@ export async function GET(request: Request) {
         return acc;
       }, {});
 
+      // Also check mechanic_job_photos (these are the photos mechanics actually upload now)
+      const jobPhotos = jobPhotosMap.get(job.id) || { before: false, during: false, after: false };
+
       const images = {
-        before: mediaByCategory['BEFORE'] || false,
-        progress: mediaByCategory['PROGRESS'] || false,
-        after: mediaByCategory['AFTER'] || false
+        before: mediaByCategory['BEFORE'] || jobPhotos.before || false,
+        progress: mediaByCategory['PROGRESS'] || jobPhotos.during || false,
+        after: mediaByCategory['AFTER'] || jobPhotos.after || false
       };
 
       // Check for pending extra work from pre-fetched map
@@ -310,9 +331,23 @@ export async function GET(request: Request) {
       // Priority 2: If mechanic completed, show COMPLETED (unless QC approved)
       else if (mechanicStatus === 'COMPLETED') {
         // If mechanic completed, check QC status
-        if (job.qc_status === 'PASSED' || job.status === 'READY_FOR_BILLING' || job.status === 'QC_APPROVED') {
-          // QC already approved - show READY_FOR_BILLING or QC_APPROVED
-          displayStatus = job.status === 'READY_FOR_BILLING' ? 'READY_FOR_BILLING' : (job.status === 'QC_APPROVED' ? 'QC_APPROVED' : 'READY_FOR_BILLING');
+        const postQcStatuses = [
+          'QC_APPROVED',
+          'READY_FOR_BILLING',
+          'INVOICE_GENERATED',
+          'AWAITING_PAYMENT',
+          'PARTIAL_PAYMENT',
+          'PAID',
+          'COD_PENDING',
+          'READY_FOR_DELIVERY',
+          'DELIVERED_TO_CUSTOMER',
+          'DELIVERED',
+          'CLOSED',
+        ];
+
+        if (job.qc_status === 'PASSED' || postQcStatuses.includes(job.status)) {
+          // QC passed / billing started: show real lead status (don't downgrade to READY_FOR_BILLING)
+          displayStatus = job.status;
         } else {
           // Mechanic completed but QC not approved yet - ALWAYS show COMPLETED
           // Override ANY status (IN_PROGRESS, ACCEPTED, VEHICLE_DROPPED_AT_WORKSHOP, etc.)

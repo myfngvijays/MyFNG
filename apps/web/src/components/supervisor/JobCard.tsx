@@ -3,9 +3,10 @@
 import React from 'react';
 import { 
   User, Car, Clock, AlertTriangle, Image as ImageIcon,
-  CheckCircle, XCircle, Truck, DollarSign, Wrench, Eye
+  CheckCircle, XCircle, Truck, DollarSign, Wrench, Eye, FileText, Loader2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
 interface Job {
   id: string;
@@ -52,6 +53,7 @@ interface JobCardProps {
 
 export default function JobCard({ job, onQuickAction }: JobCardProps) {
   const router = useRouter();
+  const [generatingInvoice, setGeneratingInvoice] = React.useState(false);
 
   // SLA Color
   const getSLAColor = () => {
@@ -110,6 +112,60 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
     }
     return job.status.replace(/_/g, ' ');
   };
+
+  const canGenerateInvoice = ['READY_FOR_BILLING', 'QC_APPROVED', 'WORK_COMPLETED'].includes(job.status);
+
+  async function handleGenerateInvoice() {
+    if (generatingInvoice) return;
+    setGeneratingInvoice(true);
+    try {
+      const res = await fetch(`/api/billing/leads/${job.id}/generate-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      // API may return 400 if invoice already exists; it includes `invoice` in body.
+      const invoiceId = data?.invoice?.id;
+
+      if (!res.ok) {
+        if (invoiceId) {
+          toast('Invoice already exists. Opening...');
+        } else {
+          throw new Error(data?.error || 'Failed to generate invoice');
+        }
+      } else {
+        toast.success('Invoice generated. Opening...');
+      }
+
+      if (!invoiceId) {
+        throw new Error('Invoice ID missing in response');
+      }
+
+      // Persist HTML document for a stable, itemized invoice view
+      let docUrl: string | null = null;
+      const persistRes = await fetch(`/api/billing/invoices/${invoiceId}/persist-document`, { method: 'POST' });
+      if (persistRes.ok) {
+        const persisted = await persistRes.json().catch(() => ({}));
+        docUrl = persisted?.document_url || null;
+      }
+
+      // Fallback: open generated HTML directly
+      const openUrl = docUrl || `/api/billing/invoices/${invoiceId}/generate-pdf`;
+      window.open(openUrl, '_blank');
+
+      // Refresh current list so status updates (READY_FOR_BILLING -> INVOICE_GENERATED)
+      setTimeout(() => {
+        router.refresh();
+      }, 200);
+    } catch (e: any) {
+      console.error('Generate invoice error:', e);
+      toast.error(e?.message || 'Failed to generate invoice');
+    } finally {
+      setGeneratingInvoice(false);
+    }
+  }
 
   // Priority Badge
   const getPriorityBadge = () => {
@@ -245,6 +301,19 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
         >
           View Details
         </button>
+
+        {/* Generate Invoice (opens itemized invoice in new tab) */}
+        {canGenerateInvoice && (
+          <button
+            onClick={handleGenerateInvoice}
+            disabled={generatingInvoice}
+            className="btn bg-emerald-600 hover:bg-emerald-700 text-white text-sm flex items-center gap-2 disabled:opacity-50"
+            title="Generate invoice and open itemized bill"
+          >
+            {generatingInvoice ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+            {generatingInvoice ? 'Generating…' : 'Generate Invoice'}
+          </button>
+        )}
 
         {/* QC Review Button - Show when status is COMPLETED or WORK_COMPLETED */}
         {(job.status === 'COMPLETED' || job.status === 'WORK_COMPLETED') && (

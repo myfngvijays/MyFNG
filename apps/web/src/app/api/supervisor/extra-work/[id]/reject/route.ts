@@ -16,20 +16,39 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile with role
-    const { data: userProfile, error: profileError } = await supabase
+    // Get user profile with role (prefer email lookup; fallback to id)
+    const { data: userProfileByEmail } = await supabase
       .from('users_login')
-      .select('id, workshop_id, roles!inner(role_code)')
-      .eq('id', user.id)
-      .single();
+      .select('id, email, role, workshop_id, roles!inner(role_code)')
+      .eq('email', user.email)
+      .maybeSingle();
 
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    const { data: userProfileById, error: profileErrorById } = !userProfileByEmail
+      ? await supabase
+          .from('users_login')
+          .select('id, email, role, workshop_id, roles!inner(role_code)')
+          .eq('id', user.id)
+          .maybeSingle()
+      : { data: null, error: null };
+
+    const userProfile = userProfileByEmail || userProfileById;
+
+    if (!userProfile) {
+      return NextResponse.json(
+        {
+          error: 'User profile not found',
+          hint: 'No matching users_login row for this session user',
+          user_email: user.email,
+          profile_lookup_error: profileErrorById?.message,
+        },
+        { status: 404 }
+      );
     }
 
     // Verify user is supervisor
     const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'WORKSHOP_SUPERVISOR') {
+    const legacyRole = (userProfile as any)?.role;
+    if (roleCode !== 'WORKSHOP_SUPERVISOR' && legacyRole !== 'workshop_supervisor') {
       return NextResponse.json({ error: 'Forbidden: Supervisor only' }, { status: 403 });
     }
 

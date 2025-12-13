@@ -16,20 +16,36 @@ export async function POST(
     }
 
     // Get user profile
-    const { data: userProfile, error: profileError } = await supabase
+    // NOTE: `users_login.id` is not always the same as Supabase Auth `user.id` in this codebase.
+    // Prefer email lookup (consistent with other routes), fallback to id.
+    const { data: userProfileByEmail } = await supabase
       .from('users_login')
-      .select('id, workshop_id, roles!inner(role_code)')
-      .eq('id', user.id)
-      .single();
+      .select('id, email, role, workshop_id, roles!inner(role_code)')
+      .eq('email', user.email)
+      .maybeSingle();
 
-    if (profileError || !userProfile) {
-      console.error('Profile error:', profileError);
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    const { data: userProfileById, error: profileErrorById } = !userProfileByEmail
+      ? await supabase
+          .from('users_login')
+          .select('id, email, role, workshop_id, roles!inner(role_code)')
+          .eq('id', user.id)
+          .maybeSingle()
+      : { data: null, error: null };
+
+    const userProfile = userProfileByEmail || userProfileById;
+
+    if (!userProfile) {
+      console.error('Profile error:', profileErrorById);
+      return NextResponse.json(
+        { error: 'User profile not found', user_email: user.email },
+        { status: 404 }
+      );
     }
 
     // Verify user is mechanic
     const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'WORKSHOP_MECHANIC') {
+    const legacyRole = (userProfile as any)?.role;
+    if (roleCode !== 'WORKSHOP_MECHANIC' && legacyRole !== 'workshop_mechanic') {
       return NextResponse.json({ error: 'Forbidden: Mechanic only' }, { status: 403 });
     }
 

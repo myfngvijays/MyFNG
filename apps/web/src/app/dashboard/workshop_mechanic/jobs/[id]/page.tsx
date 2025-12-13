@@ -11,6 +11,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
 import PartsUsedUpload from '@/components/mechanic/PartsUsedUpload';
+import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
 
 interface JobDetail {
   id: string;
@@ -27,6 +28,8 @@ interface JobDetail {
   problem_description: string;
   service_types: string[];
   mechanic_status: string;
+  lead_status: string;
+  qc_status?: string;
   job_priority: string;
   sla_remaining_minutes: number;
   assigned_at: string;
@@ -207,7 +210,9 @@ export default function MechanicJobDetailPage() {
             vehicle_fuel_type,
             problem_description,
             service_type_ids,
-            subservice_ids
+            subservice_ids,
+            status,
+            qc_status
           )
         `)
         .eq('lead_id', leadId)
@@ -245,6 +250,8 @@ export default function MechanicJobDetailPage() {
           problem_description: jobData.service_leads?.problem_description || '',
           service_types: serviceTypeIds,
           mechanic_status: jobData.mechanic_status,
+          lead_status: jobData.service_leads?.status || '',
+          qc_status: jobData.service_leads?.qc_status || undefined,
           job_priority: jobData.job_priority,
           sla_remaining_minutes: jobData.sla_remaining_minutes ?? calculateSLARemaining(jobData.expected_completion_time),
           assigned_at: jobData.assigned_at,
@@ -857,6 +864,18 @@ export default function MechanicJobDetailPage() {
     }
   };
 
+  const getMechanicStatusLabel = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        // Mechanic-side "completed" means work submitted for QC, not end-to-end completion.
+        return 'Work Submitted (QC Pending)';
+      case 'WAITING_APPROVAL':
+        return 'Need Approval';
+      default:
+        return status.replace(/_/g, ' ');
+    }
+  };
+
   // Fetch service type names from database
   async function fetchServiceAddonNames(addonIds: string[]) {
     if (!addonIds || addonIds.length === 0) {
@@ -930,6 +949,9 @@ export default function MechanicJobDetailPage() {
                          job.checklist_completed && 
                          job.after_images_count >= job.min_after_images;
 
+  const pendingExtraWorkCount = extraWorkRequests.filter((r: any) => r?.status === 'PENDING').length;
+  const latestExtraWorkStatus = extraWorkRequests[0]?.status as string | undefined;
+
   return (
     <DashboardLayout role="workshop_mechanic">
       <div className="space-y-4 sm:space-y-5 md:space-y-6">
@@ -945,9 +967,23 @@ export default function MechanicJobDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            <span className={`px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm ${getStatusColor(job.mechanic_status)}`}>
-              {job.mechanic_status.replace('_', ' ')}
-            </span>
+            {job.lead_status ? (
+              <span
+                className={[
+                  'px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm border',
+                  getLeadStatusColor(job.lead_status).bg,
+                  getLeadStatusColor(job.lead_status).text,
+                  getLeadStatusColor(job.lead_status).border,
+                ].join(' ')}
+                title={job.qc_status ? `QC: ${job.qc_status}` : undefined}
+              >
+                {getLeadStatusLabel(job.lead_status)}
+              </span>
+            ) : (
+              <span className={`px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm ${getStatusColor(job.mechanic_status)}`}>
+                {getMechanicStatusLabel(job.mechanic_status)}
+              </span>
+            )}
             {job.job_priority !== 'NORMAL' && (
               <span className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold bg-red-100 text-red-800 border border-red-300 text-xs sm:text-sm">
                 {job.job_priority}
@@ -1076,21 +1112,44 @@ export default function MechanicJobDetailPage() {
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-200 overflow-x-auto">
-          <div className="flex gap-2 sm:gap-3 md:gap-4 min-w-max">
-            {['overview', 'checklist', 'media', 'parts', 'notes'].map((tab) => (
+        <div className="border-b border-gray-200">
+          <div className="flex items-center justify-between gap-2">
+            <div className="overflow-x-auto">
+              <div className="flex gap-2 sm:gap-3 md:gap-4 min-w-max">
+                {['overview', 'checklist', 'media', 'parts', 'notes'].map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-3 sm:px-4 py-1.5 sm:py-2 font-medium capitalize border-b-2 transition whitespace-nowrap text-xs sm:text-sm ${
+                      activeTab === tab
+                        ? 'border-brand-primary text-brand-primary'
+                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Extra work requested indicator (shows when mechanic has submitted a request) */}
+            {extraWorkRequests.length > 0 && (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 font-medium capitalize border-b-2 transition whitespace-nowrap text-xs sm:text-sm ${
-                  activeTab === tab
-                    ? 'border-brand-primary text-brand-primary'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                type="button"
+                onClick={() => document.getElementById('extra-work-requests')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-semibold border whitespace-nowrap ${
+                  pendingExtraWorkCount > 0
+                    ? 'bg-orange-50 text-orange-800 border-orange-200'
+                    : 'bg-green-50 text-green-800 border-green-200'
                 }`}
+                title="Scroll to extra work requests"
               >
-                {tab}
+                <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                {pendingExtraWorkCount > 0
+                  ? `Extra Work Pending (${pendingExtraWorkCount})`
+                  : `Extra Work: ${String(latestExtraWorkStatus || 'UPDATED')}`}
               </button>
-            ))}
+            )}
           </div>
         </div>
 
@@ -1177,7 +1236,7 @@ export default function MechanicJobDetailPage() {
                   <Camera className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 mx-auto mb-1.5 sm:mb-2 text-yellow-600" />
                   <p className="text-xs sm:text-sm text-gray-600">Progress Images</p>
                   <p className="text-xl sm:text-2xl font-bold text-yellow-700">
-                    {job.progress_images_count} / {job.min_progress_images}
+                    {job.progress_images_count}
                   </p>
                 </div>
                 <div className={`text-center p-3 sm:p-4 rounded-lg border-2 ${
@@ -1190,13 +1249,8 @@ export default function MechanicJobDetailPage() {
                   <p className={`text-xl sm:text-2xl font-bold ${
                     job.after_images_count >= job.min_after_images ? 'text-green-700' : 'text-green-700'
                   }`}>
-                    {job.after_images_count} / {job.min_after_images}
+                    {job.after_images_count}
                   </p>
-                  {job.after_images_count < job.min_after_images && (
-                    <p className="text-[10px] sm:text-xs text-red-600 mt-0.5 sm:mt-1 font-semibold">
-                      {job.min_after_images - job.after_images_count} more needed
-                    </p>
-                  )}
                 </div>
                 <div className={`text-center p-3 sm:p-4 rounded-lg border-2 sm:col-span-2 md:col-span-1 ${
                   job.checklist_completed 
@@ -1330,7 +1384,7 @@ export default function MechanicJobDetailPage() {
                               Required: {job.min_after_images} photos (Front, Rear, Left, Right, Engine Bay, Old Parts)
                             </p>
                             <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
-                              Current: {job.after_images_count} / {job.min_after_images} uploaded
+                              Uploaded: {job.after_images_count}
                             </p>
                           </div>
                         </div>
@@ -2169,7 +2223,7 @@ export default function MechanicJobDetailPage() {
 
         {/* Extra Work Requests List */}
         {extraWorkRequests.length > 0 && (
-          <div className="card p-3 sm:p-4 md:p-5">
+          <div id="extra-work-requests" className="card p-3 sm:p-4 md:p-5">
             <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Extra Work Requests</h2>
             <div className="space-y-2 sm:space-y-3">
               {extraWorkRequests.map((request) => (

@@ -13,6 +13,8 @@ import { createClient } from '@/lib/supabase/client';
 interface MediaSectionProps {
   lead: any;
   onUpdate?: () => void;
+  /** If false, hide upload UI (view-only). */
+  canUpload?: boolean;
 }
 
 interface MediaFile {
@@ -33,7 +35,7 @@ interface PreviewMedia {
   type: 'IMAGE' | 'VIDEO';
 }
 
-export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
+export default function MediaSection({ lead, onUpdate, canUpload = true }: MediaSectionProps) {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -213,53 +215,55 @@ export default function MediaSection({ lead, onUpdate }: MediaSectionProps) {
       </h2>
 
       {/* Upload Form */}
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-        <h3 className="font-semibold mb-3">Upload New Media</h3>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            >
-              <option value="CUSTOMER_UPLOAD">Customer Upload</option>
-              <option value="INSPECTION">Inspection</option>
-              <option value="PROGRESS">Progress</option>
-              <option value="COMPLETION">Completion</option>
-              <option value="AUDIT">Audit</option>
-              <option value="DOCUMENT">Document</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add a description..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
-          </div>
-          <div>
-            <label className="btn btn-primary cursor-pointer inline-flex items-center gap-2">
-              <Upload className="w-4 h-4" />
-              {uploading ? 'Uploading...' : 'Choose Files (Multiple)'}
+      {canUpload && (
+        <div className="mb-6 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+          <h3 className="font-semibold mb-3">Upload New Media</h3>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              >
+                <option value="CUSTOMER_UPLOAD">Customer Upload</option>
+                <option value="INSPECTION">Inspection</option>
+                <option value="PROGRESS">Progress</option>
+                <option value="COMPLETION">Completion</option>
+                <option value="AUDIT">Audit</option>
+                <option value="DOCUMENT">Document</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
               <input
-                type="file"
-                accept="image/*,video/*"
-                multiple
-                onChange={handleFileUpload}
-                disabled={uploading}
-                className="hidden"
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add a description..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
-            </label>
-            <p className="text-xs text-gray-500 mt-2">
-              📁 Select multiple files • Max 10MB each • Images: JPEG, PNG, WEBP • Videos: MP4, MOV
-            </p>
+            </div>
+            <div>
+              <label className="btn btn-primary cursor-pointer inline-flex items-center gap-2">
+                <Upload className="w-4 h-4" />
+                {uploading ? 'Uploading...' : 'Choose Files (Multiple)'}
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                  className="hidden"
+                />
+              </label>
+              <p className="text-xs text-gray-500 mt-2">
+                📁 Select multiple files • Max 10MB each • Images: JPEG, PNG, WEBP • Videos: MP4, MOV
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Media Gallery */}
       {loading ? (

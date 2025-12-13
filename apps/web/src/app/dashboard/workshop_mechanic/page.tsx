@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
 
 type FilterType = 'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'HOLD' | 'COMPLETED' | 'NEED_APPROVAL';
 
@@ -25,6 +26,7 @@ interface JobCardData {
   service_type_names: string[];
   service_addon_names: string[];
   mechanic_status: string;
+  lead_status?: string;
   job_priority: string;
   sla_remaining_minutes: number;
   pickup_status: string;
@@ -301,6 +303,7 @@ export default function WorkshopMechanicDashboard() {
           service_addon_names: addonNames, // Add addon names for display
           problem_description: mj.lead?.problem_description || '',
           mechanic_status: mj.mechanic_status,
+          lead_status: mj.lead?.status || undefined,
           job_priority: mj.job_priority,
           assigned_at: mj.assigned_at,
           started_at: mj.started_at,
@@ -478,6 +481,18 @@ export default function WorkshopMechanicDashboard() {
     }
   }
 
+  function getMechanicStatusLabel(status: string) {
+    switch (status) {
+      case 'COMPLETED':
+        // Mechanic-side "completed" means work submitted for QC, not end-to-end completion.
+        return 'Work Submitted (QC Pending)';
+      case 'WAITING_APPROVAL':
+        return 'Need Approval';
+      default:
+        return status.replace(/_/g, ' ');
+    }
+  }
+
   function formatSLA(minutes: number) {
     if (minutes < 0) return <span className="text-red-600 font-semibold">Overdue</span>;
     if (minutes < 60) return <span className="text-orange-600">{minutes}m remaining</span>;
@@ -602,9 +617,22 @@ export default function WorkshopMechanicDashboard() {
                     <div className="flex-1 min-w-0 w-full">
                     <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
                       <h3 className="text-lg sm:text-xl font-bold truncate">{job.lead_number}</h3>
-                      <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 ${getStatusColor(job.mechanic_status)}`}>
-                        {job.mechanic_status.replace('_', ' ')}
-                      </span>
+                      {job.lead_status ? (
+                        <span
+                          className={[
+                            'px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 border',
+                            getLeadStatusColor(job.lead_status).bg,
+                            getLeadStatusColor(job.lead_status).text,
+                            getLeadStatusColor(job.lead_status).border,
+                          ].join(' ')}
+                        >
+                          {getLeadStatusLabel(job.lead_status)}
+                        </span>
+                      ) : (
+                        <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 ${getStatusColor(job.mechanic_status)}`}>
+                          {getMechanicStatusLabel(job.mechanic_status)}
+                        </span>
+                      )}
                       {job.job_priority !== 'NORMAL' && (
                         <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold border flex-shrink-0 ${getPriorityColor(job.job_priority)}`}>
                           {job.job_priority}

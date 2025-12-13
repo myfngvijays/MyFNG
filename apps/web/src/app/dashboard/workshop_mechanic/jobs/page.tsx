@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Wrench, Clock, Camera, CheckCircle, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
 
 export default function MechanicJobsPage() {
   const router = useRouter();
@@ -147,6 +148,7 @@ export default function MechanicJobsPage() {
           service_type_names: serviceNames,
           problem_description: mj.lead?.problem_description || '',
           mechanic_status: mj.mechanic_status,
+          lead_status: mj.lead?.status || '',
           job_priority: mj.job_priority,
           assigned_at: mj.assigned_at,
           started_at: mj.started_at,
@@ -252,19 +254,32 @@ export default function MechanicJobsPage() {
                     </p>
                   )}
                 </div>
-                <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold flex-shrink-0 ${
-                  job.mechanic_status === 'IN_PROGRESS' 
-                    ? 'bg-blue-100 text-blue-700' 
-                    : job.mechanic_status === 'COMPLETED'
-                    ? 'bg-purple-100 text-purple-700'
-                    : 'bg-green-100 text-green-700'
-                }`}>
-                  {job.mechanic_status === 'IN_PROGRESS' 
-                    ? 'In Progress' 
-                    : job.mechanic_status === 'COMPLETED'
-                    ? 'Completed'
-                    : 'Assigned'}
-                </span>
+                {job.lead_status ? (
+                  <span
+                    className={[
+                      'px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold flex-shrink-0 border',
+                      getLeadStatusColor(job.lead_status).bg,
+                      getLeadStatusColor(job.lead_status).text,
+                      getLeadStatusColor(job.lead_status).border,
+                    ].join(' ')}
+                  >
+                    {getLeadStatusLabel(job.lead_status)}
+                  </span>
+                ) : (
+                  <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold flex-shrink-0 ${
+                    job.mechanic_status === 'IN_PROGRESS' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : job.mechanic_status === 'COMPLETED'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'bg-green-100 text-green-700'
+                  }`}>
+                    {job.mechanic_status === 'IN_PROGRESS' 
+                      ? 'In Progress' 
+                      : job.mechanic_status === 'COMPLETED'
+                      ? 'Work Submitted (QC Pending)'
+                      : 'Assigned'}
+                  </span>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">

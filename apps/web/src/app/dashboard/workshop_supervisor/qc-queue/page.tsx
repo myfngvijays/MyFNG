@@ -70,6 +70,18 @@ export default function QCQueuePage() {
           fetchQCQueue();
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_job_photos'
+        },
+        (payload) => {
+          console.log('Mechanic job photos updated:', payload);
+          fetchQCQueue();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -238,6 +250,81 @@ export default function QCQueuePage() {
       }
 
       // Fetch mechanic names and image counts from mechanic_job_photos
+      const leadIdsForCounts = (qcJobs || []).map((j: any) => j.id);
+
+      // Map lead_id -> mechanic_jobs.id (job_id) so we can count mechanic_job_photos
+      const { data: mechanicJobsForLeads } = leadIdsForCounts.length
+        ? await supabase
+            .from('mechanic_jobs')
+            .select('id, lead_id')
+            .in('lead_id', leadIdsForCounts)
+        : { data: [] as any[] };
+
+      const leadIdToJobId = new Map<string, string>();
+      (mechanicJobsForLeads || []).forEach((mj: any) => {
+        if (mj?.lead_id && mj?.id) leadIdToJobId.set(mj.lead_id, mj.id);
+      });
+
+      const jobIds = Array.from(new Set(Array.from(leadIdToJobId.values())));
+
+      // Batch fetch photo rows to compute counts client-side (fast + avoids N queries)
+      const { data: jobPhotos } = jobIds.length
+        ? await supabase
+            .from('mechanic_job_photos')
+            .select('job_id, photo_category')
+            .in('job_id', jobIds)
+        : { data: [] as any[] };
+
+      const jobPhotoCounts = new Map<string, { before: number; after: number }>();
+      (jobPhotos || []).forEach((p: any) => {
+        const jobId = p?.job_id;
+        const cat = p?.photo_category;
+        if (!jobId || (cat !== 'before' && cat !== 'after')) return;
+        const prev = jobPhotoCounts.get(jobId) || { before: 0, after: 0 };
+        if (cat === 'before') prev.before += 1;
+        if (cat === 'after') prev.after += 1;
+        jobPhotoCounts.set(jobId, prev);
+      });
+
+      // Batch fetch legacy media rows too (some older flows still use these)
+      const { data: leadMediaRows } = leadIdsForCounts.length
+        ? await supabase
+            .from('lead_media')
+            .select('lead_id, category')
+            .in('lead_id', leadIdsForCounts)
+            .in('category', ['BEFORE', 'AFTER'])
+        : { data: [] as any[] };
+
+      const leadMediaCounts = new Map<string, { before: number; after: number }>();
+      (leadMediaRows || []).forEach((m: any) => {
+        const leadId = m?.lead_id;
+        const cat = m?.category;
+        if (!leadId || (cat !== 'BEFORE' && cat !== 'AFTER')) return;
+        const prev = leadMediaCounts.get(leadId) || { before: 0, after: 0 };
+        if (cat === 'BEFORE') prev.before += 1;
+        if (cat === 'AFTER') prev.after += 1;
+        leadMediaCounts.set(leadId, prev);
+      });
+
+      const { data: mechanicMediaRows } = leadIdsForCounts.length
+        ? await supabase
+            .from('mechanic_media')
+            .select('lead_id, media_category')
+            .in('lead_id', leadIdsForCounts)
+            .in('media_category', ['BEFORE', 'AFTER'])
+        : { data: [] as any[] };
+
+      const mechanicMediaCounts = new Map<string, { before: number; after: number }>();
+      (mechanicMediaRows || []).forEach((m: any) => {
+        const leadId = m?.lead_id;
+        const cat = m?.media_category;
+        if (!leadId || (cat !== 'BEFORE' && cat !== 'AFTER')) return;
+        const prev = mechanicMediaCounts.get(leadId) || { before: 0, after: 0 };
+        if (cat === 'BEFORE') prev.before += 1;
+        if (cat === 'AFTER') prev.after += 1;
+        mechanicMediaCounts.set(leadId, prev);
+      });
+
       const jobsWithDetails = await Promise.all((qcJobs || []).map(async (job) => {
         // Get mechanic name
         const { data: mechanic } = await supabase
@@ -246,37 +333,17 @@ export default function QCQueuePage() {
           .eq('id', job.assigned_mechanic_id)
           .maybeSingle();
 
-        // Get image counts from lead_media table
-        const { count: beforeCount } = await supabase
-          .from('lead_media')
-          .select('*', { count: 'exact', head: true })
-          .eq('lead_id', job.id)
-          .eq('category', 'BEFORE');
+        const legacyLead = leadMediaCounts.get(job.id) || { before: 0, after: 0 };
+        const legacyMechanic = mechanicMediaCounts.get(job.id) || { before: 0, after: 0 };
 
-        const { count: afterCount } = await supabase
-          .from('lead_media')
-          .select('*', { count: 'exact', head: true })
-          .eq('lead_id', job.id)
-          .eq('category', 'AFTER');
-
-        // Also check mechanic_media table as fallback
-        const { count: beforeCountMechanic } = await supabase
-          .from('mechanic_media')
-          .select('*', { count: 'exact', head: true })
-          .eq('lead_id', job.id)
-          .eq('media_category', 'BEFORE');
-
-        const { count: afterCountMechanic } = await supabase
-          .from('mechanic_media')
-          .select('*', { count: 'exact', head: true })
-          .eq('lead_id', job.id)
-          .eq('media_category', 'AFTER');
+        const mjId = leadIdToJobId.get(job.id);
+        const jobPhoto = mjId ? (jobPhotoCounts.get(mjId) || { before: 0, after: 0 }) : { before: 0, after: 0 };
 
         return {
           ...job,
           mechanic_name: mechanic?.full_name || 'Unknown',
-          before_images_count: (beforeCount || 0) + (beforeCountMechanic || 0),
-          after_images_count: (afterCount || 0) + (afterCountMechanic || 0),
+          before_images_count: legacyLead.before + legacyMechanic.before + jobPhoto.before,
+          after_images_count: legacyLead.after + legacyMechanic.after + jobPhoto.after,
           work_summary: job.notes || 'No summary provided'
         };
       }));
