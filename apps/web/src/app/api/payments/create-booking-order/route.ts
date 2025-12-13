@@ -5,7 +5,7 @@
 
 import { NextResponse } from 'next/server';
 
-const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 
 export async function POST(request: Request) {
@@ -19,6 +19,16 @@ export async function POST(request: Request) {
 
     if (!customerName || !customerPhone) {
       return NextResponse.json({ error: 'Customer details required' }, { status: 400 });
+    }
+
+    if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+      return NextResponse.json(
+        {
+          error: 'Payment gateway not configured',
+          hint: 'Missing RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET on server environment',
+        },
+        { status: 500 }
+      );
     }
 
     // Convert to paise (Razorpay uses smallest currency unit)

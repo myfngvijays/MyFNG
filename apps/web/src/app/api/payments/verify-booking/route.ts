@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 
 export async function POST(request: Request) {
   try {
@@ -17,6 +18,14 @@ export async function POST(request: Request) {
         verified: false, 
         error: 'Missing required fields' 
       }, { status: 400 });
+    }
+
+    if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+      return NextResponse.json({
+        verified: false,
+        message: 'Payment gateway not configured',
+        hint: 'Missing RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET on server environment',
+      }, { status: 500 });
     }
 
     // Verify signature
@@ -36,7 +45,6 @@ export async function POST(request: Request) {
     }
 
     // Fetch payment details from Razorpay to confirm status
-    const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
     const razorpayResponse = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}`, {
       method: 'GET',
       headers: {
