@@ -629,9 +629,9 @@ export default function WorkshopMechanicDashboard() {
                           {getLeadStatusLabel(job.lead_status)}
                         </span>
                       ) : (
-                        <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 ${getStatusColor(job.mechanic_status)}`}>
+                      <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 ${getStatusColor(job.mechanic_status)}`}>
                           {getMechanicStatusLabel(job.mechanic_status)}
-                        </span>
+                      </span>
                       )}
                       {job.job_priority !== 'NORMAL' && (
                         <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold border flex-shrink-0 ${getPriorityColor(job.job_priority)}`}>

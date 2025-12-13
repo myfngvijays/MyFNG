@@ -980,9 +980,9 @@ export default function MechanicJobDetailPage() {
                 {getLeadStatusLabel(job.lead_status)}
               </span>
             ) : (
-              <span className={`px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm ${getStatusColor(job.mechanic_status)}`}>
+            <span className={`px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm ${getStatusColor(job.mechanic_status)}`}>
                 {getMechanicStatusLabel(job.mechanic_status)}
-              </span>
+            </span>
             )}
             {job.job_priority !== 'NORMAL' && (
               <span className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold bg-red-100 text-red-800 border border-red-300 text-xs sm:text-sm">
@@ -1115,20 +1115,20 @@ export default function MechanicJobDetailPage() {
         <div className="border-b border-gray-200">
           <div className="flex items-center justify-between gap-2">
             <div className="overflow-x-auto">
-              <div className="flex gap-2 sm:gap-3 md:gap-4 min-w-max">
-                {['overview', 'checklist', 'media', 'parts', 'notes'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-3 sm:px-4 py-1.5 sm:py-2 font-medium capitalize border-b-2 transition whitespace-nowrap text-xs sm:text-sm ${
-                      activeTab === tab
-                        ? 'border-brand-primary text-brand-primary'
-                        : 'border-transparent text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
+          <div className="flex gap-2 sm:gap-3 md:gap-4 min-w-max">
+            {['overview', 'checklist', 'media', 'parts', 'notes'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 font-medium capitalize border-b-2 transition whitespace-nowrap text-xs sm:text-sm ${
+                  activeTab === tab
+                    ? 'border-brand-primary text-brand-primary'
+                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
               </div>
             </div>
 

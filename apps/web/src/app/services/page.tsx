@@ -23,6 +23,7 @@ const services = [
     id: 1,
     slug: 'periodic-service',
     title: 'Periodic Service',
+    bookPrefill: { category: 'PERIODIC SERVICE', query: 'BASIC' },
     icon: Activity,
     description: 'AI-powered scheduled maintenance with digital health reports. Keep your car running smoothly with manufacturer-recommended service packages.',
     longDescription: 'Our Periodic Service ensures your vehicle receives comprehensive maintenance at regular intervals. Using AI-powered diagnostics, we provide detailed health reports and preventive care to extend your car\'s lifespan.',
@@ -50,6 +51,7 @@ const services = [
     id: 2,
     slug: 'engine-service',
     title: 'Engine Service',
+    bookPrefill: { category: 'ENGINE SERVICE', query: 'ENGINE' },
     icon: Zap,
     description: 'Complete engine diagnostics powered by AI. Comprehensive engine care to keep your car\'s heart running perfectly.',
     longDescription: 'Our Engine Service provides thorough diagnostics and maintenance for your vehicle\'s engine. Using advanced AI technology, we identify potential issues before they become costly problems.',
@@ -77,6 +79,7 @@ const services = [
     id: 3,
     slug: 'ac-service',
     title: 'AC Service',
+    bookPrefill: { category: 'AC SERVICE', query: 'AC' },
     icon: Shield,
     description: 'Complete climate control solutions. Keep your cabin cool and fresh with professional AC maintenance.',
     longDescription: 'Professional AC service ensures optimal cooling performance and air quality. We provide comprehensive AC system maintenance, gas refilling, and cleaning services.',
@@ -104,6 +107,7 @@ const services = [
     id: 4,
     slug: 'battery-service',
     title: 'Battery Service',
+    bookPrefill: { category: 'BATTERY SERVICE', query: 'BATTERY' },
     icon: Battery,
     description: 'AI-powered battery health analysis. Ensure reliable starts and optimal electrical system performance.',
     longDescription: 'Comprehensive battery service includes health analysis, charging system check, and replacement if needed. Our AI-powered diagnostics predict battery life and prevent unexpected failures.',
@@ -131,6 +135,7 @@ const services = [
     id: 5,
     slug: 'brake-service',
     title: 'Brake Service',
+    bookPrefill: { category: 'BRAKE SERVICE', query: 'BRAKE' },
     icon: Shield,
     description: 'Complete brake system inspection. Ensure your safety with professional brake maintenance.',
     longDescription: 'Comprehensive brake service ensures your vehicle\'s stopping power and safety. We inspect, repair, and replace brake components to maintain optimal braking performance.',
@@ -158,6 +163,7 @@ const services = [
     id: 6,
     slug: 'tyre-wheel-care',
     title: 'Tyre & Wheel Care',
+    bookPrefill: { category: 'TYRE & WHEEL CARE', query: 'TYRE' },
     icon: Car,
     description: 'Professional tyre and wheel services. Maintain optimal grip, handling, and safety.',
     longDescription: 'Complete tyre and wheel care services including rotation, alignment, balancing, and replacement. We ensure your vehicle maintains optimal road contact and handling.',
@@ -185,6 +191,7 @@ const services = [
     id: 7,
     slug: 'detailing-service',
     title: 'Detailing Service',
+    bookPrefill: { category: 'DETAILING SERVICE', query: 'DETAIL' },
     icon: Sparkles,
     description: 'Premium car detailing and protection. Restore your car\'s showroom shine.',
     longDescription: 'Premium detailing service that goes beyond a regular wash. We provide comprehensive interior and exterior cleaning, polishing, and protection services.',
@@ -212,6 +219,7 @@ const services = [
     id: 8,
     slug: 'denting-painting',
     title: 'Denting & Painting',
+    bookPrefill: { category: 'DENTING PAINTING', query: 'PAINT' },
     icon: Car,
     description: 'High-precision body work. Restore your car\'s appearance with professional denting and painting.',
     longDescription: 'Professional body work services including dent removal, color matching, and painting. We use premium paints and advanced techniques for a flawless finish.',
@@ -284,12 +292,21 @@ export default function ServicesPage() {
                         </li>
                       ))}
                     </ul>
-                    <Link
-                      href={`/services/${service.slug}`}
-                      className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition"
-                    >
-                      Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    </Link>
+                    <div className="flex items-center justify-between gap-3">
+                      <Link
+                        href={`/services/${service.slug}`}
+                        className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition"
+                      >
+                        Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      </Link>
+
+                      <Link
+                        href={`/book-service?prefill_category=${encodeURIComponent(service.bookPrefill.category)}&prefill_query=${encodeURIComponent(service.bookPrefill.query)}`}
+                        className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-2"
+                      >
+                        Book Now
+                      </Link>
+                    </div>
                   </div>
                 </div>
               );
@@ -333,8 +350,19 @@ export default function ServicesPage() {
                         </li>
                       ))}
                     </ul>
-                    <div className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition">
-                      Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition">
+                        Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      </div>
+
+                      {/* Stop navigation to details page and go to booking with prefill */}
+                      <Link
+                        href={`/book-service?prefill_category=${encodeURIComponent(service.bookPrefill.category)}&prefill_query=${encodeURIComponent(service.bookPrefill.query)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-2"
+                      >
+                        Book Now
+                      </Link>
                     </div>
                   </div>
                 </Link>

@@ -6,6 +6,7 @@ import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { createClient } from '@/lib/supabase/client';
 import { loadRazorpayScript } from '@/lib/services/paymentService';
+import { getFallbackChecklistTemplate } from '@/lib/services/customerServiceChecklist';
 import { 
   MapPin, Car, User, Phone, Loader2, Search, CheckCircle, 
   Navigation, ArrowRight, ArrowLeft, Send, Smile, PartyPopper,
@@ -74,6 +75,13 @@ export default function BookServicePage() {
   const [serviceTypes, setServiceTypes] = useState<any[]>([]);
   const [serviceCategories, setServiceCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  // UI: show-more checklist per service card
+  const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
+  const [serviceChecklistTemplates, setServiceChecklistTemplates] = useState<
+    Record<string, { title?: string; points?: number; items: any[] }>
+  >({});
+  const [bookingPrefillApplied, setBookingPrefillApplied] = useState(false);
+  const [bookingPrefillParams, setBookingPrefillParams] = useState<{ category?: string; query?: string } | null>(null);
   const [servicePricing, setServicePricing] = useState<Record<string, number>>({});
   const [loadingPricing, setLoadingPricing] = useState(false);
   const [loadingServiceTypes, setLoadingServiceTypes] = useState(false);
@@ -184,6 +192,47 @@ export default function BookServicePage() {
       setSelectedCategory(serviceCategories[0].id);
     }
   }, [serviceCategories.length]);
+
+  // Read booking prefill params (client-side) to avoid useSearchParams() build constraint
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const prefillCategory = sp.get('prefill_category') || undefined;
+    const prefillQuery = sp.get('prefill_query') || undefined;
+    if (prefillCategory || prefillQuery) {
+      setBookingPrefillParams({ category: prefillCategory, query: prefillQuery });
+    }
+  }, []);
+
+  // Prefill service selection when coming from /services "Book Now"
+  useEffect(() => {
+    if (bookingPrefillApplied) return;
+    if (currentStep !== 2) return; // only when selecting services
+    if (!serviceTypes.length) return;
+
+    const prefillCategory = bookingPrefillParams?.category || null;
+    const prefillQuery = bookingPrefillParams?.query || null;
+    if (!prefillCategory && !prefillQuery) return;
+
+    const categoryWanted = prefillCategory ? String(prefillCategory) : null;
+    const queryWanted = prefillQuery ? String(prefillQuery).toLowerCase() : null;
+
+    const candidates = serviceTypes
+      .filter((s: any) => (categoryWanted ? s.category === categoryWanted : true))
+      .filter((s: any) => (queryWanted ? String(s.name || '').toLowerCase().includes(queryWanted) : true));
+
+    const pick = candidates[0] || null;
+    if (pick?.id) {
+      if (categoryWanted) setSelectedCategory(categoryWanted);
+      setFormData((prev) => ({
+        ...prev,
+        selectedServices: prev.selectedServices.includes(pick.id)
+          ? prev.selectedServices
+          : [...prev.selectedServices, pick.id],
+      }));
+      setBookingPrefillApplied(true);
+    }
+  }, [bookingPrefillApplied, currentStep, serviceTypes.length, bookingPrefillParams]);
 
   // Filter car suggestions
   useEffect(() => {
@@ -431,6 +480,36 @@ export default function BookServicePage() {
         });
         
         setServiceTypes(allServices);
+
+        // Fetch customer-facing checklist templates (DB-driven) for auto “Show more”.
+        // If the table doesn't exist / isn't accessible yet, we silently ignore and use fallbacks.
+        try {
+          const ids = (allServices || []).map((s: any) => s.id).filter(Boolean);
+          if (ids.length > 0) {
+            const { data: tplRows, error: tplError } = await supabase
+              .from('service_type_checklist_templates')
+              .select('service_type_id, title, points, checklist_items')
+              .in('service_type_id', ids);
+
+            if (!tplError && tplRows) {
+              const map: Record<string, { title?: string; points?: number; items: any[] }> = {};
+              (tplRows as any[]).forEach((r: any) => {
+                const sid = r?.service_type_id;
+                const items = Array.isArray(r?.checklist_items) ? r.checklist_items : [];
+                if (sid && items.length > 0) {
+                  map[sid] = {
+                    title: r?.title || undefined,
+                    points: typeof r?.points === 'number' ? r.points : undefined,
+                    items,
+                  };
+                }
+              });
+              setServiceChecklistTemplates(map);
+            }
+          }
+        } catch (e) {
+          // ignore (no template table / no permissions)
+        }
         
         // Extract unique categories
         const categories = Array.from(new Set(allServices.map((s: any) => s.category)))
@@ -1650,6 +1729,12 @@ export default function BookServicePage() {
                                   .map((service) => {
                                   const isSelected = formData.selectedServices.includes(service.id);
                                   const price = servicePricing[service.id] || 0;
+                                  const dbTemplate = serviceChecklistTemplates[service.id];
+                                  const fallbackTemplate = getFallbackChecklistTemplate(service.name);
+                                  const checklistTemplate =
+                                    dbTemplate?.items?.length ? { title: dbTemplate.title, points: dbTemplate.points, items: dbTemplate.items } : fallbackTemplate;
+                                  const hasChecklist = (checklistTemplate?.items?.length || 0) > 0;
+                                  const isExpanded = expandedServiceId === service.id;
                                   
                                   return (
                                     <button
@@ -1681,6 +1766,53 @@ export default function BookServicePage() {
                                             )}
                                             {service.description && (
                                               <p className="text-xs sm:text-sm text-gray-600 mt-1 line-clamp-2 break-words">{service.description}</p>
+                                            )}
+
+                                            {/* Customer checklist: Show more/less (auto if checklist exists) */}
+                                            {hasChecklist && (
+                                              <div className="mt-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setExpandedServiceId((prev) => (prev === service.id ? null : service.id));
+                                                  }}
+                                                  className="text-xs font-semibold text-blue-700 hover:text-blue-800 underline"
+                                                >
+                                                  {isExpanded ? 'Show less' : 'Show more'}
+                                                  {checklistTemplate?.points ? ` • ${checklistTemplate.points} points` : ''}
+                                                </button>
+                                              </div>
+                                            )}
+
+                                            {hasChecklist && isExpanded && (
+                                              <div
+                                                className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200"
+                                                onClick={(e) => {
+                                                  // Prevent toggling service selection when interacting inside
+                                                  e.stopPropagation();
+                                                }}
+                                              >
+                                                <p className="text-xs font-bold text-gray-800 mb-2">
+                                                  {checklistTemplate?.title || 'What we will do'}
+                                                </p>
+                                                <div className="max-h-44 overflow-auto pr-1">
+                                                  <ul className="space-y-1.5">
+                                                    {(checklistTemplate?.items || []).map((it: any, idx: number) => (
+                                                      <li key={it?.id || idx} className="flex items-start gap-2 text-xs text-gray-700">
+                                                        <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-brand-primary flex-shrink-0" />
+                                                        <span className="break-words">
+                                                          {it?.name || String(it)}
+                                                          {it?.category ? (
+                                                            <span className="text-[10px] text-gray-500"> {' • '} {it.category}</span>
+                                                          ) : null}
+                                                        </span>
+                                                      </li>
+                                                    ))}
+                                                  </ul>
+                                                </div>
+                                              </div>
                                             )}
                                           </div>
                                         </div>

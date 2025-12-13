@@ -10,7 +10,16 @@ const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 
 export async function POST(request: Request) {
   try {
-    const { amount, customerName, customerPhone, customerEmail } = await request.json();
+    const {
+      amount,
+      customerName,
+      customerPhone,
+      customerEmail,
+      bookingType,
+      planKey,
+      planTitle,
+      notes,
+    } = await request.json();
 
     // Validate input
     if (!amount || amount <= 0) {
@@ -35,15 +44,26 @@ export async function POST(request: Request) {
     const amountInPaise = Math.round(amount * 100);
 
     // Create Razorpay order
+    const normalizedBookingType =
+      typeof bookingType === 'string' && bookingType.trim() ? bookingType.trim() : 'SERVICE_BOOKING';
+    const normalizedPlanKey = typeof planKey === 'string' ? planKey.trim() : '';
+    const normalizedPlanTitle = typeof planTitle === 'string' ? planTitle.trim() : '';
+
     const orderData = {
       amount: amountInPaise,
       currency: 'INR',
-      receipt: `BOOK_${Date.now()}`,
+      receipt:
+        normalizedBookingType === 'RSA_SUBSCRIPTION'
+          ? `RSA_${normalizedPlanKey || 'PLAN'}_${Date.now()}`
+          : `BOOK_${Date.now()}`,
       notes: {
         customer_name: customerName,
         customer_phone: customerPhone,
         customer_email: customerEmail || '',
-        booking_type: 'SERVICE_BOOKING',
+        booking_type: normalizedBookingType,
+        plan_key: normalizedPlanKey || undefined,
+        plan_title: normalizedPlanTitle || undefined,
+        ...(notes && typeof notes === 'object' ? notes : {}),
       },
     };
 

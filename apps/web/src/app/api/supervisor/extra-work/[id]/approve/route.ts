@@ -29,7 +29,7 @@ export async function POST(
       ? await supabase
           .from('users_login')
           .select('id, email, role, workshop_id, roles!inner(role_code)')
-          .eq('id', user.id)
+      .eq('id', user.id)
           .maybeSingle()
       : { data: null, error: null };
 
