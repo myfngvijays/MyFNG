@@ -83,140 +83,147 @@ export default function HomePage() {
     <div className="min-h-screen bg-white font-poppins text-text-body selection:bg-brand-primary/20">
       <Navbar />
 
-      {/* 1. Hero Section: AI-Powered & Futuristic */}
-      <section className="relative pt-20 sm:pt-24 md:pt-28 lg:pt-32 pb-12 sm:pb-16 md:pb-20 lg:pb-24 overflow-hidden">
-        {/* Animated Gradient Background - Improved contrast */}
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-900 animate-gradient" style={{backgroundSize: '200% 200%'}}></div>
+      {/* 1. Hero Section: AI-Powered & Futuristic - Updated Clean Look */}
+      <section className="relative pt-24 pb-16 lg:pt-32 lg:pb-24 overflow-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50">
+        {/* Background Elements */}
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+        <div className="absolute top-0 right-0 w-full lg:w-1/2 h-full bg-gradient-to-l from-blue-100/40 to-transparent transform skew-x-12 translate-x-1/4"></div>
         
-        {/* Floating Orbs - Hidden on mobile for performance */}
-        <div className="hidden md:block absolute top-20 right-20 w-48 md:w-72 h-48 md:h-72 bg-blue-500/30 rounded-full blur-3xl animate-float"></div>
-        <div className="hidden md:block absolute bottom-20 left-20 w-64 md:w-96 h-64 md:h-96 bg-purple-500/20 rounded-full blur-3xl animate-float" style={{animationDelay: '1s'}}></div>
-        <div className="hidden lg:block absolute top-1/2 left-1/2 w-64 h-64 bg-cyan-500/20 rounded-full blur-3xl animate-float" style={{animationDelay: '2s'}}></div>
-        
-        {/* Grid Pattern */}
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5"></div>
+        {/* Floating background blobs */}
+        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl animate-float" style={{animationDelay: '1.5s'}}></div>
 
-        <div className="container mx-auto px-3 sm:px-4 md:px-6 relative z-10">
-          <div className="flex flex-col lg:flex-row items-center gap-8 sm:gap-12 md:gap-16">
+        <div className="container mx-auto px-4 sm:px-6 relative z-10">
+          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
             
             {/* Left Content */}
             <div className="lg:w-1/2 text-center lg:text-left w-full">
               {/* AI Badge */}
-              <div className="mb-4 sm:mb-6 flex justify-center lg:justify-start">
+              <div className="mb-6 flex justify-center lg:justify-start">
                 <AIFeatureBadge text="Powered by Advanced AI Technology" />
               </div>
               
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 leading-tight tracking-tight animate-fade-in-up text-white drop-shadow-lg">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold mb-6 text-gray-900 leading-tight tracking-tight">
                 India's First <br />
-                <span className="relative inline-block">
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-purple-500 neon-text">
-                    AI-Powered
-                  </span>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
+                  AI-Powered Car
                 </span> <br />
-                Car Service 🚗⚡
+                Service Booking Platform
               </h1>
               
-              <p className="text-base sm:text-lg text-gray-200 mb-6 sm:mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed animate-fade-in-up px-2 sm:px-0" style={{animationDelay: '0.2s'}}>
-                Experience the future of car care with our <span className="text-white font-semibold">AI-powered booking platform</span> and instant service booking. 
-                No waiting, no hassle - just smart car care.
+              <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
+                Smart diagnostics, transparent pricing, verified garages, and real-time tracking — all in one platform
               </p>
 
-              {/* Key Features */}
-              <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-6 sm:mb-8 animate-fade-in-up" style={{animationDelay: '0.3s'}}>
-                <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-300">
-                  <Cpu className="w-3 h-3 sm:w-4 sm:h-4 text-cyan-400 flex-shrink-0" />
-                  <span>AI-Powered Booking</span>
-                </div>
-                <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-300">
-                  <Shield className="w-3 h-3 sm:w-4 sm:h-4 text-cyan-400 flex-shrink-0" />
-                  <span>100% Transparent</span>
-                </div>
-                <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-300">
-                  <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-cyan-400 flex-shrink-0" />
-                  <span>24/7 Available</span>
-                </div>
-                <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-300">
-                  <Radio className="w-3 h-3 sm:w-4 sm:h-4 text-cyan-400 flex-shrink-0" />
-                  <span>Live Tracking</span>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start animate-fade-in-up px-2 sm:px-0" style={{animationDelay: '0.4s'}}>
-                <button 
-                  onClick={() => setIsChatOpen(true)}
-                  className="group btn bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white text-sm sm:text-base md:text-lg px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 md:py-4 rounded-xl shadow-lg shadow-blue-500/50 flex items-center justify-center gap-2 sm:gap-3 transition-all transform hover:-translate-y-1 hover:shadow-2xl hover:shadow-blue-500/60 ai-glow"
-                >
-                  <Bot className="w-4 h-4 sm:w-5 sm:h-5 group-hover:animate-bounce flex-shrink-0" />
-                  <span className="whitespace-nowrap">Talk to AI Assistant</span>
-                </button>
+              {/* Buttons */}
+              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-8">
                 <button 
                   onClick={() => setIsBookingFormOpen(true)}
-                  className="btn glass hover:bg-white/20 border border-white/20 text-white text-sm sm:text-base md:text-lg px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 md:py-4 rounded-xl flex items-center justify-center gap-2 sm:gap-3 transition-all transform hover:-translate-y-1"
+                  className="btn bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl shadow-lg shadow-blue-600/20 font-semibold text-lg transition-all transform hover:-translate-y-1 hover:shadow-xl"
                 >
-                  <Car className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                  <span className="whitespace-nowrap">Quick Book</span>
+                  Book Service Now
                 </button>
-                <Link
-                  href="/book-service"
-                  className="btn glass hover:bg-white/20 border border-white/20 text-white text-sm sm:text-base md:text-lg px-4 sm:px-6 md:px-8 py-2.5 sm:py-3 md:py-4 rounded-xl flex items-center justify-center gap-2 sm:gap-3 transition-all transform hover:-translate-y-1"
+                <button 
+                  onClick={() => setIsChatOpen(true)}
+                  className="btn bg-white border-2 border-blue-100 hover:border-blue-600 text-blue-900 hover:text-blue-600 px-8 py-4 rounded-xl font-semibold text-lg transition-all transform hover:-translate-y-1"
                 >
-                  <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                  <span className="whitespace-nowrap">Traditional Booking</span>
-                </Link>
+                  Get AI Diagnosis
+                </button>
               </div>
 
-              {/* Live Indicator - Dynamic FOMO */}
-              <DynamicFOMO />
-            </div>
+              {/* Dynamic FOMO - Live Indicator */}
+              <div className="mb-12 flex justify-center lg:justify-start">
+                 <DynamicFOMO />
+              </div>
 
-            {/* Right Visual: AI Dashboard Card */}
-            <div className="lg:w-1/2 relative animate-fade-in-up w-full mt-8 lg:mt-0" style={{animationDelay: '0.6s'}}>
-              <div className="relative">
-                {/* Main Image */}
-                <div className="relative z-10 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl ai-glow">
-                  <img 
-                    src="https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000" 
-                    alt="Futuristic Car" 
-                    className="w-full object-cover h-[200px] sm:h-[250px] md:h-[300px]"
-                  />
-                  {/* Overlay Gradient */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
+              {/* Features Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-8 border-t border-gray-100">
+                <div className="flex flex-col items-center lg:items-start gap-3">
+                  <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 mb-1">
+                    <CheckCircle className="w-6 h-6" />
+                  </div>
+                  <span className="font-bold text-gray-900 text-sm sm:text-base">Verified Garages</span>
                 </div>
                 
-                {/* AI Analysis Card - Floating */}
-                <div className="absolute -bottom-4 sm:-bottom-6 -left-4 sm:-left-6 glass p-3 sm:p-4 md:p-6 rounded-xl sm:rounded-2xl shadow-2xl max-w-[280px] sm:max-w-xs w-full animate-float border border-white/20">
-                  <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                      <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="text-white font-bold text-sm sm:text-base">AI Analysis</h3>
-                      <p className="text-xs text-gray-400">Diagnostic Report</p>
-                    </div>
+                <div className="flex flex-col items-center lg:items-start gap-3">
+                  <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 mb-1">
+                    <Cpu className="w-6 h-6" />
                   </div>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex items-center justify-between text-xs sm:text-sm">
-                      <span className="text-gray-400">Engine Health</span>
-                      <span className="text-green-400 font-semibold">98%</span>
+                  <span className="font-bold text-gray-900 text-sm sm:text-base">Genuine Parts</span>
+                </div>
+
+                <div className="flex flex-col items-center lg:items-start gap-3">
+                  <div className="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 mb-1">
+                    <Shield className="w-6 h-6" />
+                  </div>
+                  <span className="font-bold text-gray-900 text-sm sm:text-base">Upfront Pricing</span>
+                </div>
+
+                <div className="flex flex-col items-center lg:items-start gap-3">
+                  <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-600 mb-1">
+                    <MapPin className="w-6 h-6" />
+                  </div>
+                  <span className="font-bold text-gray-900 text-sm sm:text-base">Pan-India Network</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Visual */}
+            <div className="lg:w-1/2 relative w-full mt-10 lg:mt-0">
+              <div className="relative z-10 perspective-1000">
+                {/* Main Image - Using the clean futuristic car image */}
+                <div className="relative z-10 rounded-3xl overflow-hidden shadow-2xl shadow-blue-500/20 bg-white p-2 border border-white/50 backdrop-blur-sm">
+                  <div className="rounded-2xl overflow-hidden relative bg-gradient-to-b from-gray-100 to-white">
+                     {/* Using a placeholder car illustration or the existing image but styled cleaner */}
+                     <img 
+                      src="https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000" 
+                      alt="Futuristic Car" 
+                      className="w-full object-cover h-[300px] sm:h-[400px] mix-blend-multiply opacity-90 hover:opacity-100 transition-opacity duration-500"
+                    />
+                    {/* Gradient Overlay for better text visibility if needed */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent"></div>
+                  </div>
+                </div>
+                
+                {/* Floating Card 1: AI Recommendation */}
+                <div className="absolute -top-6 -left-6 md:top-8 md:-left-12 bg-white p-4 rounded-2xl shadow-xl shadow-blue-900/5 border border-blue-50 animate-float z-20 max-w-[240px]">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-600/20">
+                      <Bot className="w-5 h-5 text-white" />
                     </div>
-                    <div className="w-full bg-gray-700 rounded-full h-1.5 sm:h-2">
-                      <div className="bg-gradient-to-r from-green-400 to-green-500 h-1.5 sm:h-2 rounded-full animate-progress" style={{width: '98%'}}></div>
-                    </div>
-                    <div className="flex items-center justify-between text-xs sm:text-sm">
-                      <span className="text-gray-400">Service Due</span>
-                      <span className="text-orange-400 font-semibold">500 km</span>
-                    </div>
-                    <div className="w-full bg-gray-700 rounded-full h-1.5 sm:h-2">
-                      <div className="bg-gradient-to-r from-orange-400 to-orange-500 h-1.5 sm:h-2 rounded-full animate-progress" style={{width: '65%'}}></div>
+                    <div>
+                      <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider">AI Recommendation</div>
+                      <div className="font-bold text-gray-900 text-sm leading-tight">Engine Oil Change Due</div>
                     </div>
                   </div>
                 </div>
 
-                {/* Quick Stats - Top Right */}
-                <div className="absolute -top-4 sm:-top-6 -right-4 sm:-right-6 glass p-3 sm:p-4 rounded-lg sm:rounded-xl shadow-xl animate-bounce-in border border-white/20">
-                  <div className="text-center">
-                    <div className="text-lg sm:text-xl md:text-2xl font-bold text-white mb-0.5 sm:mb-1">12 min</div>
-                    <div className="text-xs text-gray-400">Avg Response</div>
+                {/* Floating Card 2: Health Status */}
+                <div className="absolute top-1/3 -right-6 md:-right-12 bg-white p-4 rounded-2xl shadow-xl shadow-green-900/5 border border-green-50 animate-float z-20 max-w-[200px]" style={{animationDelay: '1s'}}>
+                   <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/20">
+                      <CheckCircle className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-green-600 uppercase tracking-wider">Health Status</div>
+                      <div className="font-bold text-gray-900 text-sm">92% Overall Health</div>
+                    </div>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2">
+                    <div className="bg-green-500 h-1.5 rounded-full" style={{width: '92%'}}></div>
+                  </div>
+                </div>
+
+                {/* Floating Card 3: Nearest Workshop */}
+                <div className="absolute -bottom-8 left-10 md:bottom-8 md:left-0 bg-white p-4 rounded-2xl shadow-xl shadow-purple-900/5 border border-purple-50 animate-float z-20" style={{animationDelay: '2s'}}>
+                   <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center shadow-lg shadow-purple-600/20">
+                      <MapPin className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-purple-600 uppercase tracking-wider">Nearest Workshop</div>
+                      <div className="font-bold text-gray-900 text-sm">2.3 km away</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -224,7 +231,7 @@ export default function HomePage() {
           </div>
 
           {/* Trust Badges */}
-          <div className="mt-16 animate-fade-in-up" style={{animationDelay: '0.8s'}}>
+          <div className="mt-20 pt-10 border-t border-gray-200/60 animate-fade-in-up" style={{animationDelay: '0.8s'}}>
             <TrustBadges />
           </div>
         </div>

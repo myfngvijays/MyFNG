@@ -293,12 +293,12 @@ export default function ServicesPage() {
                       ))}
                     </ul>
                     <div className="flex items-center justify-between gap-3">
-                      <Link
-                        href={`/services/${service.slug}`}
-                        className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition"
-                      >
-                        Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      </Link>
+                    <Link
+                      href={`/services/${service.slug}`}
+                      className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition"
+                    >
+                      Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    </Link>
 
                       <Link
                         href={`/book-service?prefill_category=${encodeURIComponent(service.bookPrefill.category)}&prefill_query=${encodeURIComponent(service.bookPrefill.query)}`}
@@ -351,8 +351,8 @@ export default function ServicesPage() {
                       ))}
                     </ul>
                     <div className="flex items-center justify-between gap-3">
-                      <div className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition">
-                        Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <div className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition">
+                      Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       </div>
 
                       {/* Stop navigation to details page and go to booking with prefill */}
