@@ -42,6 +42,7 @@ export default function HomePage() {
   const [activeCarType, setActiveCarType] = useState<'hatchback' | 'sedan' | 'suv'>('sedan');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isBookingFormOpen, setIsBookingFormOpen] = useState(false);
+  const [activeStep, setActiveStep] = useState(0); // Added for How It Works section
 
   // Pricing Data based on Car Type
   const pricingData = {
@@ -251,80 +252,87 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 2. Our Services */}
-      <section className="py-12 sm:py-16 md:py-20 bg-white">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6">
-          <div className="text-center mb-10 sm:mb-12 md:mb-16">
-            <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">Our Services</span>
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 mb-3 sm:mb-4 text-brand-secondary">Complete Car Care Solutions</h2>
-            <p className="text-base sm:text-lg md:text-xl text-gray-600 max-w-2xl mx-auto px-2 sm:px-0">
-              From periodic maintenance to complex repairs - our AI chatbot recommends the perfect service for your car. 
-              <span className="font-semibold text-brand-secondary">100% transparent pricing</span> with no hidden charges.
+      {/* 2. Our Services - Redesigned Grid (No Boxes) */}
+      <section className="py-16 sm:py-20 md:py-24 bg-white">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-16">
+            <span className="text-blue-600 font-bold tracking-wider uppercase text-sm">Our Services</span>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">Complete Car Care Solutions</h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              From periodic maintenance to complex repairs - our AI chatbot recommends the perfect service for your car.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
-            <ServiceTypeCard 
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12">
+            <ServiceItem 
               icon={<Activity className="w-8 h-8" />}
               title="Periodic Service"
               desc="AI-powered scheduled maintenance with digital health reports"
-              features={['Oil Change', 'Filter Replacement', 'Fluid Top-up', 'AI Health Report']}
               slug="periodic-service"
+              color="text-blue-600"
+              bg="bg-blue-50"
             />
-            <ServiceTypeCard 
+            <ServiceItem 
               icon={<Zap className="w-8 h-8" />}
               title="Engine Service"
               desc="Complete engine diagnostics powered by AI"
-              features={['Engine Diagnostics', 'Oil Service', 'Filter Change', 'Performance Check']}
               slug="engine-service"
+              color="text-orange-500"
+              bg="bg-orange-50"
             />
-            <ServiceTypeCard 
+            <ServiceItem 
               icon={<Shield className="w-8 h-8" />}
               title="AC Service"
               desc="Complete climate control solutions"
-              features={['AC Cleaning', 'Gas Refill', 'Filter Change', 'Sanitization']}
               slug="ac-service"
+              color="text-green-500"
+              bg="bg-green-50"
             />
-            <ServiceTypeCard 
+            <ServiceItem 
               icon={<Zap className="w-8 h-8" />}
               title="Battery Service"
               desc="AI-powered battery health analysis"
-              features={['Battery Check', 'Charging Test', 'Replacement', 'Warranty']}
               slug="battery-service"
+              color="text-yellow-500"
+              bg="bg-yellow-50"
             />
-            <ServiceTypeCard 
+            <ServiceItem 
               icon={<Shield className="w-8 h-8" />}
               title="Brake Service"
               desc="Complete brake system inspection"
-              features={['Brake Pad Check', 'Fluid Replacement', 'Disc Inspection', 'Safety Test']}
               slug="brake-service"
+              color="text-red-500"
+              bg="bg-red-50"
             />
-            <ServiceTypeCard 
+            <ServiceItem 
               icon={<Car className="w-8 h-8" />}
               title="Tyre & Wheel Care"
               desc="Professional tyre and wheel services"
-              features={['Tyre Rotation', 'Wheel Alignment', 'Balancing', 'Replacement']}
               slug="tyre-wheel-care"
+              color="text-purple-500"
+              bg="bg-purple-50"
             />
-            <ServiceTypeCard 
+            <ServiceItem 
               icon={<Activity className="w-8 h-8" />}
               title="Detailing Service"
               desc="Premium car detailing and protection"
-              features={['Interior Cleaning', 'Exterior Polish', 'Waxing', 'Ceramic Coating']}
               slug="detailing-service"
+              color="text-cyan-500"
+              bg="bg-cyan-50"
             />
-            <ServiceTypeCard 
+            <ServiceItem 
               icon={<Car className="w-8 h-8" />}
               title="Denting & Painting"
               desc="High-precision body work"
-              features={['Dent Removal', 'Color Matching', 'Paint Protection', 'Quality Check']}
               slug="denting-painting"
+              color="text-indigo-500"
+              bg="bg-indigo-50"
             />
           </div>
 
-          <div className="text-center mt-8 sm:mt-10 md:mt-12">
-            <Link href="/services" className="btn btn-primary text-sm sm:text-base md:text-lg px-6 sm:px-8 md:px-10 py-2.5 sm:py-3 md:py-4 rounded-xl inline-flex items-center gap-2">
-              Explore All Services <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+          <div className="text-center mt-16">
+            <Link href="/services" className="inline-flex items-center gap-2 text-lg font-semibold text-blue-600 hover:text-blue-700 hover:gap-3 transition-all group">
+              Explore All Services <ArrowRight className="w-5 h-5 transition-transform" />
             </Link>
           </div>
         </div>
@@ -413,34 +421,126 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 4. How MY FNG Works */}
-      <section className="py-12 sm:py-16 md:py-20 bg-white">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6">
-          <div className="text-center mb-10 sm:mb-12 md:mb-16">
+      {/* 4. How MY FNG Works - Interactive Split Screen */}
+      <section className="py-12 sm:py-16 md:py-24 bg-white">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-12 sm:mb-16">
             <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">How It Works</span>
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">Hassle-Free Car Maintenance with MY FNG AI Booking</h2>
-            <p className="text-sm sm:text-base text-gray-600 mt-3 sm:mt-4 max-w-2xl mx-auto px-4">
-              Experience the future of car service booking. Our AI-powered booking platform helps you book services directly - no employee needed. 
-              Complete transparency in pricing and real-time tracking.
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">Experience the Future</h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Your entire car service journey is managed by our advanced AI. Watch how it unfolds.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7 md:gap-8">
-            <StepCard 
-              number="01" 
-              title="Chat with MY FNG AI" 
-              desc="Simply chat with our AI assistant - no employee interaction needed. Our AI understands your car model, service history, and recommends the perfect service package."
-            />
-            <StepCard 
-              number="02" 
-              title="Transparent Pricing" 
-              desc="Get instant, transparent pricing based on your car model and location. No hidden charges - our AI-powered booking platform ensures complete pricing transparency."
-            />
-            <StepCard 
-              number="03" 
-              title="Hassle-Free Service" 
-              desc="Book your service directly through AI chatbot. Real-time tracking, AI-powered quality checks, and instant updates throughout the process."
-            />
+          <div className="flex flex-col lg:flex-row gap-8 lg:gap-20 items-start max-w-6xl mx-auto">
+            
+            {/* Left Column: Interactive Steps List */}
+            <div className="w-full lg:w-1/2 space-y-4">
+              {[
+                { 
+                  icon: <MessageSquare className="w-5 h-5" />, 
+                  title: "Book via AI", 
+                  desc: "Chat with our AI assistant to book instantly. No calls, no waiting." 
+                },
+                { 
+                  icon: <Calendar className="w-5 h-5" />, 
+                  title: "Pickup Scheduled", 
+                  desc: "We confirm the best time and our driver arrives at your doorstep." 
+                },
+                { 
+                  icon: <MapPin className="w-5 h-5" />, 
+                  title: "Live Tracking", 
+                  desc: "Watch your car's journey and service progress in real-time." 
+                },
+                { 
+                  icon: <CheckCircle className="w-5 h-5" />, 
+                  title: "Quality Check", 
+                  desc: "AI-verified inspection report before the car leaves the workshop." 
+                },
+                { 
+                  icon: <Shield className="w-5 h-5" />, 
+                  title: "Delivery & Warranty", 
+                  desc: "Car delivered back to you with complete service warranty protection." 
+                }
+              ].map((step, idx) => (
+                <div 
+                  key={idx}
+                  onMouseEnter={() => setActiveStep(idx)}
+                  className={`group p-6 rounded-2xl cursor-pointer transition-all duration-300 border-2 ${
+                    activeStep === idx 
+                      ? 'bg-blue-50 border-blue-500 shadow-lg scale-[1.02]' 
+                      : 'bg-white border-transparent hover:bg-gray-50 hover:border-gray-100'
+                  }`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className={`mt-1 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                      activeStep === idx ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500 group-hover:bg-blue-100 group-hover:text-blue-600'
+                    }`}>
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <h3 className={`text-lg font-bold mb-1 transition-colors ${activeStep === idx ? 'text-blue-900' : 'text-gray-900'}`}>
+                        {step.title}
+                      </h3>
+                      <p className={`text-sm leading-relaxed transition-colors ${activeStep === idx ? 'text-blue-700' : 'text-gray-500'}`}>
+                        {step.desc}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Right Column: Sticky Visual Preview */}
+            <div className="w-full lg:w-1/2 lg:sticky lg:top-32 hidden lg:block">
+              <div className="relative aspect-square md:aspect-[4/3] rounded-3xl overflow-hidden shadow-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-10 flex flex-col items-center justify-center text-center transition-all duration-500">
+                {/* Decorative Background Circles */}
+                <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
+                <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 bg-blue-400/20 rounded-full blur-3xl"></div>
+                
+                {/* Dynamic Content based on activeStep */}
+                <div className="relative z-10 animate-fade-in-up" key={activeStep}>
+                  <div className="w-24 h-24 mx-auto bg-white/20 backdrop-blur-md rounded-3xl flex items-center justify-center mb-8 shadow-xl border border-white/30">
+                    {/* Render the active icon larger */}
+                    {[
+                      <MessageSquare className="w-12 h-12 text-white" key="0" />, 
+                      <Calendar className="w-12 h-12 text-white" key="1" />,
+                      <MapPin className="w-12 h-12 text-white" key="2" />,
+                      <CheckCircle className="w-12 h-12 text-white" key="3" />,
+                      <Shield className="w-12 h-12 text-white" key="4" />
+                    ][activeStep]}
+                  </div>
+                  
+                  <h3 className="text-3xl font-bold mb-4">
+                    {[
+                      "Smart Booking System",
+                      "Scheduled Logistics",
+                      "Real-Time Dashboard",
+                      "Quality Assurance",
+                      "Peace of Mind"
+                    ][activeStep]}
+                  </h3>
+                  
+                  <p className="text-blue-100 text-lg max-w-xs mx-auto">
+                    {[
+                      "Just type 'Book Service' and let our AI handle the rest.",
+                      "Our certified driver will arrive at your location on time.",
+                      "Watch your car move on the map and see service photos instantly.",
+                      "Every bolt is checked. Every fluid is topped up. Verified by AI.",
+                      "Drive worry-free with our comprehensive service warranty."
+                    ][activeStep]}
+                  </p>
+
+                  {/* Progress Indicator */}
+                  <div className="flex gap-2 justify-center mt-10">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === activeStep ? 'w-8 bg-white' : 'w-2 bg-white/30'}`}></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       </section>
@@ -456,47 +556,92 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-7 md:gap-8">
-            <WhyChooseCard 
-              icon={<Bot className="w-8 h-8" />}
-              title="AI-Powered Booking"
-              desc="Book services directly through our AI chatbot - no employee interaction needed"
-            />
-            <WhyChooseCard 
-              icon={<Shield className="w-8 h-8" />}
-              title="100% Transparent Pricing"
-              desc="No hidden charges. See exactly what you pay for with upfront pricing"
-            />
-            <WhyChooseCard 
-              icon={<Clock className="w-8 h-8" />}
-              title="Quick Service"
-              desc="Fast turnaround times with real-time tracking and updates"
-            />
-            <WhyChooseCard 
-              icon={<Award className="w-8 h-8" />}
-              title="Quality Assured"
-              desc="AI-powered quality checks and certified technicians"
-            />
-            <WhyChooseCard 
-              icon={<Users className="w-8 h-8" />}
-              title="Expert Technicians"
-              desc="Trained professionals with years of experience"
-            />
-            <WhyChooseCard 
-              icon={<TrendingUp className="w-8 h-8" />}
-              title="Real-Time Updates"
-              desc="Track your service progress with live updates and photos"
-            />
-            <WhyChooseCard 
-              icon={<Heart className="w-8 h-8" />}
-              title="Customer First"
-              desc="Dedicated support team available 24/7 for your assistance"
-            />
-            <WhyChooseCard 
-              icon={<CheckCircle className="w-8 h-8" />}
-              title="Warranty Guaranteed"
-              desc="All services come with warranty and quality guarantee"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-16 max-w-7xl mx-auto">
+            {/* 1. AI Booking - Large Feature (2x2) */}
+            <div className="md:col-span-2 md:row-span-2 group relative overflow-hidden rounded-3xl bg-blue-600 p-8 text-white shadow-xl transition-all hover:shadow-2xl hover:shadow-blue-500/30">
+              <div className="absolute top-0 right-0 -mt-10 -mr-10 h-64 w-64 rounded-full bg-blue-500 blur-3xl opacity-50 group-hover:scale-150 transition-transform duration-700"></div>
+              <div className="relative z-10 h-full flex flex-col justify-between">
+                <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md">
+                  <Bot className="h-8 w-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="mb-2 text-2xl font-bold">AI-Powered Booking</h3>
+                  <p className="text-blue-100 leading-relaxed max-w-sm">Experience the future with India's first AI chatbot booking. No calls, no waiting - just instant service.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Transparent Pricing */}
+            <div className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl">
+              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                <Shield className="h-6 w-6" />
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-gray-900">Transparent Pricing</h3>
+              <p className="text-sm text-gray-500">100% upfront pricing. No hidden costs.</p>
+            </div>
+
+            {/* 3. Quick Service */}
+            <div className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl">
+              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-green-50 text-green-500 group-hover:bg-green-500 group-hover:text-white transition-colors">
+                <Clock className="h-6 w-6" />
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-gray-900">Quick Turnaround</h3>
+              <p className="text-sm text-gray-500">Fast service with committed timelines.</p>
+            </div>
+
+            {/* 4. Real-Time Updates - Wide (2x1) */}
+            <div className="md:col-span-2 group relative overflow-hidden rounded-3xl bg-gray-900 p-8 text-white shadow-xl transition-all hover:shadow-2xl">
+              <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900"></div>
+              <div className="absolute bottom-0 right-0 h-32 w-32 bg-gray-700 rounded-full blur-3xl opacity-50 group-hover:scale-150 transition-transform"></div>
+              <div className="relative z-10 flex items-center gap-6">
+                <div className="inline-flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-md">
+                  <TrendingUp className="h-7 w-7 text-white" />
+                </div>
+                <div>
+                  <h3 className="mb-1 text-xl font-bold">Live Service Tracking</h3>
+                  <p className="text-gray-400 text-sm">Get photo updates and track progress in real-time.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 5. Quality Assured */}
+            <div className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl">
+              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-purple-50 text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition-colors">
+                <Award className="h-6 w-6" />
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-gray-900">Quality First</h3>
+              <p className="text-sm text-gray-500">Genuine parts & warranty on every service.</p>
+            </div>
+
+            {/* 6. Expert Technicians */}
+            <div className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl">
+              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-red-500 group-hover:bg-red-500 group-hover:text-white transition-colors">
+                <Users className="h-6 w-6" />
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-gray-900">Expert Team</h3>
+              <p className="text-sm text-gray-500">Verified mechanics with 5+ years experience.</p>
+            </div>
+
+            {/* 7. Warranty (1x1) */}
+            <div className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl">
+               <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-teal-50 text-teal-500 group-hover:bg-teal-500 group-hover:text-white transition-colors">
+                <CheckCircle className="h-6 w-6" />
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-gray-900">Service Warranty</h3>
+              <p className="text-sm text-gray-500">1000km / 1 Month warranty included.</p>
+            </div>
+             {/* 8. Customer First - Wide (2x1) on last row */}
+             <div className="md:col-span-2 group relative overflow-hidden rounded-3xl bg-gradient-to-r from-purple-600 to-indigo-600 p-8 text-white shadow-xl transition-all hover:shadow-2xl">
+               <div className="relative z-10 flex items-center gap-6">
+                <div className="inline-flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md">
+                  <Heart className="h-7 w-7 text-white" />
+                </div>
+                <div>
+                  <h3 className="mb-1 text-xl font-bold">24/7 Support</h3>
+                  <p className="text-purple-100 text-sm">We are always here to help you, anytime, anywhere.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -616,24 +761,30 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7 md:gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <BlogCard 
-              title="5 Essential Car Maintenance Tips for Monsoon"
-              excerpt="Protect your car during rainy season with these expert tips..."
-              date="Dec 15, 2024"
-              image="https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&q=80&w=400"
+              title="How AI is Revolutionizing Car Maintenance"
+              excerpt="Discover how artificial intelligence is transforming the way we maintain and service our vehicles, making car care smarter and more efficient."
+              readTime="5 min read"
+              tag="AI Technology"
+              color="bg-blue-600"
+              icon={<Sparkles className="w-10 h-10" />}
             />
             <BlogCard 
-              title="How AI is Revolutionizing Car Service Industry"
-              excerpt="Discover how artificial intelligence is transforming car maintenance..."
-              date="Dec 10, 2024"
-              image="https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=400"
+              title="10 Ways to Save Money on Car Service"
+              excerpt="Learn practical tips and tricks to reduce your car maintenance costs without compromising on quality or safety."
+              readTime="4 min read"
+              tag="Cost Saving"
+              color="bg-green-500"
+              icon={<TrendingUp className="w-10 h-10" />}
             />
             <BlogCard 
               title="Understanding Your Car's Service Schedule"
-              excerpt="Learn when and why your car needs regular servicing..."
-              date="Dec 5, 2024"
-              image="https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2?auto=format&fit=crop&q=80&w=400"
+              excerpt="A comprehensive guide to knowing when and why your car needs regular servicing to ensure longevity and performance."
+              readTime="6 min read"
+              tag="Maintenance"
+              color="bg-purple-600"
+              icon={<Calendar className="w-10 h-10" />}
             />
           </div>
 
@@ -944,58 +1095,125 @@ function RSAService({ icon, title }: { icon: React.ReactNode; title: string }) {
   );
 }
 
-function ServiceTypeCard({ icon, title, desc, features, slug }: { icon: React.ReactNode; title: string; desc: string; features: string[]; slug?: string }) {
+function ServiceItem({ icon, title, desc, slug, color, bg }: { 
+  icon: React.ReactNode; 
+  title: string; 
+  desc: string; 
+  slug?: string;
+  color: string;
+  bg: string;
+}) {
   return (
-    <div className="bg-white p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl hover:border-brand-primary/30 transition group">
-      <div className="mb-4 sm:mb-5 md:mb-6 bg-brand-primary/10 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl flex items-center justify-center text-brand-primary group-hover:bg-brand-primary group-hover:text-white transition-colors">
+    <div className="group relative">
+      {/* Icon Area - Floating */}
+      <div className={`w-16 h-16 rounded-2xl ${bg} ${color} flex items-center justify-center mb-6 shadow-lg shadow-gray-100 transition-transform group-hover:scale-110 group-hover:rotate-3`}>
         {icon}
       </div>
-      <h3 className="text-base sm:text-lg md:text-xl font-bold mb-1.5 sm:mb-2 text-brand-secondary">{title}</h3>
-      <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">{desc}</p>
-      <ul className="space-y-1.5 sm:space-y-2 mb-4">
-        {features.map((feature, idx) => (
-          <li key={idx} className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-gray-500">
-            <CheckCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-green-500 flex-shrink-0" />
-            <span>{feature}</span>
-          </li>
-        ))}
-      </ul>
-      {slug && (
-        <Link
-          href={`/services/${slug}`}
-          className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition"
-        >
-          Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-        </Link>
-      )}
+      
+      {/* Content */}
+      <div className="pr-4">
+        <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors">{title}</h3>
+        <p className="text-gray-600 text-sm leading-relaxed mb-6">{desc}</p>
+        
+        {/* Action Link */}
+        {slug && (
+          <Link
+            href={`/services/${slug}`}
+            className="inline-flex items-center text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors"
+          >
+            Know More <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
+          </Link>
+        )}
+      </div>
+
+      {/* Decorative - Hover Line */}
+      <div className="absolute -left-4 top-0 bottom-0 w-[1px] bg-gradient-to-b from-transparent via-gray-200 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
     </div>
   );
 }
 
-function WhyChooseCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+function WhyChooseItem({ icon, title, desc, index }: { icon: React.ReactNode; title: string; desc: string; index: number }) {
   return (
-    <div className="bg-white p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl shadow-md border border-gray-100 hover:shadow-xl hover:border-brand-primary/30 transition group text-center">
-      <div className="mb-3 sm:mb-4 bg-brand-primary/10 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl flex items-center justify-center text-brand-primary group-hover:bg-brand-primary group-hover:text-white transition-colors mx-auto">
-        {icon}
+    <div className="group relative p-6 rounded-3xl bg-white border border-gray-100 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-1 overflow-hidden">
+      {/* Hover Gradient Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 via-transparent to-purple-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+      
+      {/* Decorative Corner Blob */}
+      <div className="absolute -top-10 -right-10 w-20 h-20 bg-blue-100 rounded-full blur-2xl group-hover:bg-blue-200 transition-colors duration-500"></div>
+
+      <div className="relative z-10">
+        {/* Icon Header */}
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 shadow-sm group-hover:shadow-md group-hover:bg-blue-600 group-hover:text-white">
+            {icon}
+          </div>
+          <h3 className="font-bold text-lg sm:text-xl text-gray-900 group-hover:text-blue-700 transition-colors leading-tight">
+            {title}
+          </h3>
+        </div>
+        
+        {/* Description */}
+        <p className="text-sm text-gray-500 leading-relaxed group-hover:text-gray-700 transition-colors pl-1">
+          {desc}
+        </p>
       </div>
-      <h3 className="text-base sm:text-lg font-bold mb-1.5 sm:mb-2 text-brand-secondary">{title}</h3>
-      <p className="text-gray-600 text-xs sm:text-sm">{desc}</p>
+
+      {/* Bottom Bar Indicator */}
+      <div className="absolute bottom-0 left-0 w-0 h-1 bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300 group-hover:w-full"></div>
     </div>
   );
 }
 
-function BlogCard({ title, excerpt, date, image }: { title: string; excerpt: string; date: string; image: string }) {
+function BlogCard({ 
+  title, 
+  excerpt, 
+  readTime, 
+  tag, 
+  color, 
+  icon 
+}: { 
+  title: string; 
+  excerpt: string; 
+  readTime: string; 
+  tag: string; 
+  color: string; 
+  icon: React.ReactNode;
+}) {
   return (
-    <Link href="/blog" className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition group">
-      <div className="h-36 sm:h-40 md:h-48 relative overflow-hidden">
-        <Image src={image} alt={title} fill className="object-cover group-hover:scale-105 transition duration-500" />
+    <Link href="/blog" className="bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 group flex flex-col h-full border border-gray-100">
+      {/* Header Area */}
+      <div className={`h-48 ${color} flex items-center justify-center relative overflow-hidden`}>
+        {/* Decorative Circles */}
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+        
+        {/* Icon */}
+        <div className="relative z-10 w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center text-white shadow-lg border border-white/30 group-hover:scale-110 transition-transform duration-500">
+          {icon}
+        </div>
       </div>
-      <div className="p-4 sm:p-5 md:p-6">
-        <p className="text-[10px] sm:text-xs text-gray-500 mb-1.5 sm:mb-2">{date}</p>
-        <h3 className="text-base sm:text-lg font-bold text-brand-secondary mb-1.5 sm:mb-2 group-hover:text-brand-primary transition line-clamp-2">{title}</h3>
-        <p className="text-gray-600 text-xs sm:text-sm line-clamp-2">{excerpt}</p>
-        <div className="mt-3 sm:mt-4 flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold">
-          Read More <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4" />
+
+      <div className="p-8 flex flex-col flex-1">
+        {/* Tag & Read Time */}
+        <div className="flex items-center gap-4 mb-4">
+          <span className="px-3 py-1 bg-gray-100 rounded-full text-xs font-bold text-gray-600 uppercase tracking-wider">
+            {tag}
+          </span>
+          <span className="text-gray-400 text-xs font-medium flex items-center gap-1">
+            <Clock className="w-3 h-3" /> {readTime}
+          </span>
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors leading-tight">
+          {title}
+        </h3>
+        
+        <p className="text-gray-500 text-sm leading-relaxed mb-6 flex-1">
+          {excerpt}
+        </p>
+
+        <div className="flex items-center text-blue-600 font-bold text-sm group-hover:gap-2 transition-all">
+          Read More <ArrowRight className="w-4 h-4 ml-1" />
         </div>
       </div>
     </Link>

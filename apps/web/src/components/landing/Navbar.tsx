@@ -278,12 +278,14 @@ export default function Navbar() {
           </Link>
           
           <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
-            <Link
-              href="/services"
-              className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap"
-            >
-              Services
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/services"
+                className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap"
+              >
+                Services
+              </Link>
+            </div>
             <Link href="/blog" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
             <Link href="/roadside-assistance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
             <Link href="/ai-experience" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">AI Experience</Link>
