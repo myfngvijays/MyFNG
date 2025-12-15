@@ -49,20 +49,13 @@ export default function MediaSection({ lead, onUpdate, canUpload = true }: Media
 
   async function fetchMedia() {
     setLoading(true);
-    const supabase = createClient();
-
     try {
-      const { data, error } = await supabase
-        .from('lead_media')
-        .select(`
-          *,
-          uploader:uploaded_by(full_name)
-        `)
-        .eq('lead_id', lead.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setMediaFiles(data || []);
+      const res = await fetch(`/api/leads/${lead.id}/media`, { method: 'GET' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || 'Failed to fetch media');
+      }
+      setMediaFiles(json?.media || []);
     } catch (error) {
       console.error('Error fetching media:', error);
     } finally {
@@ -132,28 +125,21 @@ export default function MediaSection({ lead, onUpdate, canUpload = true }: Media
 
       // Save media record
       const mediaType = file.type.startsWith('image') ? 'IMAGE' : 'VIDEO';
-      const { error: insertError } = await supabase.from('lead_media').insert({
-        lead_id: lead.id,
-            file_url: publicUrl,
-        media_type: mediaType,
-            category: selectedCategory,
-            description: description || null,
-            file_name: file.name,
-            file_size: file.size,
-            mime_type: file.type,
-        uploaded_by: user.id,
+      const saveRes = await fetch(`/api/leads/${lead.id}/media`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_url: publicUrl,
+          media_type: mediaType,
+          category: selectedCategory,
+          description: description || null,
+          file_name: file.name,
+          file_size: file.size,
+          mime_type: file.type,
+        }),
       });
-
-      if (insertError) throw insertError;
-
-      // Create event
-      await supabase.from('lead_events').insert({
-        lead_id: lead.id,
-        event_type: 'MEDIA_UPLOADED',
-        event_description: `${mediaType} uploaded - ${selectedCategory}`,
-            event_data: { media_category: selectedCategory, media_type: mediaType, file_name: file.name },
-        created_by: user.id,
-      });
+      const saveJson = await saveRes.json().catch(() => ({}));
+      if (!saveRes.ok) throw new Error(saveJson?.error || 'Failed to save media record');
 
           successCount++;
         } catch (error) {
@@ -183,14 +169,10 @@ export default function MediaSection({ lead, onUpdate, canUpload = true }: Media
   async function handleDeleteMedia(mediaId: string) {
     if (!confirm('Are you sure you want to delete this media?')) return;
 
-    const supabase = createClient();
     try {
-      const { error } = await supabase
-        .from('lead_media')
-        .delete()
-        .eq('id', mediaId);
-
-      if (error) throw error;
+      const res = await fetch(`/api/leads/${lead.id}/media?media_id=${encodeURIComponent(mediaId)}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to delete media');
 
       alert('✅ Media deleted successfully!');
       fetchMedia();

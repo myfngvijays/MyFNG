@@ -14,19 +14,37 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, role, workshop_id')
-      .eq('email', user.email)
-      .single();
+    // Get user profile (users_login is mapped by email/phone; not always same as auth user.id)
+    const email = (user.email || '').trim();
+    const phone = (user.phone || '').trim();
 
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    const selectProfile = 'id, email, phone, workshop_id, role_id, roles!inner(role_code)';
+
+    const { data: byEmail, error: byEmailError } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+      : { data: null, error: null };
+
+    const { data: byPhone, error: byPhoneError } = !byEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null, error: null };
+
+    const userProfile = byEmail || byPhone;
+
+    if (!userProfile) {
+      return NextResponse.json(
+        {
+          error: 'User profile not found',
+          user_email: email || null,
+          user_phone: phone || null,
+          profile_lookup_errors: [byEmailError?.message, byPhoneError?.message].filter(Boolean),
+        },
+        { status: 404 }
+      );
     }
 
     // Verify user is mechanic
-    if (userProfile.role !== 'workshop_mechanic') {
+    const roleCode = (userProfile.roles as any)?.role_code;
+    if (roleCode !== 'WORKSHOP_MECHANIC') {
       return NextResponse.json({ error: 'Forbidden: Mechanic only' }, { status: 403 });
     }
 

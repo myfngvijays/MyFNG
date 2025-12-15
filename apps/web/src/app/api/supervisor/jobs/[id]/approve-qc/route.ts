@@ -17,36 +17,40 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, workshop_id, role_id, full_name')
-      .eq('id', user.id)
-      .single();
+    // Get user profile (users_login is mapped by email/phone; not always same as auth user.id)
+    const email = (user.email || '').trim();
+    const phone = (user.phone || '').trim();
+    const selectProfile = 'id, email, phone, workshop_id, full_name, role_id, roles!inner(role_code)';
 
-    if (profileError || !userProfile) {
-      console.error('Profile error:', profileError);
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
-    }
+    const { data: userProfileByEmail, error: profileErrorByEmail } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+      : { data: null, error: null };
 
-    // Get role code separately
-    if (!userProfile.role_id) {
-      return NextResponse.json({ error: 'User role not found' }, { status: 404 });
-    }
+    const { data: userProfileByPhone, error: profileErrorByPhone } = !userProfileByEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null, error: null };
 
-    const { data: roleData, error: roleError } = await supabase
-      .from('roles')
-      .select('role_code')
-      .eq('id', userProfile.role_id)
-      .single();
+    const { data: userProfileById, error: profileErrorById } = !userProfileByEmail && !userProfileByPhone
+      ? await supabase.from('users_login').select(selectProfile).eq('id', user.id).maybeSingle()
+      : { data: null, error: null };
 
-    if (roleError || !roleData) {
-      console.error('Role error:', roleError);
-      return NextResponse.json({ error: 'User role not found' }, { status: 404 });
+    const userProfile = userProfileByEmail || userProfileByPhone || userProfileById;
+
+    if (!userProfile) {
+      return NextResponse.json(
+        {
+          error: 'User profile not found',
+          user_email: email || null,
+          user_phone: phone || null,
+          profile_lookup_errors: [profileErrorByEmail?.message, profileErrorByPhone?.message, profileErrorById?.message].filter(Boolean),
+        },
+        { status: 404 }
+      );
     }
 
     // Verify user is supervisor
-    if (roleData.role_code !== 'WORKSHOP_SUPERVISOR') {
+    const roleCode = (userProfile.roles as any)?.role_code;
+    if (roleCode !== 'WORKSHOP_SUPERVISOR') {
       return NextResponse.json({ error: 'Forbidden: Supervisor only' }, { status: 403 });
     }
 

@@ -26,52 +26,49 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile with role join
-    // NOTE: In this codebase, `users_login.id` is not always the same as Supabase Auth `user.id`.
-    // Prefer email lookup and fallback to id.
-    const { data: userProfileByEmail } = await supabase
-      .from('users_login')
-      .select('id, email, role, role_id, workshop_id, roles(role_code, role_name)')
-      .eq('email', user.email)
-      .maybeSingle();
+    // Get user profile with role join (users_login is mapped by email/phone; not always same as auth user.id)
+    const email = (user.email || '').trim();
+    const phone = (user.phone || '').trim();
+    const selectProfile = 'id, email, phone, role_id, workshop_id, roles!inner(role_code, role_name)';
 
-    const { data: userProfileById, error: profileErrorById } = !userProfileByEmail
-      ? await supabase
-          .from('users_login')
-          .select('id, email, role, role_id, workshop_id, roles(role_code, role_name)')
-      .eq('id', user.id)
-          .maybeSingle()
+    const { data: userProfileByEmail, error: profileErrorByEmail } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
       : { data: null, error: null };
 
-    const userProfile = userProfileByEmail || userProfileById;
+    const { data: userProfileByPhone, error: profileErrorByPhone } = !userProfileByEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null, error: null };
+
+    // Legacy fallback if some environments map users_login.id == auth user.id
+    const { data: userProfileById, error: profileErrorById } = !userProfileByEmail && !userProfileByPhone
+      ? await supabase.from('users_login').select(selectProfile).eq('id', user.id).maybeSingle()
+      : { data: null, error: null };
+
+    const userProfile = userProfileByEmail || userProfileByPhone || userProfileById;
 
     if (!userProfile) {
       return NextResponse.json(
         {
           error: 'User profile not found',
-          hint: 'No matching users_login row for this session user',
-          user_email: user.email,
-          profile_lookup_error: profileErrorById?.message,
+          hint: 'No matching users_login row for this session user (email/phone/id)',
+          user_email: email || null,
+          user_phone: phone || null,
+          profile_lookup_errors: [profileErrorByEmail?.message, profileErrorByPhone?.message, profileErrorById?.message].filter(Boolean),
         },
         { status: 404 }
       );
     }
 
-    // Get role code (support both joined roles + legacy `role` string)
+    // Get role code
     const roleCode = (userProfile.roles as any)?.role_code;
-    const legacyRole = (userProfile as any)?.role;
 
-    // Verify user has billing permissions - allow advisor and admin
+    // Verify user has billing permissions
     const allowedRoles = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'];
-    const normalizedLegacy =
-      typeof legacyRole === 'string'
-        ? legacyRole.toUpperCase()
-        : null;
 
-    if (!allowedRoles.includes(roleCode) && !allowedRoles.includes(normalizedLegacy || '')) {
+    if (!allowedRoles.includes(roleCode)) {
       return NextResponse.json({ 
         error: 'Forbidden: Insufficient permissions',
-        current_role: roleCode || legacyRole
+        current_role: roleCode
       }, { status: 403 });
     }
 

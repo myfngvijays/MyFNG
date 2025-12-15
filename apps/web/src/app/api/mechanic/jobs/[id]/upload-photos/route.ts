@@ -111,17 +111,35 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Get user profile to check role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, role_id, roles!role_id(role_code)')
-      .eq('id', user.id)
-      .single();
+    // Get user profile to check role (users_login is mapped by email/phone; not always same as auth user.id)
+    const email = (user.email || '').trim();
+    const phone = (user.phone || '').trim();
+    const selectProfile = 'id, email, phone, role_id, roles!inner(role_code)';
 
-    if (profileError || !userProfile) {
-      return NextResponse.json({ 
-        error: 'User profile not found' 
-      }, { status: 404 });
+    const { data: userProfileByEmail, error: profileErrorByEmail } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+      : { data: null, error: null };
+
+    const { data: userProfileByPhone, error: profileErrorByPhone } = !userProfileByEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null, error: null };
+
+    const { data: userProfileById, error: profileErrorById } = !userProfileByEmail && !userProfileByPhone
+      ? await supabase.from('users_login').select(selectProfile).eq('id', user.id).maybeSingle()
+      : { data: null, error: null };
+
+    const userProfile = userProfileByEmail || userProfileByPhone || userProfileById;
+
+    if (!userProfile) {
+      return NextResponse.json(
+        {
+          error: 'User profile not found',
+          user_email: email || null,
+          user_phone: phone || null,
+          profile_lookup_errors: [profileErrorByEmail?.message, profileErrorByPhone?.message, profileErrorById?.message].filter(Boolean),
+        },
+        { status: 404 }
+      );
     }
 
     const roleCode = (userProfile.roles as any)?.role_code;
@@ -164,7 +182,7 @@ export async function POST(
         .insert({
           lead_id: leadId,
           mechanic_id: leadData.assigned_mechanic_id,
-          assigned_by: user.id, // Current user creating the record
+          assigned_by: userProfile.id, // Current user creating the record
           mechanic_status: 'ASSIGNED',
           job_priority: 'NORMAL',
         })
@@ -192,8 +210,9 @@ export async function POST(
     // Verify user is either:
     // 1. Assigned mechanic for this job, OR
     // 2. Assigned supervisor for this lead
-    const isAssignedMechanic = jobData.mechanic_id === user.id;
-    const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === user.id;
+    const actorId = userProfile.id;
+    const isAssignedMechanic = jobData.mechanic_id === actorId;
+    const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === actorId;
     const isSuperAdmin = roleCode === 'SUPER_ADMIN';
 
     if (!isAssignedMechanic && !isAssignedSupervisor && !isSuperAdmin) {
@@ -392,7 +411,7 @@ export async function POST(
       photo_type: photoType,
       photo_category: photoCategory,
       photo_url: photoUrl,
-      uploaded_by: user.id,
+      uploaded_by: actorId,
       latitude: latitude ? parseFloat(latitude) : null,
       longitude: longitude ? parseFloat(longitude) : null,
       odometer_reading: odometerReading ? parseFloat(odometerReading) : null,
@@ -440,7 +459,7 @@ export async function POST(
     // Create activity log
     await supabase.from('lead_activities').insert({
       lead_id: leadId,
-      user_id: user.id,
+      user_id: actorId,
       activity_type: 'PHOTO_UPLOADED',
       description: `Mechanic photo uploaded: ${photoType} (${photoCategory})`,
       metadata: { 
@@ -509,17 +528,35 @@ export async function GET(
     const leadId = params.id;
     const category = request.nextUrl.searchParams.get('category'); // before, during, after
 
-    // Get user profile to check role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, role_id, roles!role_id(role_code)')
-      .eq('id', user.id)
-      .single();
+    // Get user profile to check role (users_login is mapped by email/phone; not always same as auth user.id)
+    const email = (user.email || '').trim();
+    const phone = (user.phone || '').trim();
+    const selectProfile = 'id, email, phone, role_id, roles!inner(role_code)';
 
-    if (profileError || !userProfile) {
-      return NextResponse.json({ 
-        error: 'User profile not found' 
-      }, { status: 404 });
+    const { data: userProfileByEmail, error: profileErrorByEmail } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+      : { data: null, error: null };
+
+    const { data: userProfileByPhone, error: profileErrorByPhone } = !userProfileByEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null, error: null };
+
+    const { data: userProfileById, error: profileErrorById } = !userProfileByEmail && !userProfileByPhone
+      ? await supabase.from('users_login').select(selectProfile).eq('id', user.id).maybeSingle()
+      : { data: null, error: null };
+
+    const userProfile = userProfileByEmail || userProfileByPhone || userProfileById;
+
+    if (!userProfile) {
+      return NextResponse.json(
+        {
+          error: 'User profile not found',
+          user_email: email || null,
+          user_phone: phone || null,
+          profile_lookup_errors: [profileErrorByEmail?.message, profileErrorByPhone?.message, profileErrorById?.message].filter(Boolean),
+        },
+        { status: 404 }
+      );
     }
 
     const roleCode = (userProfile.roles as any)?.role_code;
@@ -564,8 +601,9 @@ export async function GET(
     // 1. Assigned mechanic for this job, OR
     // 2. Assigned supervisor for this lead, OR
     // 3. Super Admin
-    const isAssignedMechanic = jobData.mechanic_id === user.id;
-    const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === user.id;
+    const actorId = userProfile.id;
+    const isAssignedMechanic = jobData.mechanic_id === actorId;
+    const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === actorId;
     const isSuperAdmin = roleCode === 'SUPER_ADMIN';
 
     if (!isAssignedMechanic && !isAssignedSupervisor && !isSuperAdmin) {
@@ -641,17 +679,35 @@ export async function DELETE(
       }, { status: 400 });
     }
 
-    // Get user profile to check role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, role_id, roles!role_id(role_code)')
-      .eq('id', user.id)
-      .single();
+    // Get user profile to check role (users_login is mapped by email/phone; not always same as auth user.id)
+    const email = (user.email || '').trim();
+    const phone = (user.phone || '').trim();
+    const selectProfile = 'id, email, phone, role_id, roles!inner(role_code)';
 
-    if (profileError || !userProfile) {
-      return NextResponse.json({ 
-        error: 'User profile not found' 
-      }, { status: 404 });
+    const { data: userProfileByEmail, error: profileErrorByEmail } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+      : { data: null, error: null };
+
+    const { data: userProfileByPhone, error: profileErrorByPhone } = !userProfileByEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null, error: null };
+
+    const { data: userProfileById, error: profileErrorById } = !userProfileByEmail && !userProfileByPhone
+      ? await supabase.from('users_login').select(selectProfile).eq('id', user.id).maybeSingle()
+      : { data: null, error: null };
+
+    const userProfile = userProfileByEmail || userProfileByPhone || userProfileById;
+
+    if (!userProfile) {
+      return NextResponse.json(
+        {
+          error: 'User profile not found',
+          user_email: email || null,
+          user_phone: phone || null,
+          profile_lookup_errors: [profileErrorByEmail?.message, profileErrorByPhone?.message, profileErrorById?.message].filter(Boolean),
+        },
+        { status: 404 }
+      );
     }
 
     const roleCode = (userProfile.roles as any)?.role_code;
@@ -686,8 +742,9 @@ export async function DELETE(
     // 1. Assigned mechanic for this job, OR
     // 2. Assigned supervisor for this lead, OR
     // 3. Super Admin
-    const isAssignedMechanic = photo.mechanic_jobs.mechanic_id === user.id;
-    const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === user.id;
+    const actorId = userProfile.id;
+    const isAssignedMechanic = photo.mechanic_jobs.mechanic_id === actorId;
+    const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === actorId;
     const isSuperAdmin = roleCode === 'SUPER_ADMIN';
 
     if (!isAssignedMechanic && !isAssignedSupervisor && !isSuperAdmin) {

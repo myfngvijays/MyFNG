@@ -74,14 +74,21 @@ export default function ExtraWorkApprovalsPage() {
         return;
       }
 
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('workshop_id')
-        .eq('email', user.email)
-        .single();
+      const email = (user.email || '').trim();
+      const phone = (user.phone || '').trim();
+
+      const { data: userProfileByEmail } = email
+        ? await supabase.from('users_login').select('workshop_id').ilike('email', email).maybeSingle()
+        : { data: null };
+
+      const { data: userProfileByPhone } = !userProfileByEmail && phone
+        ? await supabase.from('users_login').select('workshop_id').eq('phone', phone).maybeSingle()
+        : { data: null };
+
+      const userProfile = userProfileByEmail || userProfileByPhone;
 
       if (!userProfile?.workshop_id) {
-        toast.error('Workshop not found');
+        toast.error('User profile not found');
         return;
       }
 

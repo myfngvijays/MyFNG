@@ -43,6 +43,7 @@ export default function HomePage() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isBookingFormOpen, setIsBookingFormOpen] = useState(false);
   const [activeStep, setActiveStep] = useState(0); // Added for How It Works section
+  const [activeService, setActiveService] = useState(0);
 
   // Pricing Data based on Car Type
   const pricingData = {
@@ -79,6 +80,115 @@ export default function HomePage() {
     }
     fetchBrands();
   }, []);
+
+  const services = [
+    {
+      icon: <Activity className="w-6 h-6" />,
+      title: 'Periodic Service',
+      desc: 'AI-powered scheduled maintenance with digital health reports',
+      slug: 'periodic-service',
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+      ring: 'ring-blue-200/60',
+      priceFrom: '₹1,999',
+      eta: '2–3 hrs',
+      warranty: '1 Month',
+      highlights: ['AI health report', 'Genuine consumables', 'Pickup & drop options'],
+    },
+    {
+      icon: <Zap className="w-6 h-6" />,
+      title: 'Engine Service',
+      desc: 'Complete engine diagnostics powered by AI',
+      slug: 'engine-service',
+      color: 'text-orange-600',
+      bg: 'bg-orange-50',
+      ring: 'ring-orange-200/60',
+      priceFrom: '₹2,499',
+      eta: '3–5 hrs',
+      warranty: '1 Month',
+      highlights: ['Computer diagnostics', 'Performance tuning', 'Transparent estimate'],
+    },
+    {
+      icon: <Shield className="w-6 h-6" />,
+      title: 'AC Service',
+      desc: 'Complete climate control solutions',
+      slug: 'ac-service',
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
+      ring: 'ring-emerald-200/60',
+      priceFrom: '₹1,299',
+      eta: '1–2 hrs',
+      warranty: '15 Days',
+      highlights: ['Cooling check', 'Gas top-up/refill', 'Cabin sanitization'],
+    },
+    {
+      icon: <Zap className="w-6 h-6" />,
+      title: 'Battery Service',
+      desc: 'AI-powered battery health analysis',
+      slug: 'battery-service',
+      color: 'text-yellow-600',
+      bg: 'bg-yellow-50',
+      ring: 'ring-yellow-200/60',
+      priceFrom: '₹899',
+      eta: '30–60 min',
+      warranty: 'Up to 24 Months',
+      highlights: ['Health report', 'Jumpstart support', 'Warranty registration'],
+    },
+    {
+      icon: <Shield className="w-6 h-6" />,
+      title: 'Brake Service',
+      desc: 'Complete brake system inspection',
+      slug: 'brake-service',
+      color: 'text-red-600',
+      bg: 'bg-red-50',
+      ring: 'ring-red-200/60',
+      priceFrom: '₹1,499',
+      eta: '1–2 hrs',
+      warranty: '15 Days',
+      highlights: ['Pad & disc check', 'Brake fluid test', 'Safety road test'],
+    },
+    {
+      icon: <Car className="w-6 h-6" />,
+      title: 'Tyre & Wheel Care',
+      desc: 'Professional tyre and wheel services',
+      slug: 'tyre-wheel-care',
+      color: 'text-purple-600',
+      bg: 'bg-purple-50',
+      ring: 'ring-purple-200/60',
+      priceFrom: '₹699',
+      eta: '45–90 min',
+      warranty: 'NA',
+      highlights: ['Alignment & balancing', 'Rotation', 'Puncture repair'],
+    },
+    {
+      icon: <Activity className="w-6 h-6" />,
+      title: 'Detailing Service',
+      desc: 'Premium car detailing and protection',
+      slug: 'detailing-service',
+      color: 'text-cyan-600',
+      bg: 'bg-cyan-50',
+      ring: 'ring-cyan-200/60',
+      priceFrom: '₹2,999',
+      eta: '3–6 hrs',
+      warranty: 'NA',
+      highlights: ['Interior deep clean', 'Exterior polish', 'Protection coating'],
+    },
+    {
+      icon: <Car className="w-6 h-6" />,
+      title: 'Denting & Painting',
+      desc: 'High-precision body work',
+      slug: 'denting-painting',
+      color: 'text-indigo-600',
+      bg: 'bg-indigo-50',
+      ring: 'ring-indigo-200/60',
+      priceFrom: '₹3,999',
+      eta: '1–3 days',
+      warranty: '3 Months',
+      highlights: ['Color matching', 'Panel repair', 'Premium finish'],
+    },
+  ] as const;
+
+  const activeServiceItem = services[Math.min(activeService, services.length - 1)];
 
   return (
     <div className="min-h-screen bg-white font-poppins text-text-body selection:bg-brand-primary/20">
@@ -252,88 +362,172 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 2. Our Services - Redesigned Grid (No Boxes) */}
-      <section className="py-16 sm:py-20 md:py-24 bg-white">
-        <div className="container mx-auto px-4 sm:px-6">
-          <div className="text-center mb-16">
-            <span className="text-blue-600 font-bold tracking-wider uppercase text-sm">Our Services</span>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">Complete Car Care Solutions</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              From periodic maintenance to complex repairs - our AI chatbot recommends the perfect service for your car.
-            </p>
+      {/* 2. Our Services - Option C: Featured card + horizontal carousel */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+        <div className="absolute -top-40 -right-40 w-[520px] h-[520px] rounded-full bg-blue-400/10 blur-3xl"></div>
+        <div className="absolute -bottom-40 -left-40 w-[520px] h-[520px] rounded-full bg-purple-400/10 blur-3xl"></div>
+
+        <div className="container mx-auto px-4 sm:px-6 py-16 sm:py-20 md:py-24 relative z-10">
+          {/* Top row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-start">
+            {/* Left: Copy + CTA */}
+            <div className="text-center lg:text-left">
+              <span className="text-blue-600 font-bold tracking-wider uppercase text-sm">Our Services</span>
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">Explore services by category</h2>
+              <p className="text-lg text-gray-600 max-w-xl mx-auto lg:mx-0">
+                Swipe to browse. Tap a service to preview pricing, timing, and what you get — all upfront.
+              </p>
+
+              <div className="mt-8 flex items-center justify-center lg:justify-start gap-3">
+                <Link
+                  href="/services"
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-white font-semibold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all"
+                >
+                  Explore All Services <ArrowRight className="w-5 h-5" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setIsChatOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/80 backdrop-blur border border-gray-200 px-6 py-3 text-gray-900 font-semibold hover:border-blue-200 hover:text-blue-700 transition-all"
+                >
+                  Ask AI <Bot className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Auto-moving strip below shows all services */}
+            </div>
+
+            {/* Right: Featured preview card */}
+            <div className="w-full">
+              <div className="relative overflow-hidden rounded-[28px] border border-white/60 bg-white/70 backdrop-blur shadow-2xl shadow-blue-900/10 lg:max-w-[720px] lg:ml-auto">
+                <div className={`absolute inset-0 ${activeServiceItem.bg} opacity-60`}></div>
+                <div className="absolute inset-0 bg-gradient-to-br from-white/70 via-white/40 to-white/70"></div>
+                <div className="absolute top-0 right-0 -mt-16 -mr-16 w-72 h-72 rounded-full bg-blue-500/10 blur-3xl"></div>
+                <div className="absolute bottom-0 left-0 -mb-16 -ml-16 w-72 h-72 rounded-full bg-purple-500/10 blur-3xl"></div>
+
+                {/* compacted card to match left column height */}
+                <div className="relative z-10 p-5 sm:p-7">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-14 h-14 rounded-2xl ${activeServiceItem.bg} ${activeServiceItem.color} flex items-center justify-center ring-1 ${activeServiceItem.ring}`}>
+                          {activeServiceItem.icon}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Featured</div>
+                          <h3 className="text-2xl font-bold text-gray-900">{activeServiceItem.title}</h3>
+                        </div>
+                      </div>
+                      <p className="mt-4 text-gray-600 leading-relaxed max-w-2xl">
+                        {activeServiceItem.desc}
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3 sm:flex-col">
+                      <Link
+                        href={`/services/${activeServiceItem.slug}`}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-white font-semibold hover:bg-black transition-all"
+                      >
+                        Know More <ArrowRight className="w-5 h-5" />
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => setIsBookingFormOpen(true)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-white border border-gray-200 px-5 py-2.5 text-gray-900 font-semibold hover:border-gray-300 transition-all"
+                      >
+                        Quick Book <Sparkles className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-2xl bg-white/70 border border-gray-100 p-3.5">
+                      <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Starting from</div>
+                      <div className="mt-1 text-lg font-bold text-gray-900">{activeServiceItem.priceFrom}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/70 border border-gray-100 p-3.5">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Avg. time</div>
+                        <Clock className="w-4 h-4 text-gray-400" />
+                      </div>
+                      <div className="mt-1 text-lg font-bold text-gray-900">{activeServiceItem.eta}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/70 border border-gray-100 p-3.5">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Warranty</div>
+                        <Shield className="w-4 h-4 text-gray-400" />
+                      </div>
+                      <div className="mt-1 text-lg font-bold text-gray-900">{activeServiceItem.warranty}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl bg-white/60 border border-gray-100 p-4">
+                    <div className="flex items-center gap-2 text-sm font-bold text-gray-900 mb-4">
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                      What you get
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {activeServiceItem.highlights.map((h) => (
+                        <span
+                          key={h}
+                          className="inline-flex items-center gap-2 rounded-full border border-gray-100 bg-white/80 px-3 py-1.5 text-xs font-semibold text-gray-700"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                          {h}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* footer note removed to keep card compact */}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12">
-            <ServiceItem 
-              icon={<Activity className="w-8 h-8" />}
-              title="Periodic Service"
-              desc="AI-powered scheduled maintenance with digital health reports"
-              slug="periodic-service"
-              color="text-blue-600"
-              bg="bg-blue-50"
-            />
-            <ServiceItem 
-              icon={<Zap className="w-8 h-8" />}
-              title="Engine Service"
-              desc="Complete engine diagnostics powered by AI"
-              slug="engine-service"
-              color="text-orange-500"
-              bg="bg-orange-50"
-            />
-            <ServiceItem 
-              icon={<Shield className="w-8 h-8" />}
-              title="AC Service"
-              desc="Complete climate control solutions"
-              slug="ac-service"
-              color="text-green-500"
-              bg="bg-green-50"
-            />
-            <ServiceItem 
-              icon={<Zap className="w-8 h-8" />}
-              title="Battery Service"
-              desc="AI-powered battery health analysis"
-              slug="battery-service"
-              color="text-yellow-500"
-              bg="bg-yellow-50"
-            />
-            <ServiceItem 
-              icon={<Shield className="w-8 h-8" />}
-              title="Brake Service"
-              desc="Complete brake system inspection"
-              slug="brake-service"
-              color="text-red-500"
-              bg="bg-red-50"
-            />
-            <ServiceItem 
-              icon={<Car className="w-8 h-8" />}
-              title="Tyre & Wheel Care"
-              desc="Professional tyre and wheel services"
-              slug="tyre-wheel-care"
-              color="text-purple-500"
-              bg="bg-purple-50"
-            />
-            <ServiceItem 
-              icon={<Activity className="w-8 h-8" />}
-              title="Detailing Service"
-              desc="Premium car detailing and protection"
-              slug="detailing-service"
-              color="text-cyan-500"
-              bg="bg-cyan-50"
-            />
-            <ServiceItem 
-              icon={<Car className="w-8 h-8" />}
-              title="Denting & Painting"
-              desc="High-precision body work"
-              slug="denting-painting"
-              color="text-indigo-500"
-              bg="bg-indigo-50"
-            />
-          </div>
+          {/* Bottom: Horizontal carousel */}
+          <div className="mt-10 sm:mt-12">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm font-bold text-gray-900">Browse all services</div>
+              <div className="text-xs text-gray-500 lg:hidden">Swipe →</div>
+              <div className="hidden lg:block text-xs text-gray-500">Auto-scrolling • hover to pause</div>
+            </div>
 
-          <div className="text-center mt-16">
-            <Link href="/services" className="inline-flex items-center gap-2 text-lg font-semibold text-blue-600 hover:text-blue-700 hover:gap-3 transition-all group">
-              Explore All Services <ArrowRight className="w-5 h-5 transition-transform" />
-            </Link>
+            <div className="relative overflow-hidden">
+              <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-white/80 to-transparent z-10"></div>
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-white/80 to-transparent z-10"></div>
+
+              <div className="animate-scroll-horizontal gap-4 hover:[animation-play-state:paused]">
+                {services.map((s, idx) => (
+                  <ServiceCarouselCard
+                    key={`svc-1-${s.slug}`}
+                    active={idx === activeService}
+                    icon={s.icon}
+                    title={s.title}
+                    tag={s.priceFrom}
+                    desc={s.desc}
+                    color={s.color}
+                    bg={s.bg}
+                    onSelect={() => setActiveService(idx)}
+                  />
+                ))}
+                {/* Duplicate for seamless loop */}
+                {services.map((s, idx) => (
+                  <ServiceCarouselCard
+                    key={`svc-2-${s.slug}`}
+                    active={idx === activeService}
+                    icon={s.icon}
+                    title={s.title}
+                    tag={s.priceFrom}
+                    desc={s.desc}
+                    color={s.color}
+                    bg={s.bg}
+                    onSelect={() => setActiveService(idx)}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -1095,40 +1289,112 @@ function RSAService({ icon, title }: { icon: React.ReactNode; title: string }) {
   );
 }
 
-function ServiceItem({ icon, title, desc, slug, color, bg }: { 
-  icon: React.ReactNode; 
-  title: string; 
-  desc: string; 
-  slug?: string;
+function ServiceOption({
+  icon,
+  title,
+  desc,
+  color,
+  bg,
+  active,
+  onSelect,
+  compact = false,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
   color: string;
   bg: string;
+  active: boolean;
+  onSelect: () => void;
+  compact?: boolean;
 }) {
   return (
-    <div className="group relative">
-      {/* Icon Area - Floating */}
-      <div className={`w-16 h-16 rounded-2xl ${bg} ${color} flex items-center justify-center mb-6 shadow-lg shadow-gray-100 transition-transform group-hover:scale-110 group-hover:rotate-3`}>
-        {icon}
-      </div>
-      
-      {/* Content */}
-      <div className="pr-4">
-        <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors">{title}</h3>
-        <p className="text-gray-600 text-sm leading-relaxed mb-6">{desc}</p>
-        
-        {/* Action Link */}
-        {slug && (
-          <Link
-            href={`/services/${slug}`}
-            className="inline-flex items-center text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors"
+    <button
+      type="button"
+      onClick={onSelect}
+      onMouseEnter={onSelect}
+      className={`group text-left w-full rounded-2xl border transition-all duration-200 ${
+        active
+          ? 'border-blue-200 bg-blue-50/60 shadow-md shadow-blue-900/5'
+          : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm'
+      } ${compact ? 'p-3' : 'p-4 sm:p-5'}`}
+    >
+      <div className="flex items-start gap-4">
+        <div
+          className={`${compact ? 'w-10 h-10 rounded-xl' : 'w-11 h-11 rounded-2xl'} ${bg} ${color} flex items-center justify-center ring-1 ring-black/5 transition-transform ${
+            active ? 'scale-105' : 'group-hover:scale-105'
+          }`}
+        >
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <h4 className={`${compact ? 'text-sm' : ''} font-bold text-gray-900 leading-tight`}>{title}</h4>
+            <ArrowRight
+              className={`w-4 h-4 mt-0.5 flex-shrink-0 transition-transform ${
+                active ? 'translate-x-0 text-blue-600' : 'text-gray-300 group-hover:text-gray-400 group-hover:translate-x-0.5'
+              }`}
+            />
+          </div>
+          <p
+            className={`mt-1 ${compact ? 'text-xs' : 'text-sm'} leading-relaxed ${
+              active ? 'text-blue-700' : 'text-gray-500'
+            } line-clamp-1`}
           >
-            Know More <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
-          </Link>
-        )}
+            {desc}
+          </p>
+        </div>
       </div>
+    </button>
+  );
+}
 
-      {/* Decorative - Hover Line */}
-      <div className="absolute -left-4 top-0 bottom-0 w-[1px] bg-gradient-to-b from-transparent via-gray-200 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-    </div>
+function ServiceCarouselCard({
+  icon,
+  title,
+  desc,
+  tag,
+  color,
+  bg,
+  active,
+  onSelect,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  tag: string;
+  color: string;
+  bg: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`snap-start shrink-0 w-[280px] sm:w-[320px] rounded-3xl border text-left transition-all duration-200 overflow-hidden ${
+        active ? 'border-blue-200 shadow-lg shadow-blue-900/10' : 'border-gray-100 hover:border-gray-200 hover:shadow-md'
+      } bg-white`}
+    >
+      <div className={`h-28 ${bg} relative`}>
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-32 h-32 bg-white/30 rounded-full blur-2xl"></div>
+        <div className="p-5 flex items-start justify-between">
+          <div className={`w-12 h-12 rounded-2xl bg-white/80 ${color} flex items-center justify-center ring-1 ring-black/5`}>
+            {icon}
+          </div>
+          <span className="text-xs font-bold text-gray-600 bg-white/80 px-2.5 py-1 rounded-full border border-white/60">
+            {tag}
+          </span>
+        </div>
+      </div>
+      <div className="p-6">
+        <h4 className="text-lg font-bold text-gray-900">{title}</h4>
+        <p className="mt-2 text-sm text-gray-600 leading-relaxed line-clamp-2">{desc}</p>
+        <div className={`mt-4 inline-flex items-center gap-2 text-sm font-bold ${active ? 'text-blue-600' : 'text-gray-900'} transition-colors`}>
+          Preview <ArrowRight className="w-4 h-4" />
+        </div>
+      </div>
+    </button>
   );
 }
 
