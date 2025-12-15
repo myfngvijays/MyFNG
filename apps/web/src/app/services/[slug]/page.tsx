@@ -159,6 +159,34 @@ const services = [
   },
   {
     id: 6,
+    slug: 'clutch-service',
+    title: 'Clutch Service',
+    icon: Wrench,
+    description: 'Smooth gear shifts and reliable pickup. Diagnose and fix clutch wear with transparent estimates.',
+    longDescription:
+      'Our Clutch Service includes inspection, wear diagnosis, and replacement (if required) using quality parts. We ensure smooth shifting, reduced vibration, and improved drivability with proper calibration and testing.',
+    features: [
+      'Clutch System Inspection',
+      'Clutch Plate & Pressure Plate Check',
+      'Release Bearing Inspection',
+      'Hydraulic / Cable Check',
+      'Test Drive & Shift Calibration',
+      'Replacement with Quality Parts (if needed)',
+      'Transparent Estimate Before Work',
+      'Warranty on Parts & Labor'
+    ],
+    benefits: [
+      'Smoother gear shifts',
+      'Better drivability',
+      'Reduced vibration/noise',
+      'Prevents breakdowns'
+    ],
+    image: 'https://images.unsplash.com/photo-1603386329225-868f9b1ee6f8?auto=format&fit=crop&q=80&w=1200',
+    duration: '3-6 hours',
+    warranty: '3 months / 3,000 km'
+  },
+  {
+    id: 7,
     slug: 'tyre-wheel-care',
     title: 'Tyre & Wheel Care',
     icon: Car,
@@ -185,7 +213,7 @@ const services = [
     warranty: '6 months'
   },
   {
-    id: 7,
+    id: 8,
     slug: 'detailing-service',
     title: 'Detailing Service',
     icon: Sparkles,
@@ -212,7 +240,7 @@ const services = [
     warranty: '3-6 months'
   },
   {
-    id: 8,
+    id: 9,
     slug: 'denting-painting',
     title: 'Denting & Painting',
     icon: Car,

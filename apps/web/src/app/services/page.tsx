@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { 
@@ -13,7 +14,10 @@ import {
   Battery,
   Droplets,
   Gauge,
-  Sparkles
+  Sparkles,
+  Clock,
+  ShieldCheck,
+  IndianRupee
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -161,6 +165,35 @@ const services = [
   },
   {
     id: 6,
+    slug: 'clutch-service',
+    title: 'Clutch Service',
+    bookPrefill: { category: 'CLUTCH SERVICE', query: 'CLUTCH' },
+    icon: Wrench,
+    description: 'Smooth gear shifts and reliable pickup. Diagnose and fix clutch wear with transparent estimates.',
+    longDescription:
+      'Our Clutch Service includes inspection, wear diagnosis, and replacement (if required) using quality parts. We ensure smooth shifting, reduced vibration, and improved drivability with proper calibration and testing.',
+    features: [
+      'Clutch System Inspection',
+      'Clutch Plate & Pressure Plate Check',
+      'Release Bearing Inspection',
+      'Hydraulic / Cable Check',
+      'Test Drive & Shift Calibration',
+      'Replacement with Quality Parts (if needed)',
+      'Transparent Estimate Before Work',
+      'Warranty on Parts & Labor'
+    ],
+    benefits: [
+      'Smoother gear shifts',
+      'Better drivability',
+      'Reduced vibration/noise',
+      'Prevents breakdowns'
+    ],
+    image: 'https://images.unsplash.com/photo-1603386329225-868f9b1ee6f8?auto=format&fit=crop&q=80&w=1200',
+    duration: '3-6 hours',
+    warranty: '3 months / 3,000 km'
+  },
+  {
+    id: 7,
     slug: 'tyre-wheel-care',
     title: 'Tyre & Wheel Care',
     bookPrefill: { category: 'TYRE & WHEEL CARE', query: 'TYRE' },
@@ -188,7 +221,7 @@ const services = [
     warranty: '6 months'
   },
   {
-    id: 7,
+    id: 8,
     slug: 'detailing-service',
     title: 'Detailing Service',
     bookPrefill: { category: 'DETAILING SERVICE', query: 'DETAIL' },
@@ -216,7 +249,7 @@ const services = [
     warranty: '3-6 months'
   },
   {
-    id: 8,
+    id: 9,
     slug: 'denting-painting',
     title: 'Denting & Painting',
     bookPrefill: { category: 'DENTING PAINTING', query: 'PAINT' },
@@ -246,147 +279,264 @@ const services = [
 ];
 
 export default function ServicesPage() {
+  const [selectedService, setSelectedService] = useState(services[0]);
+  const popularServices = ['AC Service', 'Battery Service', 'Brake Service', 'Engine Service', 'Periodic Service'];
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
       
-      {/* Hero Section */}
-      <section className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 text-white py-12 sm:py-16 md:py-20 mt-16 sm:mt-18 md:mt-20">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6">
-          <div className="max-w-4xl mx-auto text-center">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-5 md:mb-6">Complete Car Care Services</h1>
-            <p className="text-base sm:text-lg md:text-xl text-gray-200 max-w-2xl mx-auto px-4">
-              From routine maintenance to complex repairs - our AI-powered diagnostics and expert technicians keep your car running like new.
-              <span className="font-semibold text-white"> 100% transparent pricing</span> with no hidden charges.
-            </p>
-          </div>
+      {/* Full-Bleed Service Explorer Section */}
+      <section className="relative min-h-[85vh] mt-16 overflow-hidden bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20">
+        {/* Background Illustration/Pattern */}
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03]"></div>
+          <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-blue-100/20 to-transparent"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-200/10 rounded-full blur-3xl"></div>
+          <div className="absolute top-20 right-20 w-72 h-72 bg-blue-200/10 rounded-full blur-3xl"></div>
         </div>
-      </section>
 
-      {/* Services Grid */}
-      <section className="py-12 sm:py-16 md:py-20 bg-gray-50">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6 mb-12 sm:mb-14 md:mb-16">
-            {services.map((service) => {
-              const IconComponent = service.icon;
-              return (
-                <div
-                  key={service.id}
-                  className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all group"
+        <div className="relative z-10 h-full">
+          {/* Header */}
+          <div className="container mx-auto px-4 sm:px-6 pt-12 pb-8">
+            <div className="max-w-7xl mx-auto">
+              <p className="text-sm font-semibold text-blue-600 uppercase tracking-wide mb-3">OUR SERVICES</p>
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-4">
+                Explore services by <br className="hidden sm:block" />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">category</span>
+              </h1>
+              <p className="text-lg text-gray-600 max-w-2xl mb-8">
+                Swipe to browse. Tap a service to preview pricing, timing, and what you get — all upfront.
+              </p>
+              
+              <div className="flex flex-wrap gap-3 mb-8">
+                <Link
+                  href="#services"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/25"
                 >
-                  <div className="p-4 sm:p-5 md:p-6">
-                    <div className="bg-brand-primary/10 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl flex items-center justify-center text-brand-primary mb-3 sm:mb-4 group-hover:bg-brand-primary group-hover:text-white transition">
-                      <IconComponent className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />
-                    </div>
-                    <h3 className="text-lg sm:text-xl font-bold text-brand-secondary mb-1.5 sm:mb-2 group-hover:text-brand-primary transition">
-                      {service.title}
-                    </h3>
-                    <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4 line-clamp-2">
-                      {service.description}
-                    </p>
-                    <ul className="space-y-1.5 sm:space-y-2 mb-3 sm:mb-4">
-                      {service.features.slice(0, 4).map((feature, idx) => (
-                        <li key={idx} className="flex items-start gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-700">
-                          <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                          <span className="line-clamp-1">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="flex items-center justify-between gap-3">
-                    <Link
-                      href={`/services/${service.slug}`}
-                      className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition"
-                    >
-                      Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    </Link>
+                  Explore All Services
+                  <ArrowRight className="w-5 h-5" />
+                </Link>
+                <button className="inline-flex items-center gap-2 px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:border-gray-400 transition-all">
+                  <Sparkles className="w-5 h-5" />
+                  Ask AI
+                </button>
+              </div>
+            </div>
+          </div>
 
-                      <Link
-                        href={`/book-service?prefill_category=${encodeURIComponent(service.bookPrefill.category)}&prefill_query=${encodeURIComponent(service.bookPrefill.query)}`}
-                        className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-2"
-                      >
-                        Book Now
-                      </Link>
+          {/* Main Service Explorer - Split View */}
+          <div id="services" className="container mx-auto px-4 sm:px-6">
+            <div className="max-w-7xl mx-auto">
+              <div className="grid lg:grid-cols-12 gap-6 lg:gap-8">
+                
+                {/* Left: Sticky Service List */}
+                <div className="lg:col-span-5 lg:sticky lg:top-24 lg:self-start">
+                  <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-100 p-6 max-h-[70vh] overflow-y-auto">
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">Browse all services</h2>
+                    <p className="text-sm text-gray-500 mb-6">Auto-scrolling • hover to pause</p>
+                    
+                    <div className="space-y-3">
+                      {services.map((service) => {
+                        const IconComponent = service.icon;
+                        const isSelected = selectedService.id === service.id;
+                        
+                        return (
+                          <button
+                            key={service.id}
+                            onClick={() => setSelectedService(service)}
+                            className={`w-full text-left p-4 rounded-xl transition-all ${
+                              isSelected 
+                                ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-300 shadow-md' 
+                                : 'bg-gray-50 border-2 border-transparent hover:border-gray-200 hover:shadow-sm'
+                            }`}
+                          >
+                            <div className="flex items-start gap-4">
+                              <div className={`flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center ${
+                                isSelected ? 'bg-blue-600 text-white' : 'bg-white text-gray-600'
+                              } transition-all`}>
+                                <IconComponent className="w-6 h-6" />
+                              </div>
+                              
+                              <div className="flex-1 min-w-0">
+                                <h3 className={`font-semibold mb-1 ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
+                                  {service.title}
+                                </h3>
+                                <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                                  {service.description}
+                                </p>
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                  <span className="flex items-center gap-1">
+                                    <IndianRupee className="w-3 h-3" />
+                                    {service.duration.replace(' hours', 'h').replace(' hour', 'h')}
+                                  </span>
+                                  <span>•</span>
+                                  <span>{service.duration}</span>
+                                </div>
+                              </div>
+                              
+                              {isSelected && (
+                                <div className="flex-shrink-0">
+                                  <CheckCircle className="w-5 h-5 text-blue-600" />
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
 
-      {/* Service Cards - Now link to individual pages */}
-      <section className="py-12 sm:py-16 md:py-20 bg-white">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6">
-          <div className="text-center mb-10 sm:mb-12 md:mb-16">
-            <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto px-2 sm:px-0">
-              Click on any service below to view detailed information, pricing, and book your service.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
-            {services.map((service) => {
-              const IconComponent = service.icon;
-              return (
-                <Link
-                  key={service.id}
-                  href={`/services/${service.slug}`}
-                  className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all group"
-                >
-                  <div className="p-4 sm:p-5 md:p-6">
-                    <div className="bg-brand-primary/10 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl flex items-center justify-center text-brand-primary mb-3 sm:mb-4 group-hover:bg-brand-primary group-hover:text-white transition">
-                      <IconComponent className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />
+                {/* Right: Large Preview Card */}
+                <div className="lg:col-span-7">
+                  <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
+                    {/* Featured Badge */}
+                    <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-white" />
+                        <span className="text-white font-semibold text-sm uppercase tracking-wide">Featured</span>
+                      </div>
+                      <span className="text-blue-100 text-sm font-medium">{selectedService.title}</span>
                     </div>
-                    <h3 className="text-lg sm:text-xl font-bold text-brand-secondary mb-1.5 sm:mb-2 group-hover:text-brand-primary transition">
-                      {service.title}
-                    </h3>
-                    <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4 line-clamp-2">
-                      {service.description}
-                    </p>
-                    <ul className="space-y-1.5 sm:space-y-2 mb-3 sm:mb-4">
-                      {service.features.slice(0, 4).map((feature, idx) => (
-                        <li key={idx} className="flex items-start gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-700">
-                          <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                          <span className="line-clamp-1">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="flex items-center justify-between gap-3">
-                    <div className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold hover:gap-2 sm:hover:gap-3 transition">
-                      Know More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+
+                    {/* Service Image */}
+                    <div className="relative h-64 bg-gradient-to-br from-gray-100 to-gray-200">
+                      <Image
+                        src={selectedService.image}
+                        alt={selectedService.title}
+                        fill
+                        className="object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="p-8">
+                      {/* Big Icon + Title */}
+                      <div className="flex items-start gap-6 mb-6">
+                        <div className="flex-shrink-0 w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-xl">
+                          {(() => {
+                            const IconComponent = selectedService.icon;
+                            return <IconComponent className="w-10 h-10" />;
+                          })()}
+                        </div>
+                        
+                        <div className="flex-1">
+                          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                            {selectedService.title}
+                          </h2>
+                          <p className="text-lg text-gray-600">
+                            {selectedService.longDescription}
+                          </p>
+                        </div>
                       </div>
 
-                      {/* Stop navigation to details page and go to booking with prefill */}
-                      <Link
-                        href={`/book-service?prefill_category=${encodeURIComponent(service.bookPrefill.category)}&prefill_query=${encodeURIComponent(service.bookPrefill.query)}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-2"
-                      >
-                        Book Now
-                      </Link>
+                      {/* Micro Highlights */}
+                      <div className="grid grid-cols-3 gap-4 mb-8 p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-100">
+                        <div className="text-center">
+                          <div className="flex justify-center mb-2">
+                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
+                              <IndianRupee className="w-5 h-5 text-blue-600" />
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Starting From</p>
+                          <p className="text-xl font-bold text-gray-900">
+                            {selectedService.duration.includes('days') ? '₹3,999+' : '₹' + selectedService.duration.split('-')[0].trim()}
+                          </p>
+                        </div>
+                        
+                        <div className="text-center">
+                          <div className="flex justify-center mb-2">
+                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
+                              <Clock className="w-5 h-5 text-purple-600" />
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Avg. Time</p>
+                          <p className="text-xl font-bold text-gray-900">{selectedService.duration}</p>
+                        </div>
+                        
+                        <div className="text-center">
+                          <div className="flex justify-center mb-2">
+                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
+                              <ShieldCheck className="w-5 h-5 text-green-600" />
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Warranty</p>
+                          <p className="text-xl font-bold text-gray-900">{selectedService.warranty}</p>
+                        </div>
+                      </div>
+
+                      {/* What you get */}
+                      <div className="mb-8">
+                        <div className="flex items-center gap-2 mb-4">
+                          <CheckCircle className="w-5 h-5 text-green-600" />
+                          <h3 className="text-lg font-bold text-gray-900">What you get</h3>
+                        </div>
+                        
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          {selectedService.features.slice(0, 6).map((feature, idx) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-2 flex-shrink-0"></div>
+                              <span className="text-sm text-gray-700">{feature}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* CTAs */}
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <Link
+                          href={`/book-service?prefill_category=${encodeURIComponent(selectedService.bookPrefill.category)}&prefill_query=${encodeURIComponent(selectedService.bookPrefill.query)}`}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:shadow-xl hover:scale-[1.02] transition-all"
+                        >
+                          Quick Book
+                          <ArrowRight className="w-5 h-5" />
+                        </Link>
+                        
+                        <Link
+                          href={`/services/${selectedService.slug}`}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-4 border-2 border-blue-600 text-blue-600 font-semibold rounded-xl hover:bg-blue-50 transition-all"
+                        >
+                          Know More
+                        </Link>
+                      </div>
                     </div>
                   </div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </section>
+                </div>
+              </div>
 
-      {/* CTA Section */}
-      <section className="py-12 sm:py-16 md:py-20 bg-gradient-to-br from-brand-primary to-brand-secondary text-white">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6 text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">Ready to Book Your Service?</h2>
-          <p className="text-base sm:text-lg md:text-xl text-blue-100 mb-6 sm:mb-7 md:mb-8 max-w-2xl mx-auto px-4">
-            Get transparent pricing, expert service, and AI-powered diagnostics. Book now and experience the MyFNG difference.
-          </p>
-          <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-4">
-            <Link href="/customer/register" className="btn btn-white text-sm sm:text-base md:text-lg px-6 sm:px-7 md:px-8 py-2.5 sm:py-3 md:py-4">
-              Book Service Now
-              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-1.5 sm:ml-2" />
-            </Link>
-            <Link href="/contact" className="btn btn-outline-white text-sm sm:text-base md:text-lg px-6 sm:px-7 md:px-8 py-2.5 sm:py-3 md:py-4">
-              Contact Us
-            </Link>
+              {/* Bottom: Quick Access Chips */}
+              <div className="mt-12 mb-8">
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-gray-900">Popular Services</h3>
+                    <span className="text-sm text-gray-500">Quick access</span>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-3">
+                    {popularServices.map((serviceName) => {
+                      const service = services.find(s => s.title === serviceName);
+                      if (!service) return null;
+                      
+                      return (
+                        <button
+                          key={service.id}
+                          onClick={() => setSelectedService(service)}
+                          className="inline-flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-full hover:border-blue-400 hover:shadow-md transition-all group"
+                        >
+                          {(() => {
+                            const IconComponent = service.icon;
+                            return <IconComponent className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />;
+                          })()}
+                          <span className="font-medium text-gray-900">{serviceName}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

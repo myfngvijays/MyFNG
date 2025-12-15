@@ -7,7 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import {
   CheckCircle, XCircle, Building, MapPin, Phone, Mail, Car,
   Calendar, DollarSign, FileText, AlertCircle, ArrowRight,
-  Loader2, Search
+  Loader2, Search, Truck
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -59,6 +59,7 @@ export default function LeadReviewPage() {
           *,
           created_by:users_login!created_by_id(id, full_name, email, phone),
           validated_by:users_login!validated_by_id(id, full_name),
+          assigned_pickup_boy:users_login!assigned_pickup_boy_id(id, full_name, phone),
           city:cities(id, name, state),
           model:car_models(id, make, model_name, variant),
           workshop:workshops(id, name, city, contact_person, phone)
@@ -445,6 +446,89 @@ export default function LeadReviewPage() {
                     <p className="font-medium text-base sm:text-lg text-green-600">₹{lead.estimated_amount}</p>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Pickup & Delivery Details */}
+            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+                <Truck className="w-5 h-5 text-brand-primary" />
+                Pickup & Delivery
+              </h2>
+
+              <div className="space-y-4 sm:space-y-5">
+                {/* Pickup */}
+                <div>
+                  <p className="text-sm sm:text-base font-semibold text-gray-800 mb-2">Pickup</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                    <div>
+                      <label className="text-xs sm:text-sm text-gray-600">Pickup Required</label>
+                      <p className="font-medium text-sm sm:text-base">{lead.pickup_required ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs sm:text-sm text-gray-600">Pickup Status</label>
+                      <p className="font-medium text-sm sm:text-base">{lead.pickup_status || 'Pending'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs sm:text-sm text-gray-600">Pickup Date</label>
+                      <p className="font-medium text-sm sm:text-base">
+                        {lead.scheduled_pickup_date ? new Date(lead.scheduled_pickup_date).toLocaleDateString() : 'Not scheduled'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs sm:text-sm text-gray-600">Pickup Time</label>
+                      <p className="font-medium text-sm sm:text-base">{lead.scheduled_pickup_time || 'Not scheduled'}</p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs sm:text-sm text-gray-600">Pickup Address</label>
+                      <p className="font-medium text-sm sm:text-base">
+                        {lead.pickup_address || lead.address || lead.customer_address || 'N/A'}
+                      </p>
+                    </div>
+                    {lead.pickup_otp && (
+                      <div>
+                        <label className="text-xs sm:text-sm text-gray-600">Pickup OTP</label>
+                        <p className="font-semibold font-mono text-sm sm:text-base">{lead.pickup_otp}</p>
+                      </div>
+                    )}
+                    {(lead.assigned_pickup_boy?.full_name || lead.assigned_pickup_boy?.phone) && (
+                      <div>
+                        <label className="text-xs sm:text-sm text-gray-600">Pickup Boy</label>
+                        <p className="font-medium text-sm sm:text-base">{lead.assigned_pickup_boy?.full_name || 'N/A'}</p>
+                        {lead.assigned_pickup_boy?.phone && (
+                          <p className="text-xs sm:text-sm text-gray-500">{lead.assigned_pickup_boy.phone}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Delivery */}
+                <div className="pt-3 sm:pt-4 border-t">
+                  <p className="text-sm sm:text-base font-semibold text-gray-800 mb-2">Delivery</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                    <div>
+                      <label className="text-xs sm:text-sm text-gray-600">Delivery Status</label>
+                      <p className="font-medium text-sm sm:text-base">{lead.delivery_status || 'Pending'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs sm:text-sm text-gray-600">Delivery Address</label>
+                      <p className="font-medium text-sm sm:text-base">
+                        {lead.delivery_address || lead.address || lead.customer_address || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs sm:text-sm text-gray-600">Delivery Date</label>
+                      <p className="font-medium text-sm sm:text-base">
+                        {lead.scheduled_delivery_date ? new Date(lead.scheduled_delivery_date).toLocaleDateString() : 'Not scheduled'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs sm:text-sm text-gray-600">Delivery Time</label>
+                      <p className="font-medium text-sm sm:text-base">{lead.scheduled_delivery_time || 'Not scheduled'}</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

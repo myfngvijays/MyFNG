@@ -87,12 +87,18 @@ export async function POST(
       return NextResponse.json({ error: 'Job not assigned to you' }, { status: 403 });
     }
 
-    // Verify lead is IN_PROGRESS
-    if (lead.status !== 'IN_PROGRESS') {
-      return NextResponse.json({ 
-        error: 'Job must be in IN_PROGRESS status to request extra work',
-        current_status: lead.status
-      }, { status: 400 });
+    // Verify lead is in a workable state
+    // NOTE: After requesting extra work we put the job on HOLD/ON_HOLD, so allow re-requests too.
+    const allowedLeadStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'REWORK_REQUIRED', 'ON_HOLD'];
+    if (!allowedLeadStatuses.includes(lead.status)) {
+      return NextResponse.json(
+        {
+          error: 'Job must be in progress to request extra work',
+          allowed_statuses: allowedLeadStatuses,
+          current_status: lead.status,
+        },
+        { status: 400 }
+      );
     }
 
     const now = new Date().toISOString();
@@ -141,6 +147,65 @@ export async function POST(
         }
       });
 
+    // Put job on HOLD so all screens show consistent state
+    // - mechanic_jobs.mechanic_status = HOLD
+    // - service_leads.status = ON_HOLD (lead workflow status)
+    try {
+      const { data: currentJob } = await supabase
+        .from('mechanic_jobs')
+        .select('id, mechanic_status')
+        .eq('lead_id', leadId)
+        .eq('mechanic_id', userProfile.id)
+        .maybeSingle();
+
+      if (currentJob) {
+        await supabase
+          .from('mechanic_jobs')
+          .update({
+            mechanic_status: 'HOLD',
+            paused_at: now,
+            updated_at: now,
+          })
+          .eq('lead_id', leadId)
+          .eq('mechanic_id', userProfile.id);
+
+        // Create mechanic action log (best-effort)
+        await supabase.from('mechanic_actions_log').insert({
+          lead_id: leadId,
+          mechanic_id: userProfile.id,
+          action_type: 'STATUS_CHANGED',
+          action_description: `Status changed from ${currentJob.mechanic_status} to HOLD (extra work requested)`,
+          metadata: {
+            old_status: currentJob.mechanic_status,
+            new_status: 'HOLD',
+            reason: 'EXTRA_WORK_REQUESTED',
+            extra_work_id: extraWorkRequest.id,
+          },
+        });
+      }
+
+      // Update service_leads status + history (best-effort)
+      if (lead.status !== 'ON_HOLD') {
+        await supabase
+          .from('service_leads')
+          .update({ status: 'ON_HOLD', updated_at: now })
+          .eq('id', leadId);
+
+        await supabase.from('lead_status_history').insert({
+          lead_id: leadId,
+          old_status: lead.status,
+          new_status: 'ON_HOLD',
+          changed_by: userProfile.id,
+          changed_at: now,
+          reason: 'Extra work requested',
+          notes: `Extra work requested: ${description}`,
+        });
+      }
+    } catch (e) {
+      // Don't fail request creation if status updates are blocked; UI can still show request.
+      console.error('Failed to set HOLD after extra work request:', e);
+    }
+
     // TODO: Send notification to supervisor (if assigned)
     // TODO: Send notification to workshop admin
     // TODO: If urgent, send SMS/WhatsApp alert
@@ -152,7 +217,9 @@ export async function POST(
       next_step: lead.assigned_supervisor_id 
         ? 'Supervisor will review and approve/reject your request'
         : 'Workshop Admin will review and approve/reject your request',
-      status: 'PENDING_APPROVAL'
+      status: 'PENDING_APPROVAL',
+      job_status: 'HOLD',
+      lead_status: 'ON_HOLD'
     }, { status: 201 });
 
   } catch (error) {

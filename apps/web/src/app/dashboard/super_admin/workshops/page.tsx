@@ -76,6 +76,7 @@ export default function WorkshopManagementPage() {
           city: editingWorkshop.city,
           state: editingWorkshop.state,
           pincode: editingWorkshop.pincode,
+          map_link: editingWorkshop.map_link || null,
           
           // Zone & Tax
           zone_id: editingWorkshop.zone_id,
@@ -394,6 +395,30 @@ export default function WorkshopManagementPage() {
                   value={editingWorkshop.address} 
                   onChange={e => setEditingWorkshop({...editingWorkshop, address: e.target.value})} 
                 />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Map Link</label>
+                <div className="relative">
+                  <Globe className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                  <input
+                    type="url"
+                    placeholder="Paste Google Maps link (https://maps.google.com/...)"
+                    className="w-full pl-9 sm:pl-10 pr-3 py-2 text-sm border rounded-lg"
+                    value={editingWorkshop.map_link || ''}
+                    onChange={(e) => setEditingWorkshop({ ...editingWorkshop, map_link: e.target.value })}
+                  />
+                </div>
+                {!!editingWorkshop.map_link && (
+                  <a
+                    href={editingWorkshop.map_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800"
+                  >
+                    Open link
+                  </a>
+                )}
               </div>
 
               <div>

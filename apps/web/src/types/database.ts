@@ -49,6 +49,15 @@ export type Database = {
           email: string;
           is_verified: boolean;
           audit_score: number | null;
+          gst_number: string | null;
+          map_link: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          zone_id: string | null;
+          bank_account_number: string | null;
+          ifsc_code: string | null;
+          upi_id: string | null;
+          commission_percentage: number | null;
           created_at: string;
           updated_at: string;
         };

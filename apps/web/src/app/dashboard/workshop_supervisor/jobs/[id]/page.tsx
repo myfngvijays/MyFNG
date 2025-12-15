@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import QCChecklist from '@/components/supervisor/QCChecklist';
@@ -23,6 +23,12 @@ import {
   XCircle, ArrowLeftCircle, Camera, Edit
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+
+type MasterPartSuggestion = {
+  id: string;
+  name: string;
+  part_number: string | null;
+};
 
 export default function SupervisorJobDetailPage() {
   const params = useParams();
@@ -50,6 +56,15 @@ export default function SupervisorJobDetailPage() {
     quantity_issued: 1,
     part_notes: ''
   });
+
+  // Master parts autocomplete (super admin Product Master)
+  const [partSuggestions, setPartSuggestions] = useState<MasterPartSuggestion[]>([]);
+  const [partSuggestionsOpen, setPartSuggestionsOpen] = useState(false);
+  const [partSuggestionsLoading, setPartSuggestionsLoading] = useState(false);
+  const partSuggestFetchSeq = useRef(0);
+  const partSuggestHideTimer = useRef<number | null>(null);
+
+  const partNameQuery = useMemo(() => (partForm.part_name || '').trim(), [partForm.part_name]);
 
   useEffect(() => {
     if (jobId) {
@@ -226,6 +241,62 @@ export default function SupervisorJobDetailPage() {
       supabase.removeChannel(channel);
     };
   }, [jobId]);
+
+  // Autocomplete for Part Name -> master_products (type=PART)
+  useEffect(() => {
+    if (!showAddPartModal) return;
+    if (!partNameQuery) {
+      setPartSuggestions([]);
+      setPartSuggestionsOpen(false);
+      setPartSuggestionsLoading(false);
+      return;
+    }
+
+    // When editing an existing part, don't auto-open suggestions unless user types further
+    // (still safe to search if they change text)
+    setPartSuggestionsLoading(true);
+    setPartSuggestionsOpen(true);
+
+    const seq = ++partSuggestFetchSeq.current;
+    const supabase = createClient();
+    const handle = window.setTimeout(async () => {
+      try {
+        // Search only PART type (super admin product master)
+        const { data, error } = await supabase
+          .from('master_products')
+          .select('id, name, part_number')
+          .eq('type', 'PART')
+          .ilike('name', `%${partNameQuery}%`)
+          .order('name', { ascending: true })
+          .limit(10);
+
+        if (seq !== partSuggestFetchSeq.current) return; // stale
+        if (error) {
+          console.error('Error searching master parts:', error);
+          setPartSuggestions([]);
+          return;
+        }
+        setPartSuggestions((data || []) as MasterPartSuggestion[]);
+      } catch (e) {
+        if (seq !== partSuggestFetchSeq.current) return;
+        console.error('Error searching master parts:', e);
+        setPartSuggestions([]);
+      } finally {
+        if (seq === partSuggestFetchSeq.current) setPartSuggestionsLoading(false);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(handle);
+  }, [partNameQuery, showAddPartModal]);
+
+  function selectPartSuggestion(s: MasterPartSuggestion) {
+    setPartForm((prev) => ({
+      ...prev,
+      part_name: s.name || prev.part_name,
+      part_code: s.part_number || prev.part_code || '',
+    }));
+    setPartSuggestionsOpen(false);
+  }
 
   async function fetchJobDetails() {
     try {
@@ -1302,14 +1373,70 @@ export default function SupervisorJobDetailPage() {
                 <label className="block text-xs sm:text-sm font-medium mb-1">
                   Part Name <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={partForm.part_name}
-                  onChange={(e) => setPartForm({ ...partForm, part_name: e.target.value })}
-                  className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                  placeholder="e.g., Oil Filter, Brake Pads"
-                  required
-                />
+                <div
+                  className="relative"
+                  onMouseDown={() => {
+                    // prevent blur-close when clicking inside dropdown
+                    if (partSuggestHideTimer.current) {
+                      window.clearTimeout(partSuggestHideTimer.current);
+                      partSuggestHideTimer.current = null;
+                    }
+                  }}
+                >
+                  <input
+                    type="text"
+                    value={partForm.part_name}
+                    onChange={(e) => setPartForm({ ...partForm, part_name: e.target.value })}
+                    onFocus={() => {
+                      if ((partForm.part_name || '').trim()) setPartSuggestionsOpen(true);
+                    }}
+                    onBlur={() => {
+                      // small delay so click on suggestion works
+                      partSuggestHideTimer.current = window.setTimeout(() => {
+                        setPartSuggestionsOpen(false);
+                      }, 120);
+                    }}
+                    className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                    placeholder="e.g., Oil Filter, Brake Pads"
+                    required
+                    autoComplete="off"
+                  />
+
+                  {partSuggestionsOpen && (partSuggestionsLoading || partSuggestions.length > 0) && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                      {partSuggestionsLoading ? (
+                        <div className="px-3 py-2 text-xs sm:text-sm text-gray-500">
+                          Searching…
+                        </div>
+                      ) : (
+                        <div className="max-h-56 overflow-y-auto">
+                          {partSuggestions.map((s) => (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => selectPartSuggestion(s)}
+                              className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-start justify-between gap-3"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs sm:text-sm font-semibold text-gray-800 truncate">
+                                  {s.name}
+                                </div>
+                                {s.part_number && (
+                                  <div className="text-[10px] sm:text-xs text-gray-500 font-mono truncate">
+                                    {s.part_number}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-[10px] sm:text-xs text-gray-400 whitespace-nowrap">
+                                Select
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div>

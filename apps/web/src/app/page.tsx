@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
+import { createClient } from '@/lib/supabase/client';
 import BookingForm from '@/components/landing/BookingForm';
 import LiveStats from '@/components/landing/LiveStats';
 import AIFeatureBadge from '@/components/landing/AIFeatureBadge';
 import TrustBadges from '@/components/landing/TrustBadges';
 import DynamicFOMO from '@/components/landing/DynamicFOMO';
+import ServiceExplorer, { type ServiceExplorerItem } from '@/components/landing/ServiceExplorer';
 import { 
   MessageSquare, 
   Zap, 
@@ -38,12 +40,61 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 
+function extractLatLngFromMapLink(mapLink?: string | null): { lat: number; lng: number } | null {
+  if (!mapLink) return null;
+  try {
+    const raw = decodeURIComponent(mapLink);
+    const at = raw.match(/@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/);
+    if (at) {
+      const lat = Number(at[1]);
+      const lng = Number(at[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+    const qp = raw.match(/[?&](?:q|query|ll)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/);
+    if (qp) {
+      const lat = Number(qp[1]);
+      const lng = Number(qp[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+    const center = raw.match(/[?&]center=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/);
+    if (center) {
+      const lat = Number(center[1]);
+      const lng = Number(center[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const s =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
 export default function HomePage() {
   const [activeCarType, setActiveCarType] = useState<'hatchback' | 'sedan' | 'suv'>('sedan');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isBookingFormOpen, setIsBookingFormOpen] = useState(false);
   const [activeStep, setActiveStep] = useState(0); // Added for How It Works section
-  const [activeService, setActiveService] = useState(0);
+  type WhyIntent = 'instant' | 'save' | 'control' | 'trust';
+  const [whyIntent, setWhyIntent] = useState<WhyIntent>('instant');
+  const [headerAiQuery, setHeaderAiQuery] = useState('');
+  const [chatDraft, setChatDraft] = useState('');
+
+  const [nearestWorkshopKm, setNearestWorkshopKm] = useState<number | null>(null);
+  const [nearestWorkshopName, setNearestWorkshopName] = useState<string | null>(null);
+  const [nearestWorkshopLoading, setNearestWorkshopLoading] = useState(false);
+  const [nearestWorkshopDenied, setNearestWorkshopDenied] = useState(false);
 
   // Pricing Data based on Car Type
   const pricingData = {
@@ -81,9 +132,93 @@ export default function HomePage() {
     fetchBrands();
   }, []);
 
+  useEffect(() => {
+    let watchId: number | null = null;
+    let cancelled = false;
+
+    async function computeNearest(pos: GeolocationPosition) {
+      try {
+        setNearestWorkshopLoading(true);
+        setNearestWorkshopDenied(false);
+        const user = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('workshops')
+          .select('id,name,latitude,longitude,map_link,is_verified')
+          .eq('is_verified', true)
+          .limit(500);
+        if (error) throw error;
+        if (cancelled) return;
+
+        type Row = {
+          id: string;
+          name: string;
+          latitude: number | null;
+          longitude: number | null;
+          map_link: string | null;
+        };
+        const rows = (data as unknown as Row[]) ?? [];
+
+        let best: { km: number; name: string } | null = null;
+        for (const w of rows) {
+          let lat = w.latitude;
+          let lng = w.longitude;
+          if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+            const fromLink = extractLatLngFromMapLink(w.map_link);
+            if (fromLink) {
+              lat = fromLink.lat;
+              lng = fromLink.lng;
+            }
+          }
+          if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+          const km = haversineKm(user, { lat, lng });
+          if (!Number.isFinite(km)) continue;
+          if (!best || km < best.km) best = { km, name: w.name };
+        }
+
+        setNearestWorkshopKm(best ? Math.max(0, best.km) : null);
+        setNearestWorkshopName(best?.name ?? null);
+      } catch (e) {
+        console.error('Error computing nearest workshop:', e);
+      } finally {
+        if (!cancelled) setNearestWorkshopLoading(false);
+      }
+    }
+
+    function onDenied() {
+      if (cancelled) return;
+      setNearestWorkshopDenied(true);
+      setNearestWorkshopLoading(false);
+      setNearestWorkshopKm(null);
+      setNearestWorkshopName(null);
+    }
+
+    if (!('geolocation' in navigator)) return;
+
+    setNearestWorkshopLoading(true);
+    navigator.geolocation.getCurrentPosition(computeNearest, onDenied, {
+      enableHighAccuracy: false,
+      timeout: 7000,
+      maximumAge: 5 * 60 * 1000,
+    });
+
+    // "Real-time": watch for changes while page is open (best-effort).
+    watchId = navigator.geolocation.watchPosition(computeNearest, () => {}, {
+      enableHighAccuracy: false,
+      maximumAge: 60 * 1000,
+      timeout: 10000,
+    });
+
+    return () => {
+      cancelled = true;
+      if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    };
+  }, []);
+
   const services = [
     {
-      icon: <Activity className="w-6 h-6" />,
+      icon: Activity,
       title: 'Periodic Service',
       desc: 'AI-powered scheduled maintenance with digital health reports',
       slug: 'periodic-service',
@@ -96,7 +231,7 @@ export default function HomePage() {
       highlights: ['AI health report', 'Genuine consumables', 'Pickup & drop options'],
     },
     {
-      icon: <Zap className="w-6 h-6" />,
+      icon: Zap,
       title: 'Engine Service',
       desc: 'Complete engine diagnostics powered by AI',
       slug: 'engine-service',
@@ -109,7 +244,7 @@ export default function HomePage() {
       highlights: ['Computer diagnostics', 'Performance tuning', 'Transparent estimate'],
     },
     {
-      icon: <Shield className="w-6 h-6" />,
+      icon: Shield,
       title: 'AC Service',
       desc: 'Complete climate control solutions',
       slug: 'ac-service',
@@ -122,7 +257,7 @@ export default function HomePage() {
       highlights: ['Cooling check', 'Gas top-up/refill', 'Cabin sanitization'],
     },
     {
-      icon: <Zap className="w-6 h-6" />,
+      icon: Zap,
       title: 'Battery Service',
       desc: 'AI-powered battery health analysis',
       slug: 'battery-service',
@@ -135,7 +270,7 @@ export default function HomePage() {
       highlights: ['Health report', 'Jumpstart support', 'Warranty registration'],
     },
     {
-      icon: <Shield className="w-6 h-6" />,
+      icon: Shield,
       title: 'Brake Service',
       desc: 'Complete brake system inspection',
       slug: 'brake-service',
@@ -148,7 +283,7 @@ export default function HomePage() {
       highlights: ['Pad & disc check', 'Brake fluid test', 'Safety road test'],
     },
     {
-      icon: <Car className="w-6 h-6" />,
+      icon: Car,
       title: 'Tyre & Wheel Care',
       desc: 'Professional tyre and wheel services',
       slug: 'tyre-wheel-care',
@@ -161,7 +296,7 @@ export default function HomePage() {
       highlights: ['Alignment & balancing', 'Rotation', 'Puncture repair'],
     },
     {
-      icon: <Activity className="w-6 h-6" />,
+      icon: Activity,
       title: 'Detailing Service',
       desc: 'Premium car detailing and protection',
       slug: 'detailing-service',
@@ -174,7 +309,7 @@ export default function HomePage() {
       highlights: ['Interior deep clean', 'Exterior polish', 'Protection coating'],
     },
     {
-      icon: <Car className="w-6 h-6" />,
+      icon: Car,
       title: 'Denting & Painting',
       desc: 'High-precision body work',
       slug: 'denting-painting',
@@ -186,16 +321,58 @@ export default function HomePage() {
       warranty: '3 Months',
       highlights: ['Color matching', 'Panel repair', 'Premium finish'],
     },
-  ] as const;
-
-  const activeServiceItem = services[Math.min(activeService, services.length - 1)];
+  ] satisfies ServiceExplorerItem[];
 
   return (
     <div className="min-h-screen bg-white font-poppins text-text-body selection:bg-brand-primary/20">
       <Navbar />
 
+      {/* Header AI Search Bar (full-width, under navbar) */}
+      <div className="w-full mt-16 sm:mt-20 md:mt-24 bg-white/70 backdrop-blur border-b border-gray-200/70">
+        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const q = headerAiQuery.trim();
+              if (!q) return;
+              setChatDraft(q);
+              setIsChatOpen(true);
+            }}
+            className="w-full"
+          >
+            <div className="w-full rounded-2xl border border-white/60 bg-gradient-to-r from-blue-50/80 via-white/80 to-purple-50/80 backdrop-blur shadow-lg shadow-blue-900/10 p-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="flex items-center gap-3 flex-1 rounded-xl bg-white/70 border border-gray-200 px-4 py-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
+                    <Bot className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500">
+                      Ask MY FNG AI
+                    </div>
+                    <input
+                      value={headerAiQuery}
+                      onChange={(e) => setHeaderAiQuery(e.target.value)}
+                      placeholder="Describe your issue (e.g. AC not cooling, brake noise, battery weak...)"
+                      className="mt-0.5 w-full bg-transparent text-sm sm:text-base font-semibold text-gray-900 placeholder:text-gray-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-white font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition"
+                >
+                  Ask AI <ArrowRight className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
       {/* 1. Hero Section: AI-Powered & Futuristic - Updated Clean Look */}
-      <section className="relative pt-24 pb-16 lg:pt-32 lg:pb-24 overflow-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50">
+      <section className="relative pt-14 pb-16 lg:pt-20 lg:pb-24 overflow-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50">
         {/* Background Elements */}
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
         <div className="absolute top-0 right-0 w-full lg:w-1/2 h-full bg-gradient-to-l from-blue-100/40 to-transparent transform skew-x-12 translate-x-1/4"></div>
@@ -205,10 +382,10 @@ export default function HomePage() {
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl animate-float" style={{animationDelay: '1.5s'}}></div>
 
         <div className="container mx-auto px-4 sm:px-6 relative z-10">
-          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
+          <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-12 lg:gap-14">
             
             {/* Left Content */}
-            <div className="lg:w-1/2 text-center lg:text-left w-full">
+            <div className="lg:col-span-6 text-center lg:text-left w-full">
               {/* AI Badge */}
               <div className="mb-6 flex justify-center lg:justify-start">
                 <AIFeatureBadge text="Powered by Advanced AI Technology" />
@@ -227,60 +404,71 @@ export default function HomePage() {
               </p>
 
               {/* Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-8">
-                <button 
-                  onClick={() => setIsBookingFormOpen(true)}
-                  className="btn bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl shadow-lg shadow-blue-600/20 font-semibold text-lg transition-all transform hover:-translate-y-1 hover:shadow-xl"
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start">
+                <Link
+                  href="/book-service"
+                  className="btn inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl shadow-lg shadow-blue-600/20 font-semibold text-lg transition-all transform hover:-translate-y-1 hover:shadow-xl"
                 >
                   Book Service Now
-                </button>
-                <button 
-                  onClick={() => setIsChatOpen(true)}
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setIsBookingFormOpen(true)}
                   className="btn bg-white border-2 border-blue-100 hover:border-blue-600 text-blue-900 hover:text-blue-600 px-8 py-4 rounded-xl font-semibold text-lg transition-all transform hover:-translate-y-1"
                 >
-                  Get AI Diagnosis
+                  Quick Book
                 </button>
+
+                <Link
+                  href="/workshops"
+                  className="btn inline-flex items-center justify-center gap-2 bg-white/60 backdrop-blur border-2 border-gray-200 hover:border-blue-300 text-gray-900 hover:text-blue-700 px-8 py-4 rounded-xl font-semibold text-lg transition-all transform hover:-translate-y-1"
+                >
+                  <MapPin className="w-5 h-5" />
+                  Workshop Locator
+                </Link>
               </div>
 
               {/* Dynamic FOMO - Live Indicator */}
-              <div className="mb-12 flex justify-center lg:justify-start">
-                 <DynamicFOMO />
+              <div className="mt-6 flex justify-center lg:justify-start">
+                <div className="max-w-xl">
+                  <DynamicFOMO />
+                </div>
               </div>
 
-              {/* Features Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-8 border-t border-gray-100">
-                <div className="flex flex-col items-center lg:items-start gap-3">
-                  <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-600 mb-1">
-                    <CheckCircle className="w-6 h-6" />
+              {/* Trust bullets (more compact + consistent on all screens) */}
+              <div className="mt-10 pt-8 border-t border-gray-100">
+                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-4 py-2 text-sm font-semibold text-gray-900">
+                    <span className="w-9 h-9 rounded-full bg-green-50 text-green-600 inline-flex items-center justify-center">
+                      <CheckCircle className="w-5 h-5" />
+                    </span>
+                    Verified Garages
                   </div>
-                  <span className="font-bold text-gray-900 text-sm sm:text-base">Verified Garages</span>
-                </div>
-                
-                <div className="flex flex-col items-center lg:items-start gap-3">
-                  <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 mb-1">
-                    <Cpu className="w-6 h-6" />
+                  <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-4 py-2 text-sm font-semibold text-gray-900">
+                    <span className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 inline-flex items-center justify-center">
+                      <Cpu className="w-5 h-5" />
+                    </span>
+                    Genuine Parts
                   </div>
-                  <span className="font-bold text-gray-900 text-sm sm:text-base">Genuine Parts</span>
-                </div>
-
-                <div className="flex flex-col items-center lg:items-start gap-3">
-                  <div className="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 mb-1">
-                    <Shield className="w-6 h-6" />
+                  <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-4 py-2 text-sm font-semibold text-gray-900">
+                    <span className="w-9 h-9 rounded-full bg-purple-50 text-purple-600 inline-flex items-center justify-center">
+                      <Shield className="w-5 h-5" />
+                    </span>
+                    Upfront Pricing
                   </div>
-                  <span className="font-bold text-gray-900 text-sm sm:text-base">Upfront Pricing</span>
-                </div>
-
-                <div className="flex flex-col items-center lg:items-start gap-3">
-                  <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-600 mb-1">
-                    <MapPin className="w-6 h-6" />
+                  <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-4 py-2 text-sm font-semibold text-gray-900">
+                    <span className="w-9 h-9 rounded-full bg-orange-50 text-orange-600 inline-flex items-center justify-center">
+                      <MapPin className="w-5 h-5" />
+                    </span>
+                    Pan-India Network
                   </div>
-                  <span className="font-bold text-gray-900 text-sm sm:text-base">Pan-India Network</span>
                 </div>
               </div>
             </div>
 
             {/* Right Visual */}
-            <div className="lg:w-1/2 relative w-full mt-10 lg:mt-0">
+            <div className="lg:col-span-6 relative w-full mt-10 lg:mt-0">
               <div className="relative z-10 perspective-1000">
                 {/* Main Image - Using the clean futuristic car image */}
                 <div className="relative z-10 rounded-3xl overflow-hidden shadow-2xl shadow-blue-500/20 bg-white p-2 border border-white/50 backdrop-blur-sm">
@@ -333,7 +521,24 @@ export default function HomePage() {
                     </div>
                     <div>
                       <div className="text-xs font-semibold text-purple-600 uppercase tracking-wider">Nearest Workshop</div>
-                      <div className="font-bold text-gray-900 text-sm">2.3 km away</div>
+                      <div className="font-bold text-gray-900 text-sm">
+                        {nearestWorkshopLoading ? (
+                          <span className="inline-flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-gray-500" /> Finding…
+                          </span>
+                        ) : nearestWorkshopKm != null ? (
+                          <>
+                            {nearestWorkshopKm < 1 ? `${Math.round(nearestWorkshopKm * 1000)} m` : `${nearestWorkshopKm.toFixed(1)} km`} away
+                          </>
+                        ) : nearestWorkshopDenied ? (
+                          'Enable location to see distance'
+                        ) : (
+                          'Distance unavailable'
+                        )}
+                      </div>
+                      {nearestWorkshopName && !nearestWorkshopLoading ? (
+                        <div className="mt-0.5 text-[11px] text-gray-500 truncate max-w-[180px]">{nearestWorkshopName}</div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -362,175 +567,13 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 2. Our Services - Option C: Featured card + horizontal carousel */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
-        <div className="absolute -top-40 -right-40 w-[520px] h-[520px] rounded-full bg-blue-400/10 blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-[520px] h-[520px] rounded-full bg-purple-400/10 blur-3xl"></div>
-
-        <div className="container mx-auto px-4 sm:px-6 py-16 sm:py-20 md:py-24 relative z-10">
-          {/* Top row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-start">
-            {/* Left: Copy + CTA */}
-            <div className="text-center lg:text-left">
-              <span className="text-blue-600 font-bold tracking-wider uppercase text-sm">Our Services</span>
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">Explore services by category</h2>
-              <p className="text-lg text-gray-600 max-w-xl mx-auto lg:mx-0">
-                Swipe to browse. Tap a service to preview pricing, timing, and what you get — all upfront.
-              </p>
-
-              <div className="mt-8 flex items-center justify-center lg:justify-start gap-3">
-                <Link
-                  href="/services"
-                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-white font-semibold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all"
-                >
-                  Explore All Services <ArrowRight className="w-5 h-5" />
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setIsChatOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/80 backdrop-blur border border-gray-200 px-6 py-3 text-gray-900 font-semibold hover:border-blue-200 hover:text-blue-700 transition-all"
-                >
-                  Ask AI <Bot className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Auto-moving strip below shows all services */}
-            </div>
-
-            {/* Right: Featured preview card */}
-            <div className="w-full">
-              <div className="relative overflow-hidden rounded-[28px] border border-white/60 bg-white/70 backdrop-blur shadow-2xl shadow-blue-900/10 lg:max-w-[720px] lg:ml-auto">
-                <div className={`absolute inset-0 ${activeServiceItem.bg} opacity-60`}></div>
-                <div className="absolute inset-0 bg-gradient-to-br from-white/70 via-white/40 to-white/70"></div>
-                <div className="absolute top-0 right-0 -mt-16 -mr-16 w-72 h-72 rounded-full bg-blue-500/10 blur-3xl"></div>
-                <div className="absolute bottom-0 left-0 -mb-16 -ml-16 w-72 h-72 rounded-full bg-purple-500/10 blur-3xl"></div>
-
-                {/* compacted card to match left column height */}
-                <div className="relative z-10 p-5 sm:p-7">
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <div className={`w-14 h-14 rounded-2xl ${activeServiceItem.bg} ${activeServiceItem.color} flex items-center justify-center ring-1 ${activeServiceItem.ring}`}>
-                          {activeServiceItem.icon}
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Featured</div>
-                          <h3 className="text-2xl font-bold text-gray-900">{activeServiceItem.title}</h3>
-                        </div>
-                      </div>
-                      <p className="mt-4 text-gray-600 leading-relaxed max-w-2xl">
-                        {activeServiceItem.desc}
-                      </p>
-                    </div>
-
-                    <div className="flex gap-3 sm:flex-col">
-                      <Link
-                        href={`/services/${activeServiceItem.slug}`}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-white font-semibold hover:bg-black transition-all"
-                      >
-                        Know More <ArrowRight className="w-5 h-5" />
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => setIsBookingFormOpen(true)}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-white border border-gray-200 px-5 py-2.5 text-gray-900 font-semibold hover:border-gray-300 transition-all"
-                      >
-                        Quick Book <Sparkles className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="rounded-2xl bg-white/70 border border-gray-100 p-3.5">
-                      <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Starting from</div>
-                      <div className="mt-1 text-lg font-bold text-gray-900">{activeServiceItem.priceFrom}</div>
-                    </div>
-                    <div className="rounded-2xl bg-white/70 border border-gray-100 p-3.5">
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Avg. time</div>
-                        <Clock className="w-4 h-4 text-gray-400" />
-                      </div>
-                      <div className="mt-1 text-lg font-bold text-gray-900">{activeServiceItem.eta}</div>
-                    </div>
-                    <div className="rounded-2xl bg-white/70 border border-gray-100 p-3.5">
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Warranty</div>
-                        <Shield className="w-4 h-4 text-gray-400" />
-                      </div>
-                      <div className="mt-1 text-lg font-bold text-gray-900">{activeServiceItem.warranty}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-2xl bg-white/60 border border-gray-100 p-4">
-                    <div className="flex items-center gap-2 text-sm font-bold text-gray-900 mb-4">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      What you get
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {activeServiceItem.highlights.map((h) => (
-                        <span
-                          key={h}
-                          className="inline-flex items-center gap-2 rounded-full border border-gray-100 bg-white/80 px-3 py-1.5 text-xs font-semibold text-gray-700"
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-                          {h}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* footer note removed to keep card compact */}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom: Horizontal carousel */}
-          <div className="mt-10 sm:mt-12">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm font-bold text-gray-900">Browse all services</div>
-              <div className="text-xs text-gray-500 lg:hidden">Swipe →</div>
-              <div className="hidden lg:block text-xs text-gray-500">Auto-scrolling • hover to pause</div>
-            </div>
-
-            <div className="relative overflow-hidden">
-              <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-white/80 to-transparent z-10"></div>
-              <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-white/80 to-transparent z-10"></div>
-
-              <div className="animate-scroll-horizontal gap-4 hover:[animation-play-state:paused]">
-                {services.map((s, idx) => (
-                  <ServiceCarouselCard
-                    key={`svc-1-${s.slug}`}
-                    active={idx === activeService}
-                    icon={s.icon}
-                    title={s.title}
-                    tag={s.priceFrom}
-                    desc={s.desc}
-                    color={s.color}
-                    bg={s.bg}
-                    onSelect={() => setActiveService(idx)}
-                  />
-                ))}
-                {/* Duplicate for seamless loop */}
-                {services.map((s, idx) => (
-                  <ServiceCarouselCard
-                    key={`svc-2-${s.slug}`}
-                    active={idx === activeService}
-                    icon={s.icon}
-                    title={s.title}
-                    tag={s.priceFrom}
-                    desc={s.desc}
-                    color={s.color}
-                    bg={s.bg}
-                    onSelect={() => setActiveService(idx)}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* 2. Our Services - Option G: Filter Bar + Results (shop-like) */}
+      <ServiceExplorer
+        services={services}
+        onAskAI={() => setIsChatOpen(true)}
+        onQuickBook={() => setIsBookingFormOpen(true)}
+        popularSlugs={['ac-service', 'battery-service', 'brake-service', 'engine-service', 'periodic-service']}
+      />
 
       {/* 3. Brands We Serve - Horizontal Scrolling */}
       <section className="py-12 sm:py-16 md:py-20 bg-gray-50">
@@ -750,93 +793,311 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-16 max-w-7xl mx-auto">
-            {/* 1. AI Booking - Large Feature (2x2) */}
-            <div className="md:col-span-2 md:row-span-2 group relative overflow-hidden rounded-3xl bg-blue-600 p-8 text-white shadow-xl transition-all hover:shadow-2xl hover:shadow-blue-500/30">
-              <div className="absolute top-0 right-0 -mt-10 -mr-10 h-64 w-64 rounded-full bg-blue-500 blur-3xl opacity-50 group-hover:scale-150 transition-transform duration-700"></div>
-              <div className="relative z-10 h-full flex flex-col justify-between">
-                <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md">
-                  <Bot className="h-8 w-8 text-white" />
-                </div>
-                <div>
-                  <h3 className="mb-2 text-2xl font-bold">AI-Powered Booking</h3>
-                  <p className="text-blue-100 leading-relaxed max-w-sm">Experience the future with India's first AI chatbot booking. No calls, no waiting - just instant service.</p>
-                </div>
-              </div>
-            </div>
+          {(() => {
+            type IntentMeta = {
+              id: WhyIntent;
+              title: string;
+              desc: string;
+              icon: any;
+              pill: string;
+              card: string;
+              glow: string;
+            };
 
-            {/* 2. Transparent Pricing */}
-            <div className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl">
-              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-colors">
-                <Shield className="h-6 w-6" />
-              </div>
-              <h3 className="mb-2 text-lg font-bold text-gray-900">Transparent Pricing</h3>
-              <p className="text-sm text-gray-500">100% upfront pricing. No hidden costs.</p>
-            </div>
+            type WhyFeature = {
+              id: string;
+              title: string;
+              desc: string;
+              icon: any;
+              color: string;
+              bg: string;
+              intents: WhyIntent[];
+            };
 
-            {/* 3. Quick Service */}
-            <div className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl">
-              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-green-50 text-green-500 group-hover:bg-green-500 group-hover:text-white transition-colors">
-                <Clock className="h-6 w-6" />
-              </div>
-              <h3 className="mb-2 text-lg font-bold text-gray-900">Quick Turnaround</h3>
-              <p className="text-sm text-gray-500">Fast service with committed timelines.</p>
-            </div>
+            const intents: IntentMeta[] = [
+              {
+                id: 'instant' as const,
+                title: 'Book Fast',
+                desc: 'Instant booking via AI',
+                icon: Bot,
+                pill: 'bg-blue-600 text-white',
+                card: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white',
+                glow: 'bg-blue-500/30',
+              },
+              {
+                id: 'save' as const,
+                title: 'Save Money',
+                desc: 'Transparent pricing',
+                icon: Shield,
+                pill: 'bg-orange-500 text-white',
+                card: 'bg-gradient-to-br from-orange-500 to-amber-600 text-white',
+                glow: 'bg-orange-400/30',
+              },
+              {
+                id: 'control' as const,
+                title: 'Stay in Control',
+                desc: 'Live tracking & updates',
+                icon: TrendingUp,
+                pill: 'bg-gray-900 text-white',
+                card: 'bg-gradient-to-br from-gray-900 to-gray-800 text-white',
+                glow: 'bg-gray-700/40',
+              },
+              {
+                id: 'trust' as const,
+                title: 'Peace of Mind',
+                desc: 'Quality + warranty + support',
+                icon: CheckCircle,
+                pill: 'bg-purple-600 text-white',
+                card: 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white',
+                glow: 'bg-purple-500/30',
+              },
+            ];
 
-            {/* 4. Real-Time Updates - Wide (2x1) */}
-            <div className="md:col-span-2 group relative overflow-hidden rounded-3xl bg-gray-900 p-8 text-white shadow-xl transition-all hover:shadow-2xl">
-              <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900"></div>
-              <div className="absolute bottom-0 right-0 h-32 w-32 bg-gray-700 rounded-full blur-3xl opacity-50 group-hover:scale-150 transition-transform"></div>
-              <div className="relative z-10 flex items-center gap-6">
-                <div className="inline-flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-md">
-                  <TrendingUp className="h-7 w-7 text-white" />
+            const features: WhyFeature[] = [
+              {
+                id: 'ai-booking',
+                title: 'AI-Powered Booking',
+                desc: "India's first AI chatbot booking. No calls, no waiting — just instant service.",
+                icon: Bot,
+                color: 'text-blue-600',
+                bg: 'bg-blue-50',
+                intents: ['instant'],
+              },
+              {
+                id: 'quick-turnaround',
+                title: 'Quick Turnaround',
+                desc: 'Fast service with committed timelines.',
+                icon: Clock,
+                color: 'text-green-600',
+                bg: 'bg-green-50',
+                intents: ['instant'],
+              },
+              {
+                id: 'pricing',
+                title: 'Transparent Pricing',
+                desc: '100% upfront pricing. No hidden costs.',
+                icon: Shield,
+                color: 'text-orange-600',
+                bg: 'bg-orange-50',
+                intents: ['save'],
+              },
+              {
+                id: 'live-tracking',
+                title: 'Live Service Tracking',
+                desc: 'Get photo updates and track progress in real-time.',
+                icon: TrendingUp,
+                color: 'text-gray-900',
+                bg: 'bg-gray-100',
+                intents: ['control', 'trust'],
+              },
+              {
+                id: 'quality-first',
+                title: 'Quality First',
+                desc: 'Genuine parts & quality checks on every service.',
+                icon: Award,
+                color: 'text-purple-600',
+                bg: 'bg-purple-50',
+                intents: ['trust'],
+              },
+              {
+                id: 'expert-team',
+                title: 'Expert Team',
+                desc: 'Verified mechanics with 5+ years experience.',
+                icon: Users,
+                color: 'text-red-600',
+                bg: 'bg-red-50',
+                intents: ['trust'],
+              },
+              {
+                id: 'warranty',
+                title: 'Service Warranty',
+                desc: '1000km / 1 Month warranty included.',
+                icon: CheckCircle,
+                color: 'text-teal-600',
+                bg: 'bg-teal-50',
+                intents: ['trust', 'save'],
+              },
+              {
+                id: 'support',
+                title: '24/7 Support',
+                desc: 'We are always here to help you, anytime, anywhere.',
+                icon: Heart,
+                color: 'text-indigo-600',
+                bg: 'bg-indigo-50',
+                intents: ['trust'],
+              },
+            ];
+
+            const activeIntent = intents.find((i) => i.id === whyIntent) ?? intents[0];
+            const filtered = features.filter((f) => f.intents.includes(activeIntent.id));
+            const HeroIcon = activeIntent.icon;
+
+            return (
+              <div className="mt-12 max-w-7xl mx-auto">
+                {/* Intent tiles */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                  {intents.map((i) => {
+                    const Icon = i.icon;
+                    const selected = whyIntent === i.id;
+                    return (
+                      <button
+                        key={i.id}
+                        type="button"
+                        onClick={() => setWhyIntent(i.id)}
+                        onMouseEnter={() => setWhyIntent(i.id)}
+                        className={`group text-left rounded-2xl sm:rounded-3xl border transition-all duration-300 p-4 sm:p-5 ${
+                          selected
+                            ? 'border-brand-primary bg-white shadow-xl shadow-blue-500/10 -translate-y-0.5'
+                            : 'border-white/60 bg-white/70 backdrop-blur hover:bg-white hover:border-gray-200 hover:shadow-lg'
+                        }`}
+                        aria-pressed={selected}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center ${i.pill}`}>
+                            <Icon className="w-6 h-6" />
+                          </div>
+                          <span
+                            className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${
+                              selected ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600'
+                            }`}
+                          >
+                            Choose
+                          </span>
+                        </div>
+                        <div className="mt-3">
+                          <div className="text-base sm:text-lg font-extrabold text-gray-900">{i.title}</div>
+                          <div className="mt-1 text-xs sm:text-sm text-gray-600">{i.desc}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div>
-                  <h3 className="mb-1 text-xl font-bold">Live Service Tracking</h3>
-                  <p className="text-gray-400 text-sm">Get photo updates and track progress in real-time.</p>
+
+                {/* Intent result */}
+                <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
+                  {/* Hero */}
+                  <div className="lg:col-span-5 lg:sticky lg:top-28">
+                    <div className={`relative overflow-hidden rounded-3xl p-7 sm:p-8 shadow-2xl ${activeIntent.card}`}>
+                      <div className={`absolute -top-24 -right-24 w-64 h-64 rounded-full blur-3xl ${activeIntent.glow}`} />
+                      <div className="relative z-10">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center border border-white/20">
+                            <HeroIcon className="w-7 h-7 text-white" />
+                          </div>
+                          <span className="inline-flex items-center gap-2 rounded-full bg-white/15 border border-white/20 px-3 py-1.5 text-xs font-bold">
+                            Your goal
+                          </span>
+                        </div>
+
+                        <h3 className="mt-5 text-2xl sm:text-3xl font-extrabold leading-tight">{activeIntent.title}</h3>
+                        <p className="mt-3 text-white/85 text-sm sm:text-base leading-relaxed">
+                          {activeIntent.id === 'instant'
+                            ? 'Book in seconds with AI guidance — pickup & updates included.'
+                            : activeIntent.id === 'save'
+                              ? 'Upfront pricing + warranty-backed work = better value.'
+                              : activeIntent.id === 'control'
+                                ? 'Track progress with live updates so you always know what’s happening.'
+                                : 'Verified quality, skilled mechanics, warranty and support — stress-free.'}
+                        </p>
+
+                        <div className="mt-6 grid grid-cols-2 gap-3">
+                          {activeIntent.id === 'instant' ? (
+                            <>
+                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">No calls</div>
+                                <div className="mt-1 font-extrabold">AI booking</div>
+                              </div>
+                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Fast</div>
+                                <div className="mt-1 font-extrabold">Committed ETA</div>
+                              </div>
+                            </>
+                          ) : activeIntent.id === 'save' ? (
+                            <>
+                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Upfront</div>
+                                <div className="mt-1 font-extrabold">No hidden cost</div>
+                              </div>
+                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Warranty</div>
+                                <div className="mt-1 font-extrabold">Covered work</div>
+                              </div>
+                            </>
+                          ) : activeIntent.id === 'control' ? (
+                            <>
+                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Live</div>
+                                <div className="mt-1 font-extrabold">Tracking</div>
+                              </div>
+                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Proof</div>
+                                <div className="mt-1 font-extrabold">Photo updates</div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Verified</div>
+                                <div className="mt-1 font-extrabold">Mechanics</div>
+                              </div>
+                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Always</div>
+                                <div className="mt-1 font-extrabold">Support</div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filtered cards */}
+                  <div className="lg:col-span-7">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {filtered.map((f) => {
+                        const Icon = f.icon;
+                        return (
+                          <div
+                            key={f.id}
+                            className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl"
+                          >
+                            <div
+                              className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl ${f.bg} ${f.color} transition-transform group-hover:scale-110`}
+                            >
+                              <Icon className="h-6 w-6" />
+                            </div>
+                            <h3 className="mb-2 text-lg font-extrabold text-gray-900">{f.title}</h3>
+                            <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Extra: show remaining benefits as small chips on large screens */}
+                    <div className="mt-5 hidden lg:block">
+                      <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
+                        Also included with every service
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {features
+                          .filter((f) => !filtered.some((x) => x.id === f.id))
+                          .slice(0, 6)
+                          .map((f) => (
+                            <span
+                              key={`chip-${f.id}`}
+                              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-xs font-semibold text-gray-900"
+                            >
+                              <span className={`w-2 h-2 rounded-full ${f.color.replace('text-', 'bg-')}`} />
+                              {f.title}
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            {/* 5. Quality Assured */}
-            <div className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl">
-              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-purple-50 text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition-colors">
-                <Award className="h-6 w-6" />
-              </div>
-              <h3 className="mb-2 text-lg font-bold text-gray-900">Quality First</h3>
-              <p className="text-sm text-gray-500">Genuine parts & warranty on every service.</p>
-            </div>
-
-            {/* 6. Expert Technicians */}
-            <div className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl">
-              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-red-500 group-hover:bg-red-500 group-hover:text-white transition-colors">
-                <Users className="h-6 w-6" />
-              </div>
-              <h3 className="mb-2 text-lg font-bold text-gray-900">Expert Team</h3>
-              <p className="text-sm text-gray-500">Verified mechanics with 5+ years experience.</p>
-            </div>
-
-            {/* 7. Warranty (1x1) */}
-            <div className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl">
-               <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-teal-50 text-teal-500 group-hover:bg-teal-500 group-hover:text-white transition-colors">
-                <CheckCircle className="h-6 w-6" />
-              </div>
-              <h3 className="mb-2 text-lg font-bold text-gray-900">Service Warranty</h3>
-              <p className="text-sm text-gray-500">1000km / 1 Month warranty included.</p>
-            </div>
-             {/* 8. Customer First - Wide (2x1) on last row */}
-             <div className="md:col-span-2 group relative overflow-hidden rounded-3xl bg-gradient-to-r from-purple-600 to-indigo-600 p-8 text-white shadow-xl transition-all hover:shadow-2xl">
-               <div className="relative z-10 flex items-center gap-6">
-                <div className="inline-flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md">
-                  <Heart className="h-7 w-7 text-white" />
-                </div>
-                <div>
-                  <h3 className="mb-1 text-xl font-bold">24/7 Support</h3>
-                  <p className="text-purple-100 text-sm">We are always here to help you, anytime, anywhere.</p>
-                </div>
-              </div>
-            </div>
-          </div>
+            );
+          })()}
         </div>
       </section>
 
@@ -1001,29 +1262,104 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7 md:gap-8">
-            <TestimonialCard 
-              name="Rajesh Kumar"
-              location="Mumbai"
-              rating={5}
-              text="Best car service experience! The AI chatbot made booking so easy. Transparent pricing and excellent service quality."
-              vehicle="Honda City"
-            />
-            <TestimonialCard 
-              name="Priya Sharma"
-              location="Navi Mumbai"
-              rating={5}
-              text="MY FNG saved me so much time. Real-time updates and professional service. Highly recommended!"
-              vehicle="Maruti Swift"
-            />
-            <TestimonialCard 
-              name="Amit Patel"
-              location="Thane"
-              rating={5}
-              text="Amazing service! The AI-powered booking was seamless and the technicians were very professional."
-              vehicle="Hyundai Creta"
-            />
-          </div>
+          {(() => {
+            const reviews = [
+              {
+                name: 'Rajesh Kumar',
+                location: 'Mumbai',
+                rating: 5,
+                vehicle: 'Honda City',
+                text: 'Best car service experience! The AI chatbot made booking so easy. Transparent pricing and excellent service quality.',
+              },
+              {
+                name: 'Priya Sharma',
+                location: 'Navi Mumbai',
+                rating: 5,
+                vehicle: 'Maruti Swift',
+                text: 'MY FNG saved me so much time. Real-time updates and professional service. Highly recommended!',
+              },
+              {
+                name: 'Amit Patel',
+                location: 'Thane',
+                rating: 5,
+                vehicle: 'Hyundai Creta',
+                text: 'Amazing service! The AI-powered booking was seamless and the technicians were very professional.',
+              },
+              {
+                name: 'Sandeep Singh',
+                location: 'Pune',
+                rating: 5,
+                vehicle: 'Tata Nexon',
+                text: 'Pricing was exactly as shown. No surprises. Great quality work and quick delivery.',
+              },
+              {
+                name: 'Ananya Iyer',
+                location: 'Bengaluru',
+                rating: 5,
+                vehicle: 'Toyota Glanza',
+                text: 'Support team was super responsive and the service warranty is a big plus.',
+              },
+            ] as const;
+
+            const featured = reviews[0];
+            const rest = reviews.slice(1);
+            const avgRating = '4.9';
+            const totalReviews = '10,000+';
+            const cities = '50+';
+            const response = '25 min';
+
+            return (
+              <div className="max-w-7xl mx-auto">
+                {/* Trust strip */}
+                <div className="rounded-3xl border border-white/60 bg-white/75 backdrop-blur shadow-xl shadow-blue-900/10 p-4 sm:p-5">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="rounded-2xl bg-white border border-gray-100 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Avg rating</div>
+                        <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                      </div>
+                      <div className="mt-1 text-2xl font-extrabold text-gray-900">{avgRating}</div>
+                      <div className="mt-1 text-xs text-gray-500">Trusted by customers</div>
+                    </div>
+                    <div className="rounded-2xl bg-white border border-gray-100 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Reviews</div>
+                        <Users className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="mt-1 text-2xl font-extrabold text-gray-900">{totalReviews}</div>
+                      <div className="mt-1 text-xs text-gray-500">Verified feedback</div>
+                    </div>
+                    <div className="rounded-2xl bg-white border border-gray-100 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Cities</div>
+                        <MapPin className="w-4 h-4 text-purple-600" />
+                      </div>
+                      <div className="mt-1 text-2xl font-extrabold text-gray-900">{cities}+</div>
+                      <div className="mt-1 text-xs text-gray-500">Pan-India network</div>
+                    </div>
+                    <div className="rounded-2xl bg-white border border-gray-100 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Support</div>
+                        <Clock className="w-4 h-4 text-green-600" />
+                      </div>
+                      <div className="mt-1 text-2xl font-extrabold text-gray-900">{response}</div>
+                      <div className="mt-1 text-xs text-gray-500">Average response</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Reviews grid (with one featured) */}
+                <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7 md:gap-8">
+                  <div className="sm:col-span-2 lg:col-span-2">
+                    <TestimonialCard {...featured} featured />
+                  </div>
+                  {rest.map((r, idx) => (
+                    <TestimonialCard key={`${r.name}-${idx}`} {...r} />
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </section>
 
@@ -1038,7 +1374,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="max-w-3xl mx-auto space-y-3 sm:space-y-4">
+          <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <FAQItem 
               question="How does AI-powered booking work?"
               answer="Simply chat with our AI assistant, provide your vehicle details, and get instant transparent pricing. Book your service directly without any employee interaction."
@@ -1126,7 +1462,13 @@ export default function HomePage() {
           </div>
           <div className="p-2.5 sm:p-3 border-t border-gray-100 bg-white">
             <div className="flex gap-1.5 sm:gap-2">
-              <input type="text" placeholder="Type your message..." className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm focus:outline-none focus:border-brand-primary" />
+              <input
+                type="text"
+                value={chatDraft}
+                onChange={(e) => setChatDraft(e.target.value)}
+                placeholder="Type your message..."
+                className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm focus:outline-none focus:border-brand-primary"
+              />
               <button className="bg-brand-primary text-white p-1.5 sm:p-2 rounded-full hover:bg-brand-primary-hover flex-shrink-0">
                 <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
@@ -1486,19 +1828,65 @@ function BlogCard({
   );
 }
 
-function TestimonialCard({ name, location, rating, text, vehicle }: { name: string; location: string; rating: number; text: string; vehicle: string }) {
+function TestimonialCard({
+  name,
+  location,
+  rating,
+  text,
+  vehicle,
+  featured = false,
+}: {
+  name: string;
+  location: string;
+  rating: number;
+  text: string;
+  vehicle: string;
+  featured?: boolean;
+}) {
   return (
-    <div className="bg-white p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-gray-100">
-      <div className="flex items-center gap-0.5 sm:gap-1 mb-3 sm:mb-4">
+    <div
+      className={`relative overflow-hidden bg-white shadow-lg border border-gray-100 ${
+        featured
+          ? 'p-6 sm:p-8 rounded-2xl sm:rounded-3xl shadow-xl'
+          : 'p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl'
+      }`}
+    >
+      {featured ? (
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-blue-500/10 blur-3xl" />
+          <div className="absolute -bottom-24 -left-24 w-72 h-72 rounded-full bg-purple-500/10 blur-3xl" />
+          <div className="absolute inset-0 border-2 border-blue-200/40 rounded-3xl" />
+        </div>
+      ) : null}
+
+      <div className="relative z-10">
+        <div className="flex items-center justify-between gap-4 mb-3 sm:mb-4">
+          <div className="flex items-center gap-0.5 sm:gap-1">
         {Array.from({ length: rating }).map((_, i) => (
           <Star key={i} className="w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5 text-yellow-400 fill-yellow-400" />
         ))}
+          </div>
+          {featured ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+              Featured
+            </span>
+          ) : null}
       </div>
-      <Quote className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-brand-primary/20 mb-3 sm:mb-4" />
-      <p className="text-gray-700 mb-4 sm:mb-5 md:mb-6 italic text-xs sm:text-sm md:text-base">{text}</p>
-      <div className="border-t border-gray-100 pt-3 sm:pt-4">
-        <p className="font-bold text-sm sm:text-base text-gray-900">{name}</p>
-        <p className="text-xs sm:text-sm text-gray-500">{location} • {vehicle}</p>
+
+        <Quote
+          className={`text-brand-primary/20 mb-3 sm:mb-4 ${
+            featured ? 'w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10' : 'w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8'
+          }`}
+        />
+        <p className={`text-gray-700 mb-4 sm:mb-5 md:mb-6 italic ${featured ? 'text-sm sm:text-base md:text-lg' : 'text-xs sm:text-sm md:text-base'}`}>
+          {text}
+        </p>
+        <div className="border-t border-gray-100 pt-3 sm:pt-4">
+          <p className={`font-bold text-gray-900 ${featured ? 'text-base sm:text-lg' : 'text-sm sm:text-base'}`}>{name}</p>
+          <p className="text-xs sm:text-sm text-gray-500">
+            {location} • {vehicle}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -1515,7 +1903,11 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
       >
         <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0">
           <HelpCircle className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 text-brand-primary flex-shrink-0" />
-          <span className="font-bold text-sm sm:text-base text-gray-900">{question}</span>
+          <span
+            className="font-bold text-sm sm:text-base text-gray-900 whitespace-normal leading-snug overflow-hidden min-h-[2.6em] max-w-none [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+          >
+            {question}
+          </span>
         </div>
         <ChevronRight className={`w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-90' : ''}`} />
       </button>

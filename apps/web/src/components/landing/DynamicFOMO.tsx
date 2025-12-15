@@ -48,27 +48,29 @@ export default function DynamicFOMO() {
   return (
     <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 text-sm animate-fade-in-up" style={{animationDelay: '0.5s'}}>
       {/* Active Users - Dynamic */}
-      <div className="flex items-center gap-2 glass px-4 py-2 rounded-full transition-all duration-300">
+      <div className="flex items-center gap-2 rounded-full bg-white/85 backdrop-blur border border-gray-200 shadow-sm px-4 py-2 transition-all duration-300">
         <div className="relative flex items-center">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <div className="absolute w-2 h-2 bg-green-500 rounded-full animate-ping"></div>
         </div>
-        <Users className="w-4 h-4 text-green-400" />
-        <span className="text-gray-200 font-medium">
+        <Users className="w-4 h-4 text-green-600" />
+        <span className="text-gray-900 font-semibold">
           {activeUsers.toLocaleString()} Active Now
         </span>
       </div>
 
       {/* Slots Left - Dynamic with Urgency Color */}
-      <div className={`flex items-center gap-2 glass px-4 py-2 rounded-full transition-all duration-500 ${
-        slotsLeft <= 2 ? 'border border-red-500/50 animate-pulse' : ''
-      }`}>
+      <div
+        className={`flex items-center gap-2 rounded-full bg-white/85 backdrop-blur border shadow-sm px-4 py-2 transition-all duration-500 ${
+          slotsLeft <= 2 ? 'border-red-300 animate-pulse' : 'border-gray-200'
+        }`}
+      >
         <AlertCircle className={`w-4 h-4 ${
-          slotsLeft <= 2 ? 'text-red-400' : 'text-orange-400'
+          slotsLeft <= 2 ? 'text-red-600' : 'text-orange-600'
         }`} />
-        <span className="text-gray-200 font-medium">
+        <span className="text-gray-900 font-semibold">
           Only <span className={`font-bold ${
-            slotsLeft <= 2 ? 'text-red-400' : 'text-orange-400'
+            slotsLeft <= 2 ? 'text-red-700' : 'text-orange-700'
           }`}>{slotsLeft}</span> slots left today!
         </span>
       </div>

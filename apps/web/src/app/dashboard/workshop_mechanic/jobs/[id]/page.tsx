@@ -510,8 +510,10 @@ export default function MechanicJobDetailPage() {
       setParts(partsData || []);
 
       // Get extra work requests
+      // NOTE: Requests are stored in `lead_extra_charges` (approved/rejected by supervisor/admin).
+      // The previous `mechanic_extra_work_requests` source caused "Extra Work" to not show.
       const { data: extraWorkData, error: extraWorkError } = await supabase
-        .from('mechanic_extra_work_requests')
+        .from('lead_extra_charges')
         .select('*')
         .eq('lead_id', leadId)
         .order('created_at', { ascending: false });
@@ -1116,17 +1118,29 @@ export default function MechanicJobDetailPage() {
           <div className="flex items-center justify-between gap-2">
             <div className="overflow-x-auto">
           <div className="flex gap-2 sm:gap-3 md:gap-4 min-w-max">
-            {['overview', 'checklist', 'media', 'parts', 'notes'].map((tab) => (
+            {([
+              { key: 'overview', label: 'Overview' },
+              { key: 'checklist', label: 'Checklist' },
+              { key: 'media', label: 'Media' },
+              { key: 'parts', label: 'Parts' },
+              { key: 'notes', label: 'Notes' },
+              { key: 'extra-work', label: 'Extra Work' },
+            ] as const).map((tab) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 font-medium capitalize border-b-2 transition whitespace-nowrap text-xs sm:text-sm ${
-                  activeTab === tab
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 font-medium border-b-2 transition whitespace-nowrap text-xs sm:text-sm ${
+                  activeTab === tab.key
                     ? 'border-brand-primary text-brand-primary'
                     : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
               >
-                {tab}
+                <span>{tab.label}</span>
+                {tab.key === 'extra-work' && pendingExtraWorkCount > 0 && (
+                  <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-orange-100 text-orange-800 text-[10px] font-bold border border-orange-200">
+                    {pendingExtraWorkCount}
+                  </span>
+                )}
               </button>
             ))}
               </div>
@@ -1136,7 +1150,13 @@ export default function MechanicJobDetailPage() {
             {extraWorkRequests.length > 0 && (
               <button
                 type="button"
-                onClick={() => document.getElementById('extra-work-requests')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                onClick={() => {
+                  setActiveTab('extra-work');
+                  // allow tab content to render, then scroll
+                  setTimeout(() => {
+                    document.getElementById('extra-work-requests')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }, 0);
+                }}
                 className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-semibold border whitespace-nowrap ${
                   pendingExtraWorkCount > 0
                     ? 'bg-orange-50 text-orange-800 border-orange-200'
@@ -2147,6 +2167,67 @@ export default function MechanicJobDetailPage() {
           </div>
         )}
 
+        {activeTab === 'extra-work' && (
+          <div id="extra-work-requests" className="card p-3 sm:p-4 md:p-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
+              <h2 className="text-lg sm:text-xl font-bold">Extra Work Requests</h2>
+              <button
+                type="button"
+                onClick={() => setShowExtraWorkForm(true)}
+                className="btn bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
+              >
+                <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
+                Request Extra Work
+              </button>
+            </div>
+
+            {extraWorkRequests.length === 0 ? (
+              <div className="text-center py-6 sm:py-8">
+                <AlertTriangle className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 text-gray-400" />
+                <p className="text-gray-600 font-semibold text-xs sm:text-sm">No extra work requests yet</p>
+                <p className="text-gray-400 text-[10px] sm:text-xs mt-1">
+                  If you find additional work needed, submit a request for approval.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 sm:space-y-3">
+                {extraWorkRequests.map((request) => (
+                  <div key={request.id} className="p-3 sm:p-4 border rounded-lg">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm sm:text-base">{request.reason}</p>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{request.description}</p>
+                        {request.amount !== null && request.amount !== undefined && Number(request.amount) > 0 && (
+                          <p className="text-xs sm:text-sm font-medium text-green-600 mt-1 sm:mt-2">
+                            Estimated: ₹{Number(request.amount)}
+                          </p>
+                        )}
+                      </div>
+                      <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded text-xs sm:text-sm ml-0 sm:ml-4 ${
+                        request.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                        request.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                        'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {request.status}
+                      </span>
+                    </div>
+                    {(request.supervisor_approval_notes || request.rejection_reason) && (
+                      <div className="pt-2 sm:pt-3 border-t">
+                        <p className="text-xs sm:text-sm text-gray-600">
+                          <strong>Review Notes:</strong> {request.supervisor_approval_notes || request.rejection_reason}
+                        </p>
+                      </div>
+                    )}
+                    <div className="pt-1.5 sm:pt-2 border-t mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-gray-500">
+                      Requested: {new Date(request.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Extra Work Request Modal */}
         {showExtraWorkForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
@@ -2221,46 +2302,7 @@ export default function MechanicJobDetailPage() {
           </div>
         )}
 
-        {/* Extra Work Requests List */}
-        {extraWorkRequests.length > 0 && (
-          <div id="extra-work-requests" className="card p-3 sm:p-4 md:p-5">
-            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Extra Work Requests</h2>
-            <div className="space-y-2 sm:space-y-3">
-              {extraWorkRequests.map((request) => (
-                <div key={request.id} className="p-3 sm:p-4 border rounded-lg">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm sm:text-base">{request.issue_description}</p>
-                      <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{request.additional_work_required}</p>
-                      {request.estimated_cost && (
-                        <p className="text-xs sm:text-sm font-medium text-green-600 mt-1 sm:mt-2">
-                          Estimated: ₹{request.estimated_cost}
-                        </p>
-                      )}
-                    </div>
-                    <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded text-xs sm:text-sm ml-0 sm:ml-4 ${
-                      request.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                      request.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {request.status}
-                    </span>
-                  </div>
-                  {request.review_notes && (
-                    <div className="pt-2 sm:pt-3 border-t">
-                      <p className="text-xs sm:text-sm text-gray-600">
-                        <strong>Review Notes:</strong> {request.review_notes}
-                      </p>
-                    </div>
-                  )}
-                  <div className="pt-1.5 sm:pt-2 border-t mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-gray-500">
-                    Requested: {new Date(request.created_at).toLocaleString()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Extra Work Requests List moved into "Extra Work" tab */}
       </div>
 
       {/* Image Zoom Modal */}

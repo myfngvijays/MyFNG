@@ -84,19 +84,38 @@ export async function POST(
       return NextResponse.json({ error: 'Job not in your workshop' }, { status: 403 });
     }
 
-    // Verify lead is ready for QC (mechanic has completed work)
-    // Check if mechanic_completed_at is set OR status indicates work is done
-    const isReadyForQC = lead.mechanic_completed_at || 
-                        ['IN_PROGRESS', 'WORK_COMPLETED', 'COMPLETED', 'QC_PENDING'].includes(lead.status) ||
-                        (!lead.qc_status || lead.qc_status === 'PENDING');
-    
+    // Verify lead is ready for QC (mechanic has completed work / rework resubmitted)
+    // IMPORTANT: After QC rejection we set qc_status=FAILED and lead.status=REWORK_REQUIRED.
+    // QC approval must only be allowed after mechanic re-completes (WORK_COMPLETED) OR mechanic_job is COMPLETED.
+    const { data: mechanicJob } = await supabase
+      .from('mechanic_jobs')
+      .select('mechanic_status')
+      .eq('lead_id', leadId)
+      .maybeSingle();
+
+    const readyByLeadStatus = ['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status);
+    const readyByMechanicStatus = mechanicJob?.mechanic_status === 'COMPLETED';
+    // If qc_status is FAILED (rework), ignore stale mechanic_completed_at from prior completion.
+    const readyByTimestamp = !!lead.mechanic_completed_at && lead.qc_status !== 'FAILED';
+
+    const isReadyForQC = readyByLeadStatus || readyByMechanicStatus || readyByTimestamp;
+
     if (!isReadyForQC) {
-      return NextResponse.json({ 
-        error: 'Job is not ready for QC approval',
-        current_status: lead.status,
-        mechanic_completed_at: lead.mechanic_completed_at,
-        qc_status: lead.qc_status
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'Job is not ready for QC approval',
+          current_status: lead.status,
+          qc_status: lead.qc_status,
+          mechanic_completed_at: lead.mechanic_completed_at,
+          mechanic_status: mechanicJob?.mechanic_status || null,
+          ready_checks: {
+            readyByLeadStatus,
+            readyByMechanicStatus,
+            readyByTimestamp,
+          },
+        },
+        { status: 400 }
+      );
     }
 
     const now = new Date().toISOString();

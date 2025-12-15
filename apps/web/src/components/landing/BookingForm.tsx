@@ -247,6 +247,13 @@ export default function BookingForm({ onClose }: { onClose: () => void }) {
     ? formData.customerPhone.trim() !== ''
     : true;
 
+  const bookingTypeLabel =
+    formData.bookingType === 'service'
+      ? 'Car Service'
+      : formData.bookingType === 'rsa'
+        ? 'Roadside Help'
+        : '—';
+
   if (isSubmitting) {
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -266,7 +273,7 @@ export default function BookingForm({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-xl w-full relative overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full relative overflow-hidden">
         {/* Progress Bar */}
         <div className="h-1 bg-gray-100">
           <div 
@@ -285,16 +292,19 @@ export default function BookingForm({ onClose }: { onClose: () => void }) {
         </button>
 
         {/* Form Content */}
-        <div className="p-8 md:p-12">
-          {/* Step Counter */}
-          <div className="text-right mb-8">
-            <span className="text-sm text-gray-500">
-              Step {currentStep + 1} of {steps.length}
-            </span>
-          </div>
+        <div className="p-6 sm:p-8 md:p-10">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8 items-start">
+            {/* Left: Steps */}
+            <div className="md:col-span-7">
+              {/* Step Counter */}
+              <div className="text-right mb-6">
+                <span className="text-sm text-gray-500">
+                  Step {currentStep + 1} of {steps.length}
+                </span>
+              </div>
 
-          {/* Step Content */}
-          <div className={`min-h-[400px] flex flex-col justify-center ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} transition-all duration-300`}>
+              {/* Step Content */}
+              <div className={`min-h-[400px] flex flex-col justify-center ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} transition-all duration-300`}>
             {/* Title & Subtitle */}
             <div className="mb-12">
               <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-3">
@@ -471,6 +481,59 @@ export default function BookingForm({ onClose }: { onClose: () => void }) {
                 <Smile className="w-8 h-8 text-yellow-400 mx-auto animate-bounce" />
               </div>
             )}
+          </div>
+            </div>
+
+            {/* Right: Summary (desktop) */}
+            <div className="hidden md:block md:col-span-5">
+              <div className="sticky top-6">
+                <div className="rounded-3xl border border-gray-200 bg-gray-50 p-5">
+                  <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Summary</div>
+                  <div className="mt-1 text-xl font-extrabold text-gray-900">Live preview</div>
+
+                  <div className="mt-5 space-y-3">
+                    <div className="rounded-2xl bg-white border border-gray-200 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Type</div>
+                      <div className="mt-1 text-sm font-bold text-gray-900">{bookingTypeLabel}</div>
+                    </div>
+
+                    <div className="rounded-2xl bg-white border border-gray-200 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Vehicle</div>
+                      <div className="mt-1 text-sm font-bold text-gray-900">
+                        {formData.vehicleNumber?.trim() ? formData.vehicleNumber : '—'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-white border border-gray-200 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Customer</div>
+                      <div className="mt-1 text-sm font-bold text-gray-900">
+                        {formData.customerName?.trim() ? formData.customerName : '—'}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {formData.customerPhone?.trim() ? formData.customerPhone : ''}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-white border border-gray-200 p-4">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Location</div>
+                      <div className="mt-1 text-sm font-bold text-gray-900">
+                        {formData.location?.trim() ? formData.location : '—'}
+                      </div>
+                      {currentStepData.id === 'location' && isDetectingLocation ? (
+                        <div className="mt-2 text-xs text-blue-700">Detecting…</div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                    <div className="text-xs font-bold text-blue-700">Tip</div>
+                    <div className="mt-1 text-xs text-blue-700 leading-relaxed">
+                      This panel updates as you fill the form — so you can confirm everything before submitting.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
