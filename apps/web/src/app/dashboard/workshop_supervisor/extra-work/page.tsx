@@ -37,6 +37,20 @@ export default function ExtraWorkApprovalsPage() {
   
   const [processing, setProcessing] = useState(false);
 
+  async function safeReadJson(res: Response): Promise<any | null> {
+    try {
+      const text = await res.text();
+      if (!text) return null;
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { raw: text };
+      }
+    } catch {
+      return null;
+    }
+  }
+
   useEffect(() => {
     fetchExtraWorkRequests();
     
@@ -180,10 +194,21 @@ export default function ExtraWorkApprovalsPage() {
         })
       });
 
-      const data = await response.json();
+      const data = await safeReadJson(response);
 
       if (!response.ok) {
-        toast.error(data.error || 'Failed to approve extra work');
+        const msg =
+          data?.error ||
+          data?.message ||
+          (typeof data?.details === 'string' ? data.details : null) ||
+          'Failed to approve extra work';
+        const hint = typeof data?.hint === 'string' ? data.hint : null;
+        const code = data?.code ? String(data.code) : null;
+        const envBits =
+          data?.env
+            ? `env: url=${data.env.hasSupabaseUrl ? 'yes' : 'no'}, key=${data.env.hasServiceRoleKey ? 'yes' : 'no'}${data.env.serviceKeySource ? ` (${data.env.serviceKeySource})` : ''}`
+            : null;
+        toast.error([msg, hint, code ? `code: ${code}` : null, envBits].filter(Boolean).join(' • '));
         return;
       }
 
@@ -219,10 +244,21 @@ export default function ExtraWorkApprovalsPage() {
         })
       });
 
-      const data = await response.json();
+      const data = await safeReadJson(response);
 
       if (!response.ok) {
-        toast.error(data.error || 'Failed to reject extra work');
+        const msg =
+          data?.error ||
+          data?.message ||
+          (typeof data?.details === 'string' ? data.details : null) ||
+          'Failed to reject extra work';
+        const hint = typeof data?.hint === 'string' ? data.hint : null;
+        const code = data?.code ? String(data.code) : null;
+        const envBits =
+          data?.env
+            ? `env: url=${data.env.hasSupabaseUrl ? 'yes' : 'no'}, key=${data.env.hasServiceRoleKey ? 'yes' : 'no'}${data.env.serviceKeySource ? ` (${data.env.serviceKeySource})` : ''}`
+            : null;
+        toast.error([msg, hint, code ? `code: ${code}` : null, envBits].filter(Boolean).join(' • '));
         return;
       }
 
