@@ -10,19 +10,16 @@ export async function POST(
 ) {
   try {
     const supabase = await createClient();
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    if (!serviceRoleKey) {
-      return NextResponse.json(
-        { error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY not set' },
-        { status: 500 }
-      );
-    }
-    // IMPORTANT: Avoid binding to generated `Database` types here because some environments
-    // have incomplete table typings which can make `.update()` accept `never`.
-    const supabaseAdmin = createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    // Prefer service-role client (bypasses RLS), but allow fallback to user client.
+    const supabaseAdmin =
+      supabaseUrl && serviceRoleKey
+        ? createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
+            auth: { persistSession: false, autoRefreshToken: false },
+          })
+        : null;
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -107,7 +104,8 @@ export async function POST(
 
     // Reject extra work request
     // Use service-role client so DB triggers (supervisor_actions) aren't blocked by RLS
-    const { data: updatedExtraWork, error: updateError } = await supabaseAdmin
+    const updater = supabaseAdmin ?? supabase;
+    const { data: updatedExtraWork, error: updateError } = await updater
       .from('lead_extra_charges')
       // NOTE: Cast to `any` because generated DB types can be incomplete in some environments.
       .update({
@@ -124,11 +122,22 @@ export async function POST(
 
     if (updateError) {
       console.error('Error rejecting extra work:', updateError);
-      return NextResponse.json({ error: 'Failed to reject extra work' }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: 'Failed to reject extra work',
+          details: updateError.message,
+          code: (updateError as any).code || null,
+          hint:
+            !supabaseAdmin
+              ? 'Server is missing SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL. Either set env vars on deploy, or ensure RLS allows supervisor to update lead_extra_charges.'
+              : null,
+        },
+        { status: 500 }
+      );
     }
 
     // Create activity log
-    await supabaseAdmin
+    await (supabaseAdmin ?? supabase)
       .from('lead_activities')
       .insert({
         lead_id: extraWork.lead_id,
@@ -162,7 +171,7 @@ export async function POST(
   } catch (error) {
     console.error('Error in reject extra work API:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: (error as any)?.message || String(error) },
       { status: 500 }
     );
   }

@@ -1,14 +1,11 @@
 import type { Metadata } from 'next';
-import { Poppins } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
+import '@fontsource/poppins/300.css';
+import '@fontsource/poppins/400.css';
+import '@fontsource/poppins/500.css';
+import '@fontsource/poppins/600.css';
+import '@fontsource/poppins/700.css';
 import './globals.css';
-
-const poppins = Poppins({
-  weight: ['300', '400', '500', '600', '700'],
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-poppins',
-});
 
 export const metadata: Metadata = {
   title: 'MyFNG - Complete Workshop Management Solution',
@@ -31,7 +28,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={poppins.variable}>
+      <body className="font-sans">
         {children}
         <Toaster position="top-right" />
       </body>

@@ -43,6 +43,49 @@ export default function CSELeadDetailPage() {
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'customer' | 'vehicle' | 'service' | 'pickup' | 'progress' | 'invoice' | 'tickets'>('overview');
 
+  const formatDate = (value: any) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString();
+  };
+
+  const formatTime = (value: any) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime())
+      ? null
+      : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getPickupDateText = (l: any) =>
+    formatDate(l?.pickup_tracking?.pickup_time_window_start) ||
+    formatDate(l?.scheduled_pickup_date) ||
+    formatDate(l?.preferred_date) ||
+    formatDate(l?.preferred_slot_start) ||
+    'Not scheduled';
+
+  const getPickupTimeText = (l: any) =>
+    l?.pickup_tracking?.pickup_time_slot ||
+    l?.scheduled_pickup_time ||
+    l?.preferred_time_slot ||
+    (formatTime(l?.preferred_slot_start) && formatTime(l?.preferred_slot_end)
+      ? `${formatTime(l?.preferred_slot_start)} - ${formatTime(l?.preferred_slot_end)}`
+      : null) ||
+    'Not scheduled';
+
+  const getDropDateText = (l: any) =>
+    // pickup_tracking table (in your DB) doesn't have drop_time_window_start/end
+    // so we use existing timestamps as best-effort.
+    formatDate(l?.pickup_tracking?.drop_assigned_at) ||
+    formatDate(l?.pickup_tracking?.drop_start_time) ||
+    formatDate(l?.scheduled_delivery_date) ||
+    'Not scheduled';
+
+  const getDropTimeText = (l: any) =>
+    l?.pickup_tracking?.drop_time_slot ||
+    l?.scheduled_delivery_time ||
+    'Not scheduled';
+
   // Form states
   const [customerForm, setCustomerForm] = useState({
     customer_name: '',
@@ -604,20 +647,24 @@ export default function CSELeadDetailPage() {
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Pickup Date</label>
                     <div className="text-sm sm:text-base md:text-lg font-semibold">
-                      {lead.scheduled_pickup_date ? new Date(lead.scheduled_pickup_date).toLocaleDateString() : 'Not scheduled'}
+                      {getPickupDateText(lead)}
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Pickup Time</label>
-                    <div className="text-sm sm:text-base md:text-lg">{lead.scheduled_pickup_time || 'Not scheduled'}</div>
+                    <div className="text-sm sm:text-base md:text-lg">{getPickupTimeText(lead)}</div>
                   </div>
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Pickup Address</label>
-                    <div className="text-sm sm:text-base md:text-lg">{lead.pickup_address || lead.customer_address || 'N/A'}</div>
+                    <div className="text-sm sm:text-base md:text-lg">
+                      {lead?.pickup_tracking?.pickup_address || lead.pickup_address || lead.customer_address || 'N/A'}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Pickup Status</label>
-                    <div className="text-sm sm:text-base md:text-lg">{lead.pickup_status || 'Pending'}</div>
+                    <div className="text-sm sm:text-base md:text-lg">
+                      {lead?.pickup_tracking?.pickup_status || lead.pickup_status || 'Pending'}
+                    </div>
                   </div>
                   {lead.pickup_otp && (
                     <div>
@@ -639,20 +686,24 @@ export default function CSELeadDetailPage() {
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Delivery Date</label>
                     <div className="text-sm sm:text-base md:text-lg font-semibold">
-                      {lead.scheduled_delivery_date ? new Date(lead.scheduled_delivery_date).toLocaleDateString() : 'Not scheduled'}
+                      {getDropDateText(lead)}
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Delivery Time</label>
-                    <div className="text-sm sm:text-base md:text-lg">{lead.scheduled_delivery_time || 'Not scheduled'}</div>
+                    <div className="text-sm sm:text-base md:text-lg">{getDropTimeText(lead)}</div>
                   </div>
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Delivery Address</label>
-                    <div className="text-sm sm:text-base md:text-lg">{lead.delivery_address || lead.customer_address || 'N/A'}</div>
+                    <div className="text-sm sm:text-base md:text-lg">
+                      {lead?.pickup_tracking?.drop_address || lead.delivery_address || lead.customer_address || 'N/A'}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Delivery Status</label>
-                    <div className="text-sm sm:text-base md:text-lg">{lead.delivery_status || 'Pending'}</div>
+                    <div className="text-sm sm:text-base md:text-lg">
+                      {lead?.pickup_tracking?.drop_status || lead.delivery_status || 'Pending'}
+                    </div>
                   </div>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 pt-2">

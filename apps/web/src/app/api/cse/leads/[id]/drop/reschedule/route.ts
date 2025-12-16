@@ -35,29 +35,43 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { scheduled_delivery_date, scheduled_delivery_time, delivery_address, reason } = body;
+    // Backward-compatible payload: older UI sends scheduled_delivery_date/time
+    const {
+      scheduled_delivery_date,
+      scheduled_delivery_time,
+      delivery_address,
+      reason,
+      drop_date,
+      drop_time_slot,
+    } = body;
 
-    if (!scheduled_delivery_date) {
+    const dropDate = drop_date || scheduled_delivery_date;
+    const dropTimeSlot = drop_time_slot || scheduled_delivery_time;
+
+    if (!dropDate) {
       return NextResponse.json({ error: 'scheduled_delivery_date is required' }, { status: 400 });
     }
 
-    // Update lead
-    const updates: any = {
-      scheduled_delivery_date,
-      scheduled_delivery_time: scheduled_delivery_time || null,
-      delivery_address: delivery_address || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data: updatedLead, error: updateError } = await supabase
-      .from('service_leads')
-      .update(updates)
-      .eq('id', leadId)
+    // Upsert pickup_tracking for drop scheduling (canonical place for drop scheduling fields)
+    const { data: updatedTracking, error: trackingError } = await supabase
+      .from('pickup_tracking')
+      .upsert(
+        {
+          lead_id: leadId,
+          drop_address: delivery_address || null,
+          drop_time_slot: dropTimeSlot || null,
+          // Your pickup_tracking schema does NOT have drop_time_window_start/end.
+          // Best-effort: store chosen date into drop_assigned_at so UI can display something.
+          drop_assigned_at: new Date(dropDate).toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'lead_id' }
+      )
       .select()
       .single();
 
-    if (updateError) {
-      console.error('Error rescheduling drop:', updateError);
+    if (trackingError) {
+      console.error('Error rescheduling drop (pickup_tracking):', trackingError);
       return NextResponse.json({ error: 'Failed to reschedule drop' }, { status: 500 });
     }
 
@@ -66,13 +80,13 @@ export async function POST(
       lead_id: leadId,
       user_id: user.id,
       activity_type: 'DROP_RESCHEDULED',
-      description: `Drop rescheduled to ${scheduled_delivery_date}${scheduled_delivery_time ? ` at ${scheduled_delivery_time}` : ''}`,
-      metadata: { reason, scheduled_delivery_date, scheduled_delivery_time },
+      description: `Drop rescheduled to ${dropDate}${dropTimeSlot ? ` at ${dropTimeSlot}` : ''}`,
+      metadata: { reason, dropDate, dropTimeSlot },
     });
 
     return NextResponse.json({
       success: true,
-      lead: updatedLead,
+      pickup_tracking: updatedTracking,
       message: 'Drop rescheduled successfully',
     }, { status: 200 });
 

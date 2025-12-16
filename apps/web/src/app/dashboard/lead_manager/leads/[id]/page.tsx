@@ -33,6 +33,49 @@ export default function LeadReviewPage() {
   const [assignmentNotes, setAssignmentNotes] = useState('');
   const [priority, setPriority] = useState('');
 
+  const formatDate = (value: any) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString();
+  };
+
+  const formatTime = (value: any) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime())
+      ? null
+      : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getPickupDateText = (l: any) =>
+    formatDate(l?.pickup_tracking?.pickup_time_window_start) ||
+    formatDate(l?.scheduled_pickup_date) ||
+    formatDate(l?.preferred_date) ||
+    formatDate(l?.preferred_slot_start) ||
+    'Not scheduled';
+
+  const getPickupTimeText = (l: any) =>
+    l?.pickup_tracking?.pickup_time_slot ||
+    l?.scheduled_pickup_time ||
+    l?.preferred_time_slot ||
+    (formatTime(l?.preferred_slot_start) && formatTime(l?.preferred_slot_end)
+      ? `${formatTime(l?.preferred_slot_start)} - ${formatTime(l?.preferred_slot_end)}`
+      : null) ||
+    'Not scheduled';
+
+  const getDropDateText = (l: any) =>
+    // pickup_tracking table (in your DB) doesn't have drop_time_window_start/end
+    // so we use existing timestamps as best-effort.
+    formatDate(l?.pickup_tracking?.drop_assigned_at) ||
+    formatDate(l?.pickup_tracking?.drop_start_time) ||
+    formatDate(l?.scheduled_delivery_date) ||
+    'Not scheduled';
+
+  const getDropTimeText = (l: any) =>
+    l?.pickup_tracking?.drop_time_slot ||
+    l?.scheduled_delivery_time ||
+    'Not scheduled';
+
   useEffect(() => {
     if (params.id) {
       fetchLeadDetails();
@@ -60,6 +103,18 @@ export default function LeadReviewPage() {
           created_by:users_login!created_by_id(id, full_name, email, phone),
           validated_by:users_login!validated_by_id(id, full_name),
           assigned_pickup_boy:users_login!assigned_pickup_boy_id(id, full_name, phone),
+          pickup_tracking:pickup_tracking!pickup_tracking_lead_id_fkey(
+            pickup_status,
+            pickup_time_slot,
+            pickup_time_window_start,
+            pickup_time_window_end,
+            pickup_address,
+            drop_status,
+            drop_time_slot,
+            drop_assigned_at,
+            drop_start_time,
+            drop_address
+          ),
           city:cities(id, name, state),
           model:car_models(id, make, model_name, variant),
           workshop:workshops(id, name, city, contact_person, phone)
@@ -467,22 +522,22 @@ export default function LeadReviewPage() {
                     </div>
                     <div>
                       <label className="text-xs sm:text-sm text-gray-600">Pickup Status</label>
-                      <p className="font-medium text-sm sm:text-base">{lead.pickup_status || 'Pending'}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs sm:text-sm text-gray-600">Pickup Date</label>
                       <p className="font-medium text-sm sm:text-base">
-                        {lead.scheduled_pickup_date ? new Date(lead.scheduled_pickup_date).toLocaleDateString() : 'Not scheduled'}
+                        {lead?.pickup_tracking?.pickup_status || lead.pickup_status || 'Pending'}
                       </p>
                     </div>
                     <div>
+                      <label className="text-xs sm:text-sm text-gray-600">Pickup Date</label>
+                      <p className="font-medium text-sm sm:text-base">{getPickupDateText(lead)}</p>
+                    </div>
+                    <div>
                       <label className="text-xs sm:text-sm text-gray-600">Pickup Time</label>
-                      <p className="font-medium text-sm sm:text-base">{lead.scheduled_pickup_time || 'Not scheduled'}</p>
+                      <p className="font-medium text-sm sm:text-base">{getPickupTimeText(lead)}</p>
                     </div>
                     <div className="sm:col-span-2">
                       <label className="text-xs sm:text-sm text-gray-600">Pickup Address</label>
                       <p className="font-medium text-sm sm:text-base">
-                        {lead.pickup_address || lead.address || lead.customer_address || 'N/A'}
+                        {lead?.pickup_tracking?.pickup_address || lead.pickup_address || lead.address || lead.customer_address || 'N/A'}
                       </p>
                     </div>
                     {lead.pickup_otp && (
@@ -509,23 +564,23 @@ export default function LeadReviewPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div>
                       <label className="text-xs sm:text-sm text-gray-600">Delivery Status</label>
-                      <p className="font-medium text-sm sm:text-base">{lead.delivery_status || 'Pending'}</p>
+                      <p className="font-medium text-sm sm:text-base">
+                        {lead?.pickup_tracking?.drop_status || lead.delivery_status || 'Pending'}
+                      </p>
                     </div>
                     <div>
                       <label className="text-xs sm:text-sm text-gray-600">Delivery Address</label>
                       <p className="font-medium text-sm sm:text-base">
-                        {lead.delivery_address || lead.address || lead.customer_address || 'N/A'}
+                        {lead?.pickup_tracking?.drop_address || lead.delivery_address || lead.address || lead.customer_address || 'N/A'}
                       </p>
                     </div>
                     <div>
                       <label className="text-xs sm:text-sm text-gray-600">Delivery Date</label>
-                      <p className="font-medium text-sm sm:text-base">
-                        {lead.scheduled_delivery_date ? new Date(lead.scheduled_delivery_date).toLocaleDateString() : 'Not scheduled'}
-                      </p>
+                      <p className="font-medium text-sm sm:text-base">{getDropDateText(lead)}</p>
                     </div>
                     <div>
                       <label className="text-xs sm:text-sm text-gray-600">Delivery Time</label>
-                      <p className="font-medium text-sm sm:text-base">{lead.scheduled_delivery_time || 'Not scheduled'}</p>
+                      <p className="font-medium text-sm sm:text-base">{getDropTimeText(lead)}</p>
                     </div>
                   </div>
                 </div>

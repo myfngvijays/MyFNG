@@ -41,6 +41,20 @@ export async function GET(
       .from('service_leads')
       .select(`
         *,
+        pickup_tracking:pickup_tracking!pickup_tracking_lead_id_fkey(
+          pickup_required,
+          drop_required,
+          pickup_status,
+          pickup_time_slot,
+          pickup_time_window_start,
+          pickup_time_window_end,
+          pickup_address,
+          drop_status,
+          drop_time_slot,
+          drop_assigned_at,
+          drop_start_time,
+          drop_address
+        ),
         workshop:workshops!workshop_id(
           id,
           name,

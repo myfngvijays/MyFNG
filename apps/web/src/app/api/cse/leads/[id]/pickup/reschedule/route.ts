@@ -35,16 +35,27 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { scheduled_pickup_date, scheduled_pickup_time, pickup_address, reason } = body;
+    // Backward-compatible payload: older UI sends scheduled_pickup_date/time
+    const {
+      scheduled_pickup_date,
+      scheduled_pickup_time,
+      pickup_address,
+      reason,
+      preferred_date,
+      preferred_time_slot,
+    } = body;
 
-    if (!scheduled_pickup_date) {
+    const pickupDate = preferred_date || scheduled_pickup_date;
+    const pickupTimeSlot = preferred_time_slot || scheduled_pickup_time;
+
+    if (!pickupDate) {
       return NextResponse.json({ error: 'scheduled_pickup_date is required' }, { status: 400 });
     }
 
-    // Update lead
+    // Update lead (store customer preference fields that exist in schema)
     const updates: any = {
-      scheduled_pickup_date,
-      scheduled_pickup_time: scheduled_pickup_time || null,
+      preferred_date: pickupDate,
+      preferred_time_slot: pickupTimeSlot || null,
       pickup_address: pickup_address || null,
       updated_at: new Date().toISOString(),
     };
@@ -61,13 +72,31 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to reschedule pickup' }, { status: 500 });
     }
 
+    // Upsert pickup_tracking for scheduling visibility across dashboards
+    const { error: trackingError } = await supabase
+      .from('pickup_tracking')
+      .upsert(
+        {
+          lead_id: leadId,
+          pickup_address: pickup_address || null,
+          pickup_time_slot: pickupTimeSlot || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'lead_id' }
+      );
+
+    if (trackingError) {
+      // Non-fatal: lead update succeeded, but tracking table didn't update.
+      console.warn('Warning: failed to upsert pickup_tracking:', trackingError);
+    }
+
     // Log activity
     await supabase.from('lead_activities').insert({
       lead_id: leadId,
       user_id: user.id,
       activity_type: 'PICKUP_RESCHEDULED',
-      description: `Pickup rescheduled to ${scheduled_pickup_date}${scheduled_pickup_time ? ` at ${scheduled_pickup_time}` : ''}`,
-      metadata: { reason, scheduled_pickup_date, scheduled_pickup_time },
+      description: `Pickup rescheduled to ${pickupDate}${pickupTimeSlot ? ` at ${pickupTimeSlot}` : ''}`,
+      metadata: { reason, pickupDate, pickupTimeSlot },
     });
 
     return NextResponse.json({
