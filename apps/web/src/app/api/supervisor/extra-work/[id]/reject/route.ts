@@ -14,7 +14,7 @@ export async function POST(
     const serviceRoleKey =
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
       process.env.SUPABASE_SERVICE_KEY ||
-      process.env.SUPABASE_SERVICE_KEY;
+      process.env.SUPABASE_ADMIN_KEY;
 
     // Prefer service-role client (bypasses RLS), but allow fallback to user client.
     const supabaseAdmin =
@@ -142,6 +142,8 @@ export async function POST(
               ? 'SUPABASE_SERVICE_ROLE_KEY'
               : process.env.SUPABASE_SERVICE_KEY
                 ? 'SUPABASE_SERVICE_KEY'
+                : process.env.SUPABASE_ADMIN_KEY
+                  ? 'SUPABASE_ADMIN_KEY'
                 : null,
           },
           hint:
