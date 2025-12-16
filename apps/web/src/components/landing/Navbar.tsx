@@ -278,25 +278,20 @@ export default function Navbar() {
           </Link>
           
           <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <Link
-                href="/services"
-                className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap"
-              >
-                Services
-              </Link>
-            </div>
-            <Link href="/blog" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
             <Link href="/roadside-assistance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
-            <Link href="/ai-experience" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">AI Experience</Link>
+            <Link href="/blog" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
             <Link href="/contact" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
-            <Link href="/login" className="hidden lg:inline-flex items-center text-xs sm:text-sm md:text-base text-brand-primary font-semibold hover:text-brand-secondary transition whitespace-nowrap">
-              Partner Login
+            <Link
+              href="/login"
+              className="inline-flex items-center justify-center rounded-xl border border-brand-primary/25 bg-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base text-brand-primary font-semibold hover:border-brand-primary/50 hover:bg-brand-primary/5 transition whitespace-nowrap"
+            >
+              <span className="hidden sm:inline">Partner Login</span>
+              <span className="sm:hidden">Partner</span>
             </Link>
-            <Link href="/customer/login" className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 whitespace-nowrap">
+            <Link href="/customer/login" className="hidden sm:inline-flex btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 whitespace-nowrap">
               <span className="hidden sm:inline">Customer Login</span>
               <span className="sm:hidden">Login</span>
               <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />

@@ -63,7 +63,7 @@ export async function POST(
           // Your pickup_tracking schema does NOT have drop_time_window_start/end.
           // Best-effort: store chosen date into drop_assigned_at so UI can display something.
           drop_assigned_at: new Date(dropDate).toISOString(),
-          updated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
         },
         { onConflict: 'lead_id' }
       )

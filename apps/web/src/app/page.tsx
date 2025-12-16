@@ -8,7 +8,6 @@ import { createClient } from '@/lib/supabase/client';
 import BookingForm from '@/components/landing/BookingForm';
 import LiveStats from '@/components/landing/LiveStats';
 import AIFeatureBadge from '@/components/landing/AIFeatureBadge';
-import TrustBadges from '@/components/landing/TrustBadges';
 import DynamicFOMO from '@/components/landing/DynamicFOMO';
 import ServiceExplorer, { type ServiceExplorerItem } from '@/components/landing/ServiceExplorer';
 import { 
@@ -36,7 +35,10 @@ import {
   Radio,
   AlertCircle,
   Droplets,
-  Calendar
+  Calendar,
+  LifeBuoy,
+  BookOpen,
+  LogIn
 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -414,10 +416,14 @@ export default function HomePage() {
 
                 <button
                   type="button"
-                  onClick={() => setIsBookingFormOpen(true)}
-                  className="btn bg-white border-2 border-blue-100 hover:border-blue-600 text-blue-900 hover:text-blue-600 px-8 py-4 rounded-xl font-semibold text-lg transition-all transform hover:-translate-y-1"
+                  onClick={() => {
+                    setChatDraft('I want to book a car service.');
+                    setIsChatOpen(true);
+                  }}
+                  className="btn inline-flex items-center justify-center gap-2 bg-white border-2 border-blue-100 hover:border-blue-600 text-blue-900 hover:text-blue-600 px-8 py-4 rounded-xl font-semibold text-lg transition-all transform hover:-translate-y-1"
                 >
-                  Quick Book
+                  <Bot className="w-5 h-5" />
+                  Book via MYFNG AI
                 </button>
 
                 <Link
@@ -436,35 +442,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Trust bullets (more compact + consistent on all screens) */}
-              <div className="mt-10 pt-8 border-t border-gray-100">
-                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-4 py-2 text-sm font-semibold text-gray-900">
-                    <span className="w-9 h-9 rounded-full bg-green-50 text-green-600 inline-flex items-center justify-center">
-                      <CheckCircle className="w-5 h-5" />
-                    </span>
-                    Verified Garages
-                  </div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-4 py-2 text-sm font-semibold text-gray-900">
-                    <span className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 inline-flex items-center justify-center">
-                      <Cpu className="w-5 h-5" />
-                    </span>
-                    Genuine Parts
-                  </div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-4 py-2 text-sm font-semibold text-gray-900">
-                    <span className="w-9 h-9 rounded-full bg-purple-50 text-purple-600 inline-flex items-center justify-center">
-                      <Shield className="w-5 h-5" />
-                    </span>
-                    Upfront Pricing
-                  </div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-4 py-2 text-sm font-semibold text-gray-900">
-                    <span className="w-9 h-9 rounded-full bg-orange-50 text-orange-600 inline-flex items-center justify-center">
-                      <MapPin className="w-5 h-5" />
-                    </span>
-                    Pan-India Network
-                  </div>
-                </div>
-              </div>
+              {/* Trust tiles moved to full-width below hero (see below) */}
             </div>
 
             {/* Right Visual */}
@@ -546,10 +524,36 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Trust Badges */}
-          <div className="mt-20 pt-10 border-t border-gray-200/60 animate-fade-in-up" style={{animationDelay: '0.8s'}}>
-            <TrustBadges />
+          {/* Trust tiles (same style as TrustBadges) - Full width */}
+          <div className="mt-10 animate-fade-in-up" style={{ animationDelay: '0.75s' }}>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { icon: CheckCircle, title: 'Verified Garages', desc: 'Trusted network' },
+                { icon: Cpu, title: 'Genuine Parts', desc: 'Quality assured' },
+                { icon: Shield, title: 'Upfront Pricing', desc: 'No hidden costs' },
+                { icon: MapPin, title: 'Pan-India Network', desc: '50+ cities' },
+              ].map((b, idx) => {
+                const Icon = b.icon;
+                return (
+                  <div
+                    key={b.title}
+                    className="bg-white/50 backdrop-blur-sm rounded-xl p-4 flex items-center gap-3 animate-fade-in"
+                    style={{ animationDelay: `${idx * 0.1}s` }}
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-gray-900">{b.title}</div>
+                      <div className="text-xs text-gray-600">{b.desc}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
+
+          {/* Trust Badges removed (per requirement) */}
         </div>
       </section>
 
@@ -572,7 +576,7 @@ export default function HomePage() {
         services={services}
         onAskAI={() => setIsChatOpen(true)}
         onQuickBook={() => setIsBookingFormOpen(true)}
-        popularSlugs={['ac-service', 'battery-service', 'brake-service', 'engine-service', 'periodic-service']}
+        popularSlugs={['periodic-service', 'ac-service', 'battery-service', 'brake-service', 'engine-service']}
       />
 
       {/* 3. Brands We Serve - Horizontal Scrolling */}
@@ -814,6 +818,8 @@ export default function HomePage() {
               intents: WhyIntent[];
             };
 
+            // NOTE (per requirement): 4 tiles ka content same rahega (different copy nahi),
+            // aur selection/hover par color change nahi hoga.
             const intents: IntentMeta[] = [
               {
                 id: 'instant' as const,
@@ -826,30 +832,30 @@ export default function HomePage() {
               },
               {
                 id: 'save' as const,
-                title: 'Save Money',
-                desc: 'Transparent pricing',
-                icon: Shield,
-                pill: 'bg-orange-500 text-white',
-                card: 'bg-gradient-to-br from-orange-500 to-amber-600 text-white',
-                glow: 'bg-orange-400/30',
+                title: 'Book Fast',
+                desc: 'Instant booking via AI',
+                icon: Bot,
+                pill: 'bg-blue-600 text-white',
+                card: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white',
+                glow: 'bg-blue-500/30',
               },
               {
                 id: 'control' as const,
-                title: 'Stay in Control',
-                desc: 'Live tracking & updates',
-                icon: TrendingUp,
-                pill: 'bg-gray-900 text-white',
-                card: 'bg-gradient-to-br from-gray-900 to-gray-800 text-white',
-                glow: 'bg-gray-700/40',
+                title: 'Book Fast',
+                desc: 'Instant booking via AI',
+                icon: Bot,
+                pill: 'bg-blue-600 text-white',
+                card: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white',
+                glow: 'bg-blue-500/30',
               },
               {
                 id: 'trust' as const,
-                title: 'Peace of Mind',
-                desc: 'Quality + warranty + support',
-                icon: CheckCircle,
-                pill: 'bg-purple-600 text-white',
-                card: 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white',
-                glow: 'bg-purple-500/30',
+                title: 'Book Fast',
+                desc: 'Instant booking via AI',
+                icon: Bot,
+                pill: 'bg-blue-600 text-white',
+                card: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white',
+                glow: 'bg-blue-500/30',
               },
             ];
 
@@ -928,8 +934,10 @@ export default function HomePage() {
               },
             ];
 
-            const activeIntent = intents.find((i) => i.id === whyIntent) ?? intents[0];
-            const filtered = features.filter((f) => f.intents.includes(activeIntent.id));
+            // Keep the section content stable (no "active" intent switching)
+            const activeIntent = intents[0];
+            // Requirement: only 2 content cards show here
+            const filtered = features.filter((f) => f.id === 'ai-booking' || f.id === 'quick-turnaround');
             const HeroIcon = activeIntent.icon;
 
             return (
@@ -938,28 +946,20 @@ export default function HomePage() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                   {intents.map((i) => {
                     const Icon = i.icon;
-                    const selected = whyIntent === i.id;
                     return (
                       <button
                         key={i.id}
                         type="button"
-                        onClick={() => setWhyIntent(i.id)}
-                        onMouseEnter={() => setWhyIntent(i.id)}
-                        className={`group text-left rounded-2xl sm:rounded-3xl border transition-all duration-300 p-4 sm:p-5 ${
-                          selected
-                            ? 'border-brand-primary bg-white shadow-xl shadow-blue-500/10 -translate-y-0.5'
-                            : 'border-white/60 bg-white/70 backdrop-blur hover:bg-white hover:border-gray-200 hover:shadow-lg'
-                        }`}
-                        aria-pressed={selected}
+                        // No click/hover behavior: content & color stay constant
+                        className="group text-left rounded-2xl sm:rounded-3xl border transition-all duration-300 p-4 sm:p-5 border-white/60 bg-white/70 backdrop-blur hover:bg-white hover:border-gray-200 hover:shadow-lg"
+                        aria-pressed={false}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center ${i.pill}`}>
                             <Icon className="w-6 h-6" />
                           </div>
                           <span
-                            className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${
-                              selected ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600'
-                            }`}
+                            className="text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-gray-200 bg-white text-gray-600"
                           >
                             Choose
                           </span>
@@ -991,61 +991,19 @@ export default function HomePage() {
 
                         <h3 className="mt-5 text-2xl sm:text-3xl font-extrabold leading-tight">{activeIntent.title}</h3>
                         <p className="mt-3 text-white/85 text-sm sm:text-base leading-relaxed">
-                          {activeIntent.id === 'instant'
-                            ? 'Book in seconds with AI guidance — pickup & updates included.'
-                            : activeIntent.id === 'save'
-                              ? 'Upfront pricing + warranty-backed work = better value.'
-                              : activeIntent.id === 'control'
-                                ? 'Track progress with live updates so you always know what’s happening.'
-                                : 'Verified quality, skilled mechanics, warranty and support — stress-free.'}
+                          Book in seconds with AI guidance — pickup & updates included.
                         </p>
 
                         <div className="mt-6 grid grid-cols-2 gap-3">
-                          {activeIntent.id === 'instant' ? (
-                            <>
-                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">No calls</div>
-                                <div className="mt-1 font-extrabold">AI booking</div>
-                              </div>
-                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Fast</div>
-                                <div className="mt-1 font-extrabold">Committed ETA</div>
-                              </div>
-                            </>
-                          ) : activeIntent.id === 'save' ? (
-                            <>
-                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Upfront</div>
-                                <div className="mt-1 font-extrabold">No hidden cost</div>
-                              </div>
-                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Warranty</div>
-                                <div className="mt-1 font-extrabold">Covered work</div>
-                              </div>
-                            </>
-                          ) : activeIntent.id === 'control' ? (
-                            <>
-                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Live</div>
-                                <div className="mt-1 font-extrabold">Tracking</div>
-                              </div>
-                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Proof</div>
-                                <div className="mt-1 font-extrabold">Photo updates</div>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Verified</div>
-                                <div className="mt-1 font-extrabold">Mechanics</div>
-                              </div>
-                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Always</div>
-                                <div className="mt-1 font-extrabold">Support</div>
-                              </div>
-                            </>
-                          )}
+                          {/* Requirement: only 2 content boxes, and constant */}
+                          <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">No calls</div>
+                            <div className="mt-1 font-extrabold">AI booking</div>
+                          </div>
+                          <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Fast</div>
+                            <div className="mt-1 font-extrabold">Committed ETA</div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1102,7 +1060,7 @@ export default function HomePage() {
       </section>
 
       {/* Emergency Roadside Assistance Section - High Impact */}
-      <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 overflow-hidden">
+      <section className="relative py-10 sm:py-16 md:py-20 lg:py-24 overflow-hidden">
         {/* Dramatic Background */}
         <div className="absolute inset-0 bg-gradient-to-br from-red-950 via-orange-950 to-red-900"></div>
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
@@ -1112,94 +1070,129 @@ export default function HomePage() {
         <div className="hidden md:block absolute bottom-0 right-0 w-64 md:w-80 lg:w-96 h-64 md:h-80 lg:h-96 bg-red-500/20 rounded-full blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
 
         <div className="container mx-auto px-3 sm:px-4 md:px-6 relative z-10">
-          <div className="max-w-5xl mx-auto">
-            {/* Emergency Badge */}
-            <div className="flex justify-center mb-4 sm:mb-5 md:mb-6">
-              <div className="inline-flex items-center gap-2 sm:gap-3 glass px-4 sm:px-5 md:px-6 py-2 sm:py-2.5 md:py-3 rounded-full border border-red-500/30 animate-pulse-glow">
-                <div className="relative flex items-center">
-                  <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 bg-red-500 rounded-full animate-pulse"></div>
-                  <div className="absolute w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 bg-red-500 rounded-full animate-ping"></div>
+          <div className="max-w-6xl mx-auto">
+            {/* Split layout (desktop): Left = copy/CTA, Right = services */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 lg:gap-10 items-start">
+              {/* Left column */}
+              <div className="lg:col-span-5">
+                {/* Emergency Badge */}
+                <div className="flex justify-center lg:justify-start mb-4 sm:mb-5">
+                  <div className="inline-flex items-center gap-2 sm:gap-3 glass px-4 sm:px-5 py-2 sm:py-2.5 rounded-full border border-red-500/30 animate-pulse-glow">
+                    <div className="relative flex items-center">
+                      <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full animate-pulse"></div>
+                      <div className="absolute w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full animate-ping"></div>
+                    </div>
+                    <span className="text-white font-bold text-xs sm:text-sm">24/7 EMERGENCY SUPPORT</span>
+                  </div>
                 </div>
-                <span className="text-white font-bold text-xs sm:text-sm">24/7 EMERGENCY SUPPORT</span>
-              </div>
-            </div>
 
-            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-center text-white mb-4 sm:mb-5 md:mb-6 animate-fade-in-up px-4">
-              Stuck on the Road? <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-400">
-                We're Just a Tap Away!
-              </span>
-            </h2>
+                <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-center lg:text-left text-white mb-3 sm:mb-4 animate-fade-in-up px-2 sm:px-0">
+                  Stuck on the Road? <br className="hidden sm:block" />
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-400">
+                    We're Just a Tap Away!
+                  </span>
+                </h2>
 
-            <p className="text-base sm:text-lg md:text-xl text-gray-300 text-center mb-8 sm:mb-10 md:mb-12 max-w-3xl mx-auto animate-fade-in-up px-4" style={{animationDelay: '0.2s'}}>
-              Car breakdown? Flat tire? Battery dead? Our AI-powered roadside assistance reaches you in <span className="text-white font-bold">under 30 minutes</span>. 
-              Available 24/7 across India.
-            </p>
+                <p
+                  className="text-sm sm:text-base md:text-lg text-gray-300 text-center lg:text-left mb-4 sm:mb-6 animate-fade-in-up"
+                  style={{ animationDelay: '0.2s' }}
+                >
+                  Car breakdown? Flat tire? Battery dead? Our AI-powered roadside assistance reaches you in{' '}
+                  <span className="text-white font-bold">under 30 minutes</span>. Available 24/7 across India.
+                </p>
 
-            {/* RSA Services Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6 mb-8 sm:mb-10 md:mb-12">
-              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.3s'}}>
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
-                  <Zap className="w-6 h-6 text-white" />
+                {/* Quick chips */}
+                <div className="flex flex-wrap justify-center lg:justify-start gap-2 sm:gap-2.5 mb-5 sm:mb-7 animate-fade-in-up" style={{ animationDelay: '0.25s' }}>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white">
+                    <Clock className="w-4 h-4 text-orange-300" />
+                    Under 30 min
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white">
+                    <Shield className="w-4 h-4 text-orange-300" />
+                    Trusted help
+                  </span>
+                  <span className="hidden sm:inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white">
+                    <MapPin className="w-4 h-4 text-orange-300" />
+                    Live tracking
+                  </span>
                 </div>
-                <h3 className="text-white font-bold text-lg mb-2">Jump Start</h3>
-                <p className="text-gray-400 text-sm">Battery dead? We'll get you started in minutes</p>
-              </div>
 
-              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.4s'}}>
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
-                  <Car className="w-6 h-6 text-white" />
+                {/* CTA */}
+                <div className="flex flex-col items-center lg:items-start gap-3 animate-fade-in-up" style={{ animationDelay: '0.35s' }}>
+                  <Link
+                    href="/roadside-assistance"
+                    className="inline-flex items-center justify-center gap-3 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white text-sm sm:text-lg font-bold px-7 sm:px-10 py-3.5 sm:py-4 rounded-2xl shadow-2xl shadow-red-500/40 transition-all transform hover:-translate-y-0.5 animate-pulse-glow"
+                  >
+                    <Radio className="w-5 h-5 animate-pulse" />
+                    Request Emergency Help
+                    <ArrowRight className="w-5 h-5" />
+                  </Link>
+                  <p className="text-gray-400 text-xs sm:text-sm text-center lg:text-left">
+                    Available in 50+ cities across India • 24/7 Support
+                  </p>
                 </div>
-                <h3 className="text-white font-bold text-lg mb-2">Towing Service</h3>
-                <p className="text-gray-400 text-sm">Vehicle won't start? We'll tow it to safety</p>
-              </div>
-
-              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.5s'}}>
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
-                  <Shield className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-white font-bold text-lg mb-2">Flat Tire Fix</h3>
-                <p className="text-gray-400 text-sm">Puncture? We'll change or repair on the spot</p>
-              </div>
-
-              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.6s'}}>
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
-                  <Droplets className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-white font-bold text-lg mb-2">Fuel Delivery</h3>
-                <p className="text-gray-400 text-sm">Out of fuel? Emergency fuel delivery</p>
-              </div>
-
-              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.7s'}}>
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
-                  <MapPin className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-white font-bold text-lg mb-2">Live GPS Tracking</h3>
-                <p className="text-gray-400 text-sm">Track our technician in real-time</p>
               </div>
 
-              <div className="glass p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{animationDelay: '0.8s'}}>
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
-                  <Clock className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-white font-bold text-lg mb-2">Quick Response</h3>
-                <p className="text-gray-400 text-sm">Average arrival time: 25 minutes</p>
-              </div>
-            </div>
+              {/* Right column: Services Grid */}
+              <div className="lg:col-span-7">
+                {/* Mobile: 2 columns + only 4 cards (page shorter). Desktop: show all 6. */}
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
+                  <div className="glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
+                      <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                    </div>
+                    <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Jump Start</h3>
+                    <p className="text-gray-400 text-xs sm:text-sm">Battery dead? We'll get you started in minutes</p>
+                  </div>
 
-            {/* Emergency CTA */}
-            <div className="text-center animate-fade-in-up" style={{animationDelay: '0.9s'}}>
-              <Link
-                href="/roadside-assistance"
-                className="inline-flex items-center gap-3 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white text-xl font-bold px-12 py-5 rounded-2xl shadow-2xl shadow-red-500/50 transition-all transform hover:-translate-y-1 hover:shadow-3xl animate-pulse-glow"
-              >
-                <Radio className="w-6 h-6 animate-pulse" />
-                Request Emergency Help
-                <ArrowRight className="w-6 h-6" />
-              </Link>
-              <p className="text-gray-400 mt-4 text-sm">
-                Available in 50+ cities across India • 24/7 Support
-              </p>
+                  <div className="glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
+                      <Car className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                    </div>
+                    <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Towing Service</h3>
+                    <p className="text-gray-400 text-xs sm:text-sm">Vehicle won't start? We'll tow it to safety</p>
+                  </div>
+
+                  <div className="glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
+                      <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                    </div>
+                    <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Flat Tire Fix</h3>
+                    <p className="text-gray-400 text-xs sm:text-sm">Puncture? We'll change or repair on the spot</p>
+                  </div>
+
+                  <div className="glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
+                      <Droplets className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                    </div>
+                    <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Fuel Delivery</h3>
+                    <p className="text-gray-400 text-xs sm:text-sm">Out of fuel? Emergency fuel delivery</p>
+                  </div>
+
+                  <div className="hidden sm:block glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.7s' }}>
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
+                      <MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                    </div>
+                    <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Live GPS Tracking</h3>
+                    <p className="text-gray-400 text-xs sm:text-sm">Track our technician in real-time</p>
+                  </div>
+
+                  <div className="hidden sm:block glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.8s' }}>
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
+                      <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                    </div>
+                    <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Quick Response</h3>
+                    <p className="text-gray-400 text-xs sm:text-sm">Average arrival time: 25 minutes</p>
+                  </div>
+                </div>
+
+                {/* Mobile only: compact “View all” */}
+                <div className="sm:hidden mt-3 flex justify-center">
+                  <Link href="/roadside-assistance" className="text-sm font-semibold text-orange-200 hover:text-white underline underline-offset-4">
+                    View all roadside services →
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1405,8 +1398,23 @@ export default function HomePage() {
 
 
 
+      {/* Floating Quick Book (like Ask MY FNG AI) */}
+      {!isChatOpen && (
+        <div className="fixed bottom-36 sm:bottom-24 right-4 sm:right-6 z-50">
+          <button
+            type="button"
+            onClick={() => setIsBookingFormOpen(true)}
+            className="bg-white/95 hover:bg-white text-brand-primary px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2 sm:gap-3 group border-2 sm:border-4 border-brand-primary/15 backdrop-blur"
+          >
+            <Zap className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 group-hover:rotate-12 transition-transform flex-shrink-0" />
+            <span className="font-semibold text-xs sm:text-sm md:text-base">Quick Book</span>
+            <ArrowRight className="w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5 opacity-70 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+          </button>
+        </div>
+      )}
+
       {/* Floating Chatbot (Always Visible) */}
-      <div className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-50">
+      <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50">
         <button 
           onClick={() => setIsChatOpen(!isChatOpen)}
           className="bg-brand-primary hover:bg-brand-primary-hover text-white px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2 sm:gap-3 group border-2 sm:border-4 border-white/20 animate-bounce-slow"
@@ -1419,7 +1427,7 @@ export default function HomePage() {
 
       {/* Chatbot Modal */}
       {isChatOpen && (
-        <div className="fixed bottom-20 sm:bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-fade-in-up">
+        <div className="fixed bottom-40 sm:bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-fade-in-up">
           <div className="bg-brand-primary p-3 sm:p-4 flex justify-between items-center gap-2">
             <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
               <div className="bg-white/20 p-1 sm:p-1.5 rounded-lg flex-shrink-0">
@@ -1479,10 +1487,55 @@ export default function HomePage() {
 
       <Footer />
 
+      {/* Mobile Bottom Bar (app-style) */}
+      <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
+        <div className="mx-auto max-w-md px-3 pb-3">
+          <div className="rounded-2xl border border-gray-200 bg-white/90 backdrop-blur shadow-2xl overflow-hidden">
+            <div className="grid grid-cols-4">
+              <Link
+                href="/roadside-assistance"
+                className="flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+              >
+                <LifeBuoy className="w-5 h-5" />
+                <span className="text-[11px] font-semibold">Roadside</span>
+              </Link>
+              <Link
+                href="/blog"
+                className="flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+              >
+                <BookOpen className="w-5 h-5" />
+                <span className="text-[11px] font-semibold">Blog</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setChatDraft('I want to book a car service.');
+                  setIsChatOpen(true);
+                }}
+                className="flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+              >
+                <Bot className="w-5 h-5" />
+                <span className="text-[11px] font-semibold">AI Booking</span>
+              </button>
+              <Link
+                href="/customer/login"
+                className="flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+              >
+                <LogIn className="w-5 h-5" />
+                <span className="text-[11px] font-semibold">Login</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Booking Form Modal */}
       {isBookingFormOpen && (
         <BookingForm onClose={() => setIsBookingFormOpen(false)} />
       )}
+
+      {/* Spacer so content isn't hidden behind bottom bar on mobile */}
+      <div className="h-24 lg:hidden" aria-hidden="true" />
 
     </div>
   );
