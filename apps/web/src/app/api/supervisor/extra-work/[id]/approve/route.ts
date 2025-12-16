@@ -10,15 +10,18 @@ export async function POST(
 ) {
   try {
     const supabase = await createClient();
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const serviceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY;
 
     // Prefer service-role client (bypasses RLS), but allow fallback to user client
     // so deploys without SERVICE_ROLE_KEY still work if RLS permits supervisor updates.
     const supabaseAdmin =
       supabaseUrl && serviceRoleKey
         ? createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
+            auth: { persistSession: false, autoRefreshToken: false },
           })
         : null;
     
@@ -138,17 +141,33 @@ export async function POST(
 
     if (updateError) {
       console.error('Error approving extra work:', updateError);
+      const msg = (updateError as any)?.message || '';
+      const code = (updateError as any)?.code || null;
+      const isRls =
+        code === '42501' ||
+        /row-level security|violates row level security|permission denied/i.test(msg);
       return NextResponse.json(
         {
           error: 'Failed to approve extra work',
-          details: updateError.message,
-          code: (updateError as any).code || null,
+          details: msg,
+          code,
+          env: {
+            hasSupabaseUrl: Boolean(supabaseUrl),
+            hasServiceRoleKey: Boolean(serviceRoleKey),
+            serviceKeySource: process.env.SUPABASE_SERVICE_ROLE_KEY
+              ? 'SUPABASE_SERVICE_ROLE_KEY'
+              : process.env.SUPABASE_SERVICE_KEY
+                ? 'SUPABASE_SERVICE_KEY'
+                : null,
+          },
           hint:
             !supabaseAdmin
-              ? 'Server is missing SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL. Either set env vars on deploy, or ensure RLS allows supervisor to update lead_extra_charges.'
-              : null,
+              ? 'Server is missing a Supabase service key (SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SERVICE_KEY) or Supabase URL (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_URL). Without service role, RLS must allow supervisors to update lead_extra_charges.'
+              : isRls
+                ? 'RLS is blocking this update. Use service role key on server or update Supabase RLS policy for supervisor approval.'
+                : null,
         },
-        { status: 500 }
+        { status: isRls ? 403 : 500 }
       );
     }
 
