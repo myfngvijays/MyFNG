@@ -197,18 +197,28 @@ export default function ExtraWorkApprovalsPage() {
       const data = await safeReadJson(response);
 
       if (!response.ok) {
-        const msg =
+        const primary =
           data?.error ||
           data?.message ||
-          (typeof data?.details === 'string' ? data.details : null) ||
           'Failed to approve extra work';
+        const details = typeof data?.details === 'string' ? data.details : null;
         const hint = typeof data?.hint === 'string' ? data.hint : null;
         const code = data?.code ? String(data.code) : null;
         const envBits =
           data?.env
-            ? `env: url=${data.env.hasSupabaseUrl ? 'yes' : 'no'}, key=${data.env.hasServiceRoleKey ? 'yes' : 'no'}${data.env.serviceKeySource ? ` (${data.env.serviceKeySource})` : ''}`
+            ? `env: url=${data.env.hasSupabaseUrl ? 'yes' : 'no'}, key=${data.env.hasServiceRoleKey ? 'yes' : 'no'}${data.env.serviceKeySource ? ` (${data.env.serviceKeySource})` : ''}${data.env.usingServiceRoleClient !== undefined ? `, using=${data.env.usingServiceRoleClient ? 'service_role' : 'user'}` : ''}`
             : null;
-        toast.error([msg, hint, code ? `code: ${code}` : null, envBits].filter(Boolean).join(' • '));
+        toast.error(
+          [
+            primary,
+            details && details !== primary ? `details: ${details}` : null,
+            hint ? `hint: ${hint}` : null,
+            code ? `code: ${code}` : null,
+            envBits,
+          ]
+            .filter(Boolean)
+            .join(' • ')
+        );
         return;
       }
 
@@ -247,18 +257,28 @@ export default function ExtraWorkApprovalsPage() {
       const data = await safeReadJson(response);
 
       if (!response.ok) {
-        const msg =
+        const primary =
           data?.error ||
           data?.message ||
-          (typeof data?.details === 'string' ? data.details : null) ||
           'Failed to reject extra work';
+        const details = typeof data?.details === 'string' ? data.details : null;
         const hint = typeof data?.hint === 'string' ? data.hint : null;
         const code = data?.code ? String(data.code) : null;
         const envBits =
           data?.env
-            ? `env: url=${data.env.hasSupabaseUrl ? 'yes' : 'no'}, key=${data.env.hasServiceRoleKey ? 'yes' : 'no'}${data.env.serviceKeySource ? ` (${data.env.serviceKeySource})` : ''}`
+            ? `env: url=${data.env.hasSupabaseUrl ? 'yes' : 'no'}, key=${data.env.hasServiceRoleKey ? 'yes' : 'no'}${data.env.serviceKeySource ? ` (${data.env.serviceKeySource})` : ''}${data.env.usingServiceRoleClient !== undefined ? `, using=${data.env.usingServiceRoleClient ? 'service_role' : 'user'}` : ''}`
             : null;
-        toast.error([msg, hint, code ? `code: ${code}` : null, envBits].filter(Boolean).join(' • '));
+        toast.error(
+          [
+            primary,
+            details && details !== primary ? `details: ${details}` : null,
+            hint ? `hint: ${hint}` : null,
+            code ? `code: ${code}` : null,
+            envBits,
+          ]
+            .filter(Boolean)
+            .join(' • ')
+        );
         return;
       }
 
