@@ -105,7 +105,7 @@ export default function RSAPage() {
 
   const terms = useMemo(
     () => [
-      'Members are entitled to 2 free services per year under all plans, excluding the Premium Plan.',
+      'Members are entitled to 2 free RSA services per year under all plans, excluding the Premium Plan.',
       "Towing distance is calculated on a round-trip basis (from the service provider’s location to the vehicle’s location and then to the destination).",
       'Key Unlock Assistance is subject to the type of lock system used in the vehicle.',
       'On-Spot Minor Repairs are limited to small fixes that can be completed without requiring extensive tools or garage equipment.',
@@ -302,9 +302,9 @@ export default function RSAPage() {
               <span className="text-red-100">AI-POWERED EMERGENCY DISPATCH</span>
             </div>
             
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-4 sm:mb-5 md:mb-6 animate-fade-in-up delay-100 px-4">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 sm:mb-5 md:mb-6 animate-fade-in-up delay-100 px-4">
               Stuck on the Road? <br/> 
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-300">
+              <span className="text-white">
                 AI Sends Help Instantly.
               </span>
             </h1>

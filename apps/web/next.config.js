@@ -47,6 +47,14 @@ const nextConfig = {
   
   // For Hostinger deployment - standalone mode
   output: 'standalone',
+
+  async redirects() {
+    return [
+      // SEO continuity: old MyFNG uses /blogs/*
+      { source: '/blog', destination: '/blogs', permanent: true },
+      { source: '/blog/:slug', destination: '/blogs/:slug', permanent: true },
+    ];
+  },
 };
 
 module.exports = nextConfig;

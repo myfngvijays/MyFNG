@@ -10,11 +10,11 @@ export default function Footer() {
           <div>
             <h3 className="text-base sm:text-lg font-bold mb-4 sm:mb-6 border-b-2 border-brand-primary inline-block pb-2 text-white">Services</h3>
             <ul className="space-y-2 sm:space-y-3 text-sm sm:text-base text-blue-100">
-              <li><Link href="/services/periodic-service" className="hover:text-white transition">Periodic Service</Link></li>
-              <li><Link href="/services/engine-service" className="hover:text-white transition">Engine Service</Link></li>
+              <li><Link href="/services/periodic-service" className="hover:text-white transition">Car Periodic Service</Link></li>
+              <li><Link href="/services/engine-service" className="hover:text-white transition">Car Engine Service</Link></li>
               <li><Link href="/services/brake-service" className="hover:text-white transition">Brake Service</Link></li>
-              <li><Link href="/services/ac-service" className="hover:text-white transition">AC Service</Link></li>
-              <li><Link href="/services/battery-service" className="hover:text-white transition">Battery Service</Link></li>
+              <li><Link href="/services/ac-service" className="hover:text-white transition">Car AC Service</Link></li>
+              <li><Link href="/services/battery-service" className="hover:text-white transition">Car Battery Service</Link></li>
               <li><Link href="/services/clutch-service" className="hover:text-white transition">Clutch Service</Link></li>
               <li><Link href="/services/tyre-wheel-care" className="hover:text-white transition">Tyre & Wheel Care</Link></li>
               <li><Link href="/services/detailing-service" className="hover:text-white transition">Detailing Service</Link></li>

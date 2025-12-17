@@ -29,9 +29,20 @@ export default function ContactPage() {
                       <Phone className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Phone</h3>
-                      <p className="text-blue-100 mb-0.5 sm:mb-1 text-sm sm:text-base">+91 12345 67890</p>
-                      <p className="text-xs sm:text-sm text-blue-200">Mon-Sun: 9am - 7pm</p>
+                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Customer Support</h3>
+                      <a
+                        href="tel:+919167779696"
+                        className="block text-blue-100 mb-0.5 sm:mb-1 text-sm sm:text-base hover:text-white transition"
+                      >
+                        +91 9167779696
+                      </a>
+                      <a
+                        href="tel:+919152307030"
+                        className="block text-blue-100 mb-0.5 sm:mb-1 text-sm sm:text-base hover:text-white transition"
+                      >
+                        +91 9152307030
+                      </a>
+                      <p className="text-xs sm:text-sm text-blue-200">Call us for support, bookings, or inquiries</p>
                     </div>
                   </div>
 
@@ -40,9 +51,21 @@ export default function ContactPage() {
                       <Mail className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Email</h3>
-                      <p className="text-blue-100 text-sm sm:text-base break-all">support@myfng.com</p>
-                      <p className="text-blue-100 text-sm sm:text-base break-all">partners@myfng.com</p>
+                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Support / Inquiry</h3>
+                      <a
+                        href="mailto:info@myfng.in"
+                        className="block text-blue-100 text-sm sm:text-base break-all hover:text-white transition"
+                      >
+                        info@myfng.in
+                      </a>
+                      <p className="text-xs sm:text-sm text-blue-200 mb-2">General inquiries</p>
+                      <a
+                        href="mailto:support@myfng.in"
+                        className="block text-blue-100 text-sm sm:text-base break-all hover:text-white transition"
+                      >
+                        support@myfng.in
+                      </a>
+                      <p className="text-xs sm:text-sm text-blue-200">Service support</p>
                     </div>
                   </div>
 
@@ -51,8 +74,10 @@ export default function ContactPage() {
                       <MapPin className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Head Office</h3>
-                      <p className="text-blue-100 text-sm sm:text-base">123 Workshop Street, Auto City, India</p>
+                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Address</h3>
+                      <p className="text-blue-100 text-sm sm:text-base">
+                        A/309, Centrum Business Square, Road No 16, Wagle Industrial Estate, Thane (W), Thane-400604, Maharashtra
+                      </p>
                     </div>
                   </div>
                   
@@ -61,9 +86,17 @@ export default function ContactPage() {
                       <Clock className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Working Hours</h3>
-                      <p className="text-blue-100 text-sm sm:text-base">Workshop: 9:00 AM - 7:00 PM</p>
-                      <p className="text-blue-100 text-sm sm:text-base">RSA Support: 24/7 Open</p>
+                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Office Hours</h3>
+                      <div className="text-blue-100 text-sm sm:text-base space-y-1">
+                        <div className="flex items-center justify-between gap-4">
+                          <span>Monday - Saturday</span>
+                          <span className="font-semibold">9 am - 6 pm</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span>Sunday</span>
+                          <span className="font-semibold">Closed</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

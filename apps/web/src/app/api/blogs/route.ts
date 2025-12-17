@@ -7,6 +7,48 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+const ALLOWED_BLOG_IMAGE_EXTS = new Set(['webp', 'jpg', 'jpeg', 'png']);
+
+function extractFilenameParts(url: string): { base: string | null; ext: string | null } {
+  const clean = url.split('?')[0]?.split('#')[0] ?? '';
+  const last = clean.split('/').filter(Boolean).pop() ?? '';
+  const idx = last.lastIndexOf('.');
+  if (idx <= 0) return { base: null, ext: null };
+  const base = last.slice(0, idx);
+  const ext = last.slice(idx + 1).toLowerCase();
+  return { base, ext };
+}
+
+function shouldEnforceBlogImageName(url: string): boolean {
+  if (!url) return false;
+  // Relative URLs are assumed to be our assets → enforce.
+  if (url.startsWith('/')) return true;
+  // If not an absolute http(s) URL, enforce as well.
+  if (!/^https?:\/\//i.test(url)) return true;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    // Enforce for our domains and common storage hosts used by us.
+    return host.endsWith('myfng.in') || host.endsWith('myfng.cloud') || host.includes('supabase.co');
+  } catch {
+    return true;
+  }
+}
+
+function validateBlogImageName(url: string, slug: string): string | null {
+  if (!url || !slug) return null;
+  if (!shouldEnforceBlogImageName(url)) return null;
+
+  const { base, ext } = extractFilenameParts(url);
+  if (!base || !ext || !ALLOWED_BLOG_IMAGE_EXTS.has(ext)) {
+    return `Blog image file name must exactly match the slug (e.g. "${slug}.webp" or "${slug}.jpg").`;
+  }
+  if (base !== slug) {
+    return `Blog image file name must exactly match the slug (expected "${slug}.${ext}", got "${base}.${ext}").`;
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -179,6 +221,20 @@ export async function POST(request: NextRequest) {
     // Validation
     if (!title || !slug || !content) {
       return NextResponse.json({ error: 'Title, slug, and content are required' }, { status: 400 });
+    }
+
+    // SEO requirement: uploaded blog image filename must match slug.
+    if (featured_image) {
+      const err = validateBlogImageName(String(featured_image), String(slug));
+      if (err) return NextResponse.json({ error: err }, { status: 400 });
+    }
+    if (Array.isArray(image_urls) && image_urls.length) {
+      for (const item of image_urls) {
+        const url = typeof item === 'string' ? item : item?.url;
+        if (!url) continue;
+        const err = validateBlogImageName(String(url), String(slug));
+        if (err) return NextResponse.json({ error: err }, { status: 400 });
+      }
     }
 
     // Check if slug already exists

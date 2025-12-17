@@ -173,10 +173,10 @@ export default function ServiceExplorer({
           <div className="text-center">
             <span className="text-blue-600 font-bold tracking-wider uppercase text-sm">Our Services</span>
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">
-              Explore our services
+              Everything your car needs, in one place.
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              See pricing, ETA, and what you get — then book in one tap.
+              Check pricing, ETA & service details — book in one tap.
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">

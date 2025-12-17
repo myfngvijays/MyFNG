@@ -38,7 +38,10 @@ import {
   Calendar,
   LifeBuoy,
   BookOpen,
-  LogIn
+  LogIn,
+  Home,
+  Wrench,
+  Info
 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -221,7 +224,7 @@ export default function HomePage() {
   const services = [
     {
       icon: Activity,
-      title: 'Periodic Service',
+      title: 'Car Periodic Service',
       desc: 'AI-powered scheduled maintenance with digital health reports',
       slug: 'periodic-service',
       color: 'text-blue-600',
@@ -234,7 +237,7 @@ export default function HomePage() {
     },
     {
       icon: Zap,
-      title: 'Engine Service',
+      title: 'Car Engine Service',
       desc: 'Complete engine diagnostics powered by AI',
       slug: 'engine-service',
       color: 'text-orange-600',
@@ -247,7 +250,7 @@ export default function HomePage() {
     },
     {
       icon: Shield,
-      title: 'AC Service',
+      title: 'Car AC Service',
       desc: 'Complete climate control solutions',
       slug: 'ac-service',
       color: 'text-emerald-600',
@@ -260,7 +263,7 @@ export default function HomePage() {
     },
     {
       icon: Zap,
-      title: 'Battery Service',
+      title: 'Car Battery Service',
       desc: 'AI-powered battery health analysis',
       slug: 'battery-service',
       color: 'text-yellow-600',
@@ -542,7 +545,7 @@ export default function HomePage() {
                   >
                     <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
                       <Icon className="w-5 h-5 text-white" />
-                    </div>
+          </div>
                     <div>
                       <div className="text-sm font-bold text-gray-900">{b.title}</div>
                       <div className="text-xs text-gray-600">{b.desc}</div>
@@ -669,7 +672,7 @@ export default function HomePage() {
             <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">How It Works</span>
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">Experience the Future</h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Your entire car service journey is managed by our advanced AI. Watch how it unfolds.
+              Your entire car service booking journey is seamlessly managed by our advanced AI. Watch how it works.
             </p>
           </div>
 
@@ -996,16 +999,16 @@ export default function HomePage() {
 
                         <div className="mt-6 grid grid-cols-2 gap-3">
                           {/* Requirement: only 2 content boxes, and constant */}
-                          <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">No calls</div>
-                            <div className="mt-1 font-extrabold">AI booking</div>
-                          </div>
-                          <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Fast</div>
-                            <div className="mt-1 font-extrabold">Committed ETA</div>
-                          </div>
-                        </div>
-                      </div>
+                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">No calls</div>
+                                <div className="mt-1 font-extrabold">AI booking</div>
+                              </div>
+                              <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Fast</div>
+                                <div className="mt-1 font-extrabold">Committed ETA</div>
+                              </div>
+                              </div>
+                              </div>
                     </div>
                   </div>
 
@@ -1075,23 +1078,23 @@ export default function HomePage() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 lg:gap-10 items-start">
               {/* Left column */}
               <div className="lg:col-span-5">
-                {/* Emergency Badge */}
+            {/* Emergency Badge */}
                 <div className="flex justify-center lg:justify-start mb-4 sm:mb-5">
                   <div className="inline-flex items-center gap-2 sm:gap-3 glass px-4 sm:px-5 py-2 sm:py-2.5 rounded-full border border-red-500/30 animate-pulse-glow">
-                    <div className="relative flex items-center">
+                <div className="relative flex items-center">
                       <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full animate-pulse"></div>
                       <div className="absolute w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full animate-ping"></div>
-                    </div>
-                    <span className="text-white font-bold text-xs sm:text-sm">24/7 EMERGENCY SUPPORT</span>
-                  </div>
                 </div>
+                <span className="text-white font-bold text-xs sm:text-sm">24/7 EMERGENCY SUPPORT</span>
+              </div>
+            </div>
 
                 <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-center lg:text-left text-white mb-3 sm:mb-4 animate-fade-in-up px-2 sm:px-0">
                   Stuck on the Road? <br className="hidden sm:block" />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-400">
-                    We're Just a Tap Away!
-                  </span>
-                </h2>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-400">
+                We're Just a Tap Away!
+              </span>
+            </h2>
 
                 <p
                   className="text-sm sm:text-base md:text-lg text-gray-300 text-center lg:text-left mb-4 sm:mb-6 animate-fade-in-up"
@@ -1099,7 +1102,7 @@ export default function HomePage() {
                 >
                   Car breakdown? Flat tire? Battery dead? Our AI-powered roadside assistance reaches you in{' '}
                   <span className="text-white font-bold">under 30 minutes</span>. Available 24/7 across India.
-                </p>
+            </p>
 
                 {/* Quick chips */}
                 <div className="flex flex-wrap justify-center lg:justify-start gap-2 sm:gap-2.5 mb-5 sm:mb-7 animate-fade-in-up" style={{ animationDelay: '0.25s' }}>
@@ -1140,39 +1143,39 @@ export default function HomePage() {
                   <div className="glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
                     <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
                       <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                    </div>
+                </div>
                     <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Jump Start</h3>
                     <p className="text-gray-400 text-xs sm:text-sm">Battery dead? We'll get you started in minutes</p>
-                  </div>
+              </div>
 
                   <div className="glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
                     <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
                       <Car className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                    </div>
+                </div>
                     <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Towing Service</h3>
                     <p className="text-gray-400 text-xs sm:text-sm">Vehicle won't start? We'll tow it to safety</p>
-                  </div>
+              </div>
 
                   <div className="glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
                     <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
                       <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                    </div>
+                </div>
                     <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Flat Tire Fix</h3>
                     <p className="text-gray-400 text-xs sm:text-sm">Puncture? We'll change or repair on the spot</p>
-                  </div>
+              </div>
 
                   <div className="glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
                     <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
                       <Droplets className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                    </div>
+                </div>
                     <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Fuel Delivery</h3>
                     <p className="text-gray-400 text-xs sm:text-sm">Out of fuel? Emergency fuel delivery</p>
-                  </div>
+              </div>
 
                   <div className="hidden sm:block glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.7s' }}>
                     <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
                       <MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                    </div>
+                </div>
                     <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Live GPS Tracking</h3>
                     <p className="text-gray-400 text-xs sm:text-sm">Track our technician in real-time</p>
                   </div>
@@ -1183,14 +1186,14 @@ export default function HomePage() {
                     </div>
                     <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Quick Response</h3>
                     <p className="text-gray-400 text-xs sm:text-sm">Average arrival time: 25 minutes</p>
-                  </div>
-                </div>
+              </div>
+            </div>
 
                 {/* Mobile only: compact “View all” */}
                 <div className="sm:hidden mt-3 flex justify-center">
                   <Link href="/roadside-assistance" className="text-sm font-semibold text-orange-200 hover:text-white underline underline-offset-4">
                     View all roadside services →
-                  </Link>
+              </Link>
                 </div>
               </div>
             </div>
@@ -1237,7 +1240,7 @@ export default function HomePage() {
           </div>
 
           <div className="text-center mt-8 sm:mt-10 md:mt-12">
-            <Link href="/blog" className="btn btn-outline text-sm sm:text-base md:text-lg px-6 sm:px-8 md:px-10 py-2.5 sm:py-3 md:py-4 rounded-xl">
+            <Link href="/blogs" className="btn btn-outline text-sm sm:text-base md:text-lg px-6 sm:px-8 md:px-10 py-2.5 sm:py-3 md:py-4 rounded-xl">
               Read All Blogs <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-1 sm:ml-2" />
             </Link>
           </div>
@@ -1386,7 +1389,7 @@ export default function HomePage() {
             />
             <FAQItem 
               question="Can I track my service in real-time?"
-              answer="Absolutely! You'll receive real-time updates, photos, and live tracking throughout the service process via our AI-powered platform."
+              answer="You’ll receive service updates, including photos and videos of car service, after the car service completed."
             />
             <FAQItem 
               question="What car brands do you service?"
@@ -1491,17 +1494,38 @@ export default function HomePage() {
       <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
         <div className="mx-auto max-w-md px-3 pb-3">
           <div className="rounded-2xl border border-gray-200 bg-white/90 backdrop-blur shadow-2xl overflow-hidden">
-            <div className="grid grid-cols-4">
+            <div className="flex overflow-x-auto">
+              <Link
+                href="/"
+                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+              >
+                <Home className="w-5 h-5" />
+                <span className="text-[11px] font-semibold">Home</span>
+              </Link>
+              <Link
+                href="/services"
+                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+              >
+                <Wrench className="w-5 h-5" />
+                <span className="text-[11px] font-semibold">Services</span>
+              </Link>
+              <Link
+                href="/about"
+                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+              >
+                <Info className="w-5 h-5" />
+                <span className="text-[11px] font-semibold">About</span>
+              </Link>
               <Link
                 href="/roadside-assistance"
-                className="flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
               >
                 <LifeBuoy className="w-5 h-5" />
                 <span className="text-[11px] font-semibold">Roadside</span>
               </Link>
               <Link
-                href="/blog"
-                className="flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+                href="/blogs"
+                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
               >
                 <BookOpen className="w-5 h-5" />
                 <span className="text-[11px] font-semibold">Blog</span>
@@ -1512,14 +1536,14 @@ export default function HomePage() {
                   setChatDraft('I want to book a car service.');
                   setIsChatOpen(true);
                 }}
-                className="flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
               >
                 <Bot className="w-5 h-5" />
                 <span className="text-[11px] font-semibold">AI Booking</span>
               </button>
               <Link
                 href="/customer/login"
-                className="flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
+                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
               >
                 <LogIn className="w-5 h-5" />
                 <span className="text-[11px] font-semibold">Login</span>
@@ -1841,7 +1865,7 @@ function BlogCard({
   icon: React.ReactNode;
 }) {
   return (
-    <Link href="/blog" className="bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 group flex flex-col h-full border border-gray-100">
+    <Link href="/blogs" className="bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 group flex flex-col h-full border border-gray-100">
       {/* Header Area */}
       <div className={`h-48 ${color} flex items-center justify-center relative overflow-hidden`}>
         {/* Decorative Circles */}

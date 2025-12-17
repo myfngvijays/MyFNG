@@ -431,7 +431,7 @@ export default function BlogPostPage() {
         <div className="text-center">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4">Blog Post Not Found</h1>
           <p className="text-gray-600 text-sm sm:text-base mb-6 sm:mb-8">The blog post you're looking for doesn't exist.</p>
-          <Link href="/blog" className="btn btn-primary text-xs sm:text-sm px-4 sm:px-6 py-2 sm:py-3">
+          <Link href="/blogs" className="btn btn-primary text-xs sm:text-sm px-4 sm:px-6 py-2 sm:py-3">
             Back to Blogs
           </Link>
         </div>
@@ -477,7 +477,7 @@ export default function BlogPostPage() {
         <div className="container mx-auto px-3 sm:px-4">
           <div className="max-w-4xl mx-auto">
             <Link
-              href="/blog"
+              href="/blogs"
               className="inline-flex items-center gap-1.5 sm:gap-2 text-gray-200 hover:text-white mb-4 sm:mb-5 md:mb-6 transition text-sm sm:text-base"
             >
               <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -568,7 +568,7 @@ export default function BlogPostPage() {
                   .map((relatedPost) => (
                     <Link
                       key={relatedPost.id}
-                      href={`/blog/${relatedPost.slug}`}
+                      href={`/blogs/${relatedPost.slug}`}
                       className="bg-white rounded-lg sm:rounded-xl shadow-md overflow-hidden hover:shadow-xl transition group"
                     >
                       <div className="h-32 sm:h-36 md:h-40 relative overflow-hidden">

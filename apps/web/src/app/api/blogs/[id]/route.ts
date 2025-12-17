@@ -8,6 +8,44 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+const ALLOWED_BLOG_IMAGE_EXTS = new Set(['webp', 'jpg', 'jpeg', 'png']);
+
+function extractFilenameParts(url: string): { base: string | null; ext: string | null } {
+  const clean = url.split('?')[0]?.split('#')[0] ?? '';
+  const last = clean.split('/').filter(Boolean).pop() ?? '';
+  const idx = last.lastIndexOf('.');
+  if (idx <= 0) return { base: null, ext: null };
+  const base = last.slice(0, idx);
+  const ext = last.slice(idx + 1).toLowerCase();
+  return { base, ext };
+}
+
+function shouldEnforceBlogImageName(url: string): boolean {
+  if (!url) return false;
+  if (url.startsWith('/')) return true;
+  if (!/^https?:\/\//i.test(url)) return true;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    return host.endsWith('myfng.in') || host.endsWith('myfng.cloud') || host.includes('supabase.co');
+  } catch {
+    return true;
+  }
+}
+
+function validateBlogImageName(url: string, slug: string): string | null {
+  if (!url || !slug) return null;
+  if (!shouldEnforceBlogImageName(url)) return null;
+  const { base, ext } = extractFilenameParts(url);
+  if (!base || !ext || !ALLOWED_BLOG_IMAGE_EXTS.has(ext)) {
+    return `Blog image file name must exactly match the slug (e.g. "${slug}.webp" or "${slug}.jpg").`;
+  }
+  if (base !== slug) {
+    return `Blog image file name must exactly match the slug (expected "${slug}.${ext}", got "${base}.${ext}").`;
+  }
+  return null;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -156,6 +194,21 @@ export async function PUT(
 
       if (slugExists) {
         return NextResponse.json({ error: 'Blog with this slug already exists' }, { status: 400 });
+      }
+    }
+
+    // SEO requirement: uploaded blog image filename must match slug.
+    const effectiveSlug = String(slug ?? existingBlog.slug);
+    if (featured_image !== undefined && featured_image !== null) {
+      const err = validateBlogImageName(String(featured_image), effectiveSlug);
+      if (err) return NextResponse.json({ error: err }, { status: 400 });
+    }
+    if (image_urls !== undefined && Array.isArray(image_urls) && image_urls.length) {
+      for (const item of image_urls) {
+        const url = typeof item === 'string' ? item : item?.url;
+        if (!url) continue;
+        const err = validateBlogImageName(String(url), effectiveSlug);
+        if (err) return NextResponse.json({ error: err }, { status: 400 });
       }
     }
 

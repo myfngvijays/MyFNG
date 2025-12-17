@@ -25,7 +25,7 @@ const services = [
   {
     id: 1,
     slug: 'periodic-service',
-    title: 'Periodic Service',
+    title: 'Car Periodic Service',
     icon: Activity,
     description: 'AI-powered scheduled maintenance with digital health reports. Keep your car running smoothly with manufacturer-recommended service packages.',
     longDescription: 'Our Periodic Service ensures your vehicle receives comprehensive maintenance at regular intervals. Using AI-powered diagnostics, we provide detailed health reports and preventive care to extend your car\'s lifespan.',
@@ -52,7 +52,7 @@ const services = [
   {
     id: 2,
     slug: 'engine-service',
-    title: 'Engine Service',
+    title: 'Car Engine Service',
     icon: Zap,
     description: 'Complete engine diagnostics powered by AI. Comprehensive engine care to keep your car\'s heart running perfectly.',
     longDescription: 'Our Engine Service provides thorough diagnostics and maintenance for your vehicle\'s engine. Using advanced AI technology, we identify potential issues before they become costly problems.',
@@ -79,7 +79,7 @@ const services = [
   {
     id: 3,
     slug: 'ac-service',
-    title: 'AC Service',
+    title: 'Car AC Service',
     icon: Shield,
     description: 'Complete climate control solutions. Keep your cabin cool and fresh with professional AC maintenance.',
     longDescription: 'Professional AC service ensures optimal cooling performance and air quality. We provide comprehensive AC system maintenance, gas refilling, and cleaning services.',
@@ -106,7 +106,7 @@ const services = [
   {
     id: 4,
     slug: 'battery-service',
-    title: 'Battery Service',
+    title: 'Car Battery Service',
     icon: Battery,
     description: 'AI-powered battery health analysis. Ensure reliable starts and optimal electrical system performance.',
     longDescription: 'Comprehensive battery service includes health analysis, charging system check, and replacement if needed. Our AI-powered diagnostics predict battery life and prevent unexpected failures.',

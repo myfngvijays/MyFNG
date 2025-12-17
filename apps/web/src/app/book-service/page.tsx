@@ -11,7 +11,7 @@ import {
   MapPin, Car, User, Phone, Loader2, Search, CheckCircle, 
   Navigation, ArrowRight, ArrowLeft, Send, Smile, PartyPopper,
   Wrench, DollarSign, Sparkles, Calendar, Clock, MapPin as AddressIcon,
-  CreditCard, Wallet, Smartphone, Banknote
+  CreditCard, Wallet, Smartphone, Banknote, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -79,10 +79,6 @@ export default function BookServicePage() {
   const [serviceSearchQuery, setServiceSearchQuery] = useState('');
   // UI: service details modal (step 3)
   const [detailsService, setDetailsService] = useState<any | null>(null);
-  // UI: pagination for long service lists (step 3)
-  const [allServicesVisibleCount, setAllServicesVisibleCount] = useState(9);
-  // UI: collapse/expand all services list (step 3)
-  const [showAllServices, setShowAllServices] = useState(false);
   const [serviceChecklistTemplates, setServiceChecklistTemplates] = useState<
     Record<string, { title?: string; points?: number; items: any[] }>
   >({});
@@ -199,12 +195,12 @@ export default function BookServicePage() {
     }
   }, [serviceCategories.length]);
 
-  // Reset "load more" pagination when category/search changes
+  // Reset search when category changes
   useEffect(() => {
     if (currentStep !== 2) return;
-    setAllServicesVisibleCount(9);
-    setShowAllServices(false);
-  }, [currentStep, selectedCategory, serviceCategories.length, serviceSearchQuery]);
+    // keep searchQuery if you want; but clearing avoids confusion between categories
+    // setServiceSearchQuery('');
+  }, [currentStep, selectedCategory]);
 
   // Read booking prefill params (client-side) to avoid useSearchParams() build constraint
   useEffect(() => {
@@ -1366,16 +1362,10 @@ export default function BookServicePage() {
     return sum + (servicePricing[serviceId] || 0);
   }, 0);
 
-  const normalizedServiceQuery = serviceSearchQuery.trim().toLowerCase();
-
   const activeCategoryId = selectedCategory || serviceCategories[0]?.id || null;
   const activeCategoryServices = activeCategoryId ? serviceTypes.filter((s: any) => s.category === activeCategoryId) : [];
-  const filteredCategoryServices = activeCategoryServices.filter((service: any) => {
-    if (!normalizedServiceQuery) return true;
-    const name = String(service?.name || '').toLowerCase();
-    const desc = String(service?.description || '').toLowerCase();
-    return name.includes(normalizedServiceQuery) || desc.includes(normalizedServiceQuery);
-  });
+  // Show everything in selected category (no search)
+  const filteredCategoryServices = activeCategoryServices;
 
   const sortedByPrice = [...filteredCategoryServices].sort((a: any, b: any) => {
     const pa = servicePricing[a?.id] ?? Number.POSITIVE_INFINITY;
@@ -1384,29 +1374,30 @@ export default function BookServicePage() {
   });
 
   const pickPlanServices = () => {
-    if (sortedByPrice.length <= 3) return sortedByPrice;
+    if (sortedByPrice.length <= 4) return sortedByPrice;
     const low = sortedByPrice[0];
-    const mid = sortedByPrice[Math.floor((sortedByPrice.length - 1) / 2)];
+    const q1 = sortedByPrice[Math.floor((sortedByPrice.length - 1) * 0.33)];
+    const q2 = sortedByPrice[Math.floor((sortedByPrice.length - 1) * 0.66)];
     const high = sortedByPrice[sortedByPrice.length - 1];
     const byId = new Map<string, any>();
-    [low, mid, high].forEach((s) => s?.id && byId.set(String(s.id), s));
+    [low, q1, q2, high].forEach((s) => s?.id && byId.set(String(s.id), s));
     const picked = Array.from(byId.values());
-    // ensure exactly 3 by filling from sorted list
+    // ensure exactly 4 by filling from sorted list
     for (const s of sortedByPrice) {
-      if (picked.length >= 3) break;
+      if (picked.length >= 4) break;
       const id = String(s?.id || '');
       if (id && !byId.has(id)) {
         byId.set(id, s);
         picked.push(s);
       }
     }
-    return picked.slice(0, 3);
+    return picked.slice(0, 4);
   };
 
   const planServices = pickPlanServices();
   const planIds = new Set(planServices.map((s: any) => String(s?.id)));
   const remainingServices = sortedByPrice.filter((s: any) => !planIds.has(String(s?.id)));
-  const visibleRemainingServices = remainingServices.slice(0, allServicesVisibleCount);
+  const visibleRemainingServices = remainingServices;
 
   const getEtaLabelFromPoints = (points?: number) => {
     const p = Number(points || 0);
@@ -1416,6 +1407,50 @@ export default function BookServicePage() {
     if (p >= 30) return '4h';
     if (p >= 15) return '2h';
     return '2h';
+  };
+
+  const getChecklistForService = (service: any) => {
+    const db = serviceChecklistTemplates?.[service?.id];
+    if (db?.items?.length) {
+      return {
+        source: 'db' as const,
+        title: db.title || 'Checklist',
+        points: typeof db.points === 'number' ? db.points : undefined,
+        items: db.items as any[],
+      };
+    }
+    const fallback = getFallbackChecklistTemplate(service?.name || '');
+    return {
+      source: 'fallback' as const,
+      title: fallback?.title || 'Checklist',
+      points: typeof fallback?.points === 'number' ? fallback.points : undefined,
+      items: (fallback?.items || []) as any[],
+    };
+  };
+
+  const normalizeChecklistItem = (it: any): { name: string; category?: string } | null => {
+    if (!it) return null;
+    if (typeof it === 'string') return { name: it };
+    const name = String(it?.name || it?.title || it?.label || '').trim();
+    if (!name) return null;
+    const category = it?.category ? String(it.category).trim() : undefined;
+    return { name, category: category || undefined };
+  };
+
+  const getChecklistPreview = (service: any, limit: number) => {
+    const c = getChecklistForService(service);
+    const normalized = (c.items || []).map(normalizeChecklistItem).filter(Boolean) as Array<{ name: string; category?: string }>;
+    // de-dup by name (case-insensitive)
+    const seen = new Set<string>();
+    const unique: Array<{ name: string; category?: string }> = [];
+    for (const n of normalized) {
+      const key = n.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(n);
+      if (unique.length >= limit) break;
+    }
+    return { ...c, preview: unique, totalCount: normalized.length };
   };
 
   const handleServiceToggle = (serviceId: string) => {
@@ -1459,7 +1494,7 @@ export default function BookServicePage() {
       <Navbar />
       
       <div className="container mx-auto px-3 sm:px-4 md:px-6 pt-16 sm:pt-20 md:pt-24 pb-8 sm:pb-12 md:pb-16">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
             {/* Progress Bar */}
             <div className="h-2 bg-gray-100">
@@ -1749,7 +1784,7 @@ export default function BookServicePage() {
                               <div className="text-xl sm:text-2xl font-extrabold text-gray-900">Choose your plan</div>
                               <div className="mt-1 text-sm text-gray-600">
                                 {formData.carModel?.make} {formData.carModel?.model_name} in {formData.city?.name}
-                              </div>
+                            </div>
                             </div>
                             <div className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
                               <div className="text-xs text-gray-500">Selected</div>
@@ -1758,8 +1793,8 @@ export default function BookServicePage() {
                               <div className="text-xs text-gray-500">Total</div>
                               <div className="text-sm font-extrabold text-green-700">₹{totalPrice.toLocaleString('en-IN')}</div>
                             </div>
-                          </div>
-                        </div>
+                    </div>
+                  </div>
 
                         {/* Category pills (horizontal) */}
                         {serviceCategories.length > 0 && (
@@ -1794,8 +1829,8 @@ export default function BookServicePage() {
                             <Search className="w-10 h-10 text-gray-400 mx-auto mb-3" />
                             <p className="text-gray-700 font-semibold">No services found</p>
                             <p className="text-xs text-gray-500 mt-1">Try a different keyword or change category</p>
-                          </div>
-                        ) : (
+                              </div>
+                            ) : (
                           <>
                             {/* Plans (organized: Basic / Standard / Comprehensive) */}
                             <div className="mb-5 sm:mb-7">
@@ -1803,30 +1838,28 @@ export default function BookServicePage() {
                                 <div className="text-sm font-extrabold text-gray-900">Plans</div>
                                 <div className="text-xs text-gray-500">{filteredCategoryServices.length} services in this category</div>
                               </div>
-                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
                                 {planServices.map((service: any, idx: number) => {
-                            const isSelected = formData.selectedServices.includes(service.id);
-                            const price = servicePricing[service.id] || 0;
-                            const dbTemplate = serviceChecklistTemplates[service.id];
-                            const fallbackTemplate = getFallbackChecklistTemplate(service.name);
-                            const checklistTemplate =
-                              dbTemplate?.items?.length ? { title: dbTemplate.title, points: dbTemplate.points, items: dbTemplate.items } : fallbackTemplate;
-                                  const items = (checklistTemplate?.items || []).slice(0, 6);
-                            const eta = getEtaLabelFromPoints(Number(service.points) || checklistTemplate?.points);
-                                  const planLabel = idx === 0 ? 'Basic' : idx === 1 ? 'Standard' : 'Comprehensive';
-
-                            return (
+                                  const isSelected = formData.selectedServices.includes(service.id);
+                                  const price = servicePricing[service.id] || 0;
+                                  const checklist = getChecklistPreview(service, 6);
+                                  const items = checklist.preview;
+                                  const eta = getEtaLabelFromPoints(Number(service.points) || checklist.points);
+                                  const planLabel =
+                                    idx === 0 ? 'Basic' : idx === 1 ? 'Standard' : idx === 2 ? 'Premium' : 'Comprehensive';
+                                  
+                                  return (
                               <div
-                                key={service.id}
+                                      key={service.id}
                                       className={`relative rounded-2xl border-2 bg-white p-5 sm:p-6 shadow-sm transition-all h-full ${
                                         isSelected ? 'border-brand-primary shadow-lg' : 'border-gray-200 hover:border-brand-primary/50 hover:shadow-md'
-                                }`}
-                              >
+                                      }`}
+                                    >
                                 {idx === 1 && (
                                   <div className="absolute left-5 right-5 -top-3">
                                     <div className="mx-auto w-fit rounded-full bg-gradient-to-r from-brand-primary to-brand-secondary px-4 py-1 text-xs font-extrabold text-white shadow">
                                       MOST POPULAR
-                                    </div>
+                                          </div>
                                   </div>
                                 )}
 
@@ -1856,26 +1889,38 @@ export default function BookServicePage() {
                                   </div>
                                   <button
                                     type="button"
-                                    onClick={() => setDetailsService({ service, checklistTemplate, price })}
+                                    onClick={() => setDetailsService({ service, checklistTemplate: checklist, price })}
                                     className="text-xs font-bold text-brand-primary hover:text-brand-secondary underline underline-offset-4"
                                   >
-                                    View Details
+                                    View checklist
                                   </button>
                                 </div>
 
                                       <div className="mt-4">
-                                        <div className="text-xs font-bold text-gray-700 mb-2">What's included</div>
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="text-xs font-bold text-gray-700">What you get</div>
+                                          {checklist.source === 'fallback' ? (
+                                            <span className="text-[10px] font-bold text-gray-500">Standard</span>
+                                          ) : (
+                                            <span className="text-[10px] font-bold text-green-700">Official</span>
+                                          )}
+                                        </div>
                                         <div className="space-y-2">
                                   {items.length > 0 ? (
                                     items.map((it: any, i: number) => (
-                                      <div key={it?.id || i} className="flex items-start gap-2 text-sm text-gray-700">
+                                      <div key={`${it?.name || ''}-${i}`} className="flex items-start gap-2 text-sm text-gray-700">
                                         <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span className="break-words">{it?.name || String(it)}</span>
+                                        <span className="break-words">
+                                          {it?.name || String(it)}
+                                          {it?.category ? (
+                                            <span className="ml-2 text-[10px] font-bold text-gray-400">{it.category}</span>
+                                          ) : null}
+                                        </span>
                                       </div>
                                     ))
                                   ) : (
                                     <div className="text-sm text-gray-600">Standard maintenance & inspection included.</div>
-                                  )}
+                                            )}
                                         </div>
                                 </div>
 
@@ -1888,14 +1933,20 @@ export default function BookServicePage() {
                                   </div>
                                   <button
                                     type="button"
-                                          onClick={() => handleServiceToggle(service.id)}
+                                          onClick={() => {
+                                            if (!isSelected) {
+                                              handleServiceToggle(service.id);
+                                              return;
+                                            }
+                                            handleNext();
+                                          }}
                                           className={`px-4 py-2.5 rounded-xl font-extrabold text-sm transition-all ${
                                       isSelected
                                               ? 'bg-brand-primary text-white'
                                               : 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-md shadow-brand-primary/20 hover:shadow-lg hover:shadow-brand-primary/30'
                                     }`}
                                   >
-                                    {isSelected ? 'Selected' : 'Select'}
+                                    {isSelected ? 'Continue' : 'Select'}
                                   </button>
                                 </div>
                               </div>
@@ -1904,131 +1955,106 @@ export default function BookServicePage() {
                               </div>
                             </div>
 
-                            {/* All services (clean + organized, expandable) */}
+                            {/* More services (same card layout as plans) */}
                             {remainingServices.length > 0 && (
-                              <div className="mt-2">
+                              <div className="mt-6">
                                 <div className="flex items-center justify-between mb-3">
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowAllServices((v) => !v)}
-                                    className="w-full flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm hover:shadow-md transition-all"
-                                  >
-                                    <div className="text-left">
-                                      <div className="text-sm font-extrabold text-gray-900">Browse all services</div>
-                                      <div className="text-xs text-gray-500">{remainingServices.length} more services</div>
-                                    </div>
-                                    <div className={`text-xs font-extrabold px-3 py-1.5 rounded-full ${
-                                      showAllServices ? 'bg-brand-primary text-white' : 'bg-gray-100 text-gray-800'
-                                    }`}>
-                                      {showAllServices ? 'Hide' : 'Show'}
-                                    </div>
-                                  </button>
+                                  <div className="text-sm font-extrabold text-gray-900">More services</div>
+                                  <div className="text-xs text-gray-500">{remainingServices.length} services</div>
                                 </div>
 
-                                {showAllServices && (
-                                  <div className="mt-3 rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm">
-                                    {/* Search (within selected category) */}
-                                    <div className="mb-4">
-                                      <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                        <input
-                                          type="text"
-                                          value={serviceSearchQuery}
-                                          onChange={(e) => setServiceSearchQuery(e.target.value)}
-                                          placeholder="Search services (e.g. oil, AC, brake...)"
-                                          className="w-full pl-9 pr-9 py-2.5 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none transition-all bg-white"
-                                        />
-                                        {serviceSearchQuery.trim().length > 0 && (
-                                          <button
-                                            type="button"
-                                            onClick={() => setServiceSearchQuery('')}
-                                            className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-800"
-                                            aria-label="Clear search"
-                                          >
-                                            ✕
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+                                  {visibleRemainingServices.map((service: any) => {
+                                    const isSelected = formData.selectedServices.includes(service.id);
+                                    const price = servicePricing[service.id] || 0;
+                                    const checklist = getChecklistPreview(service, 6);
+                                    const items = checklist.preview;
+                                    const eta = getEtaLabelFromPoints(Number(service.points) || checklist.points);
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                                      {visibleRemainingServices.map((service: any) => {
-                                        const isSelected = formData.selectedServices.includes(service.id);
-                                        const price = servicePricing[service.id] || 0;
-                                        const dbTemplate = serviceChecklistTemplates[service.id];
-                                        const fallbackTemplate = getFallbackChecklistTemplate(service.name);
-                                        const checklistTemplate =
-                                          dbTemplate?.items?.length ? { title: dbTemplate.title, points: dbTemplate.points, items: dbTemplate.items } : fallbackTemplate;
-                                        const items = (checklistTemplate?.items || []).slice(0, 3);
-
-                                        return (
-                                          <div
-                                            key={service.id}
-                                            className={`rounded-2xl border p-4 shadow-sm transition-all ${
-                                              isSelected ? 'border-brand-primary bg-brand-primary/5' : 'border-gray-200 bg-white hover:border-brand-primary/50'
-                                            }`}
-                                          >
-                                            <div className="flex items-start justify-between gap-3">
-                                              <div className="min-w-0">
-                                                <div className="font-extrabold text-gray-900 break-words">{service.name}</div>
-                                                {service.description ? (
-                                                  <div className="mt-1 text-xs text-gray-500 line-clamp-2">{service.description}</div>
-                                                ) : null}
-                                              </div>
-                                              <button
-                                                type="button"
-                                                onClick={() => setDetailsService({ service, checklistTemplate, price })}
-                                                className="text-xs font-bold text-brand-primary hover:text-brand-secondary underline underline-offset-4"
-                                              >
-                                                Details
-                                              </button>
-                                            </div>
-
-                                            {items.length > 0 && (
-                                              <div className="mt-3 space-y-1.5">
-                                                {items.map((it: any, i: number) => (
-                                                  <div key={it?.id || i} className="flex items-start gap-2 text-xs text-gray-700">
-                                                    <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0 mt-0.5" />
-                                                    <span className="break-words">{it?.name || String(it)}</span>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            )}
-
-                                            <div className="mt-4 pt-3 border-t border-gray-200 flex items-center justify-between gap-3">
-                                              <div className="text-sm font-extrabold text-gray-900">
-                                                {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'Price on request'}
-                                              </div>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleServiceToggle(service.id)}
-                                                className={`px-3 py-2 rounded-xl font-extrabold text-xs transition-all ${
-                                                  isSelected
-                                                    ? 'bg-brand-primary text-white'
-                                                    : 'bg-white border border-gray-200 text-gray-900 hover:bg-gray-50'
-                                                }`}
-                                              >
-                                                {isSelected ? 'Selected' : 'Select'}
-                                              </button>
+                                    return (
+                                      <div
+                                        key={service.id}
+                                        className={`relative rounded-2xl border-2 bg-white p-5 sm:p-6 shadow-sm transition-all h-full ${
+                                          isSelected ? 'border-brand-primary shadow-lg' : 'border-gray-200 hover:border-brand-primary/50 hover:shadow-md'
+                                        }`}
+                                      >
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0">
+                                            <div className="mt-1 text-lg font-extrabold text-gray-900 break-words">{service.name}</div>
+                                            <div className="mt-2 flex items-center gap-2 text-xs text-gray-600 flex-wrap">
+                                              {eta ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1">
+                                                  <Clock className="w-3.5 h-3.5" /> {eta}
+                                                </span>
+                                              ) : null}
+                                              {service.points ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1">
+                                                  <CheckCircle className="w-3.5 h-3.5" /> {service.points} pts
+                                                </span>
+                                              ) : null}
                                             </div>
                                           </div>
-                                        );
-                                      })}
-                                    </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => setDetailsService({ service, checklistTemplate: checklist, price })}
+                                            className="text-xs font-bold text-brand-primary hover:text-brand-secondary underline underline-offset-4"
+                                          >
+                                            View checklist
+                                          </button>
+                                        </div>
 
-                                    {remainingServices.length > allServicesVisibleCount && (
-                                      <div className="mt-4 flex justify-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => setAllServicesVisibleCount((c) => c + 9)}
-                                          className="px-5 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-extrabold text-gray-900 hover:bg-gray-50"
-                                        >
-                                          Load more
-                                        </button>
+                                        <div className="mt-4">
+                                          <div className="flex items-center justify-between mb-2">
+                                            <div className="text-xs font-bold text-gray-700">What you get</div>
+                                            {checklist.source === 'fallback' ? (
+                                              <span className="text-[10px] font-bold text-gray-500">Standard</span>
+                                            ) : (
+                                              <span className="text-[10px] font-bold text-green-700">Official</span>
+                                            )}
+                                          </div>
+                                          <div className="space-y-2">
+                                            {items.length > 0 ? (
+                                              items.map((it: any, i: number) => (
+                                                <div key={`${it?.name || ''}-${i}`} className="flex items-start gap-2 text-sm text-gray-700">
+                                                  <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                                                  <span className="break-words">{it?.name || String(it)}</span>
+                                                </div>
+                                              ))
+                                            ) : (
+                                              <div className="text-sm text-gray-600">Standard maintenance & inspection included.</div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="mt-6 pt-4 border-t border-gray-200 flex items-end justify-between gap-3">
+                                          <div>
+                                            <div className="text-xs text-gray-500">Total for {formData.city?.name}</div>
+                                            <div className="text-xl font-extrabold text-gray-900">
+                                              {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'Price on request'}
+                                            </div>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (!isSelected) {
+                                                handleServiceToggle(service.id);
+                                                return;
+                                              }
+                                              handleNext();
+                                            }}
+                                            className={`px-4 py-2.5 rounded-xl font-extrabold text-sm transition-all ${
+                                              isSelected
+                                                ? 'bg-brand-primary text-white'
+                                                : 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-md shadow-brand-primary/20 hover:shadow-lg hover:shadow-brand-primary/30'
+                                            }`}
+                                          >
+                                            {isSelected ? 'Continue' : 'Select'}
+                                          </button>
+                                        </div>
                                       </div>
-                                    )}
-                                  </div>
-                                )}
+                                    );
+                                  })}
+                                </div>
                               </div>
                             )}
 
@@ -2055,9 +2081,9 @@ export default function BookServicePage() {
                                 Continue
                                 <ArrowRight className="w-4 h-4" />
                               </button>
-                            </div>
+                  </div>
                           </>
-                        )}
+              )}
                       </>
                     )}
                 </div>
@@ -2294,112 +2320,124 @@ export default function BookServicePage() {
                         </div>
 
                         {/* Pickup Time - Hourly Slots (9 AM to 9 PM) */}
-                        <div className="relative group">
-                          <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
-                            <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
-                              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
-                                <Clock className="w-4 h-4 text-white" />
-                              </div>
-                              Pickup Time
-                              <span className="text-red-500 text-lg">*</span>
-                            </label>
-                            
-                            {/* Time Slot Grid */}
-                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
-                              {timeSlots.map((slot) => {
-                                const isSelected = formData.pickupTime === slot.value;
-                                return (
-                                  <button
-                                    key={slot.value}
-                                    type="button"
-                                    onClick={() => handleInputChange('pickupTime', slot.value)}
-                                    className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all ${
-                                      isSelected
-                                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg scale-105 ring-2 ring-purple-300'
-                                        : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-purple-300 hover:shadow-md'
-                                    }`}
-                                  >
-                                    {slot.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            
-                            {formData.pickupTime && (
-                              <p className="mt-4 text-sm font-semibold text-purple-600 flex items-center gap-2">
-                                <CheckCircle className="w-4 h-4" />
-                                Selected: {timeSlots.find(s => s.value === formData.pickupTime)?.label}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Pickup Address - Auto Detect (Area, City, State, Pincode) */}
-                        <div className="relative group">
-                          <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
-                            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                              <label className="block text-sm sm:text-base font-bold text-gray-800 flex items-center gap-2.5">
-                                <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
-                                  <AddressIcon className="w-4 h-4 text-white" />
+                        {formData.pickupDate ? (
+                          <div className="relative group">
+                            <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                              <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
+                                <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
+                                  <Clock className="w-4 h-4 text-white" />
                                 </div>
-                                Address (Auto-detected)
+                                Pickup Time
                                 <span className="text-red-500 text-lg">*</span>
                               </label>
-                              <button
-                                type="button"
-                                onClick={autoDetectAddress}
-                                disabled={isDetectingAddress}
-                                className="px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-bold text-xs sm:text-sm hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2 shadow-md"
-                              >
-                                {isDetectingAddress ? (
-                                  <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>Detecting...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Navigation className="w-4 h-4" />
-                                    <span>Auto Detect</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                            
-                            {isDetectingAddress && (
-                              <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl animate-fade-in shadow-sm">
-                                <div className="flex items-center gap-3">
-                                  <Loader2 className="w-5 h-5 text-brand-primary animate-spin flex-shrink-0" />
-                                  <p className="text-sm text-blue-700 font-semibold">Detecting area, city, state, and pincode...</p>
-                                </div>
+                              
+                              {/* Time Slot Grid */}
+                              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
+                                {timeSlots.map((slot) => {
+                                  const isSelected = formData.pickupTime === slot.value;
+                                  return (
+                                    <button
+                                      key={slot.value}
+                                      type="button"
+                                      onClick={() => handleInputChange('pickupTime', slot.value)}
+                                      className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all ${
+                                        isSelected
+                                          ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg scale-105 ring-2 ring-purple-300'
+                                          : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-purple-300 hover:shadow-md'
+                                      }`}
+                                    >
+                                      {slot.label}
+                                    </button>
+                                  );
+                                })}
                               </div>
-                            )}
-                            
-                            <div className="relative">
-                              <textarea
-                                value={formData.pickupAddress}
-                                onChange={(e) => handleInputChange('pickupAddress', e.target.value)}
-                                placeholder="Area, City, State, Pincode (auto-detected or enter manually)"
-                                rows={3}
-                                className={`w-full px-4 sm:px-5 py-3.5 sm:py-4 text-sm sm:text-base font-medium border-2 rounded-xl focus:ring-4 outline-none transition-all resize-none shadow-sm ${
-                                  formData.pickupAddress
-                                    ? 'border-green-500 bg-gradient-to-br from-green-50 to-green-100/50 text-gray-900 shadow-md'
-                                    : 'border-gray-200 bg-white focus:border-green-500 focus:ring-green-500/20 hover:border-gray-300'
-                                }`}
-                              />
-                              {formData.pickupAddress && (
-                                <div className="absolute right-4 top-4">
-                                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center shadow-lg animate-scale-in">
-                                    <CheckCircle className="w-5 h-5 text-white" />
+                              
+                              {formData.pickupTime && (
+                                <p className="mt-4 text-sm font-semibold text-purple-600 flex items-center gap-2">
+                                  <CheckCircle className="w-4 h-4" />
+                                  Selected: {timeSlots.find(s => s.value === formData.pickupTime)?.label}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 text-sm text-gray-600">
+                            Select a pickup date to choose a time slot.
+                          </div>
+                        )}
+
+                        {/* Pickup Address - Auto Detect (Area, City, State, Pincode) */}
+                        {formData.pickupDate && formData.pickupTime ? (
+                          <div className="relative group">
+                            <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                                <label className="block text-sm sm:text-base font-bold text-gray-800 flex items-center gap-2.5">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
+                                    <AddressIcon className="w-4 h-4 text-white" />
+                                  </div>
+                                  Address (Auto-detected)
+                                  <span className="text-red-500 text-lg">*</span>
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={autoDetectAddress}
+                                  disabled={isDetectingAddress}
+                                  className="px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-bold text-xs sm:text-sm hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2 shadow-md"
+                                >
+                                  {isDetectingAddress ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      <span>Detecting...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Navigation className="w-4 h-4" />
+                                      <span>Auto Detect</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                              
+                              {isDetectingAddress && (
+                                <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl animate-fade-in shadow-sm">
+                                  <div className="flex items-center gap-3">
+                                    <Loader2 className="w-5 h-5 text-brand-primary animate-spin flex-shrink-0" />
+                                    <p className="text-sm text-blue-700 font-semibold">Detecting area, city, state, and pincode...</p>
                                   </div>
                                 </div>
                               )}
+                              
+                              <div className="relative">
+                                <textarea
+                                  value={formData.pickupAddress}
+                                  onChange={(e) => handleInputChange('pickupAddress', e.target.value)}
+                                  placeholder="Area, City, State, Pincode (auto-detected or enter manually)"
+                                  rows={3}
+                                  className={`w-full px-4 sm:px-5 py-3.5 sm:py-4 text-sm sm:text-base font-medium border-2 rounded-xl focus:ring-4 outline-none transition-all resize-none shadow-sm ${
+                                    formData.pickupAddress
+                                      ? 'border-green-500 bg-gradient-to-br from-green-50 to-green-100/50 text-gray-900 shadow-md'
+                                      : 'border-gray-200 bg-white focus:border-green-500 focus:ring-green-500/20 hover:border-gray-300'
+                                  }`}
+                                />
+                                {formData.pickupAddress && (
+                                  <div className="absolute right-4 top-4">
+                                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center shadow-lg animate-scale-in">
+                                      <CheckCircle className="w-5 h-5 text-white" />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <p className="mt-3 text-xs sm:text-sm text-gray-500 italic">
+                                This field will be auto-filled with area, city, state, and pincode when you click "Auto Detect"
+                              </p>
                             </div>
-                            
-                            <p className="mt-3 text-xs sm:text-sm text-gray-500 italic">
-                              This field will be auto-filled with area, city, state, and pincode when you click "Auto Detect"
-                            </p>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 text-sm text-gray-600">
+                            Select a pickup time to enter your address.
+                          </div>
+                        )}
 
                         {/* Flat Number & Landmark - Only show when address is filled */}
                         {formData.pickupAddress.trim() && (
@@ -2868,41 +2906,156 @@ export default function BookServicePage() {
       {currentStep === 2 && detailsService && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDetailsService(null)} />
-          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden">
+          <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col">
             <div className="p-4 sm:p-6 border-b border-gray-200 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-lg sm:text-xl font-extrabold text-gray-900 truncate">
                   {detailsService.service?.name}
                 </div>
-                <div className="mt-1 text-sm text-gray-600">What's included</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                  <span>Checklist</span>
+                  {detailsService?.checklistTemplate?.points ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-700">
+                      <CheckCircle className="w-3.5 h-3.5 text-green-600" /> {detailsService.checklistTemplate.points} pts
+                    </span>
+                  ) : null}
+                  {detailsService?.checklistTemplate?.source ? (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-bold ${
+                        detailsService.checklistTemplate.source === 'db'
+                          ? 'bg-green-50 text-green-700'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {detailsService.checklistTemplate.source === 'db' ? 'Official' : 'Standard'}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setDetailsService(null)}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 font-semibold"
+                className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50"
+                aria-label="Close"
               >
-                Close
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
+            <div className="flex-1 overflow-y-auto">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
               <div className="lg:col-span-8 p-4 sm:p-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-                  {(detailsService.checklistTemplate?.items || []).slice(0, 12).map((it: any, idx: number) => (
-                    <div
-                      key={it?.id || idx}
-                      className="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-800"
-                    >
-                      <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span className="break-words">{it?.name || String(it)}</span>
+                {(() => {
+                  const raw = detailsService.checklistTemplate?.items || [];
+                  const normalized = raw
+                    .map((it: any) => {
+                      if (!it) return null;
+                      if (typeof it === 'string') return { name: it, category: 'General' };
+                      const name = String(it?.name || it?.title || it?.label || '').trim();
+                      if (!name) return null;
+                      const category = String(it?.category || 'General').trim() || 'General';
+                      return { name, category };
+                    })
+                    .filter(Boolean) as Array<{ name: string; category: string }>;
+
+                  const groups = new Map<string, Array<{ name: string; category: string }>>();
+                  for (const it of normalized) {
+                    const key = it.category || 'General';
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key)!.push(it);
+                  }
+
+                  // Highlight "new" checkpoints vs previous plan (15 -> 30 -> 60 etc.)
+                  const planDiff = (() => {
+                    const currentId = String(detailsService?.service?.id || '');
+                    if (!currentId) return null;
+
+                    // Only compare within the 3 plan cards for the active category (keeps expectations sane).
+                    const plans = (planServices || [])
+                      .map((s: any) => {
+                        const c = getChecklistForService(s);
+                        const points = Number(s?.points) || Number(c?.points) || 0;
+                        return { id: String(s?.id || ''), name: String(s?.name || ''), points, checklist: c };
+                      })
+                      .filter((p) => p.id && Number.isFinite(p.points) && p.points > 0)
+                      .sort((a, b) => a.points - b.points);
+
+                    const idx = plans.findIndex((p) => p.id === currentId);
+                    if (idx <= 0) return null;
+                    const prev = plans[idx - 1];
+                    const prevSet = new Set<string>();
+                    (prev.checklist?.items || [])
+                      .map((it: any) => normalizeChecklistItem(it))
+                      .filter(Boolean)
+                      .forEach((it: any) => prevSet.add(String(it.name).toLowerCase()));
+
+                    return {
+                      prevName: prev.name || 'previous plan',
+                      prevPoints: prev.points,
+                      prevSet,
+                    };
+                  })();
+
+                  const newCount = planDiff?.prevSet
+                    ? normalized.reduce((acc, it) => acc + (planDiff.prevSet.has(it.name.toLowerCase()) ? 0 : 1), 0)
+                    : 0;
+
+                  const categories = Array.from(groups.keys());
+                  return (
+                    <div className="space-y-5">
+                      {planDiff?.prevSet ? (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="font-extrabold">
+                              +{newCount} new checkpoints
+                            </div>
+                            <div className="text-xs font-bold text-amber-800">
+                              vs {planDiff.prevPoints} pts plan
+                            </div>
+                          </div>
+                          <div className="mt-1 text-xs text-amber-800">
+                            Highlighted items are new in this plan.
+                          </div>
+                        </div>
+                      ) : null}
+                      {categories.map((cat) => (
+                        <div key={cat}>
+                          <div className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-2">
+                            {cat}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                            {groups.get(cat)!.map((it, idx) => (
+                              (() => {
+                                const isNew = planDiff?.prevSet ? !planDiff.prevSet.has(it.name.toLowerCase()) : false;
+                                return (
+                              <div
+                                key={`${cat}-${idx}-${it.name}`}
+                                className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${
+                                  isNew
+                                    ? 'border-amber-200 bg-amber-50 text-amber-900'
+                                    : 'border-gray-200 bg-gray-50 text-gray-800'
+                                }`}
+                              >
+                                <CheckCircle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isNew ? 'text-amber-600' : 'text-green-600'}`} />
+                                <span className="break-words flex-1">{it.name}</span>
+                                {isNew ? (
+                                  <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-[10px] font-extrabold text-amber-800">
+                                    NEW
+                                  </span>
+                                ) : null}
+                              </div>
+                                );
+                              })()
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {!normalized.length ? (
+                        <div className="text-sm text-gray-600">No checklist available for this service.</div>
+                      ) : null}
                     </div>
-                  ))}
-                </div>
-                {((detailsService.checklistTemplate?.items || []).length || 0) > 12 && (
-                  <div className="mt-3 text-xs text-gray-500">
-                    Showing 12 items. More will be included based on package checklist.
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
               <div className="lg:col-span-4 p-4 sm:p-6 border-t lg:border-t-0 lg:border-l border-gray-200 bg-gradient-to-br from-gray-50 to-white">
@@ -2928,6 +3081,7 @@ export default function BookServicePage() {
                   You can change your package later before payment.
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </div>

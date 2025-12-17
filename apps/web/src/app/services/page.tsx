@@ -26,7 +26,7 @@ const services = [
   {
     id: 1,
     slug: 'periodic-service',
-    title: 'Periodic Service',
+    title: 'Car Periodic Service',
     bookPrefill: { category: 'PERIODIC SERVICE', query: 'BASIC' },
     icon: Activity,
     description: 'AI-powered scheduled maintenance with digital health reports. Keep your car running smoothly with manufacturer-recommended service packages.',
@@ -54,7 +54,7 @@ const services = [
   {
     id: 2,
     slug: 'engine-service',
-    title: 'Engine Service',
+    title: 'Car Engine Service',
     bookPrefill: { category: 'ENGINE SERVICE', query: 'ENGINE' },
     icon: Zap,
     description: 'Complete engine diagnostics powered by AI. Comprehensive engine care to keep your car\'s heart running perfectly.',
@@ -82,7 +82,7 @@ const services = [
   {
     id: 3,
     slug: 'ac-service',
-    title: 'AC Service',
+    title: 'Car AC Service',
     bookPrefill: { category: 'AC SERVICE', query: 'AC' },
     icon: Shield,
     description: 'Complete climate control solutions. Keep your cabin cool and fresh with professional AC maintenance.',
@@ -110,7 +110,7 @@ const services = [
   {
     id: 4,
     slug: 'battery-service',
-    title: 'Battery Service',
+    title: 'Car Battery Service',
     bookPrefill: { category: 'BATTERY SERVICE', query: 'BATTERY' },
     icon: Battery,
     description: 'AI-powered battery health analysis. Ensure reliable starts and optimal electrical system performance.',
