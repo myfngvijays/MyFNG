@@ -5,6 +5,7 @@ import { SecurityEvent } from '@/shared/types/audit';
 import { Loader2, Shield, AlertTriangle, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
+import { formatDateTime } from "@/lib/utils";
 
 interface SecurityEventsResponse {
   events: SecurityEvent[];
@@ -301,7 +302,7 @@ export default function SecurityEventsPage() {
                   {events.map((event) => (
                     <tr key={event.id} className={`hover:bg-gray-50 transition-colors ${event.resolved ? 'opacity-60' : ''}`}>
                       <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-text-body">
-                        <span title={new Date(event.created_at).toLocaleString()}>
+                        <span title={formatDateTime(event.created_at)}>
                           {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
                         </span>
                       </td>
@@ -396,7 +397,7 @@ export default function SecurityEventsPage() {
                         </div>
                         <div>
                           <span className="text-gray-500">Time: </span>
-                          <span className="text-gray-900" title={new Date(event.created_at).toLocaleString()}>
+                          <span className="text-gray-900" title={formatDateTime(event.created_at)}>
                             {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
                           </span>
                         </div>
@@ -492,7 +493,7 @@ export default function SecurityEventsPage() {
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-500">Timestamp</p>
-                  <p className="text-xs sm:text-sm text-text-body">{new Date(selectedEvent.created_at).toLocaleString()}</p>
+                  <p className="text-xs sm:text-sm text-text-body">{formatDateTime(selectedEvent.created_at)}</p>
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-500">Event Type</p>
@@ -527,7 +528,7 @@ export default function SecurityEventsPage() {
                 {selectedEvent.resolved && selectedEvent.resolved_at && (
                   <div>
                     <p className="text-xs sm:text-sm font-medium text-gray-500">Resolved At</p>
-                    <p className="text-xs sm:text-sm text-text-body">{new Date(selectedEvent.resolved_at).toLocaleString()}</p>
+                    <p className="text-xs sm:text-sm text-text-body">{formatDateTime(selectedEvent.resolved_at)}</p>
                   </div>
                 )}
                 {selectedEvent.user_agent && (

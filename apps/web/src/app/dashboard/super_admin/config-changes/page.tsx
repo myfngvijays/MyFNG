@@ -5,6 +5,7 @@ import { SystemConfigChange } from '@/shared/types/audit';
 import { Loader2, Settings, Filter, ChevronLeft, ChevronRight, Eye, History } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
+import { formatDateTime } from "@/lib/utils";
 
 interface ConfigChangesResponse {
   changes: SystemConfigChange[];
@@ -211,7 +212,7 @@ export default function ConfigChangesPage() {
                   {changes.map((change) => (
                     <tr key={change.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-text-body">
-                        <span title={new Date(change.created_at).toLocaleString()}>
+                        <span title={formatDateTime(change.created_at)}>
                           {formatDistanceToNow(new Date(change.created_at), { addSuffix: true })}
                         </span>
                       </td>
@@ -360,7 +361,7 @@ export default function ConfigChangesPage() {
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-500">Timestamp</p>
-                  <p className="text-xs sm:text-sm text-text-body">{new Date(selectedChange.created_at).toLocaleString()}</p>
+                  <p className="text-xs sm:text-sm text-text-body">{formatDateTime(selectedChange.created_at)}</p>
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-500">Config Key</p>

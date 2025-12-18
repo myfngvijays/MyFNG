@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateDMY } from "@/lib/utils";
 /**
  * Customer-Facing Invoice View Page
  * Step 5: Share Invoice with Customer - In-app view
@@ -175,7 +176,7 @@ export default function CustomerInvoicePage() {
             <div className="text-right">
               <p className="text-sm text-gray-600">Invoice Date</p>
               <p className="font-semibold">
-                {new Date(invoice.invoice_date || invoice.created_at || new Date().toISOString()).toLocaleDateString('en-IN')}
+                {formatDateDMY(invoice.invoice_date || invoice.created_at || new Date())}
               </p>
             </div>
           </div>

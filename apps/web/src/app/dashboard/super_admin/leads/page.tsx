@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { FileText, Search, Filter, Download, MapPin, Phone, Calendar, TrendingUp } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function LeadsOverviewPage() {
   const [leads, setLeads] = useState<any[]>([]);
@@ -306,7 +307,7 @@ export default function LeadsOverviewPage() {
                     )}
                     <div>
                       <p className="text-gray-500 text-[10px] sm:text-xs">Created</p>
-                      <p className="text-gray-600">{new Date(lead.created_at).toLocaleDateString()}</p>
+                      <p className="text-gray-600">{formatDateDMY(lead.created_at)}</p>
                     </div>
                   </div>
                 </div>

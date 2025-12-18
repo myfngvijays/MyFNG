@@ -430,7 +430,7 @@ export default function MechanicJobDetailScreen() {
           style={[styles.button, styles.extraWorkButton]}
           onPress={() => navigation.navigate('MechanicExtraWorkRequest', { jobId: job.lead_id })}
         >
-          <Text style={styles.buttonText}>⚠️ Request Extra Work</Text>
+          <Text style={styles.buttonText}>⚠️ Request Additional Job</Text>
         </TouchableOpacity>
       </View>
 

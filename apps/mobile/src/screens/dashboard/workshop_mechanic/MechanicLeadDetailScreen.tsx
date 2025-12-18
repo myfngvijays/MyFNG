@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -260,7 +261,7 @@ export default function MechanicLeadDetailScreen({ route }: any) {
 
   function formatDateTime(dateString: string | null) {
     if (!dateString) return 'Not started';
-    return new Date(dateString).toLocaleString();
+    return formatDateTime(dateString);
   }
 
   const onRefresh = () => {

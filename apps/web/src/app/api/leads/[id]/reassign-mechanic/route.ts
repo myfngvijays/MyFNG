@@ -36,10 +36,10 @@ export async function POST(
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
-    // Verify supervisor role
+    // Verify supervisor or admin role
     const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'WORKSHOP_SUPERVISOR') {
-      return NextResponse.json({ error: 'Forbidden: Supervisor role required' }, { status: 403 });
+    if (roleCode !== 'WORKSHOP_SUPERVISOR' && roleCode !== 'WORKSHOP_ADMIN') {
+      return NextResponse.json({ error: 'Forbidden: Supervisor or Admin role required' }, { status: 403 });
     }
 
     const leadId = params.id;

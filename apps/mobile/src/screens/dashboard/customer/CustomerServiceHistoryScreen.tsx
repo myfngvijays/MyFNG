@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -150,7 +151,7 @@ export default function CustomerServiceHistoryScreen() {
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Date:</Text>
                   <Text style={styles.detailValue}>
-                    {new Date(service.created_at).toLocaleDateString()}
+                    {formatDateDMY(service.created_at)}
                   </Text>
                 </View>
                 {service.actual_amount && (

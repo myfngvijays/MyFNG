@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -225,7 +226,7 @@ export default function FinanceRefundsScreen() {
               )}
               
               <Text style={styles.refundDate}>
-                Requested: {new Date(refund.created_at).toLocaleDateString()}
+                Requested: {formatDateDMY(refund.created_at)}
               </Text>
             </View>
           ))

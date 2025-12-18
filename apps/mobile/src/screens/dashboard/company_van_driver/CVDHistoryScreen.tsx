@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -80,7 +81,7 @@ export default function CVDHistoryScreen() {
               <Text style={styles.customerName}>{trip.customer_name}</Text>
               {trip.completed_at && (
                 <Text style={styles.completedDate}>
-                  Completed: {new Date(trip.completed_at).toLocaleDateString()}
+                  Completed: {formatDateDMY(trip.completed_at)}
                 </Text>
               )}
             </View>

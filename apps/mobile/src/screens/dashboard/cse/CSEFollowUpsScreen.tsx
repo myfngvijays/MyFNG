@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/dateFormat";
 /**
  * CSE Follow-ups Screen
  * Manage customer follow-ups with reminders
@@ -92,7 +93,7 @@ export default function CSEFollowUpsScreen({ navigation }: any) {
           <Text style={styles.notes}>{item.notes}</Text>
           <View style={styles.dateRow}>
             <Ionicons name="calendar" size={16} color={COLORS.gray[500]} />
-            <Text style={styles.date}>{new Date(item.scheduled_date).toLocaleString()}</Text>
+            <Text style={styles.date}>{formatDateTime(item.scheduled_date)}</Text>
           </View>
         </View>
       )} />

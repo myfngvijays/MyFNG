@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -127,7 +128,7 @@ export default function SecurityEventsScreen() {
                   <Text style={styles.eventType}>{event.event_type || 'Unknown'}</Text>
                 </View>
                 <Text style={styles.eventTime}>
-                  {new Date(event.created_at).toLocaleDateString()}
+                  {formatDateDMY(event.created_at)}
                 </Text>
               </View>
               

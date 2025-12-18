@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
 import { ArrowLeft, FileText, Loader2, Search } from 'lucide-react';
+import { formatDateTime } from "@/lib/utils";
 
 type ServiceHistoryItem = {
   id: string;
@@ -132,7 +133,7 @@ export default function CustomerServiceHistoryPage() {
                     </div>
                     <div className="text-xs sm:text-sm text-gray-600">
                       {i.vehicle_make || i.vehicle_model ? `Vehicle: ${i.vehicle_make || ''} ${i.vehicle_model || ''}`.trim() : ''}
-                      {i.completed_at ? ` • Completed: ${new Date(i.completed_at).toLocaleString('en-IN')}` : ''}
+                      {i.completed_at ? ` • Completed: ${formatDateTime(i.completed_at)}` : ''}
                     </div>
                   </div>
 

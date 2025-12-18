@@ -252,7 +252,7 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
         {job.extra_work_pending && (
           <div className="flex items-center gap-1 text-xs bg-orange-50 text-orange-700 px-2 py-1 rounded animate-pulse">
             <DollarSign className="w-3 h-3" />
-            Extra Work Pending
+            Additional Jobs Pending
           </div>
         )}
 

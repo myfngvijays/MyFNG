@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
-  CheckCircle, XCircle, Clock, AlertTriangle, TrendingUp, 
+import { formatDateDMY } from '@/lib/utils';
+import {
+  CheckCircle, XCircle, Clock, AlertTriangle, TrendingUp,
   Users, Building, Search, Filter, Eye, ChevronRight 
 } from 'lucide-react';
 import Link from 'next/link';
@@ -253,7 +254,7 @@ export default function LeadManagerDashboard() {
                           {getPriorityBadge(lead.priority)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(lead.created_at).toLocaleDateString()}
+                          {formatDateDMY(lead.created_at)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                           <Link
@@ -298,7 +299,7 @@ export default function LeadManagerDashboard() {
                         <span className="text-gray-900">{lead.city?.name || lead.city}</span>
                       </div>
                       <div className="text-gray-500 text-xs">
-                        Created: {new Date(lead.created_at).toLocaleDateString()}
+                        Created: {formatDateDMY(lead.created_at)}
                       </div>
                     </div>
                     <Link

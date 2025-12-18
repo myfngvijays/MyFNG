@@ -1,3 +1,4 @@
+import { formatDateDMY } from "@/lib/dateFormat";
 /**
  * Notifications Screen - Mobile
  * Full screen view of all notifications with real-time updates
@@ -68,7 +69,7 @@ export default function NotificationsScreen({ navigation }: any) {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return formatDateDMY(date);
   };
 
   const handleNotificationPress = async (notification: Notification) => {

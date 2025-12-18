@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
-import { 
+import { formatDateDMY } from '@/lib/utils';
+import {
   Calendar, Clock, User, AlertTriangle, TrendingUp, 
   Wrench, CheckCircle, ArrowUpDown, Filter, Save
 } from 'lucide-react';
@@ -295,12 +296,7 @@ export default function DayPlanningPage() {
           </div>
           <div className="text-left sm:text-right flex-shrink-0">
             <p className="text-xs sm:text-sm text-gray-600">Today</p>
-            <p className="text-sm sm:text-base md:text-lg font-semibold">{new Date().toLocaleDateString('en-IN', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}</p>
+            <p className="text-sm sm:text-base md:text-lg font-semibold">{formatDateDMY(new Date())}</p>
           </div>
         </div>
 

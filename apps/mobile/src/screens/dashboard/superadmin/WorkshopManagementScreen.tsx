@@ -245,7 +245,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
         {item.approval_status === 'PENDING' && (
           <View style={styles.pendingBanner}>
             <Icon name="clock-alert" size={16} color={COLORS.orange} />
-            <Text style={styles.pendingText}>Pending Approval</Text>
+            <Text style={styles.pendingText}>Pending Lead Approval</Text>
           </View>
         )}
 

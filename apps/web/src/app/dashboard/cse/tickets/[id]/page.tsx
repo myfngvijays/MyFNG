@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
-import { 
-  FileText, 
+import { formatDateTime } from '@/lib/utils';
+import {
+  FileText,
   Loader2,
   AlertTriangle,
   Clock,
@@ -128,7 +129,7 @@ export default function TicketDetailPage() {
               </span>
             </div>
             <div className="text-xs sm:text-sm text-gray-600">
-              Created: {new Date(ticket.created_at).toLocaleString()}
+              Created: {formatDateTime(ticket.created_at)}
             </div>
           </div>
         </div>
@@ -229,7 +230,7 @@ export default function TicketDetailPage() {
                 {ticket.resolved_at && (
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Resolved At</label>
-                    <div className="text-sm sm:text-base md:text-lg">{new Date(ticket.resolved_at).toLocaleString()}</div>
+                    <div className="text-sm sm:text-base md:text-lg">{formatDateTime(ticket.resolved_at)}</div>
                   </div>
                 )}
                 {ticket.resolved_by_user && (
@@ -263,7 +264,7 @@ export default function TicketDetailPage() {
                 {ticket.escalated_at && (
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Escalated At</label>
-                    <div className="text-sm sm:text-base md:text-lg">{new Date(ticket.escalated_at).toLocaleString()}</div>
+                    <div className="text-sm sm:text-base md:text-lg">{formatDateTime(ticket.escalated_at)}</div>
                   </div>
                 )}
               </div>
@@ -290,7 +291,7 @@ export default function TicketDetailPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">SLA Deadline</label>
-                  <div className="text-sm sm:text-base md:text-lg">{new Date(ticket.sla_time).toLocaleString()}</div>
+                  <div className="text-sm sm:text-base md:text-lg">{formatDateTime(ticket.sla_time)}</div>
                 </div>
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">SLA Status</label>

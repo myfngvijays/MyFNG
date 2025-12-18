@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
+import { formatDateTime } from '@/lib/utils';
+import {
   ArrowLeft, PlayCircle, PauseCircle, CheckCircle, Camera, 
   Package, AlertTriangle, MessageSquare, FileText, Clock,
   Upload, X, Save, Send, Minus
@@ -509,9 +510,9 @@ export default function MechanicJobDetailPage() {
 
       setParts(partsData || []);
 
-      // Get extra work requests
+      // Get additional job requests
       // NOTE: Requests are stored in `lead_extra_charges` (approved/rejected by supervisor/admin).
-      // The previous `mechanic_extra_work_requests` source caused "Extra Work" to not show.
+      // The previous `mechanic_extra_work_requests` source caused "Additional Jobs" to not show.
       const { data: extraWorkData, error: extraWorkError } = await supabase
         .from('lead_extra_charges')
         .select('*')
@@ -771,12 +772,12 @@ export default function MechanicJobDetailPage() {
       });
 
       if (error) {
-        console.error('Error submitting extra work request:', error);
+        console.error('Error submitting additional job request:', error);
         alert(`Failed to submit request: ${error.message}`);
         return;
       }
 
-      alert('Extra work request submitted successfully!');
+      alert('Additional job request submitted successfully!');
       setShowExtraWorkForm(false);
       setExtraWorkForm({ issue_description: '', additional_work_required: '', estimated_cost: '' });
       fetchJobDetails();
@@ -784,8 +785,8 @@ export default function MechanicJobDetailPage() {
       // Update job status to HOLD (waiting for approval)
       await updateJobStatus('HOLD');
     } catch (error) {
-      console.error('Error submitting extra work request:', error);
-      alert('Failed to submit extra work request. Please try again.');
+      console.error('Error submitting additional job request:', error);
+      alert('Failed to submit additional job request. Please try again.');
     }
   }
 
@@ -1022,7 +1023,7 @@ export default function MechanicJobDetailPage() {
               <p className="text-xs sm:text-sm text-gray-600">Expected Completion</p>
               <p className="font-semibold text-xs sm:text-sm">
                 {job.expected_completion_time ? (
-                  new Date(job.expected_completion_time).toLocaleString()
+                  formatDateTime(job.expected_completion_time)
                 ) : (
                   <span className="text-gray-500">Not set</span>
                 )}
@@ -1108,8 +1109,8 @@ export default function MechanicJobDetailPage() {
             className="btn bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
           >
             <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="hidden sm:inline">Request Extra Work</span>
-            <span className="sm:hidden">Extra Work</span>
+            <span className="hidden sm:inline">Request Additional Job</span>
+            <span className="sm:hidden">Additional Jobs</span>
           </button>
         </div>
 
@@ -1124,7 +1125,7 @@ export default function MechanicJobDetailPage() {
               { key: 'media', label: 'Media' },
               { key: 'parts', label: 'Parts' },
               { key: 'notes', label: 'Notes' },
-              { key: 'extra-work', label: 'Extra Work' },
+              { key: 'extra-work', label: 'Additional Jobs' },
             ] as const).map((tab) => (
               <button
                 key={tab.key}
@@ -1146,7 +1147,7 @@ export default function MechanicJobDetailPage() {
               </div>
             </div>
 
-            {/* Extra work requested indicator (shows when mechanic has submitted a request) */}
+            {/* Additional job requested indicator (shows when mechanic has submitted a request) */}
             {extraWorkRequests.length > 0 && (
               <button
                 type="button"
@@ -1162,12 +1163,12 @@ export default function MechanicJobDetailPage() {
                     ? 'bg-orange-50 text-orange-800 border-orange-200'
                     : 'bg-green-50 text-green-800 border-green-200'
                 }`}
-                title="Scroll to extra work requests"
+                title="Scroll to additional job requests"
               >
                 <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 {pendingExtraWorkCount > 0
-                  ? `Extra Work Pending (${pendingExtraWorkCount})`
-                  : `Extra Work: ${String(latestExtraWorkStatus || 'UPDATED')}`}
+                  ? `Additional Jobs Pending (${pendingExtraWorkCount})`
+                  : `Additional Jobs: ${String(latestExtraWorkStatus || 'UPDATED')}`}
               </button>
             )}
           </div>
@@ -1182,12 +1183,12 @@ export default function MechanicJobDetailPage() {
               <div className="space-y-2 sm:space-y-3">
                 <div>
                   <p className="text-xs sm:text-sm text-gray-600">Assigned At</p>
-                  <p className="font-semibold text-xs sm:text-sm">{new Date(job.assigned_at).toLocaleString()}</p>
+                  <p className="font-semibold text-xs sm:text-sm">{formatDateTime(job.assigned_at)}</p>
                 </div>
                 {job.started_at && (
                   <div>
                     <p className="text-xs sm:text-sm text-gray-600">Started At</p>
-                    <p className="font-semibold text-xs sm:text-sm">{new Date(job.started_at).toLocaleString()}</p>
+                    <p className="font-semibold text-xs sm:text-sm">{formatDateTime(job.started_at)}</p>
                   </div>
                 )}
                 <div>
@@ -1960,10 +1961,10 @@ export default function MechanicJobDetailPage() {
                   <div className="card border-2 border-purple-300 p-3 sm:p-4 md:p-5">
                     <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                       <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 flex-shrink-0" />
-                      Extra Work Proof
+                      Additional Jobs Proof
                     </h2>
                     <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-                      Upload photos as proof of extra work performed (e.g., additional repairs, part replacements).
+                      Upload photos as proof of additional job performed (e.g., additional repairs, part replacements).
                     </p>
                     <div>
                       <label className="btn btn-primary cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
@@ -2071,7 +2072,7 @@ export default function MechanicJobDetailPage() {
                         {item.media_category.replace(/_/g, ' ')}
                       </p>
                       <p className="text-[10px] sm:text-xs text-gray-500">
-                        {new Date(item.uploaded_at || item.created_at).toLocaleString()}
+                        {formatDateTime(item.uploaded_at || item.created_at)}
                       </p>
                       {item.caption && (
                         <p className="text-[10px] sm:text-xs text-gray-700 mt-0.5 sm:mt-1">{item.caption}</p>
@@ -2137,7 +2138,7 @@ export default function MechanicJobDetailPage() {
                     <p className="text-xs sm:text-sm text-blue-800 font-semibold mb-1">💡 How to request parts:</p>
                     <ul className="text-[10px] sm:text-xs text-blue-700 text-left space-y-0.5 sm:space-y-1 list-disc list-inside">
                       <li>Contact your Supervisor or Admin</li>
-                      <li>Use "Request Extra Work" button if additional parts are needed</li>
+                      <li>Use "Request Additional Job" button if additional parts are needed</li>
                       <li>Parts will appear here once assigned</li>
                     </ul>
                   </div>
@@ -2170,21 +2171,21 @@ export default function MechanicJobDetailPage() {
         {activeTab === 'extra-work' && (
           <div id="extra-work-requests" className="card p-3 sm:p-4 md:p-5">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
-              <h2 className="text-lg sm:text-xl font-bold">Extra Work Requests</h2>
+              <h2 className="text-lg sm:text-xl font-bold">Additional Job Requests</h2>
               <button
                 type="button"
                 onClick={() => setShowExtraWorkForm(true)}
                 className="btn bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
               >
                 <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
-                Request Extra Work
+                Request Additional Job
               </button>
             </div>
 
             {extraWorkRequests.length === 0 ? (
               <div className="text-center py-6 sm:py-8">
                 <AlertTriangle className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 text-gray-400" />
-                <p className="text-gray-600 font-semibold text-xs sm:text-sm">No extra work requests yet</p>
+                <p className="text-gray-600 font-semibold text-xs sm:text-sm">No additional job requests yet</p>
                 <p className="text-gray-400 text-[10px] sm:text-xs mt-1">
                   If you find additional work needed, submit a request for approval.
                 </p>
@@ -2219,7 +2220,7 @@ export default function MechanicJobDetailPage() {
                       </div>
                     )}
                     <div className="pt-1.5 sm:pt-2 border-t mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-gray-500">
-                      Requested: {new Date(request.created_at).toLocaleString()}
+                      Requested: {formatDateTime(request.created_at)}
                     </div>
                   </div>
                 ))}
@@ -2228,7 +2229,7 @@ export default function MechanicJobDetailPage() {
           </div>
         )}
 
-        {/* Extra Work Request Modal */}
+        {/* Additional Job Request Modal */}
         {showExtraWorkForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -2302,7 +2303,7 @@ export default function MechanicJobDetailPage() {
           </div>
         )}
 
-        {/* Extra Work Requests List moved into "Extra Work" tab */}
+        {/* Additional Job Requests List moved into "Additional Jobs" tab */}
       </div>
 
       {/* Image Zoom Modal */}
@@ -2331,7 +2332,7 @@ export default function MechanicJobDetailPage() {
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent text-white p-2 sm:p-3 md:p-4 rounded-b-lg">
               <p className="font-semibold text-xs sm:text-sm md:text-base">{zoomedMedia.media_category.replace(/_/g, ' ')}</p>
               <p className="text-[10px] sm:text-xs md:text-sm text-gray-300">
-                {new Date(zoomedMedia.uploaded_at || zoomedMedia.created_at).toLocaleString()}
+                {formatDateTime(zoomedMedia.uploaded_at || zoomedMedia.created_at)}
               </p>
               {zoomedMedia.caption && (
                 <p className="text-[10px] sm:text-xs md:text-sm mt-1 sm:mt-2">{zoomedMedia.caption}</p>

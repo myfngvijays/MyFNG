@@ -6,6 +6,7 @@ import { toast } from 'react-hot-toast';
 import Image from 'next/image';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
 
 interface UserProfile {
   id: string;
@@ -287,7 +288,7 @@ export default function AuditorProfilePage() {
                     Member Since
                   </label>
                   <p className="text-sm sm:text-base text-gray-900">
-                    {new Date(profile.created_at).toLocaleDateString()}
+                    {formatDateDMY(profile.created_at)}
                   </p>
                 </div>
                 <div>
@@ -296,7 +297,7 @@ export default function AuditorProfilePage() {
                   </label>
                   <p className="text-sm sm:text-base text-gray-900">
                     {profile.last_login
-                      ? new Date(profile.last_login).toLocaleString()
+                      ? formatDateTime(profile.last_login)
                       : 'Never'}
                   </p>
                 </div>

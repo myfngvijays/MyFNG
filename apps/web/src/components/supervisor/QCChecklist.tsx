@@ -55,8 +55,8 @@ const WORK_VERIFICATION_ITEMS = [
 ];
 
 const EXTRA_WORK_VERIFICATION_ITEMS = [
-  { key: 'extra_work_all_approved', label: 'Any extra work charges are approved by system (no pending requests)' },
-  { key: 'extra_work_proof_uploaded', label: 'Extra work proof photo uploaded (if extra work exists)' },
+  { key: 'extra_work_all_approved', label: 'Any additional job charges are approved by system (no pending requests)' },
+  { key: 'extra_work_proof_uploaded', label: 'Extra work proof photo uploaded (if additional job exists)' },
 ];
 
 const FAILURE_REASONS = [
@@ -315,16 +315,16 @@ export default function QCChecklist({
         <div className="p-4 rounded-lg border border-gray-200 bg-white">
           <div className="flex items-center gap-2 mb-2">
             <Wrench className="w-5 h-5 text-brand-primary" />
-            <h4 className="font-semibold text-gray-800">Extra Work Verification</h4>
+            <h4 className="font-semibold text-gray-800">Additional Jobs Verification</h4>
           </div>
           <p className="text-sm text-gray-700">
             Requests: {extraWorkSummary.pendingCount + extraWorkSummary.approvedCount} • Pending: {extraWorkSummary.pendingCount} • Approved: {extraWorkSummary.approvedCount}
           </p>
           {extraWorkSummary.hasPendingExtraWork && (
-            <p className="text-sm text-red-600 mt-1">Pending extra work requests found. Approve/reject them before QC approval.</p>
+            <p className="text-sm text-red-600 mt-1">Pending additional job requests found. Approve/reject them before QC approval.</p>
           )}
           {extraWorkSummary.hasExtraWork && !extraWorkSummary.allHaveProof && (
-            <p className="text-sm text-red-600 mt-1">Some extra work items are missing proof image (attachment_url).</p>
+            <p className="text-sm text-red-600 mt-1">Some additional job items are missing proof image (attachment_url).</p>
           )}
         </div>
       </div>
@@ -408,7 +408,7 @@ export default function QCChecklist({
         <div className="p-4 rounded-lg border border-gray-200 bg-gray-50">
           <div className="flex items-center gap-2 mb-3">
             <Wrench className="w-5 h-5 text-gray-700" />
-            <h4 className="font-semibold text-gray-800">Extra Work Verification</h4>
+            <h4 className="font-semibold text-gray-800">Additional Jobs Verification</h4>
           </div>
           <div className="space-y-2">
             {EXTRA_WORK_VERIFICATION_ITEMS.map((item) => (

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -507,7 +508,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
                 </View>
                 {log.notes && <Text style={styles.logNotes}>{log.notes}</Text>}
                 <Text style={styles.logTime}>
-                  {new Date(log.created_at).toLocaleString()}
+                  {formatDateTime(log.created_at)}
                 </Text>
               </View>
             ))
@@ -565,7 +566,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
                 </View>
                 <Text style={styles.logNotes}>{fu.reason}</Text>
                 <Text style={styles.logTime}>
-                  {new Date(fu.scheduled_time).toLocaleString()}
+                  {formatDateTime(fu.scheduled_time)}
                 </Text>
               </View>
             ))

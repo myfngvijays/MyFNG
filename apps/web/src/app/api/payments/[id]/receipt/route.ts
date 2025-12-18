@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { sendEmail } from '@/lib/services/emailService';
 import { sendSMS } from '@/lib/services/smsService';
+import { formatDateTime } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
@@ -147,7 +148,7 @@ export async function POST(
                     <p><strong>Amount Paid:</strong> ₹${payment.amount}</p>
                     <p><strong>Payment Method:</strong> ${payment.payment_method}</p>
                     <p><strong>Transaction ID:</strong> ${payment.transaction_id}</p>
-                    <p><strong>Date:</strong> ${new Date(payment.completed_at).toLocaleString()}</p>
+                    <p><strong>Date:</strong> ${formatDateTime(payment.completed_at)}</p>
                   </div>
                   <p><a href="${receiptUrl}" style="background: #3B82F6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">View Receipt</a></p>
                   <p>Workshop: ${workshop?.name || 'N/A'}</p>

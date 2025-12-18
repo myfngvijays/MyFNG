@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -140,7 +141,7 @@ export default function AuditLogsScreen() {
           </View>
         </View>
         <Text style={styles.logTime}>
-          {new Date(item.created_at).toLocaleString()}
+          {formatDateTime(item.created_at)}
         </Text>
       </View>
 

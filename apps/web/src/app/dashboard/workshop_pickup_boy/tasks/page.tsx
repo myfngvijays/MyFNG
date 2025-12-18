@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { MapPin, Clock, User, Car, Phone, Navigation, CheckCircle, PlayCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { formatDateDMY, formatTime12h } from "@/lib/utils";
 
 interface PickupTask {
   id: string;
@@ -323,12 +324,7 @@ export default function PickupTasksPage() {
                             return (
                               <>
                                 <p className="font-semibold text-xs sm:text-sm">
-                                  {date.toLocaleDateString('en-IN', { 
-                                    weekday: 'short',
-                                    year: 'numeric', 
-                                    month: 'short', 
-                                    day: 'numeric' 
-                                  })}
+                                  {formatDateDMY(date)}
                                 </p>
                                 {task.preferred_time_slot && (
                                   <p className="text-xs sm:text-sm text-gray-600">{task.preferred_time_slot}</p>
@@ -343,24 +339,11 @@ export default function PickupTasksPage() {
                             return (
                               <>
                                 <p className="font-semibold text-xs sm:text-sm">
-                                  {startDate.toLocaleDateString('en-IN', { 
-                                    weekday: 'short',
-                                    year: 'numeric', 
-                                    month: 'short', 
-                                    day: 'numeric' 
-                                  })}
+                                  {formatDateDMY(startDate)}
                                 </p>
                                 <p className="text-xs sm:text-sm text-gray-600">
-                                  {startDate.toLocaleTimeString('en-IN', { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit',
-                                    hour12: true 
-                                  })}
-                                  {endDate && ` - ${endDate.toLocaleTimeString('en-IN', { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit',
-                                    hour12: true 
-                                  })}`}
+                                  {formatTime12h(startDate)}
+                                  {endDate && ` - ${formatTime12h(endDate)}`}
                                 </p>
                               </>
                             );

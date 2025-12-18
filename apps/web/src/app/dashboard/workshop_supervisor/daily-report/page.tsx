@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
-import { 
+import { formatDateDMY } from '@/lib/utils';
+import {
   FileText, Calendar, TrendingUp, TrendingDown, Users, 
   Clock, CheckCircle, XCircle, AlertTriangle, Download,
   Wrench, User, Award, ThumbsUp, ThumbsDown
@@ -351,7 +352,7 @@ export default function DailyReportPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-xs sm:text-sm opacity-90">Total Jobs</p>
                     <p className="text-2xl sm:text-3xl md:text-4xl font-bold mt-1 sm:mt-2">{metrics.totalJobs}</p>
-                    <p className="text-[10px] sm:text-xs mt-1 sm:mt-2 opacity-75">For {new Date(selectedDate).toLocaleDateString()}</p>
+                    <p className="text-[10px] sm:text-xs mt-1 sm:mt-2 opacity-75">For {formatDateDMY(selectedDate)}</p>
                   </div>
                   <Users className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 opacity-75 flex-shrink-0" />
                 </div>

@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { CheckCircle, XCircle, Clock, User, MapPin, Car, Phone, Mail, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { formatDateTime } from "@/lib/utils";
 
 interface PendingLead {
   id: string;
@@ -264,7 +265,7 @@ export default function PendingLeadsPage() {
 
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <Clock className="w-4 h-4" />
-                      <span>Received: {new Date(lead.created_at).toLocaleString()}</span>
+                      <span>Received: {formatDateTime(lead.created_at)}</span>
                     </div>
 
                     {lead.estimated_amount && (

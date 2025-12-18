@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY } from "@/lib/utils";
 import { 
   Shield, 
   AlertTriangle, 
@@ -175,7 +176,7 @@ export default function AuditorSubAdminDashboard() {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Pending Approval</p>
+                <p className="text-sm text-gray-600">Pending Lead Approval</p>
                 <p className="text-3xl font-bold text-orange-600">{stats.pending_approvals}</p>
               </div>
               <FileCheck className="w-8 h-8 text-orange-600" />
@@ -318,7 +319,7 @@ export default function AuditorSubAdminDashboard() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {audit.scheduled_date 
-                            ? new Date(audit.scheduled_date).toLocaleDateString()
+                            ? formatDateDMY(audit.scheduled_date)
                             : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">

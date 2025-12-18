@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -160,7 +161,7 @@ export default function LeadsManagementScreen() {
         <View style={styles.infoRow}>
           <Text style={styles.label}>Created:</Text>
           <Text style={styles.value}>
-            {new Date(item.created_at).toLocaleDateString()}
+            {formatDateDMY(item.created_at)}
           </Text>
         </View>
       </View>

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Bell, Check, CheckCheck, Trash2, Clock, Filter, ArrowLeft } from 'lucide-react';
+import { formatDateDMY } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
@@ -71,7 +72,7 @@ function NotificationsContent() {
     if (diffMins < 60) return `${diffMins} minutes ago`;
     if (diffHours < 24) return `${diffHours} hours ago`;
     if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString();
+    return formatDateDMY(date);
   };
 
   const handleNotificationClick = async (notification: any) => {

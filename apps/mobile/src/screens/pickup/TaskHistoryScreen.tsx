@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { 
+import { formatDateTime } from "@/lib/dateFormat";
   View, 
   Text, 
   StyleSheet, 
@@ -194,7 +195,7 @@ export default function TaskHistoryScreen({ userId }) {
       
       {item.completed_at && (
         <Text style={styles.taskTime}>
-          ✓ Completed: {new Date(item.completed_at).toLocaleString()}
+          ✓ Completed: {formatDateTime(item.completed_at)}
         </Text>
       )}
     </View>

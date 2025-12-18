@@ -9,6 +9,7 @@ import TaskHistoryScreen from '../pickup/TaskHistoryScreen';
 import PickupBoyProfileScreen from '../pickup/PickupBoyProfileScreen';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { formatDateTime } from "@/lib/dateFormat";
 
 export default function WorkshopPickupBoyDashboard() {
   const [userProfile, setUserProfile] = React.useState<any>(null);
@@ -300,7 +301,7 @@ export default function WorkshopPickupBoyDashboard() {
               )}
               {task.preferred_date && (
                 <Text style={styles.taskTime}>
-                  ⏰ {new Date(task.preferred_date).toLocaleString()}
+                  ⏰ {formatDateTime(task.preferred_date)}
                 </Text>
               )}
             </View>

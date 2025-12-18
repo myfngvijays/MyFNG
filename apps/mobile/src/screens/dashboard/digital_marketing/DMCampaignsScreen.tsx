@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -102,7 +103,7 @@ export default function DMCampaignsScreen() {
               )}
               
               <Text style={styles.campaignDate}>
-                Created: {new Date(campaign.created_at).toLocaleDateString()}
+                Created: {formatDateDMY(campaign.created_at)}
               </Text>
             </View>
           ))

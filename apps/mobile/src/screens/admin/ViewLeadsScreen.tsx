@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import { formatDateDMY, formatTime12h } from "@/lib/dateFormat";
 
 export default function ViewLeadsScreen({ onBack }) {
   const [leads, setLeads] = useState([]);
@@ -75,7 +76,7 @@ export default function ViewLeadsScreen({ onBack }) {
 
       <View style={styles.leadFooter}>
         <Text style={styles.leadDate}>
-          {new Date(item.created_at).toLocaleDateString()} • {new Date(item.created_at).toLocaleTimeString()}
+          {formatDateDMY(item.created_at)} • {formatTime12h(item.created_at)}
         </Text>
       </View>
     </View>

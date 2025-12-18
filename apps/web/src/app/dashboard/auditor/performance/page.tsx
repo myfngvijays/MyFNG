@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY } from "@/lib/utils";
 import { 
   TrendingUp, 
   Clock,
@@ -271,7 +272,7 @@ export default function AuditorPerformancePage() {
               <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
                 <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                 <span>
-                  Period: {new Date(metrics.period.start).toLocaleDateString()} - {new Date(metrics.period.end).toLocaleDateString()} ({metrics.period.days} days)
+                  Period: {formatDateDMY(metrics.period.start)} - {formatDateDMY(metrics.period.end)} ({metrics.period.days} days)
                 </span>
               </div>
             </div>

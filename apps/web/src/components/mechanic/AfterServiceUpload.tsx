@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Camera, X, MapPin, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { optimizeUploadFile } from '@/lib/media/optimizeUpload';
 
 interface PhotoState {
   type: string;
@@ -42,6 +43,16 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
   const [checklistCompleted, setChecklistCompleted] = useState(false);
   const [partsRecorded, setPartsRecorded] = useState(false);
   const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
+
+  const revokeIfBlobUrl = (url: string | null) => {
+    if (url && url.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   useEffect(() => {
     initializePhotos();
@@ -159,7 +170,7 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
     }
   };
 
-  const handleFileSelect = (index: number, file: File) => {
+  const handleFileSelect = async (index: number, file: File) => {
     // Check file size before processing (100MB limit for videos)
     const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
     if (file.size > MAX_FILE_SIZE) {
@@ -192,12 +203,20 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
       }
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const newPhotos = [...photos];
-      newPhotos[index].file = file;
-      newPhotos[index].preview = reader.result as string;
-      setPhotos(newPhotos);
+    const optimized = await optimizeUploadFile(file);
+    const actualFile = optimized.file;
+
+    setPhotos((prev) => {
+      const next = [...prev];
+      revokeIfBlobUrl(next[index]?.preview || null);
+      next[index] = {
+        ...next[index],
+        file: actualFile,
+        preview: URL.createObjectURL(actualFile),
+        uploaded: false,
+      };
+      return next;
+    });
 
       // If it's odometer photo, show input
       if (photos[index].type === 'AFTER_ODOMETER') {
@@ -206,8 +225,6 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
       } else {
         uploadPhoto(index);
       }
-    };
-    reader.readAsDataURL(file);
   };
 
   const uploadPhoto = async (index: number) => {
@@ -244,11 +261,6 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
         },
         body: formData,
       });
-
-      // Handle 413 Payload Too Large error before parsing
-      if (response.status === 413) {
-        throw new Error('File too large. Maximum size is 100MB. Please compress the video or use a smaller file.');
-      }
 
       // Check content-type before parsing JSON
       const contentType = response.headers.get('content-type');
@@ -291,11 +303,12 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
   };
 
   const removePhoto = (index: number) => {
-    const newPhotos = [...photos];
-    newPhotos[index].file = null;
-    newPhotos[index].preview = null;
-    newPhotos[index].uploaded = false;
-    setPhotos(newPhotos);
+    setPhotos((prev) => {
+      const next = [...prev];
+      revokeIfBlobUrl(next[index]?.preview || null);
+      next[index] = { ...next[index], file: null, preview: null, uploaded: false };
+      return next;
+    });
   };
 
   const requiredCount = photos.filter((p) => p.required).length;

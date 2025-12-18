@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { DollarSign, CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatDateTime } from "@/lib/utils";
 
 export default function RefundManagementDashboard() {
   const [refunds, setRefunds] = useState<any[]>([]);
@@ -148,7 +149,7 @@ export default function RefundManagementDashboard() {
 
                   {refund.approved_at && (
                     <div className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-gray-600">
-                      Approved: {new Date(refund.approved_at).toLocaleString()}
+                      Approved: {formatDateTime(refund.approved_at)}
                     </div>
                   )}
                 </div>

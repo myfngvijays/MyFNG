@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -146,7 +147,7 @@ export default function SupervisorJobsScreen() {
                 <Text style={styles.mechanic}>Mechanic: {job.mechanic.full_name}</Text>
               )}
               <Text style={styles.jobDate}>
-                {new Date(job.created_at).toLocaleDateString()}
+                {formatDateDMY(job.created_at)}
               </Text>
             </TouchableOpacity>
           ))

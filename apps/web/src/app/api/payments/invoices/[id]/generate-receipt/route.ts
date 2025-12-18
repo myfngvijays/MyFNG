@@ -1,3 +1,4 @@
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
 /**
  * Generate Receipt API
  * Phase 1.5 - Receipt Generation
@@ -158,11 +159,7 @@ export async function POST(
 }
 
 function generateReceiptHTML(invoice: any, payments: any[]): string {
-  const receiptDate = new Date().toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  });
+  const receiptDate = formatDateDMY(new Date());
 
   const workshop = invoice.workshop || {};
   const lead = invoice.lead || {};
@@ -332,7 +329,7 @@ function generateReceiptHTML(invoice: any, payments: any[]): string {
           </div>
           <div class="info-row">
             <span class="info-label">Date:</span>
-            <span>${new Date(payment.completed_at || payment.created_at).toLocaleString('en-IN')}</span>
+            <span>${formatDateTime(payment.completed_at || payment.created_at)}</span>
           </div>
           ${payment.staff_name ? `
           <div class="info-row">

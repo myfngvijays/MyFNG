@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { CheckCircle, XCircle, AlertTriangle, Eye, Clock, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatDateTime } from "@/lib/utils";
 
 interface Invoice {
   id: string;
@@ -164,7 +165,7 @@ export default function InvoiceReviewDashboard() {
                   {invoice.latest_review && (
                     <div className="mt-2 sm:mt-3 p-2.5 sm:p-3 bg-gray-50 rounded">
                       <p className="text-xs sm:text-sm text-gray-600">
-                        Last reviewed: {new Date(invoice.latest_review.reviewed_at).toLocaleString()}
+                        Last reviewed: {formatDateTime(invoice.latest_review.reviewed_at)}
                       </p>
                       {invoice.latest_review.review_notes && (
                         <p className="text-xs sm:text-sm mt-0.5 sm:mt-1">{invoice.latest_review.review_notes}</p>

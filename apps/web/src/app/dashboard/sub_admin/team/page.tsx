@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
-import { 
-  Users, 
-  UserPlus, 
+import { formatDateDMY } from '@/lib/utils';
+import {
+  Users,
+  UserPlus,
   Search,
   Loader2,
   CheckCircle,
@@ -287,7 +288,7 @@ export default function SubAdminTeamPage() {
                   )}
                   <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
                     <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                    Assigned {new Date(assignment.assigned_at).toLocaleDateString()}
+                    Assigned {formatDateDMY(assignment.assigned_at)}
                   </div>
                 </div>
 

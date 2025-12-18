@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Car, Clock, CheckCircle, MapPin, Phone } from 'lucide-react';
 import { DashboardCard, StatsGrid, ListItem } from '@/components/RoleDashboards';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function CustomerDashboard() {
   const router = useRouter();
@@ -197,7 +198,7 @@ export default function CustomerDashboard() {
                 <ListItem
                   key={service.id}
                   title={`${service.service_type} - ${service.vehicle_number}`}
-                  subtitle={`Completed on ${new Date(service.completed_at).toLocaleDateString()}`}
+                  subtitle={`Completed on ${formatDateDMY(service.completed_at)}`}
                   metadata={[
                     `Workshop: ${service.workshop_id?.name || 'N/A'}`,
                     service.actual_amount ? `Amount: ₹${service.actual_amount.toLocaleString()}` : ''

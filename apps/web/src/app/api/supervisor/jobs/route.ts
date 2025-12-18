@@ -327,7 +327,7 @@ export async function GET(request: Request) {
         after: mediaByCategory['AFTER'] || jobPhotos.after || false
       };
 
-      // Check for pending extra work from pre-fetched map
+      // Check for pending additional job from pre-fetched map
       const jobExtraCharges = extraChargesMap.get(job.id) || [];
       const extraWorkPending = jobExtraCharges.some((ec: any) => ec.status === 'PENDING');
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -95,7 +96,7 @@ export default function CSECallbacksScreen() {
               <View style={styles.callbackHeader}>
                 <Text style={styles.leadNumber}>{callback.lead_number}</Text>
                 <Text style={styles.callbackTime}>
-                  {new Date(callback.next_follow_up_at).toLocaleString()}
+                  {formatDateTime(callback.next_follow_up_at)}
                 </Text>
               </View>
               

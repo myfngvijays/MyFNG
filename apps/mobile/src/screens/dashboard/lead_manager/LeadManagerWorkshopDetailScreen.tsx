@@ -1,3 +1,4 @@
+import { formatDateDMY } from "@/lib/dateFormat";
 /**
  * Lead Manager Workshop Detail Screen - Mobile
  * Detailed view of a specific workshop
@@ -308,7 +309,7 @@ export default function LeadManagerWorkshopDetailScreen() {
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Registered</Text>
               <Text style={styles.infoValue}>
-                {new Date(workshop.created_at).toLocaleDateString()}
+                {formatDateDMY(workshop.created_at)}
               </Text>
             </View>
           </View>
@@ -344,7 +345,7 @@ export default function LeadManagerWorkshopDetailScreen() {
                   {job.vehicle_make} {job.vehicle_model}
                 </Text>
                 <Text style={styles.jobDate}>
-                  Created: {new Date(job.created_at).toLocaleDateString()}
+                  Created: {formatDateDMY(job.created_at)}
                 </Text>
               </View>
             );

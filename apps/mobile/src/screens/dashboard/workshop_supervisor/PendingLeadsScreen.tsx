@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -316,14 +317,14 @@ export default function PendingLeadsScreen() {
                 <View>
                   <Text style={styles.leadNumber}>{lead.lead_number}</Text>
                   <Text style={styles.leadDate}>
-                    Created: {new Date(lead.created_at).toLocaleString()}
+                    Created: {formatDateTime(lead.created_at)}
                   </Text>
                 </View>
                 {lead.sla_accept_deadline && (
                   <View style={styles.slaBadge}>
                     <Text style={styles.slaLabel}>SLA Deadline</Text>
                     <Text style={styles.slaTime}>
-                      {new Date(lead.sla_accept_deadline).toLocaleString()}
+                      {formatDateTime(lead.sla_accept_deadline)}
                     </Text>
                   </View>
                 )}

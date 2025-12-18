@@ -550,7 +550,7 @@ export async function POST(
     // Add extra charges
     extraCharges?.forEach((charge) => {
       lineItems.push({
-        description: charge.description || 'Extra Work',
+        description: charge.description || 'Additional Jobs',
         hsn_sac: '998729', // Service code
         qty: 1,
         rate: parseFloat(charge.amount || '0'),

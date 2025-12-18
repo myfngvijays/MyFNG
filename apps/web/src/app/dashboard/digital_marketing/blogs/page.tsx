@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
-  FileText, Plus, Search, Filter, Edit, Trash2, Eye, 
+import { formatDateDMY } from '@/lib/utils';
+import {
+  FileText, Plus, Search, Filter, Edit, Trash2, Eye,
   Calendar, Tag, BookOpen, CheckCircle, XCircle, Clock,
   TrendingUp
 } from 'lucide-react';
@@ -255,7 +256,7 @@ export default function BlogsPage() {
                             {blog.published_at && (
                               <span className="flex items-center gap-1 whitespace-nowrap">
                                 <Calendar className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                                {new Date(blog.published_at).toLocaleDateString()}
+                                {formatDateDMY(blog.published_at)}
                               </span>
                             )}
                           </div>

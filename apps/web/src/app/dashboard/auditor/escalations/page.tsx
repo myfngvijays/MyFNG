@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY, formatTime12h } from "@/lib/utils";
 import { 
   AlertTriangle, 
   Search,
@@ -316,10 +317,10 @@ export default function AuditorEscalationsPage() {
                         </td>
                         <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
                           <div className="text-xs sm:text-sm text-gray-900">
-                            {new Date(escalation.created_at).toLocaleDateString()}
+                            {formatDateDMY(escalation.created_at)}
                           </div>
                           <div className="text-[10px] sm:text-xs text-gray-500">
-                            {new Date(escalation.created_at).toLocaleTimeString()}
+                            {formatTime12h(escalation.created_at)}
                           </div>
                         </td>
                         <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
@@ -383,7 +384,7 @@ export default function AuditorEscalationsPage() {
                       <div>
                         <span className="text-gray-500">Created: </span>
                         <span className="text-gray-900">
-                          {new Date(escalation.created_at).toLocaleDateString()} {new Date(escalation.created_at).toLocaleTimeString()}
+                          {formatDateDMY(escalation.created_at)} {formatTime12h(escalation.created_at)}
                         </span>
                       </div>
                     </div>

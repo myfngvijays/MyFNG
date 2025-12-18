@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { sendEmail } from '@/lib/services/emailService';
 import { sendSMS } from '@/lib/services/smsService';
+import { formatDateDMY } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
@@ -65,7 +66,7 @@ export async function POST(
                 <div style="background: #F3F4F6; padding: 15px; border-radius: 8px; margin: 20px 0;">
                   <p><strong>Invoice Number:</strong> ${invoice.invoice_number}</p>
                   <p><strong>Total Amount:</strong> ₹${parseFloat(invoice.total_amount).toLocaleString()}</p>
-                  <p><strong>Due Date:</strong> ${new Date(invoice.due_date).toLocaleDateString()}</p>
+                  <p><strong>Due Date:</strong> ${formatDateDMY(invoice.due_date)}</p>
                 </div>
                 <p style="text-align: center;">
                   <a href="${invoiceUrl}" style="background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 10px 0;">

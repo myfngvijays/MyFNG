@@ -239,7 +239,7 @@ export default function MechanicJobsScreen({ navigation }: any) {
 
         {item.has_pending_extra_work && (
           <View style={styles.warningBadge}>
-            <Text style={styles.warningText}>⚠️ Extra Work Pending</Text>
+            <Text style={styles.warningText}>⚠️ Additional Jobs Pending</Text>
           </View>
         )}
 

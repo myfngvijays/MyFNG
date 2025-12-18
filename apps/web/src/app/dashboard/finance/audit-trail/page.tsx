@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Activity, User, Calendar, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatDateTime } from "@/lib/utils";
 
 export default function AuditTrailViewer() {
   const [events, setEvents] = useState<any[]>([]);
@@ -140,7 +141,7 @@ export default function AuditTrailViewer() {
                       <div className="flex items-center gap-1.5 sm:gap-2">
                         <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
                         <span className="text-gray-600">Date:</span>
-                        <span className="font-medium">{new Date(event.created_at).toLocaleString()}</span>
+                        <span className="font-medium">{formatDateTime(event.created_at)}</span>
                       </div>
                       <div className="min-w-0">
                         <span className="text-gray-600">Entity ID:</span>

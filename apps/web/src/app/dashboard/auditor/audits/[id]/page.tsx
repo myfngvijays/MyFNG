@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
 import { 
   Shield, 
   Clock, 
@@ -224,7 +225,7 @@ export default function AuditDetailPage() {
                   <p className="text-sm text-gray-600">Scheduled Date</p>
                   <p className="font-medium">
                     {audit.scheduled_date 
-                      ? new Date(audit.scheduled_date).toLocaleDateString()
+                      ? formatDateDMY(audit.scheduled_date)
                       : 'N/A'}
                   </p>
                 </div>
@@ -287,7 +288,7 @@ export default function AuditDetailPage() {
                     {audit.sla_deadline && (
                       <div>
                         <p className="text-sm text-gray-600">SLA Deadline</p>
-                        <p className="font-medium">{new Date(audit.sla_deadline).toLocaleString()}</p>
+                        <p className="font-medium">{formatDateTime(audit.sla_deadline)}</p>
                       </div>
                     )}
                     {audit.score !== undefined && (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatDateDMY } from "@/lib/dateFormat";
 import {
   View,
   Text,
@@ -239,7 +240,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
 
       {/* Pending Actions */}
       <View style={styles.pendingSection}>
-        <Text style={styles.sectionTitle}>⏳ Pending Approvals</Text>
+        <Text style={styles.sectionTitle}>⏳ Pending Lead Approval</Text>
 
         <TouchableOpacity
           style={[styles.pendingCard, { borderLeftColor: COLORS.orange }]}
@@ -320,7 +321,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
             Payout ID: {item.id.substring(0, 8)}...
           </Text>
           <Text style={styles.itemDate}>
-            {new Date(item.created_at).toLocaleDateString()}
+            {formatDateDMY(item.created_at)}
           </Text>
         </View>
         <View style={styles.itemAmount}>
@@ -358,7 +359,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
           </Text>
           <Text style={styles.itemReason}>{item.reason || 'No reason provided'}</Text>
           <Text style={styles.itemDate}>
-            {new Date(item.created_at).toLocaleDateString()}
+            {formatDateDMY(item.created_at)}
           </Text>
         </View>
         <View style={styles.itemAmount}>
@@ -394,7 +395,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
           <Text style={styles.itemTitle}>{item.customer_name}</Text>
           <Text style={styles.itemSubtitle}>Invoice: {item.invoice_id || 'N/A'}</Text>
           <Text style={styles.itemDate}>
-            {new Date(item.created_at).toLocaleDateString()}
+            {formatDateDMY(item.created_at)}
           </Text>
         </View>
         <View style={styles.itemAmount}>

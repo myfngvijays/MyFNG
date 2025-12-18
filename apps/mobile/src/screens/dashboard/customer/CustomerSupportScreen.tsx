@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -236,7 +237,7 @@ export default function CustomerSupportScreen() {
               
               <View style={styles.ticketFooter}>
                 <Text style={styles.ticketDate}>
-                  {new Date(ticket.created_at).toLocaleDateString()}
+                  {formatDateDMY(ticket.created_at)}
                 </Text>
                 <Text style={styles.ticketCategory}>{ticket.category}</Text>
               </View>

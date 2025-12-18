@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
+import { formatDateDMY, formatDateTime } from '@/lib/utils';
+import {
   User, Mail, Phone, Building2, Calendar, 
   Award, TrendingUp, Clock, Save, Camera,
   Edit2, CheckCircle
@@ -276,7 +277,7 @@ export default function ProfilePage() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs sm:text-sm text-gray-600">Member Since</span>
                   <span className="text-xs sm:text-sm font-medium text-gray-900">
-                    {new Date(profile.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                    {formatDateDMY(profile.created_at)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -447,7 +448,7 @@ export default function ProfilePage() {
                   </label>
                   <p className="text-gray-900 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-50 rounded-lg">
                     {profile.last_login 
-                      ? new Date(profile.last_login).toLocaleString() 
+                      ? formatDateTime(profile.last_login) 
                       : 'Never'
                     }
                   </p>

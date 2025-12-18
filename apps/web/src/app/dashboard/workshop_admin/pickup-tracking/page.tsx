@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import type { PickupTracking, ServiceLead, User, PickupIncident } from '@/shared/types';
+import { formatDateTime } from "@/lib/utils";
 
 export default function PickupTrackingPage() {
   const router = useRouter();
@@ -239,7 +240,7 @@ export default function PickupTrackingPage() {
                             {incident.severity}
                           </span>
                           <span className="text-sm text-gray-500">
-                            {new Date(incident.created_at).toLocaleString()}
+                            {formatDateTime(incident.created_at)}
                           </span>
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-1">

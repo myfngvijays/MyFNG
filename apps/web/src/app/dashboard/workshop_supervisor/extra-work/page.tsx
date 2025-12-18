@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { CheckCircle, XCircle, Clock, DollarSign, AlertTriangle, User, Car, FileText } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { formatDateDMY } from "@/lib/utils";
 
 interface ExtraWorkRequest {
   id: string;
@@ -66,7 +67,7 @@ export default function ExtraWorkApprovalsPage() {
           table: 'lead_extra_charges'
         },
         (payload) => {
-          console.log('Extra work request updated:', payload);
+          console.log('Additional job request updated:', payload);
           fetchExtraWorkRequests();
         }
       )
@@ -106,7 +107,7 @@ export default function ExtraWorkApprovalsPage() {
         return;
       }
 
-      // Fetch pending extra work requests
+      // Fetch pending additional job requests
       const { data: extraWork, error } = await supabase
         .from('lead_extra_charges')
         .select(`
@@ -133,8 +134,8 @@ export default function ExtraWorkApprovalsPage() {
         .order('created_at', { ascending: true });
 
       if (error) {
-        console.error('Error fetching extra work:', error);
-        toast.error('Failed to fetch extra work requests');
+        console.error('Error fetching additional job:', error);
+        toast.error('Failed to fetch additional job requests');
         return;
       }
 
@@ -166,7 +167,7 @@ export default function ExtraWorkApprovalsPage() {
       setRequests(requestsWithMechanics);
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Failed to load extra work requests');
+      toast.error('Failed to load additional job requests');
     } finally {
       setLoading(false);
     }
@@ -200,7 +201,7 @@ export default function ExtraWorkApprovalsPage() {
         const primary =
           data?.error ||
           data?.message ||
-          'Failed to approve extra work';
+          'Failed to approve additional job';
         const details = typeof data?.details === 'string' ? data.details : null;
         const hint = typeof data?.hint === 'string' ? data.hint : null;
         const code = data?.code ? String(data.code) : null;
@@ -230,7 +231,7 @@ export default function ExtraWorkApprovalsPage() {
       fetchExtraWorkRequests();
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Failed to approve extra work');
+      toast.error('Failed to approve additional job');
     } finally {
       setProcessing(false);
     }
@@ -260,7 +261,7 @@ export default function ExtraWorkApprovalsPage() {
         const primary =
           data?.error ||
           data?.message ||
-          'Failed to reject extra work';
+          'Failed to reject additional job';
         const details = typeof data?.details === 'string' ? data.details : null;
         const hint = typeof data?.hint === 'string' ? data.hint : null;
         const code = data?.code ? String(data.code) : null;
@@ -282,7 +283,7 @@ export default function ExtraWorkApprovalsPage() {
         return;
       }
 
-      toast.success('Extra work request rejected');
+      toast.success('Additional job request rejected');
       setShowRejectModal(false);
       setSelectedRequest(null);
       setRejectionReason('');
@@ -290,7 +291,7 @@ export default function ExtraWorkApprovalsPage() {
       fetchExtraWorkRequests();
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Failed to reject extra work');
+      toast.error('Failed to reject additional job');
     } finally {
       setProcessing(false);
     }
@@ -322,8 +323,8 @@ export default function ExtraWorkApprovalsPage() {
       <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
         <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">💰 Extra Work Approvals</h1>
-          <p className="text-white font-medium text-sm sm:text-base mt-0.5 sm:mt-1">Review and approve mechanic's extra work requests</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">💰 Additional Jobs Approval</h1>
+          <p className="text-white font-medium text-sm sm:text-base mt-0.5 sm:mt-1">Review and approve mechanic's additional job requests</p>
         </div>
 
         {/* Stats */}
@@ -332,7 +333,7 @@ export default function ExtraWorkApprovalsPage() {
             <div className="flex items-center gap-2 sm:gap-3">
               <Clock className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-yellow-600 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-gray-600">Pending Approval</p>
+                <p className="text-xs sm:text-sm text-gray-600">Pending Lead Approval</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-800">{requests.length}</p>
               </div>
             </div>
@@ -368,7 +369,7 @@ export default function ExtraWorkApprovalsPage() {
           <div className="card text-center py-8 sm:py-10 md:py-12">
             <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-green-500 mx-auto mb-3 sm:mb-4" />
             <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">All Caught Up!</h3>
-            <p className="text-gray-500 text-sm sm:text-base">No pending extra work requests.</p>
+            <p className="text-gray-500 text-sm sm:text-base">No pending additional job requests.</p>
           </div>
         ) : (
           <div className="space-y-3 sm:space-y-4">
@@ -397,7 +398,7 @@ export default function ExtraWorkApprovalsPage() {
                     <div className="text-left sm:text-right flex-shrink-0">
                       <p className="text-lg sm:text-xl md:text-2xl font-bold text-orange-600">₹{request.amount.toFixed(2)}</p>
                       <p className="text-[10px] sm:text-xs text-gray-500">
-                        {new Date(request.created_at).toLocaleDateString()}
+                        {formatDateDMY(request.created_at)}
                       </p>
                     </div>
                   </div>
@@ -471,7 +472,7 @@ export default function ExtraWorkApprovalsPage() {
         {showApproveModal && selectedRequest && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
             <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
-              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-green-600">Approve Extra Work</h3>
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-green-600">Approve Additional Jobs</h3>
               <p className="text-sm sm:text-base text-gray-700 mb-3 sm:mb-4">
                 Lead: <strong>{selectedRequest.lead_number}</strong>
               </p>
@@ -545,7 +546,7 @@ export default function ExtraWorkApprovalsPage() {
         {showRejectModal && selectedRequest && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
             <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
-              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-red-600">Reject Extra Work</h3>
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-red-600">Reject Additional Jobs</h3>
               <p className="text-sm sm:text-base text-gray-700 mb-3 sm:mb-4">
                 Lead: <strong>{selectedRequest.lead_number}</strong><br />
                 Amount: <strong>₹{selectedRequest.amount.toFixed(2)}</strong>

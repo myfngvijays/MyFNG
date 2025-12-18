@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -254,7 +255,7 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
           <View style={styles.completedInfo}>
             <Icon name="check" size={14} color={COLORS.green} />
             <Text style={styles.completedText}>
-              Completed on {new Date(item.completed_at).toLocaleString()}
+              Completed on {formatDateTime(item.completed_at)}
             </Text>
           </View>
         )}

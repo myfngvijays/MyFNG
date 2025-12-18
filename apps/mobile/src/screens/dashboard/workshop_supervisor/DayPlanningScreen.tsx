@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -356,11 +357,7 @@ export default function DayPlanningScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>📅 Day Planning</Text>
         <Text style={styles.subtitle}>
-          {new Date().toLocaleDateString('en-IN', {
-            weekday: 'long',
-            month: 'long',
-            day: 'numeric',
-          })}
+          {formatDateDMY()}
         </Text>
         <Text style={styles.jobCount}>{jobs.length} jobs to manage</Text>
       </View>

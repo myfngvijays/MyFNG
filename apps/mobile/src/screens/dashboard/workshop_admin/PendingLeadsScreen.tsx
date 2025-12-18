@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -149,7 +150,7 @@ export default function PendingLeadsScreen() {
               <View style={styles.leadHeader}>
                 <Text style={styles.leadNumber}>{lead.lead_number}</Text>
                 <Text style={styles.leadDate}>
-                  {new Date(lead.created_at).toLocaleDateString()}
+                  {formatDateDMY(lead.created_at)}
                 </Text>
               </View>
               

@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
 /**
  * Customer Lead Tracking Page
  * Phase 4 - Task WA-405
@@ -181,7 +182,7 @@ export default function TrackLeadPage() {
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-600">Created</p>
-              <p className="font-medium">{new Date(lead.created_at).toLocaleDateString()}</p>
+              <p className="font-medium">{formatDateDMY(lead.created_at)}</p>
             </div>
           </div>
 
@@ -252,7 +253,7 @@ export default function TrackLeadPage() {
                     <div className="flex-1 pb-4">
                       <p className="font-medium text-gray-900">{event.event_description}</p>
                       <p className="text-xs text-gray-500 mt-1">
-                        {new Date(event.created_at).toLocaleString()}
+                        {formatDateTime(event.created_at)}
                       </p>
                     </div>
                   </div>

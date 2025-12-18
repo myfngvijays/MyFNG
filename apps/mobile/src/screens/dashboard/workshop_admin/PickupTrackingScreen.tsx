@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -198,7 +199,7 @@ export default function PickupTrackingScreen() {
         <View style={styles.timeContainer}>
           <Text style={styles.timeLabel}>⏰ Scheduled:</Text>
           <Text style={styles.timeText}>
-            {new Date(item.scheduled_time).toLocaleString()}
+            {formatDateTime(item.scheduled_time)}
           </Text>
         </View>
       )}

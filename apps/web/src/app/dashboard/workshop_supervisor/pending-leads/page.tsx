@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { CheckCircle, XCircle, Clock, AlertTriangle, Phone, Car, MapPin, DollarSign, RefreshCw, Eye } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { formatDateTime } from "@/lib/utils";
 
 interface PendingLead {
   id: string;
@@ -272,14 +273,14 @@ export default function WorkshopSupervisorPendingLeadsPage() {
                   <div className="min-w-0 flex-1">
                     <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-brand-primary truncate">{lead.lead_number}</h3>
                     <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">
-                      Created: {new Date(lead.created_at).toLocaleString()}
+                      Created: {formatDateTime(lead.created_at)}
                     </p>
                   </div>
                   {lead.sla_accept_deadline && (
                     <div className="bg-orange-100 border border-orange-300 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg flex-shrink-0">
                       <p className="text-[10px] sm:text-xs text-orange-600 font-semibold">SLA Deadline</p>
                       <p className="text-xs sm:text-sm font-bold text-orange-700">
-                        {new Date(lead.sla_accept_deadline).toLocaleString()}
+                        {formatDateTime(lead.sla_accept_deadline)}
                       </p>
                     </div>
                   )}

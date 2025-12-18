@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { DollarSign, TrendingUp, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function FinanceManagementPage() {
   const supabase = createClientComponentClient();
@@ -186,7 +187,7 @@ export default function FinanceManagementPage() {
                   </div>
                   <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-4 sm:p-5 md:p-6 text-white sm:col-span-2 lg:col-span-1">
                     <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 mb-1.5 sm:mb-2" />
-                    <p className="text-xs sm:text-sm opacity-90">Pending Approvals</p>
+                    <p className="text-xs sm:text-sm opacity-90">Pending Lead Approval</p>
                     <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold">{stats.pendingPayouts + stats.pendingRefunds}</p>
                   </div>
                 </div>
@@ -242,7 +243,7 @@ export default function FinanceManagementPage() {
                       <div className="min-w-0 flex-1">
                         <h4 className="font-medium text-sm sm:text-base truncate">{payout.workshop?.name || 'Workshop'}</h4>
                         <p className="text-xs sm:text-sm text-gray-600">
-                          {new Date(payout.created_at).toLocaleDateString()}
+                          {formatDateDMY(payout.created_at)}
                         </p>
                       </div>
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
@@ -283,7 +284,7 @@ export default function FinanceManagementPage() {
                         <h4 className="font-medium text-sm sm:text-base truncate">{refund.lead?.customer_name || 'Customer'}</h4>
                         <p className="text-xs sm:text-sm text-gray-600 truncate">{refund.reason}</p>
                         <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
-                          {new Date(refund.created_at).toLocaleDateString()}
+                          {formatDateDMY(refund.created_at)}
                         </p>
                       </div>
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">

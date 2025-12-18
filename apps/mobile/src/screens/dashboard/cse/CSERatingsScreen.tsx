@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -214,7 +215,7 @@ export default function CSERatingsScreen() {
                   <Text style={styles.feedback}>{rating.customer_feedback}</Text>
                 )}
                 <Text style={styles.ratingDate}>
-                  {new Date(rating.created_at).toLocaleDateString()}
+                  {formatDateDMY(rating.created_at)}
                 </Text>
               </View>
             ))

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -341,7 +342,7 @@ export default function MechanicJobHistoryScreen() {
                   <View style={styles.footerItem}>
                     <Text style={styles.footerLabel}>Completed:</Text>
                     <Text style={styles.footerValue}>
-                      {job.completed_at ? new Date(job.completed_at).toLocaleDateString() : 'N/A'}
+                      {job.completed_at ? formatDateDMY(job.completed_at) : 'N/A'}
                     </Text>
                   </View>
                 </View>

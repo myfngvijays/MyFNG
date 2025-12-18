@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/dateFormat";
 /**
  * CSE Ticket Detail Screen
  */
@@ -137,11 +138,11 @@ export default function CSETicketDetailScreen({ navigation, route }: any) {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Timeline</Text>
             <Text style={styles.timelineText}>
-              Created: {new Date(ticket.created_at).toLocaleString()}
+              Created: {formatDateTime(ticket.created_at)}
             </Text>
             {ticket.resolved_at && (
               <Text style={styles.timelineText}>
-                Resolved: {new Date(ticket.resolved_at).toLocaleString()}
+                Resolved: {formatDateTime(ticket.resolved_at)}
               </Text>
             )}
           </View>

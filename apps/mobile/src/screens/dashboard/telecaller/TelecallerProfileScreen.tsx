@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -303,11 +304,7 @@ export default function TelecallerProfileScreen({ navigation }: any) {
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Member Since:</Text>
           <Text style={styles.infoValue}>
-            {new Date(profile.created_at).toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
+            {formatDateDMY(profile.created_at)}
           </Text>
         </View>
       </View>

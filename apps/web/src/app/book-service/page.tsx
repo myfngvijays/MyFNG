@@ -7,7 +7,8 @@ import Footer from '@/components/landing/Footer';
 import { createClient } from '@/lib/supabase/client';
 import { loadRazorpayScript } from '@/lib/services/paymentService';
 import { getFallbackChecklistTemplate } from '@/lib/services/customerServiceChecklist';
-import { 
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
+import {
   MapPin, Car, User, Phone, Loader2, Search, CheckCircle, 
   Navigation, ArrowRight, ArrowLeft, Send, Smile, PartyPopper,
   Wrench, DollarSign, Sparkles, Calendar, Clock, MapPin as AddressIcon,
@@ -1221,12 +1222,7 @@ export default function BookServicePage() {
   const getIndiaDate = () => {
     const now = new Date();
     // Get IST date string (Asia/Kolkata timezone)
-    const istDateStr = now.toLocaleString('en-US', { 
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
+    const istDateStr = formatDateTime(now);
     // Parse it back to get the correct date
     const [month, day, year] = istDateStr.split('/');
     return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
@@ -1275,12 +1271,7 @@ export default function BookServicePage() {
     
     // Parse date and format in IST timezone
     const date = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone issues
-    const istDateStr = date.toLocaleString('en-US', { 
-      timeZone: 'Asia/Kolkata',
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short'
-    });
+    const istDateStr = formatDateTime(date);
     
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const [dayName, monthName, day] = istDateStr.split(' ');
@@ -1303,12 +1294,7 @@ export default function BookServicePage() {
     
     // Parse date and format in IST timezone
     const date = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone issues
-    const istDateStr = date.toLocaleString('en-US', { 
-      timeZone: 'Asia/Kolkata',
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short'
-    });
+    const istDateStr = formatDateTime(date);
     
     const [dayName, monthName, day] = istDateStr.split(' ');
     
@@ -2224,11 +2210,7 @@ export default function BookServicePage() {
                                 Pickup Date
                                 {formData.pickupDate && (
                                   <span className="text-lg sm:text-xl font-bold text-blue-600 ml-2">
-                                    {new Date(formData.pickupDate).toLocaleDateString('en-GB', { 
-                                      day: '2-digit', 
-                                      month: '2-digit', 
-                                      year: 'numeric' 
-                                    })}
+                                    {formatDateDMY(formData.pickupDate)}
                                   </span>
                                 )}
                                 <span className="text-red-500 text-lg">*</span>
@@ -2301,11 +2283,7 @@ export default function BookServicePage() {
                               {formData.pickupDate && (
                                 <div className="px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-xl">
                                   <p className="text-xs sm:text-sm font-bold text-blue-700">
-                                    {new Date(formData.pickupDate).toLocaleDateString('en-GB', { 
-                                      day: '2-digit', 
-                                      month: '2-digit', 
-                                      year: 'numeric' 
-                                    })}
+                                    {formatDateDMY(formData.pickupDate)}
                                   </p>
                                 </div>
                               )}
@@ -2605,12 +2583,7 @@ export default function BookServicePage() {
                         <div className="flex justify-between">
                           <span className="text-gray-600">Pickup:</span>
                           <span className="font-semibold">
-                            {new Date(formData.pickupDate).toLocaleDateString('en-IN', { 
-                              weekday: 'short', 
-                              year: 'numeric', 
-                              month: 'short', 
-                              day: 'numeric' 
-                            })} at {formData.pickupTime}
+                            {formatDateDMY(formData.pickupDate)} at {formData.pickupTime}
                           </span>
                         </div>
                       )}

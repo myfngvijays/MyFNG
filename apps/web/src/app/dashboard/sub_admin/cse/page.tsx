@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
-import { 
-  MessageSquare, 
-  AlertTriangle, 
-  Clock, 
+import { formatDateDMY } from '@/lib/utils';
+import {
+  MessageSquare,
+  AlertTriangle,
+  Clock,
   CheckCircle,
   XCircle,
   Filter,
@@ -316,7 +317,7 @@ export default function CSESubAdminDashboard() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(ticket.created_at).toLocaleDateString()}
+                          {formatDateDMY(ticket.created_at)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <Link

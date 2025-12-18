@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { 
+import { formatDateDMY } from "@/lib/dateFormat";
   View, 
   Text, 
   StyleSheet, 
@@ -214,7 +215,7 @@ export default function PickupBoyProfileScreen({ userId }) {
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Member Since</Text>
             <Text style={styles.infoValue}>
-              {new Date(profile.created_at).toLocaleDateString()}
+              {formatDateDMY(profile.created_at)}
             </Text>
           </View>
         </View>

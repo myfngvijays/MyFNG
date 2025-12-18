@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { ArrowRight, Calendar, Clock, Search } from 'lucide-react';
+import { formatDateDMY } from "@/lib/utils";
 
 interface Blog {
   id: string;
@@ -86,11 +87,7 @@ export default function BlogPage() {
   const formatDate = (dateString?: string) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
-    });
+    return formatDateDMY(date);
   };
 
   return (

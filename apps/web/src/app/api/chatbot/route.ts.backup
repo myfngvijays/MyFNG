@@ -1,0 +1,997 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { detectIntent } from './intentDetector';
+import { resolveServices } from './serviceResolver';
+import { resolvePriceRanges } from './pricingResolver';
+import { BookingValidationError, triggerBooking } from './bookingTrigger';
+import { REPLY_COMPOSER_SYSTEM_PROMPT } from './prompt';
+import type {
+  ChatbotMessageRequest,
+  ChatbotResponse,
+  ChatbotContext,
+  ServiceSuggestion,
+  SuggestedOption,
+} from './types';
+
+export const dynamic = 'force-dynamic';
+
+function newConversationId() {
+  // Node 18+ has crypto.randomUUID
+  return globalThis.crypto?.randomUUID?.() || `conv_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function normalize(text: string) {
+  return (text || '').toLowerCase().trim();
+}
+
+type ReplyLanguageHint = 'en' | 'hi_latn' | 'hi_deva' | 'mr_deva' | 'gu_gujr' | 'mixed' | 'unknown';
+
+function detectReplyLanguageHint(text: string): ReplyLanguageHint {
+  const t = text || '';
+  // Script-based detection
+  if (/[\u0A80-\u0AFF]/.test(t)) return 'gu_gujr'; // Gujarati
+  if (/[\u0900-\u097F]/.test(t)) {
+    // Devanagari (Hindi/Marathi)
+    if (/(आहे|नाही|काय|कसा|कशी|माझा|माझी|तुमचा|तुमची)/.test(t)) return 'mr_deva';
+    return 'hi_deva';
+  }
+
+  // Latin-script: look for Hinglish/Marathi/Gujarati common tokens
+  const low = t.toLowerCase();
+  const hasEnglish = /[a-z]/.test(low);
+  const hasHinglish = /\b(kya|kyu|kaise|kitna|karna|karao|chahiye|batao|pahle|pehle|pickup|workshop|gadi|gaadi)\b/.test(low);
+  const hasMarathiLatn = /\b(kay|kasa|kashe|ahe|nahi|tumhi|mala|majha|majhi)\b/.test(low);
+  const hasGujaratiLatn = /\b(shu|kem|chhe|nathi|tame|mane|mara|mari)\b/.test(low);
+
+  const flags = [hasHinglish, hasMarathiLatn, hasGujaratiLatn].filter(Boolean).length;
+  if (flags >= 2) return 'mixed';
+  if (hasGujaratiLatn) return 'gu_gujr';
+  if (hasMarathiLatn) return 'mr_deva';
+  if (hasHinglish) return 'hi_latn';
+  if (hasEnglish) return 'en';
+  return 'unknown';
+}
+
+function isGreeting(text: string) {
+  const t = normalize(text);
+  return /^(hi|hello|hey|hii|hlo|namaste|hola)\b/.test(t);
+}
+
+function isOnlySmallTalk(text: string) {
+  const t = normalize(text);
+  if (!t) return true;
+  if (isGreeting(t)) return t.length <= 12;
+  return /^(ok|okay|thanks|thank you|thx|cool|nice)\b/.test(t) && t.length <= 16;
+}
+
+function extractPhoneFromText(text: string): string | null {
+  const digits = (text || '').replace(/\D/g, '');
+  // prefer last 10 digits (India)
+  if (digits.length >= 10) return digits.slice(-10);
+  return null;
+}
+
+function extractVehicleNumberFromText(text: string): string | null {
+  // Rough Indian vehicle regex (best-effort)
+  const m = (text || '')
+    .toUpperCase()
+    .match(/\b([A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,2}\s?\d{3,4})\b/);
+  if (!m) return null;
+  return m[1].replace(/\s+/g, '');
+}
+
+function extractNameFromText(text: string): string | null {
+  const t = (text || '').trim();
+  const m = t.match(/\b(?:my name is|i am|i'm|main|mera naam)\s+([A-Za-z][A-Za-z\s]{1,30})/i);
+  if (m?.[1]) return m[1].trim().replace(/\s+/g, ' ').slice(0, 32);
+  return null;
+}
+
+function extractPickupPreference(text: string): boolean | null {
+  const t = normalize(text);
+  if (/(pickup|pick up|home pickup|pick-up|doorstep)/i.test(t)) return true;
+  if (/(self|i will come|i'll come|drop off|visit workshop|workshop aunga|main aunga)/i.test(t)) return false;
+  return null;
+}
+
+function extractLatLngFromMapLink(mapLink?: string | null): { lat: number; lng: number } | null {
+  if (!mapLink) return null;
+  try {
+    const raw = decodeURIComponent(mapLink);
+    const at = raw.match(/@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/);
+    if (at) {
+      const lat = Number(at[1]);
+      const lng = Number(at[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+    const qp = raw.match(/[?&](?:q|query|ll)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/);
+    if (qp) {
+      const lat = Number(qp[1]);
+      const lng = Number(qp[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+    const center = raw.match(/[?&]center=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/);
+    if (center) {
+      const lat = Number(center[1]);
+      const lng = Number(center[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const s =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+async function getNearestWorkshops(supabase: any, lat: number, lng: number) {
+  const { data } = await supabase
+    .from('workshops')
+    .select('id,name,latitude,longitude,map_link,is_verified')
+    .eq('is_verified', true)
+    .limit(500);
+
+  type Row = {
+    id: string;
+    name: string;
+    latitude: number | null;
+    longitude: number | null;
+    map_link: string | null;
+  };
+
+  const rows = (data as unknown as Row[]) ?? [];
+  const user = { lat, lng };
+
+  const scored: Array<{ id: string; name: string; km: number }> = [];
+  for (const w of rows) {
+    let wLat = w.latitude;
+    let wLng = w.longitude;
+    if (typeof wLat !== 'number' || typeof wLng !== 'number' || !Number.isFinite(wLat) || !Number.isFinite(wLng)) {
+      const fromLink = extractLatLngFromMapLink(w.map_link);
+      if (fromLink) {
+        wLat = fromLink.lat;
+        wLng = fromLink.lng;
+      }
+    }
+    if (typeof wLat !== 'number' || typeof wLng !== 'number' || !Number.isFinite(wLat) || !Number.isFinite(wLng)) continue;
+    const km = haversineKm(user, { lat: wLat, lng: wLng });
+    if (!Number.isFinite(km)) continue;
+    scored.push({ id: w.id, name: w.name, km: Math.max(0, km) });
+  }
+
+  scored.sort((a, b) => a.km - b.km);
+  return scored.slice(0, 3);
+}
+
+async function inferCityZoneFromAddress(supabase: any, addressText?: string | null) {
+  const raw = (addressText || '').trim();
+  if (!raw) return null as null | { cityId: string; cityName: string; zoneId: string | null };
+
+  const parts = raw
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .slice(-4);
+
+  const tokens: string[] = [];
+  for (const p of parts) {
+    const cleaned = p.replace(/[^a-zA-Z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (cleaned.length >= 3) tokens.push(cleaned);
+  }
+
+  const words = raw
+    .replace(/[^a-zA-Z\s]/g, ' ')
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 3)
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 6);
+  tokens.push(...words);
+
+  const seen = new Set<string>();
+  const uniq = tokens.filter((t) => {
+    const k = t.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  for (const token of uniq) {
+    const { data } = await supabase
+      .from('cities')
+      .select('id, name, zone_id, is_active')
+      .eq('is_active', true)
+      .ilike('name', `%${token}%`)
+      .limit(1);
+    const row = (data || [])[0] as any;
+    if (row?.id && row?.name) {
+      return { cityId: row.id as string, cityName: row.name as string, zoneId: (row.zone_id as string) || null };
+    }
+  }
+
+  return null;
+}
+
+async function inferCarModelFromText(supabase: any, vehicleText?: string | null) {
+  const raw = (vehicleText || '').trim();
+  if (!raw) return null as null | { modelId: string; make: string; model: string; variant?: string | null; vehicleClass?: string | null };
+
+  const t = raw.toLowerCase();
+  const makeGuess = t.split(/\s+/)[0] || '';
+  const modelGuess = t.split(/\s+/).slice(1).join(' ').trim() || t;
+
+  let q = supabase
+    .from('car_models')
+    .select('id, make, model_name, variant, class, is_active')
+    .eq('is_active', true)
+    .limit(5);
+
+  if (makeGuess.length >= 3) q = q.ilike('make', `%${makeGuess}%`);
+  if (modelGuess.length >= 3) q = q.ilike('model_name', `%${modelGuess}%`);
+
+  let { data } = await q;
+
+  if (!data || data.length === 0) {
+    const res = await supabase
+      .from('car_models')
+      .select('id, make, model_name, variant, class, is_active')
+      .eq('is_active', true)
+      .ilike('model_name', `%${modelGuess}%`)
+      .limit(5);
+    data = res.data || [];
+  }
+
+  const rows = (data || []) as any[];
+  if (rows.length === 0) return null;
+
+  rows.sort((a, b) => `${a.make} ${a.model_name}`.toLowerCase().localeCompare(`${b.make} ${b.model_name}`.toLowerCase()));
+  const best = rows[0];
+
+  return {
+    modelId: best.id,
+    make: best.make,
+    model: best.model_name,
+    variant: best.variant || null,
+    vehicleClass: best.class || null,
+  };
+}
+
+function isWorkshopQuery(text: string) {
+  const t = normalize(text);
+  return /(near( me)?\s*workshop|nearest\s*workshop|workshop\s*near|close(st)?\s*workshop|nearby\s*workshop|near workshop|nearest garage)/i.test(
+    t
+  );
+}
+
+function extractLanguagePreference(text: string): 'en' | 'hi' | 'mr' | 'gu' | null {
+  const raw = text || '';
+  const t = raw.toLowerCase();
+  // English phrases (common typos included)
+  if (/(reply|answer|tell|speak)\s+(me\s+)?(in)\s+guj(arati|rati|jrati)\b/.test(t)) return 'gu';
+  if (/(reply|answer|tell|speak)\s+(me\s+)?(in)\s+marathi\b/.test(t)) return 'mr';
+  if (/(reply|answer|tell|speak)\s+(me\s+)?(in)\s+hindi\b/.test(t)) return 'hi';
+  if (/(reply|answer|tell|speak)\s+(me\s+)?(in)\s+english\b/.test(t)) return 'en';
+
+  // Indic script keywords
+  // Allow single-word commands like "gujrati", "gujarati'" etc.
+  if (/^\s*(gujarati|gujrati)[^a-z]*\s*$/i.test(raw)) return 'gu';
+  if (/^\s*(marathi)[^a-z]*\s*$/i.test(raw)) return 'mr';
+  if (/^\s*(hindi)[^a-z]*\s*$/i.test(raw)) return 'hi';
+  if (/^\s*(english)[^a-z]*\s*$/i.test(raw)) return 'en';
+
+  if (/ગુજરાતી/.test(raw) || /\b(gujarati|gujrati)\b/.test(t)) {
+    if (/\b(me|mein|ma)\b/.test(t) || /ગુજરાતી/.test(raw)) return 'gu';
+  }
+  if (/मराठी/.test(raw) || /\bmarathi\b/.test(t)) {
+    if (/\b(me|mein|ma)\b/.test(t) || /मराठी/.test(raw)) return 'mr';
+  }
+  if (/हिंदी/.test(raw) || /\bhindi\b/.test(t)) {
+    if (/\b(me|mein|ma)\b/.test(t) || /हिंदी/.test(raw)) return 'hi';
+  }
+
+  return null;
+}
+
+async function composeReply(params: {
+  userMessage: string;
+  context: ChatbotContext;
+  stage?: string;
+  deterministicFacts: any;
+  fallback: string;
+}): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  if (!apiKey) return params.fallback;
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.4,
+        messages: [
+          { role: 'system', content: REPLY_COMPOSER_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              userMessage: params.userMessage,
+              replyLanguageHint: detectReplyLanguageHint(params.userMessage),
+              preferredLanguage: params.context.preferredLanguage || 'auto',
+              stage: params.stage || params.context.conversationStage || 'UNKNOWN',
+              knownContext: {
+                customerName: params.context.customerName || null,
+                customerPhone: params.context.customerPhone ? 'provided' : null,
+                pickupRequired: typeof params.context.pickupRequired === 'boolean' ? params.context.pickupRequired : null,
+                addressText: params.context.addressText ? 'provided' : null,
+                workshopName: params.context.workshopName || null,
+                vehicleNumber: params.context.vehicleNumber ? 'provided' : null,
+                vehicleModel: params.context.vehicleModel || null,
+              },
+              deterministicFacts: params.deterministicFacts,
+              fallback: params.fallback,
+            }),
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error('OpenAI reply composer failed:', res.status, res.statusText, errText);
+      return params.fallback;
+    }
+    const json = (await res.json()) as any;
+    const content = json?.choices?.[0]?.message?.content;
+    if (!content || typeof content !== 'string') return params.fallback;
+    return content.trim() || params.fallback;
+  } catch {
+    return params.fallback;
+  }
+}
+
+function looksLikeConfirm(text: string) {
+  const t = normalize(text);
+  return (
+    /^yes\b|^y\b|^haan\b|^ha\b|^ok\b|^okay\b|^confirm\b|^book\b|^proceed\b|^kar do\b|^kardo\b/.test(t) ||
+    t.includes('book it') ||
+    t.includes('go ahead') ||
+    t.includes('proceed')
+  );
+}
+
+function pickChoiceIndex(text: string) {
+  const t = normalize(text);
+  // Accept "1", "option 2", "#3"
+  const m = t.match(/(?:option\s*)?#?(\d{1,2})/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n - 1;
+}
+
+function renderOptions(options: SuggestedOption[]) {
+  const lines: string[] = [];
+  for (let i = 0; i < options.length; i++) {
+    const opt = options[i];
+    const price = opt.priceRange?.label ? ` (${opt.priceRange.label})` : '';
+    lines.push(`• Option ${i + 1}: ${opt.suggestion.name}${price}`);
+  }
+  return lines.join('\n');
+}
+
+function safetyEmergencyMessage() {
+  return [
+    "Ye emergency lag rahi hai (accident/fire/injury).",
+    'Please call emergency services immediately (112/108) and move to a safe place if possible.',
+    'Main yahan booking attempt nahi karunga.',
+  ].join('\n');
+}
+
+function safetyComplaintMessage() {
+  return [
+    'Samajh gaya — aapko complaint/issue hai.',
+    'Main abhi isko human support team ko escalate kar raha hoon.',
+    'Please apna registered mobile number + lead/booking ID share kar dijiye (agar available ho).',
+  ].join('\n');
+}
+
+async function bestEffortLog(supabase: any, payload: { conversationId: string; context: ChatbotContext; userText: string; botText: string; meta: any }) {
+  // Logging is optional (tables may or may not exist). We do best-effort.
+  try {
+    await supabase.from('chatbot_conversations').upsert({
+      id: payload.conversationId,
+      customer_phone: payload.context.customerPhone || null,
+      customer_name: payload.context.customerName || null,
+      updated_at: new Date().toISOString(),
+    });
+  } catch {
+    // ignore
+  }
+
+  try {
+    await supabase.from('chatbot_messages').insert([
+      {
+        conversation_id: payload.conversationId,
+        role: 'user',
+        message_text: payload.userText,
+        created_at: new Date().toISOString(),
+        metadata: payload.meta || null,
+      },
+      {
+        conversation_id: payload.conversationId,
+        role: 'assistant',
+        message_text: payload.botText,
+        created_at: new Date().toISOString(),
+        metadata: payload.meta || null,
+      },
+    ]);
+  } catch {
+    // ignore
+  }
+}
+
+function buildResponseText(params: {
+  why?: string;
+  options: SuggestedOption[];
+  intentLabel?: string;
+  needs: string[];
+  selectedOptionName?: string;
+}) {
+  const out: string[] = [];
+
+  if (params.why) {
+    out.push(`Jo aapne bataya uske basis par, ${params.why}`);
+    out.push('');
+  }
+
+  if (params.options.length > 0) {
+    out.push('Recommended options (approx price range):');
+    out.push(renderOptions(params.options));
+    out.push('');
+    out.push('Final cost vehicle model + inspection par depend karega.');
+  }
+
+  if (params.needs.length > 0) {
+    // Ask only the most necessary follow-up first (avoid long checklist).
+    const first = params.needs[0];
+    out.push(`Ek chhota sa sawal: ${first}?`);
+  }
+
+  if (params.options.length > 0) {
+    if (params.selectedOptionName) {
+      out.push('');
+      out.push(`Selected: ${params.selectedOptionName}`);
+    }
+    out.push('');
+    out.push('Aap chahein to main booking create kar doon. (Reply: “Yes, book option 1”)');
+  }
+
+  return out.join('\n');
+}
+
+export async function POST(req: Request) {
+  const body = (await req.json().catch(() => null)) as ChatbotMessageRequest | null;
+  if (!body?.message || typeof body.message !== 'string') {
+    return NextResponse.json({ error: 'message is required' }, { status: 400 });
+  }
+
+  const supabase = await createClient();
+
+  const context: ChatbotContext = body.context || {};
+  const conversationId = context.conversationId || newConversationId();
+
+  // Detect intent + safety
+  const intent = await detectIntent(body.message);
+
+  // Best-effort: extract structured fields from free text so UI doesn't need forms.
+  // (Still deterministic, no workflow bypass.)
+  const extractedPhone = extractPhoneFromText(body.message);
+  if (extractedPhone && !context.customerPhone) context.customerPhone = extractedPhone;
+
+  const extractedName = extractNameFromText(body.message);
+  if (extractedName && !context.customerName) context.customerName = extractedName;
+
+  const extractedVehicle = extractVehicleNumberFromText(body.message);
+  if (extractedVehicle && !context.vehicleNumber) context.vehicleNumber = extractedVehicle;
+
+  const pickupPref = extractPickupPreference(body.message);
+  if (pickupPref !== null && typeof context.pickupRequired !== 'boolean') context.pickupRequired = pickupPref;
+
+  // If intent detector extracted a locationText, keep it as addressText.
+  const locText = intent.extracted?.locationText;
+  if (locText && !context.addressText) context.addressText = locText;
+
+  // Explicit language preference should be handled immediately (even before funnel gating).
+  const langPref = extractLanguagePreference(body.message);
+  if (langPref) {
+    context.preferredLanguage = langPref;
+    const fallback =
+      langPref === 'gu'
+        ? 'ઠીક છે — હવે હું ગુજરાતીમાં જવાબ આપીસ.'
+        : langPref === 'mr'
+          ? 'ठीक आहे — आता मी मराठीत उत्तर देईन.'
+          : langPref === 'hi'
+            ? 'Theek hai — ab main Hindi me reply karunga.'
+            : 'Sure — I will reply in English.';
+
+    const assistantMessage = await composeReply({
+      userMessage: body.message,
+      context,
+      stage: 'LANGUAGE_PREFERENCE_SET',
+      deterministicFacts: { preferredLanguage: langPref },
+      fallback,
+    });
+
+    const resp: ChatbotResponse = {
+      conversationId,
+      intent,
+      assistantMessage,
+      contextPatch: { conversationId, preferredLanguage: langPref },
+    };
+    await bestEffortLog(supabase, {
+      conversationId,
+      context,
+      userText: body.message,
+      botText: assistantMessage,
+      meta: { intent, preferredLanguage: langPref },
+    });
+    return NextResponse.json(resp);
+  }
+
+  // Stage-aware capture (so simple replies like \"Rahul\" or \"Delhi\" get stored)
+  if (context.conversationStage === 'NEED_NAME' && !context.customerName) {
+    const raw = (body.message || '').trim();
+    if (/^[A-Za-z][A-Za-z\s]{1,30}$/.test(raw)) {
+      context.customerName = raw.replace(/\s+/g, ' ').slice(0, 32);
+    }
+  }
+
+  if (context.conversationStage === 'NEED_LOCATION' && !context.addressText) {
+    const raw = (body.message || '').trim();
+    // Avoid capturing obvious non-location words
+    if (raw.length >= 4 && !/^(pickup|self|ok|okay|yes|no)$/i.test(raw)) {
+      context.addressText = raw.slice(0, 160);
+    }
+  }
+
+  if (context.conversationStage === 'NEED_VEHICLE' && !context.vehicleModel && !context.vehicleNumber) {
+    const raw = (body.message || '').trim();
+    // If not a pure phone number and not pickup/self, treat as model text
+    if (!/^\d{10,}$/.test(raw) && !/^(pickup|self)$/i.test(raw) && raw.length >= 3) {
+      context.vehicleModel = raw.slice(0, 64);
+    }
+  }
+
+  if (intent.flags.includes('EMERGENCY')) {
+    const assistantMessage = safetyEmergencyMessage();
+    const resp: ChatbotResponse = {
+      conversationId,
+      intent,
+      assistantMessage,
+      contextPatch: { conversationId },
+    };
+    await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent } });
+    return NextResponse.json(resp);
+  }
+
+  if (intent.flags.includes('COMPLAINT')) {
+    const assistantMessage = safetyComplaintMessage();
+    const resp: ChatbotResponse = {
+      conversationId,
+      intent,
+      assistantMessage,
+      contextPatch: { conversationId },
+    };
+    await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent } });
+    return NextResponse.json(resp);
+  }
+
+  // STATUS intent (read-only guidance)
+  if (intent.intent === 'STATUS') {
+    const assistantMessage =
+      'Booking status check karne ke liye please apna Lead Number (example: L-12345678) share kar dijiye.';
+    const resp: ChatbotResponse = {
+      conversationId,
+      intent,
+      assistantMessage,
+      contextPatch: { conversationId },
+    };
+    await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent } });
+    return NextResponse.json(resp);
+  }
+
+  // Read-only: nearest workshop query should be answered even before phone verification.
+  if (isWorkshopQuery(body.message)) {
+    const hasCoords = Number.isFinite(context.locationLat as number) && Number.isFinite(context.locationLng as number);
+    if (!hasCoords) {
+      const fallback = 'Nearest workshop batane ke liye aap apna area/city share kar dijiye (ya location allow kar dijiye).';
+      const assistantMessage = await composeReply({
+        userMessage: body.message,
+        context,
+        stage: 'READONLY_WORKSHOP_QUERY',
+        deterministicFacts: { need: 'location', note: 'cannot compute nearest without coords' },
+        fallback,
+      });
+      const resp: ChatbotResponse = {
+        conversationId,
+        intent,
+        assistantMessage,
+        contextPatch: { conversationId, conversationStage: context.conversationStage || 'NEED_PHONE' },
+      };
+      await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent } });
+      return NextResponse.json(resp);
+    }
+
+    const nearest = await getNearestWorkshops(supabase, context.locationLat as number, context.locationLng as number);
+    // If computed nearest is unrealistically far, treat location as missing/incorrect and ask again.
+    if (nearest[0] && nearest[0].km > 200) {
+      const fallback =
+        'Mujhe aapki location clear nahi mil rahi (workshops bahut door show ho rahe hain). Aap apna area/city+pincode share kar dijiye ya location allow kar dijiye.';
+      const assistantMessage = await composeReply({
+        userMessage: body.message,
+        context,
+        stage: 'READONLY_WORKSHOP_QUERY',
+        deterministicFacts: { need: 'better_location', note: 'nearest_too_far_km', km: Number(nearest[0].km.toFixed(1)) },
+        fallback,
+      });
+      const resp: ChatbotResponse = {
+        conversationId,
+        intent,
+        assistantMessage,
+        contextPatch: { conversationId, conversationStage: context.conversationStage || 'NEED_PHONE' },
+      };
+      await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent } });
+      return NextResponse.json(resp);
+    }
+    const list = nearest.map((w, i) => ({ index: i + 1, name: w.name, km: Number(w.km.toFixed(1)) }));
+    const fallback =
+      nearest.length > 0
+        ? ['Nearest workshops:', ...nearest.map((w, i) => `• Workshop ${i + 1}: ${w.name} (${w.km.toFixed(1)} km)`)].join('\n')
+        : 'Is location ke aas-paas verified workshops nahi mil rahe.';
+
+    const assistantMessage = await composeReply({
+      userMessage: body.message,
+      context,
+      stage: 'READONLY_WORKSHOP_QUERY',
+      deterministicFacts: { nearest: list },
+      fallback,
+    });
+
+    const resp: ChatbotResponse = {
+      conversationId,
+      intent,
+      assistantMessage,
+      contextPatch: { conversationId, conversationStage: context.conversationStage || 'NEED_PHONE' },
+    };
+    await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent, nearest: list } });
+    return NextResponse.json(resp);
+  }
+
+  // -------------------------
+  // Sales-style funnel (chat)
+  // Order: Phone -> Name -> Vehicle -> Problem -> Pickup/Self -> Location/Workshop -> Suggest -> Confirm -> Book
+  // -------------------------
+
+  // Friendly greeting/small talk: respond naturally (no phone prompt).
+  if (isOnlySmallTalk(body.message)) {
+    const fallback =
+      'Hi! Aapko kis cheez me help chahiye — RSA (roadside) ya car service? Aap 1–2 lines me problem bata dijiye.';
+    const assistantMessage = await composeReply({
+      userMessage: body.message,
+      context,
+      stage: 'SMALLTALK',
+      deterministicFacts: { ask: 'problem_or_rsa' },
+      fallback,
+    });
+    const resp: ChatbotResponse = {
+      conversationId,
+      intent,
+      assistantMessage,
+      contextPatch: { conversationId, preferredLanguage: context.preferredLanguage || 'auto' },
+    };
+    await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent } });
+    return NextResponse.json(resp);
+  }
+
+  // Note: We do NOT force phone for every question.
+  // Phone is required only when user confirms booking. For general queries (RSA/price/workshop), answer first.
+  const wantsBookingNow = looksLikeConfirm(body.message);
+  if (wantsBookingNow && !context.customerPhone) {
+    const fallback = [
+      'Booking confirm karne se pehle aapka 10-digit mobile number chahiye (updates ke liye).',
+      'Please mobile number bhej dijiye.',
+    ].join('\n');
+    const assistantMessage = await composeReply({
+      userMessage: body.message,
+      context,
+      stage: 'NEED_PHONE',
+      deterministicFacts: { ask: 'phone_for_booking' },
+      fallback,
+    });
+    const resp: ChatbotResponse = {
+      conversationId,
+      intent,
+      assistantMessage,
+      contextPatch: { conversationId, conversationStage: 'NEED_PHONE' },
+    };
+    await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent } });
+    return NextResponse.json(resp);
+  }
+
+  // Step 2: Vehicle info (model/number). We suggest plans right after this.
+  if (!context.vehicleNumber && !context.vehicleModel) {
+    const fallback = [
+      'Thanks.',
+      'Ab vehicle info chahiye: vehicle number (example: MH12AB1234) ya car make/model (example: Tata Tigor 2020).',
+    ].join('\n');
+    const assistantMessage = await composeReply({
+      userMessage: body.message,
+      context,
+      stage: 'NEED_VEHICLE',
+      deterministicFacts: { ask: 'vehicle_number_or_model' },
+      fallback,
+    });
+    const resp: ChatbotResponse = {
+      conversationId,
+      intent,
+      assistantMessage,
+      contextPatch: { conversationId, conversationStage: 'NEED_VEHICLE', customerPhone: context.customerPhone },
+    };
+    await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent } });
+    return NextResponse.json(resp);
+  }
+
+  // Requirement text is optional; if user already described issue/service, keep it
+  if (!context.problemDescription) {
+    const t = normalize(body.message);
+    if (/(service|servicing|repair|issue|problem|ac|brake|battery|puncture|noise|vibration|rsa|roadside|stuck)/i.test(t)) {
+      context.problemDescription = body.message;
+    }
+  }
+  // If user switches topic with a strong keyword (e.g. denting/ac/brake), update the problemDescription.
+  if (/(denting|painting|dent|scratch|body|bumper|panel|ac|brake|battery|puncture|alignment|balancing|suspension|steering|clutch|gear)/i.test(body.message)) {
+    context.problemDescription = body.message;
+  }
+
+  // Resolve services deterministically (no LLM)
+  // Important: include the latest user text so requests like “aur kuch service” / “aur koi plan” work.
+  const resolverMessage = [context.problemDescription, body.message].filter(Boolean).join(' | ');
+  const serviceResult = await resolveServices(supabase, { message: resolverMessage, intent: intent.intent, context });
+  const suggestions = serviceResult.suggestions;
+
+  // Resolve price ranges (read-only)
+  // Improve pricing context using real DB: car model class + city zone + nearest workshop pricing (if coords available).
+  const inferredCar = !context.modelId && context.vehicleModel ? await inferCarModelFromText(supabase, context.vehicleModel) : null;
+  if (inferredCar) {
+    context.modelId = context.modelId || inferredCar.modelId;
+    context.vehicleMake = context.vehicleMake || inferredCar.make;
+    context.vehicleModel = context.vehicleModel || inferredCar.model;
+    context.vehicleVariant = context.vehicleVariant || inferredCar.variant || null;
+    context.vehicleClass = context.vehicleClass || inferredCar.vehicleClass || null;
+  }
+
+  const inferredCity = !context.cityId && context.addressText ? await inferCityZoneFromAddress(supabase, context.addressText) : null;
+  if (inferredCity) {
+    context.cityId = context.cityId || inferredCity.cityId;
+    context.cityName = context.cityName || inferredCity.cityName;
+    context.zoneId = context.zoneId || inferredCity.zoneId;
+  }
+
+  // Pick a pricing workshop: chosen workshop OR nearest workshop (for localized ranges).
+  let pricingWorkshopId: string | null = context.workshopId || null;
+  let pricingWorkshopName: string | null = context.workshopName || null;
+  const hasCoords = Number.isFinite(context.locationLat as number) && Number.isFinite(context.locationLng as number);
+  if (!pricingWorkshopId && hasCoords) {
+    const nearest = await getNearestWorkshops(supabase, context.locationLat as number, context.locationLng as number);
+    if (nearest[0] && nearest[0].km <= 200) {
+      pricingWorkshopId = nearest[0].id;
+      pricingWorkshopName = nearest[0].name;
+    }
+  }
+
+  const pricingCtx = { ...context, workshopId: pricingWorkshopId || undefined };
+  const ranges = await resolvePriceRanges(supabase, { ctx: pricingCtx, suggestions });
+
+  const options: SuggestedOption[] = suggestions.map((s) => ({
+    suggestion: s,
+    priceRange: ranges[`${s.kind}:${s.id}`],
+  }));
+
+  // Determine chosen option
+  const choiceIdx = pickChoiceIndex(body.message);
+  let chosen: ServiceSuggestion | null = null;
+  if (choiceIdx !== null && options[choiceIdx]) {
+    chosen = options[choiceIdx].suggestion;
+  } else if (context.selectedServiceTypeIds?.length && intent.intent !== 'RSA') {
+    // If UI already pinned selected services, respect it.
+    chosen = { kind: 'SERVICE_TYPE', id: context.selectedServiceTypeIds[0], name: 'Selected Service', why: '' };
+  } else {
+    chosen = options[0]?.suggestion || null;
+  }
+
+  const wantsBooking = looksLikeConfirm(body.message);
+  const needs: string[] = [];
+
+  if (!chosen) {
+    const assistantMessage =
+      'Main aapke issue ko map nahi kar paaya. Aap 1-2 lines me symptoms (noise/smell/leak/warning light) aur location share kar dijiye.';
+    const resp: ChatbotResponse = {
+      conversationId,
+      intent,
+      assistantMessage,
+      contextPatch: { conversationId },
+    };
+    await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent } });
+    return NextResponse.json(resp);
+  }
+
+  if (wantsBooking) {
+    try {
+      const booking = await triggerBooking(supabase, {
+        context: {
+          ...context,
+          conversationId,
+          // If user didn't provide problemDescription earlier, store the current message
+          problemDescription: context.problemDescription || body.message,
+          // If user picked a package, keep it for logging
+          selectedPackageId: chosen.kind === 'PACKAGE' ? chosen.id : context.selectedPackageId,
+          // If chosen service type, store it
+          selectedServiceTypeIds:
+            chosen.kind === 'SERVICE_TYPE' || chosen.kind === 'RSA'
+              ? [chosen.id]
+              : serviceResult.packageToServiceTypeIds[chosen.id] || context.selectedServiceTypeIds,
+        },
+        intent,
+        chosenSuggestion: chosen,
+        packageServiceTypeIds: chosen.kind === 'PACKAGE' ? serviceResult.packageToServiceTypeIds[chosen.id] : undefined,
+      });
+
+      const assistantMessage = [
+        'Done — aapki booking create ho gayi.',
+        `Aapka Lead Number: ${booking.leadNumber}`,
+        '',
+        'Next step: Team availability ke hisaab se slot/workshop confirm karegi.',
+      ].join('\n');
+
+      const resp: ChatbotResponse = {
+        conversationId,
+        intent,
+        assistantMessage,
+        booking,
+        contextPatch: { conversationId },
+      };
+
+      await bestEffortLog(supabase, {
+        conversationId,
+        context,
+        userText: body.message,
+        botText: assistantMessage,
+        meta: { intent, chosen, booking, priceRanges: ranges },
+      });
+
+      return NextResponse.json(resp);
+    } catch (e: any) {
+      const fallback =
+        e instanceof BookingValidationError
+          ? e.message
+          : 'Booking create nahi ho paayi. Please details confirm karke try karein.';
+      const assistantMessage = await composeReply({
+        userMessage: body.message,
+        context,
+        stage: 'BOOKING_ERROR',
+        deterministicFacts: { error: e?.message || 'unknown' },
+        fallback,
+      });
+
+      const resp: ChatbotResponse = {
+        conversationId,
+        intent,
+        assistantMessage,
+        contextPatch: { conversationId },
+      };
+
+      await bestEffortLog(supabase, {
+        conversationId,
+        context,
+        userText: body.message,
+        botText: assistantMessage,
+        meta: { intent, chosen, error: e?.message },
+      });
+
+      return NextResponse.json(resp, { status: 400 });
+    }
+  }
+
+  // Build normal advisory response
+  const selectedOptionName = choiceIdx !== null && options[choiceIdx] ? options[choiceIdx].suggestion.name : undefined;
+  const fallback = buildResponseText({
+    why: chosen.why || undefined,
+    options,
+    needs,
+    selectedOptionName,
+  });
+  const assistantMessage = await composeReply({
+    userMessage: body.message,
+    context,
+    stage: 'READY_TO_SUGGEST',
+    deterministicFacts: {
+      why: chosen.why || null,
+      options: options.map((o, idx) => ({
+        index: idx + 1,
+        name: o.suggestion.name,
+        kind: o.suggestion.kind,
+        priceRange: o.priceRange?.label || null,
+        includes:
+          o.suggestion.kind === 'PACKAGE'
+            ? serviceResult.packageToItemNames?.[o.suggestion.id] || []
+            : [],
+        checklistNote:
+          o.suggestion.kind === 'SERVICE_TYPE'
+            ? serviceResult.serviceTypeDetails?.[o.suggestion.id]?.description || null
+            : null,
+      })),
+      selectedOptionName: selectedOptionName || null,
+      next: 'ask_for_option_or_confirm',
+      notes: {
+        pricingWorkshop: pricingWorkshopName || null,
+        zoneId: pricingCtx.zoneId || null,
+        vehicleClass: pricingCtx.vehicleClass || null,
+      },
+    },
+    fallback,
+  });
+
+  const contextPatch: Partial<ChatbotContext> = {
+    conversationId,
+    // store last problem description for booking
+    problemDescription: context.problemDescription || body.message,
+    customerPhone: context.customerPhone,
+    vehicleNumber: context.vehicleNumber,
+    addressText: context.addressText,
+  };
+
+  // If user picked an option number (but not confirming yet), store selection.
+  if (choiceIdx !== null && options[choiceIdx]) {
+    const s = options[choiceIdx].suggestion;
+    if (s.kind === 'PACKAGE') {
+      contextPatch.selectedPackageId = s.id;
+      contextPatch.selectedServiceTypeIds = serviceResult.packageToServiceTypeIds[s.id] || [];
+    } else {
+      contextPatch.selectedServiceTypeIds = [s.id];
+      contextPatch.selectedPackageId = undefined;
+    }
+  }
+
+  const resp: ChatbotResponse = {
+    conversationId,
+    intent,
+    suggestions: options,
+    assistantMessage,
+    contextPatch,
+  };
+
+  await bestEffortLog(supabase, {
+    conversationId,
+    context,
+    userText: body.message,
+    botText: assistantMessage,
+    meta: { intent, suggestions, priceRanges: ranges },
+  });
+
+  return NextResponse.json(resp);
+}

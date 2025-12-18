@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -429,7 +430,7 @@ export default function RSALeadDetailScreen({ navigation, route }: any) {
                   <Text style={styles.timelineBy}>By: {entry.updated_by_name}</Text>
                 )}
                 <Text style={styles.timelineDate}>
-                  {new Date(entry.updated_at).toLocaleString()}
+                  {formatDateTime(entry.updated_at)}
                 </Text>
               </View>
             </View>

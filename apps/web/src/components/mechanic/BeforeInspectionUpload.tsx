@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Camera, Upload, X, MapPin, AlertTriangle, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { optimizeUploadFile } from '@/lib/media/optimizeUpload';
 
 interface PhotoState {
   type: string;
@@ -127,7 +128,17 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
     }
   };
 
-  const handleFileSelect = (index: number, file: File) => {
+  const revokeIfBlobUrl = (url: string | null) => {
+    if (url && url.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const handleFileSelect = async (index: number, file: File) => {
     // Check file size before processing (100MB limit for videos)
     const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
     if (file.size > MAX_FILE_SIZE) {
@@ -160,12 +171,22 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
       }
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const newPhotos = [...photos];
-      newPhotos[index].file = file;
-      newPhotos[index].preview = reader.result as string;
-      setPhotos(newPhotos);
+    // Optimize images before upload (keeps quality, reduces size)
+    const optimized = await optimizeUploadFile(file);
+    const actualFile = optimized.file;
+
+    setPhotos((prev) => {
+      const next = [...prev];
+      // cleanup old preview blob url if any
+      revokeIfBlobUrl(next[index]?.preview || null);
+      next[index] = {
+        ...next[index],
+        file: actualFile,
+        preview: URL.createObjectURL(actualFile),
+        uploaded: false,
+      };
+      return next;
+    });
 
       // If it's dashboard photo, show odometer input
       if (photos[index].type === 'BEFORE_DASHBOARD') {
@@ -174,8 +195,6 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
       } else {
         uploadPhoto(index);
       }
-    };
-    reader.readAsDataURL(file);
   };
 
   const uploadPhoto = async (index: number) => {
@@ -212,11 +231,6 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
         },
         body: formData,
       });
-
-      // Handle 413 Payload Too Large error before parsing
-      if (response.status === 413) {
-        throw new Error('File too large. Maximum size is 100MB. Please compress the video or use a smaller file.');
-      }
 
       // Check if response is JSON before parsing
       const contentType = response.headers.get('content-type');
@@ -260,11 +274,12 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
   };
 
   const removePhoto = (index: number) => {
-    const newPhotos = [...photos];
-    newPhotos[index].file = null;
-    newPhotos[index].preview = null;
-    newPhotos[index].uploaded = false;
-    setPhotos(newPhotos);
+    setPhotos((prev) => {
+      const next = [...prev];
+      revokeIfBlobUrl(next[index]?.preview || null);
+      next[index] = { ...next[index], file: null, preview: null, uploaded: false };
+      return next;
+    });
   };
 
   const requiredCount = photos.filter((p) => p.required).length;

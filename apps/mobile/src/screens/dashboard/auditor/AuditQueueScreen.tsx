@@ -1,3 +1,4 @@
+import { formatDateDMY } from "@/lib/dateFormat";
 /**
  * Audit Queue Screen - Auditor
  * Queue of leads pending audit
@@ -41,7 +42,7 @@ export default function AuditQueueScreen({ navigation }: any) {
           <Text style={styles.leadNo}>{item.lead_number}</Text>
           <Text style={styles.vehicle}>{item.vehicle_number} - {item.vehicle_model}</Text>
           <Text style={styles.workshop}>{item.workshop?.workshop_name}</Text>
-          <Text style={styles.date}>Completed: {new Date(item.completed_at).toLocaleDateString()}</Text>
+          <Text style={styles.date}>Completed: {formatDateDMY(item.completed_at)}</Text>
         </TouchableOpacity>
       )} />
     </View>

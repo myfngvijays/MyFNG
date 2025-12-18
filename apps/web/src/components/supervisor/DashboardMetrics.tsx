@@ -101,7 +101,7 @@ export default function DashboardMetrics({ metrics, loading = false }: Dashboard
       bgColor: 'bg-cyan-100'
     },
     {
-      title: 'Extra Work Approvals',
+      title: 'Additional Jobs Approval',
       value: metrics.pendingExtraWorkApprovals,
       icon: <DollarSign className="w-8 h-8 text-teal-600" />,
       color: 'text-teal-600',

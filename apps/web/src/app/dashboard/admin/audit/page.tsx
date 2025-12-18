@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateTime } from "@/lib/utils";
 
 export default function AuditTrailViewer() {
   const [activeTab, setActiveTab] = useState<'finance' | 'leads'>('finance');
@@ -151,7 +152,7 @@ export default function AuditTrailViewer() {
                       Entity: {event.entity_type} - {event.entity_id.substring(0, 8)}...
                     </p>
                     <p className="text-sm text-gray-500 mt-1">
-                      Actor: {event.actor_name || event.actor_role || 'System'} | {new Date(event.created_at).toLocaleString()}
+                      Actor: {event.actor_name || event.actor_role || 'System'} | {formatDateTime(event.created_at)}
                     </p>
                     {event.ip_address && (
                       <p className="text-xs text-gray-400 mt-1">IP: {event.ip_address}</p>
@@ -176,7 +177,7 @@ export default function AuditTrailViewer() {
                       Lead: {event.lead_id?.substring(0, 8)}...
                     </p>
                     <p className="text-sm text-gray-500 mt-1">
-                      {new Date(event.created_at).toLocaleString()}
+                      {formatDateTime(event.created_at)}
                     </p>
                   </div>
                 </div>

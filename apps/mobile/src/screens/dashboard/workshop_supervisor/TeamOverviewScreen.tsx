@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/dateFormat";
 /**
  * Team Overview Screen - Workshop Supervisor
  * Real-time view of all team members and their current status
@@ -359,7 +360,7 @@ export default function TeamOverviewScreen() {
               <View style={styles.lastSeen}>
                 <Ionicons name="time-outline" size={12} color={COLORS.gray[500]} />
                 <Text style={styles.lastSeenText}>
-                  Last seen: {new Date(member.last_login).toLocaleString()}
+                  Last seen: {formatDateTime(member.last_login)}
                 </Text>
               </View>
             )}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+import { formatDateTime, formatTime12h } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -342,8 +343,8 @@ export default function PickupJobDetailScreen({
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Pickup Window:</Text>
               <Text style={styles.detailValue}>
-                {new Date(tracking.pickup_time_window_start).toLocaleTimeString()} -{' '}
-                {new Date(tracking.pickup_time_window_end!).toLocaleTimeString()}
+                {formatTime12h(tracking.pickup_time_window_start)} -{' '}
+                {formatTime12h(tracking.pickup_time_window_end!)}
               </Text>
             </View>
           )}
@@ -396,7 +397,7 @@ export default function PickupJobDetailScreen({
                 <Text style={styles.timelineTitle}>Assigned</Text>
                 {tracking.pickup_assigned_at && (
                   <Text style={styles.timelineTime}>
-                    {new Date(tracking.pickup_assigned_at).toLocaleString()}
+                    {formatDateTime(tracking.pickup_assigned_at)}
                   </Text>
                 )}
               </View>
@@ -413,7 +414,7 @@ export default function PickupJobDetailScreen({
                 <Text style={styles.timelineTitle}>Pickup Started</Text>
                 {tracking.pickup_start_time && (
                   <Text style={styles.timelineTime}>
-                    {new Date(tracking.pickup_start_time).toLocaleString()}
+                    {formatDateTime(tracking.pickup_start_time)}
                   </Text>
                 )}
               </View>
@@ -430,7 +431,7 @@ export default function PickupJobDetailScreen({
                 <Text style={styles.timelineTitle}>OTP Verified</Text>
                 {tracking.pickup_otp_verified_at && (
                   <Text style={styles.timelineTime}>
-                    {new Date(tracking.pickup_otp_verified_at).toLocaleString()}
+                    {formatDateTime(tracking.pickup_otp_verified_at)}
                   </Text>
                 )}
               </View>
@@ -447,7 +448,7 @@ export default function PickupJobDetailScreen({
                 <Text style={styles.timelineTitle}>Vehicle Picked</Text>
                 {tracking.pickup_picked_time && (
                   <Text style={styles.timelineTime}>
-                    {new Date(tracking.pickup_picked_time).toLocaleString()}
+                    {formatDateTime(tracking.pickup_picked_time)}
                   </Text>
                 )}
               </View>
@@ -464,7 +465,7 @@ export default function PickupJobDetailScreen({
                 <Text style={styles.timelineTitle}>Arrived at Workshop</Text>
                 {tracking.pickup_arrival_time && (
                   <Text style={styles.timelineTime}>
-                    {new Date(tracking.pickup_arrival_time).toLocaleString()}
+                    {formatDateTime(tracking.pickup_arrival_time)}
                   </Text>
                 )}
               </View>

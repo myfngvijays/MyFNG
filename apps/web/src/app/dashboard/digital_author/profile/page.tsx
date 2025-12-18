@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { User, Mail, Phone, Calendar, FileText, Save } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function DigitalAuthorProfilePage() {
   const router = useRouter();
@@ -224,7 +225,7 @@ export default function DigitalAuthorProfilePage() {
                     <div>
                       <p className="text-sm text-gray-600">Member Since</p>
                       <p className="font-semibold text-text-heading">
-                        {new Date(profile.created_at).toLocaleDateString()}
+                        {formatDateDMY(profile.created_at)}
                       </p>
                     </div>
                   </div>

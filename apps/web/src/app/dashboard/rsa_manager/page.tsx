@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
-import { 
-  AlertCircle, Clock, CheckCircle, XCircle, Users, 
+import { formatDateTime } from '@/lib/utils';
+import {
+  AlertCircle, Clock, CheckCircle, XCircle, Users,
   Search, Filter, Eye, ChevronRight, Wrench, MapPin 
 } from 'lucide-react';
 import Link from 'next/link';
@@ -297,7 +298,7 @@ export default function RSAManagerDashboard() {
                         )}
 
                         <div className="mt-2 sm:mt-3 text-[10px] sm:text-xs text-gray-500">
-                          Registered: {new Date(lead.lead_registered_at || lead.requested_at).toLocaleString()}
+                          Registered: {formatDateTime(lead.lead_registered_at || lead.requested_at)}
                         </div>
                       </div>
                       

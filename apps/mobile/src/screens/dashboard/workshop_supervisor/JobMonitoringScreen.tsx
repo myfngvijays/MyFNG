@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -390,14 +391,14 @@ export default function JobMonitoringScreen() {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Assigned:</Text>
             <Text style={styles.detailValue}>
-              {new Date(item.assigned_at).toLocaleString()}
+              {formatDateTime(item.assigned_at)}
             </Text>
           </View>
           {item.started_at && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Started:</Text>
               <Text style={styles.detailValue}>
-                {new Date(item.started_at).toLocaleString()}
+                {formatDateTime(item.started_at)}
               </Text>
             </View>
           )}

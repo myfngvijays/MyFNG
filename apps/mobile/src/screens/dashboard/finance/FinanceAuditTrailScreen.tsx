@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -111,7 +112,7 @@ export default function FinanceAuditTrailScreen() {
                   </Text>
                 </View>
                 <Text style={styles.auditDate}>
-                  {new Date(entry.created_at).toLocaleString()}
+                  {formatDateTime(entry.created_at)}
                 </Text>
               </View>
               

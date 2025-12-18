@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -167,7 +168,7 @@ export default function FinancePayoutsScreen() {
                   </Text>
                 </View>
                 <Text style={styles.payoutDate}>
-                  {new Date(payout.created_at).toLocaleDateString()}
+                  {formatDateDMY(payout.created_at)}
                 </Text>
               </View>
               

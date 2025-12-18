@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
 /**
  * Lead Detail Page - Complete 12 Sections
  * Task: WA-501 (Enhanced from WA-202)
@@ -27,7 +28,7 @@ import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { 
   ArrowLeft, Clock, AlertCircle, CheckCircle, Phone, Mail, MapPin,
-  Car, Calendar, Package, User, FileText, XCircle
+  Car, Calendar, Package, User, FileText, XCircle, Wrench
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -40,6 +41,7 @@ import {
   type SLAStatus
 } from '@/lib/services/slaService';
 import InternalAssignment from '@/components/lead-detail/InternalAssignment';
+import ReassignMechanicModal from '@/components/supervisor/ReassignMechanicModal';
 import MediaSection from '@/components/lead-detail/MediaSection';
 import ExtraChargesSection from '@/components/lead-detail/ExtraChargesSection';
 import AuditSection from '@/components/lead-detail/AuditSection';
@@ -60,6 +62,7 @@ export default function LeadDetailPage() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectNotes, setRejectNotes] = useState('');
+  const [showReassignModal, setShowReassignModal] = useState(false);
 
   useEffect(() => {
     if (leadId) {
@@ -111,7 +114,11 @@ export default function LeadDetailPage() {
     try {
       const { data, error } = await supabase
         .from('service_leads')
-        .select('*')
+        .select(`
+          *,
+          pickup_boy:assigned_pickup_boy_id(id, full_name, phone, profile_image),
+          mechanic:assigned_mechanic_id(id, full_name, phone, profile_image)
+        `)
         .eq('id', leadId)
         .single();
 
@@ -508,7 +515,7 @@ export default function LeadDetailPage() {
             {lead.preferred_date && (
               <div>
                 <label className="text-sm text-gray-600">Preferred Date</label>
-                <p className="font-semibold">{new Date(lead.preferred_date).toLocaleDateString()}</p>
+                <p className="font-semibold">{formatDateDMY(lead.preferred_date)}</p>
               </div>
             )}
 
@@ -553,6 +560,109 @@ export default function LeadDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Pickup Details - Show when pickup is required */}
+          {lead.pickup_required && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Package className="w-5 h-5 text-orange-500" />
+                Pickup Details
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Pickup Status */}
+                <div>
+                  <label className="text-sm text-gray-600">Pickup Status</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    {lead.pickup_status === 'COMPLETED' ? (
+                      <>
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                        <span className="font-semibold text-green-600">Completed</span>
+                      </>
+                    ) : lead.pickup_status === 'IN_PROGRESS' || lead.pickup_status === 'ON_THE_WAY' ? (
+                      <>
+                        <Clock className="w-4 h-4 text-blue-500" />
+                        <span className="font-semibold text-blue-600">{lead.pickup_status === 'ON_THE_WAY' ? 'On The Way' : 'In Progress'}</span>
+                      </>
+                    ) : lead.pickup_status === 'ASSIGNED' ? (
+                      <>
+                        <User className="w-4 h-4 text-yellow-500" />
+                        <span className="font-semibold text-yellow-600">Assigned</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-4 h-4 text-gray-400" />
+                        <span className="font-semibold text-gray-600">Not Assigned</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Pickup Boy Assignment */}
+                {lead.pickup_boy && (
+                  <div>
+                    <label className="text-sm text-gray-600">Assigned Pickup Boy</label>
+                    <div className="flex items-center gap-3 mt-1">
+                      {lead.pickup_boy.profile_image ? (
+                        <img 
+                          src={lead.pickup_boy.profile_image} 
+                          alt={lead.pickup_boy.full_name}
+                          className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                          <User className="w-5 h-5 text-gray-500" />
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-semibold text-gray-900">{lead.pickup_boy.full_name}</p>
+                        {lead.pickup_boy.phone && (
+                          <div className="flex items-center gap-1 text-sm text-gray-600">
+                            <Phone className="w-3 h-3" />
+                            <a href={`tel:${lead.pickup_boy.phone}`} className="hover:text-brand-primary">
+                              {lead.pickup_boy.phone}
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pickup Assigned Time */}
+                {lead.pickup_assigned_at && (
+                  <div>
+                    <label className="text-sm text-gray-600">Pickup Assigned At</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Clock className="w-4 h-4 text-gray-400" />
+                      <p className="font-semibold text-gray-900">{formatDateTime(lead.pickup_assigned_at)}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pickup OTP */}
+                {lead.pickup_otp && lead.pickup_status !== 'COMPLETED' && (
+                  <div>
+                    <label className="text-sm text-gray-600">Pickup OTP</label>
+                    <p className="font-mono text-2xl font-bold text-brand-primary tracking-wider">{lead.pickup_otp}</p>
+                    <p className="text-xs text-gray-500 mt-1">Share this OTP with pickup boy</p>
+                  </div>
+                )}
+
+                {/* No Pickup Assignment Message */}
+                {!lead.pickup_boy && lead.pickup_status === 'NOT_ASSIGNED' && (
+                  <div className="md:col-span-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-5 h-5 text-yellow-600" />
+                      <p className="text-sm text-yellow-800">
+                        <strong>Pickup Not Assigned:</strong> Please assign a pickup boy from the Pickup & Delivery section to schedule the vehicle pickup.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* === SECTION 6: ADMIN ACTIONS === */}
@@ -593,18 +703,52 @@ export default function LeadDetailPage() {
             {lead.rejection_notes && (
               <p className="text-red-700 mt-2"><strong>Notes:</strong> {lead.rejection_notes}</p>
             )}
-            <p className="text-sm text-red-600 mt-2">Rejected at: {new Date(lead.rejected_at).toLocaleString()}</p>
+            <p className="text-sm text-red-600 mt-2">Rejected at: {formatDateTime(lead.rejected_at)}</p>
           </div>
         )}
 
         {/* Section 7: Internal Assignment */}
         {lead.status !== 'NEW' && lead.status !== 'REJECTED' && (
+          <>
           <InternalAssignment lead={lead} onUpdate={fetchLeadDetails} />
+            
+            {/* Mechanic Reassignment Button - Show when mechanic is already assigned */}
+            {lead.assigned_mechanic_id && lead.mechanic && (
+              <div className="card bg-yellow-50 border-yellow-200 mt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                      <User className="w-5 h-5 text-yellow-600" />
+                      Current Mechanic: {lead.mechanic.full_name}
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Need to change mechanic? (e.g., mechanic left, overloaded, or not available)
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowReassignModal(true)}
+                    className="btn bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition-colors"
+                  >
+                    <Wrench className="w-4 h-4" />
+                    Reassign Mechanic
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Section 9: Media Section */}
-        {/* Owner view: media is view-only (upload removed as requested) */}
-        <MediaSection lead={lead} onUpdate={fetchLeadDetails} canUpload={false} />
+        {/* 
+          Visit Lead (pickup_required = false): Adviser can upload INSPECTION photos
+          Pickup Lead (pickup_required = true): Only view photos (pickup boy uploads)
+        */}
+        <MediaSection 
+          lead={lead} 
+          onUpdate={fetchLeadDetails} 
+          canUpload={!lead.pickup_required}
+          restrictToInspection={!lead.pickup_required}
+        />
 
         {/* Section 10: Extra Charges */}
         {lead.status !== 'NEW' && lead.status !== 'REJECTED' && (
@@ -695,6 +839,22 @@ export default function LeadDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Reassign Mechanic Modal */}
+      {showReassignModal && lead.assigned_mechanic_id && lead.mechanic && (
+        <ReassignMechanicModal
+          isOpen={showReassignModal}
+          onClose={() => setShowReassignModal(false)}
+          leadId={lead.id}
+          leadNumber={lead.lead_number}
+          currentMechanicId={lead.assigned_mechanic_id}
+          currentMechanicName={lead.mechanic.full_name}
+          onSuccess={() => {
+            setShowReassignModal(false);
+            fetchLeadDetails();
+          }}
+        />
       )}
     </DashboardLayout>
   );

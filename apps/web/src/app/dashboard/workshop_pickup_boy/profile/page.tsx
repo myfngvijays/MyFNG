@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
+import { formatDateDMY } from '@/lib/utils';
+import {
   User, Mail, Phone, MapPin, Calendar, Truck, CheckCircle, 
   Award, TrendingUp, Clock, Star, Edit, Save, X, Camera
 } from 'lucide-react';
@@ -262,7 +263,7 @@ export default function PickupBoyProfilePage() {
                 <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-text-heading truncate">{profile.full_name}</h2>
                 <p className="text-gray-600 font-medium text-xs sm:text-sm">Pickup Boy / Driver</p>
                 <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">
-                  Member since {new Date(profile.created_at).toLocaleDateString()}
+                  Member since {formatDateDMY(profile.created_at)}
                 </p>
               </div>
             </div>
@@ -390,11 +391,7 @@ export default function PickupBoyProfilePage() {
                   Joined Date
                 </label>
                 <p className="text-text-heading font-semibold text-sm sm:text-base">
-                  {new Date(profile.created_at).toLocaleDateString('en-IN', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
+                  {formatDateDMY(profile.created_at)}
                 </p>
               </div>
             </div>

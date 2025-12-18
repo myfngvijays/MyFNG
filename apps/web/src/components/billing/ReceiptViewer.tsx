@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Download, Mail, Printer, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatDateTime } from "@/lib/utils";
 
 interface ReceiptViewerProps {
   paymentId: string;
@@ -137,7 +138,7 @@ export default function ReceiptViewer({ paymentId }: ReceiptViewerProps) {
               <h3 className="font-semibold mb-3">Payment Details</h3>
               <p className="text-sm"><strong>Method:</strong> {receipt.payment_method}</p>
               <p className="text-sm"><strong>Transaction ID:</strong> {receipt.transaction_id}</p>
-              <p className="text-sm"><strong>Date:</strong> {new Date(receipt.completed_at).toLocaleString()}</p>
+              <p className="text-sm"><strong>Date:</strong> {formatDateTime(receipt.completed_at)}</p>
             </div>
           </div>
         </div>

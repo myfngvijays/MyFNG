@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateDMY } from "@/lib/utils";
 /**
  * Media Section Component
  * Display and upload images/videos for leads
@@ -15,6 +16,8 @@ interface MediaSectionProps {
   onUpdate?: () => void;
   /** If false, hide upload UI (view-only). */
   canUpload?: boolean;
+  /** If true, only allow INSPECTION category upload (for visit leads). */
+  restrictToInspection?: boolean;
 }
 
 interface MediaFile {
@@ -35,7 +38,7 @@ interface PreviewMedia {
   type: 'IMAGE' | 'VIDEO';
 }
 
-export default function MediaSection({ lead, onUpdate, canUpload = true }: MediaSectionProps) {
+export default function MediaSection({ lead, onUpdate, canUpload = true, restrictToInspection = false }: MediaSectionProps) {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -199,8 +202,17 @@ export default function MediaSection({ lead, onUpdate, canUpload = true }: Media
       {/* Upload Form */}
       {canUpload && (
       <div className="mb-6 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-        <h3 className="font-semibold mb-3">Upload New Media</h3>
+        <h3 className="font-semibold mb-3">
+          {restrictToInspection ? 'Upload Pickup/Visit Photos' : 'Upload New Media'}
+        </h3>
+        {restrictToInspection && (
+          <p className="text-sm text-blue-600 mb-3 flex items-center gap-2">
+            <ImageIcon className="w-4 h-4" />
+            <span><strong>Visit Lead:</strong> Upload photos of vehicle condition at arrival</span>
+          </p>
+        )}
         <div className="space-y-3">
+          {!restrictToInspection && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
             <select
@@ -209,13 +221,14 @@ export default function MediaSection({ lead, onUpdate, canUpload = true }: Media
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
             >
               <option value="CUSTOMER_UPLOAD">Customer Upload</option>
-              <option value="INSPECTION">Inspection</option>
+              <option value="INSPECTION">Pickup/Visit Photos</option>
               <option value="PROGRESS">Progress</option>
               <option value="COMPLETION">Completion</option>
               <option value="AUDIT">Audit</option>
               <option value="DOCUMENT">Document</option>
             </select>
           </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
             <input
@@ -266,7 +279,7 @@ export default function MediaSection({ lead, onUpdate, canUpload = true }: Media
                 {category === 'COMPLETION' && '✅'}
                 {category === 'AUDIT' && '📋'}
                 {category === 'DOCUMENT' && '📄'}
-                {category.replace(/_/g, ' ')} ({files.length})
+                {category === 'INSPECTION' ? 'Pickup/Visit Photos' : category.replace(/_/g, ' ')} ({files.length})
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                 {files.map((file) => (
@@ -300,7 +313,7 @@ export default function MediaSection({ lead, onUpdate, canUpload = true }: Media
                       <p className="text-xs text-gray-600 mt-1 truncate">{file.description}</p>
                     )}
                     <p className="text-xs text-gray-400">
-                      {new Date(file.created_at).toLocaleDateString()}
+                      {formatDateDMY(file.created_at)}
                     </p>
                     <button
                       onClick={() => handleDeleteMedia(file.id)}

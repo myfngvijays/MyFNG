@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateTime } from "@/lib/utils";
 /**
  * Extra Charges Section
  * Request and approve additional charges
@@ -396,7 +397,7 @@ export default function ExtraChargesSection({ lead, onUpdate }: ExtraChargesSect
                     Requested by: {charge.requester?.full_name || 'Unknown'}
                   </span>
                   <span>
-                    {new Date(charge.created_at).toLocaleString()}
+                    {formatDateTime(charge.created_at)}
                   </span>
                 </div>
 

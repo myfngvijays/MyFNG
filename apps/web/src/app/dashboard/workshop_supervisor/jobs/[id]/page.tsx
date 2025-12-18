@@ -16,6 +16,7 @@ import JobCardSection from '@/components/lead-detail/JobCardSection';
 import InternalAssignment from '@/components/lead-detail/InternalAssignment';
 import InvoiceSection from '@/components/lead-detail/InvoiceSection';
 import MediaSection from '@/components/lead-detail/MediaSection';
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
 import { 
   ArrowLeft, Clock, User, Car, Calendar, Wrench, 
   CheckCircle, AlertTriangle, Image as ImageIcon, Package,
@@ -313,7 +314,7 @@ export default function SupervisorJobDetailPage() {
           mechanic:assigned_mechanic_id(id, full_name, profile_image),
           supervisor:assigned_supervisor_id(id, full_name),
           pickup_boy:assigned_pickup_boy_id(id, full_name),
-          extra_charges:lead_extra_charges(*),
+          extra_charges:lead_extra_charges(*, requester:requested_by(full_name)),
           media:lead_media(*),
           events:lead_events(*, created_by_user:created_by(full_name))
         `)
@@ -819,7 +820,7 @@ export default function SupervisorJobDetailPage() {
             </div>
             <div>
               <p className="text-xs sm:text-sm text-gray-600">Created</p>
-              <p className="font-semibold mt-0.5 sm:mt-1 text-xs sm:text-sm md:text-base">{new Date(lead.created_at).toLocaleDateString()}</p>
+              <p className="font-semibold mt-0.5 sm:mt-1 text-xs sm:text-sm md:text-base">{formatDateDMY(lead.created_at)}</p>
             </div>
           </div>
         </div>
@@ -974,7 +975,7 @@ export default function SupervisorJobDetailPage() {
           <div className="card bg-orange-50 border-orange-200">
             <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
               <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
-              Pending Extra Work Approvals
+              Pending Additional Jobs Approval
             </h3>
             <div className="space-y-2 sm:space-y-3">
               {pendingExtraCharges.map((charge: any) => (
@@ -988,7 +989,12 @@ export default function SupervisorJobDetailPage() {
                       <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{charge.reason}</p>
                     </div>
                     <button
-                      onClick={() => setSelectedExtraCharge(charge)}
+                      onClick={() =>
+                        setSelectedExtraCharge({
+                          ...charge,
+                          requested_by_name: (charge as any)?.requester?.full_name || (charge as any)?.requested_by_name,
+                        })
+                      }
                       className="btn bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
                     >
                       Review
@@ -1256,7 +1262,7 @@ export default function SupervisorJobDetailPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-xs sm:text-sm font-medium">{event.event_description}</p>
                     <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
-                      {new Date(event.created_at).toLocaleString()}
+                      {formatDateTime(event.created_at)}
                       {event.created_by_user && ` • by ${event.created_by_user.full_name}`}
                     </p>
                   </div>

@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
-import { 
-  ArrowLeft, MapPin, Phone, Mail, Car, Wrench, 
+import { formatDateTime } from '@/lib/utils';
+import {
+  ArrowLeft, MapPin, Phone, Mail, Car, Wrench,
   Clock, User, AlertCircle, CheckCircle, XCircle,
   MessageSquare, Calendar, DollarSign, Image as ImageIcon
 } from 'lucide-react';
@@ -391,7 +392,7 @@ export default function RSALeadDetailPage() {
                   <span className="font-medium text-gray-600">Registered By:</span>
                   <p className="text-gray-900">{lead.registered_by_name}</p>
                   <p className="text-gray-500 text-[10px] sm:text-xs">
-                    {new Date(lead.lead_registered_at).toLocaleString()}
+                    {formatDateTime(lead.lead_registered_at)}
                   </p>
                 </div>
               )}
@@ -401,7 +402,7 @@ export default function RSALeadDetailPage() {
                   <p className="text-gray-900">{lead.assigned_manager_name}</p>
                   {lead.assigned_to_manager_at && (
                     <p className="text-gray-500 text-[10px] sm:text-xs">
-                      {new Date(lead.assigned_to_manager_at).toLocaleString()}
+                      {formatDateTime(lead.assigned_to_manager_at)}
                     </p>
                   )}
                 </div>
@@ -415,7 +416,7 @@ export default function RSALeadDetailPage() {
                   )}
                   {lead.mechanic_assigned_datetime && (
                     <p className="text-gray-500 text-[10px] sm:text-xs">
-                      Assigned: {new Date(lead.mechanic_assigned_datetime).toLocaleString()}
+                      Assigned: {formatDateTime(lead.mechanic_assigned_datetime)}
                     </p>
                   )}
                 </div>
@@ -518,7 +519,7 @@ export default function RSALeadDetailPage() {
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-2">
                     <h4 className="font-semibold text-gray-900 text-sm sm:text-base">{entry.status}</h4>
                     <span className="text-[10px] sm:text-xs text-gray-500">
-                      {new Date(entry.updated_at).toLocaleString()}
+                      {formatDateTime(entry.updated_at)}
                     </span>
                   </div>
                   {entry.status_description && (

@@ -536,7 +536,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         <Stack.Screen 
           name="ExtraWorkApproval" 
           component={ExtraWorkApprovalScreen}
-          options={{ title: 'Extra Work Approvals' }}
+          options={{ title: 'Additional Jobs Approval' }}
         />
         <Stack.Screen 
           name="TeamOverview" 

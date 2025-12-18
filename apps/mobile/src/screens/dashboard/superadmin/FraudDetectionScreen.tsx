@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -157,7 +158,7 @@ export default function FraudDetectionScreen() {
           <Text style={styles.severityText}>{item.severity}</Text>
         </View>
         <Text style={styles.alertTime}>
-          {new Date(item.detected_at).toLocaleString()}
+          {formatDateTime(item.detected_at)}
         </Text>
       </View>
 

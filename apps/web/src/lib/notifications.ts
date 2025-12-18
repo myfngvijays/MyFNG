@@ -171,7 +171,7 @@ export async function notifyQCDecision(
   });
 }
 
-// Helper function to notify about extra work approval/rejection
+// Helper function to notify about additional job approval/rejection
 export async function notifyExtraWorkDecision(
   leadId: string,
   leadNumber: string,
@@ -184,7 +184,7 @@ export async function notifyExtraWorkDecision(
   await createNotification({
     userId: mechanicId,
     type: isApproved ? 'EXTRA_WORK_APPROVED' : 'EXTRA_WORK_REJECTED',
-    title: isApproved ? 'Extra Work Approved ✅' : 'Extra Work Rejected ❌',
+    title: isApproved ? 'Additional Jobs Approved ✅' : 'Additional Jobs Rejected ❌',
     message: isApproved 
       ? `Extra work approved for lead ${leadNumber}. Amount: ₹${amount}`
       : `Extra work rejected for lead ${leadNumber}. Reason: ${reason || 'Not provided'}`,

@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateTime } from "@/lib/utils";
 /**
  * Audit & Quality Section
  * Manage audit checklist and quality checks
@@ -392,7 +393,7 @@ export default function AuditSection({ lead, onUpdate }: AuditSectionProps) {
               </p>
               {audit.audit_completed_at && (
                 <p className="text-xs text-gray-500">
-                  Completed on: {new Date(audit.audit_completed_at).toLocaleString()}
+                  Completed on: {formatDateTime(audit.audit_completed_at)}
                 </p>
               )}
             </div>

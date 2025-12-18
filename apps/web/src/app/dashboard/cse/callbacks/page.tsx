@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateTime } from "@/lib/utils";
 import { 
   Clock, 
   Phone,
@@ -108,7 +109,7 @@ export default function CSECallbacksPage() {
                         <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
                           <div className="text-xs sm:text-sm text-gray-900">
                             {lead.next_follow_up_at 
-                              ? new Date(lead.next_follow_up_at).toLocaleString()
+                              ? formatDateTime(lead.next_follow_up_at)
                               : 'Not scheduled'}
                           </div>
                         </td>
@@ -159,7 +160,7 @@ export default function CSECallbacksPage() {
                         <span className="text-gray-500">Next Follow-up: </span>
                         <span className="text-gray-900">
                           {lead.next_follow_up_at 
-                            ? new Date(lead.next_follow_up_at).toLocaleString()
+                            ? formatDateTime(lead.next_follow_up_at)
                             : 'Not scheduled'}
                         </span>
                       </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -273,10 +274,7 @@ export default function MechanicProfileScreen({ navigation }: any) {
             <View style={styles.quickStatItem}>
               <Text style={styles.quickStatLabel}>Member Since</Text>
               <Text style={styles.quickStatValue}>
-                {new Date(profile.created_at).toLocaleDateString('en-US', {
-                  month: 'short',
-                  year: 'numeric',
-                })}
+                {formatDateDMY(profile.created_at)}
               </Text>
             </View>
             <View style={styles.quickStatDivider} />

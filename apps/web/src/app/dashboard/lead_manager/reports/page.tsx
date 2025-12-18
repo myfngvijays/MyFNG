@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import DashboardLayout from '@/components/DashboardLayout';
+import { formatDateDMY } from '@/lib/utils';
 import {
   TrendingUp, TrendingDown, Users, Building, CheckCircle, XCircle,
   Clock, AlertTriangle, BarChart3, PieChart, Calendar, Download,
@@ -541,7 +542,7 @@ export default function LeadManagerReportsPage() {
                 <div className="ml-8 sm:ml-10 md:ml-12 flex justify-between text-[10px] sm:text-xs text-gray-500">
                   {dailyTrends.map((day, i) => (
                     i % 2 === 0 && (
-                      <span key={i}>{new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                      <span key={i}>{formatDateDMY(day.date)}</span>
                     )
                   ))}
                 </div>

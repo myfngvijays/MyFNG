@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Shield, AlertTriangle, CheckCircle, XCircle, Search } from 'lucide-react';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function FraudManagementPage() {
   const supabase = createClientComponentClient();
@@ -224,7 +225,7 @@ export default function FraudManagementPage() {
                       ₹{fraudCase.financial_impact?.toLocaleString() || 0}
                     </div>
                     <p className="text-[10px] sm:text-xs text-gray-500">
-                      {new Date(fraudCase.reported_at).toLocaleDateString()}
+                      {formatDateDMY(fraudCase.reported_at)}
                     </p>
                   </div>
                 </div>

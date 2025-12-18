@@ -1,3 +1,4 @@
+import { formatDateDMY } from "@/lib/dateFormat";
 /**
  * Payment Tracking Screen - Billing
  * Track payment status and history with real-time updates
@@ -79,7 +80,7 @@ export default function PaymentTrackingScreen({ navigation }: any) {
             <View style={styles.cardInfo}>
               <Text style={styles.invoiceNo}>{item.invoice?.invoice_number}</Text>
               <Text style={styles.leadNo}>{item.lead?.lead_number} • {item.lead?.customer_name}</Text>
-              <Text style={styles.date}>{new Date(item.created_at).toLocaleDateString()}</Text>
+              <Text style={styles.date}>{formatDateDMY(item.created_at)}</Text>
             </View>
             <View style={styles.cardRight}>
               <Text style={styles.amount}>₹{item.amount?.toFixed(2)}</Text>

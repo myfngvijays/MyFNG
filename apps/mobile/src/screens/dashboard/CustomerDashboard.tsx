@@ -6,6 +6,7 @@ import DashboardHeader from '../../components/DashboardHeader';
 import StatCard from '../../components/StatCard';
 import LeadCard from '../../components/LeadCard';
 import { COLORS, SPACING } from '../../constants/theme';
+import { formatDateDMY } from "@/lib/dateFormat";
 
 export default function CustomerDashboard() {
   const [userProfile, setUserProfile] = React.useState(null);
@@ -124,7 +125,7 @@ export default function CustomerDashboard() {
                 vehicleModel={booking.vehicle_model || 'N/A'}
                 serviceType={booking.service_type || 'Service'}
                 status={booking.status || 'pending'}
-                date={new Date(booking.created_at).toLocaleDateString()}
+                date={formatDateDMY(booking.created_at)}
               />
             ))}
           </>

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Camera, Upload, X, MapPin, AlertTriangle, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { optimizeUploadFile } from '@/lib/media/optimizeUpload';
 
 interface PhotoState {
   type: string;
@@ -39,6 +40,16 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [gpsWarning, setGpsWarning] = useState(false);
   const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
+
+  const revokeIfBlobUrl = (url: string | null) => {
+    if (url && url.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   useEffect(() => {
     if (photos.length === 0) {
@@ -121,7 +132,7 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
     }
   };
 
-  const handleFileSelect = (index: number, file: File | null) => {
+  const handleFileSelect = async (index: number, file: File | null) => {
     if (!file) return;
 
     // Check file size before processing (100MB limit for videos)
@@ -156,22 +167,21 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
       }
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
+    const optimized = await optimizeUploadFile(file);
+    const actualFile = optimized.file;
+
       setPhotos((prev) =>
-        prev.map((photo, idx) =>
-          idx === index
-            ? {
+      prev.map((photo, idx) => {
+        if (idx !== index) return photo;
+        revokeIfBlobUrl(photo.preview);
+        return {
                 ...photo,
-                file,
-                preview: reader.result as string,
+          file: actualFile,
+          preview: URL.createObjectURL(actualFile),
                 uploaded: false,
-              }
-            : photo
-        )
+        };
+      })
       );
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleUpload = async (index: number) => {
@@ -210,11 +220,6 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
         },
         body: formData,
       });
-
-      // Handle 413 Payload Too Large error before parsing
-      if (response.status === 413) {
-        throw new Error('File too large. Maximum size is 100MB. Please compress the video or use a smaller file.');
-      }
 
       // Check content-type before parsing JSON
       const contentType = response.headers.get('content-type');
@@ -264,16 +269,11 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
 
   const handleRemove = (index: number) => {
     setPhotos((prev) =>
-      prev.map((photo, idx) =>
-        idx === index
-          ? {
-              ...photo,
-              file: null,
-              preview: null,
-              uploaded: false,
-            }
-          : photo
-      )
+      prev.map((photo, idx) => {
+        if (idx !== index) return photo;
+        revokeIfBlobUrl(photo.preview);
+        return { ...photo, file: null, preview: null, uploaded: false };
+      })
     );
   };
 

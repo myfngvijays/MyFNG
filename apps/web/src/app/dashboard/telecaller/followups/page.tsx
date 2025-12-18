@@ -5,6 +5,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Calendar, Clock, Phone, CheckCircle, XCircle, AlertCircle, Filter, Search } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
+import { formatDateTime } from "@/lib/utils";
 
 export default function FollowUpsPage() {
   const [followUps, setFollowUps] = useState<any[]>([]);
@@ -292,7 +293,7 @@ export default function FollowUpsPage() {
                           <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
                           <span className="font-semibold">Scheduled:</span>
                           <span className="text-gray-700">
-                            {new Date(followUp.scheduled_time).toLocaleString()}
+                            {formatDateTime(followUp.scheduled_time)}
                           </span>
                         </div>
 
@@ -315,7 +316,7 @@ export default function FollowUpsPage() {
                             <p className="font-semibold text-green-700 mb-0.5 sm:mb-1">Completion Notes:</p>
                             <p className="text-gray-700">{followUp.completion_notes}</p>
                             <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
-                              Completed on {new Date(followUp.completed_at).toLocaleString()}
+                              Completed on {formatDateTime(followUp.completed_at)}
                             </p>
                           </div>
                         )}

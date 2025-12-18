@@ -10,6 +10,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import MechanicJobsScreen from './workshop_mechanic/MechanicJobsScreen';
 import MechanicJobHistoryScreen from './workshop_mechanic/MechanicJobHistoryScreen';
 import MechanicProfileScreen from './workshop_mechanic/MechanicProfileScreen';
+import { formatDateDMY } from "@/lib/dateFormat";
 
 export default function WorkshopMechanicDashboard({ navigation }: any) {
   const [userProfile, setUserProfile] = React.useState<any>(null);
@@ -312,7 +313,7 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
                   vehicleModel={`${job.vehicle_make || ''} ${job.vehicle_model || 'N/A'}`.trim()}
                   serviceType={job.service_type || 'Repair'}
                   status={job.mechanic_status || job.status || 'pending'}
-                  date={new Date(job.assigned_at || job.created_at).toLocaleDateString()}
+                  date={formatDateDMY(job.assigned_at || job.created_at)}
                 />
               </TouchableOpacity>
             ))}

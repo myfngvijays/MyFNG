@@ -142,7 +142,7 @@ export async function POST(
       instructions: [
         'Upload before images if not already uploaded',
         'Update progress regularly',
-        'Request extra work approval if needed',
+        'Request additional job approval if needed',
         'Upload progress images',
         'Mark job complete when finished',
         'Upload after images'

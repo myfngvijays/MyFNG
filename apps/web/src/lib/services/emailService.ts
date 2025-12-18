@@ -1,3 +1,4 @@
+import { formatDateDMY } from "@/lib/utils";
 /**
  * Email Service - SendGrid Integration
  * Phase 4 - Task WA-503
@@ -101,7 +102,7 @@ export const EMAIL_TEMPLATES = {
             <p><strong>Lead Number:</strong> ${leadNumber}</p>
             <p><strong>Amount Paid:</strong> ₹${amount.toFixed(2)}</p>
             <p><strong>Payment ID:</strong> ${paymentId}</p>
-            <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+            <p><strong>Date:</strong> ${formatDateDMY(new Date())}</p>
           </div>
           <p>Thank you for your payment. Your receipt is attached to this email.</p>
         </div>

@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
-import { 
-  AlertTriangle, 
+import { formatDateDMY } from '@/lib/utils';
+import {
+  AlertTriangle,
   Search,
   Loader2,
   ArrowRight,
@@ -233,7 +234,7 @@ export default function SubAdminEscalationsPage() {
                     <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-500">
                       <span>Type: {escalation.escalation_type}</span>
                       <span className="hidden sm:inline">•</span>
-                      <span>Created: {new Date(escalation.created_at).toLocaleDateString()}</span>
+                      <span>Created: {formatDateDMY(escalation.created_at)}</span>
                     </div>
                   </div>
                   <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto">

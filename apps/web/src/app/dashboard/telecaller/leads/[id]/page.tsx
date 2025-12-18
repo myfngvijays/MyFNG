@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
+import { formatDateTime } from '@/lib/utils';
+import {
   Phone, Mail, MapPin, Car, Calendar, Clock, FileText,
   User, Building2, PhoneCall, MessageSquare, Edit, ArrowLeft,
   CheckCircle, AlertCircle, TrendingUp
@@ -297,7 +298,7 @@ export default function LeadDetailPage() {
             <div className="min-w-0 flex-1">
               <h3 className="text-base sm:text-lg font-semibold">Status: {lead.status}</h3>
               <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
-                Created {new Date(lead.created_at).toLocaleString()}
+                Created {formatDateTime(lead.created_at)}
               </p>
             </div>
             {lead.is_incomplete && (
@@ -540,7 +541,7 @@ export default function LeadDetailPage() {
                             <p className="text-xs sm:text-sm text-gray-700 mt-1 sm:mt-2">{log.notes}</p>
                           )}
                           <p className="text-[10px] sm:text-xs text-gray-500 mt-1.5 sm:mt-2">
-                            {new Date(log.created_at).toLocaleString()} • {log.telecaller?.full_name}
+                            {formatDateTime(log.created_at)} • {log.telecaller?.full_name}
                           </p>
                         </div>
                       </div>
@@ -563,7 +564,7 @@ export default function LeadDetailPage() {
                 {lead.last_call_at && (
                   <div>
                     <p className="text-xs sm:text-sm text-gray-500">Last Call:</p>
-                    <p className="text-xs sm:text-sm font-semibold">{new Date(lead.last_call_at).toLocaleString()}</p>
+                    <p className="text-xs sm:text-sm font-semibold">{formatDateTime(lead.last_call_at)}</p>
                   </div>
                 )}
               </div>
@@ -666,7 +667,7 @@ export default function LeadDetailPage() {
                       </div>
                       <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">{fu.reason}</p>
                       <p className="text-[10px] sm:text-xs text-gray-500">
-                        {new Date(fu.scheduled_time).toLocaleString()}
+                        {formatDateTime(fu.scheduled_time)}
                       </p>
                     </div>
                   ))

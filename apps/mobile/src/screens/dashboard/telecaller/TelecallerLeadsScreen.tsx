@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -199,12 +200,12 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
         <View style={styles.timeInfo}>
           {item.last_call_at && (
             <Text style={styles.timeText}>
-              Last call: {new Date(item.last_call_at).toLocaleString()}
+              Last call: {formatDateTime(item.last_call_at)}
             </Text>
           )}
           {item.next_follow_up_at && (
             <Text style={[styles.timeText, { color: COLORS.purple }]}>
-              Next follow-up: {new Date(item.next_follow_up_at).toLocaleString()}
+              Next follow-up: {formatDateTime(item.next_follow_up_at)}
             </Text>
           )}
         </View>

@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/dateFormat";
 /**
  * Track Booking Screen - Customer
  * Real-time tracking of service booking
@@ -56,7 +57,7 @@ export default function TrackBookingScreen({ route }: any) {
             <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
             <View style={styles.timelineContent}>
               <Text style={styles.timelineStatus}>{item.new_status}</Text>
-              <Text style={styles.timelineDate}>{new Date(item.changed_at).toLocaleString()}</Text>
+              <Text style={styles.timelineDate}>{formatDateTime(item.changed_at)}</Text>
             </View>
           </View>
         ))}

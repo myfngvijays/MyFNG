@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -167,7 +168,7 @@ export default function HSMLeadsScreen() {
               )}
               
               <Text style={styles.leadDate}>
-                {new Date(lead.created_at).toLocaleDateString()}
+                {formatDateDMY(lead.created_at)}
               </Text>
             </TouchableOpacity>
           ))

@@ -48,7 +48,7 @@ export default function SupervisorMenuScreen({ navigation }: any) {
     },
     {
       id: 'extra-work',
-      title: '💰 Extra Work',
+      title: '💰 Additional Jobs',
       subtitle: 'Approve extra charges',
       screen: 'ExtraWorkApproval',
       color: '#f59e0b',

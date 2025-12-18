@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
-import { 
+import { formatDateDMY, formatDateTime, formatTime12h } from "@/lib/utils";
+import {
   Phone, 
   Mail,
   MapPin,
@@ -46,7 +47,7 @@ export default function CSELeadDetailPage() {
   const formatDate = (value: any) => {
     if (!value) return null;
     const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString();
+    return Number.isNaN(d.getTime()) ? null : formatDateDMY(d);
   };
 
   const formatTime = (value: any) => {
@@ -54,7 +55,7 @@ export default function CSELeadDetailPage() {
     const d = new Date(value);
     return Number.isNaN(d.getTime())
       ? null
-      : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      : formatTime12h(d);
   };
 
   const getPickupDateText = (l: any) =>
@@ -375,7 +376,7 @@ export default function CSELeadDetailPage() {
               </span>
             </div>
             <div className="text-xs sm:text-sm text-gray-600">
-              Created: {new Date(lead.created_at).toLocaleString()}
+              Created: {formatDateTime(lead.created_at)}
             </div>
           </div>
         </div>
@@ -748,7 +749,7 @@ export default function CSELeadDetailPage() {
                   {lead.expected_delivery_time && (
                     <div>
                       <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Expected Delivery</label>
-                      <div className="text-sm sm:text-base md:text-lg">{new Date(lead.expected_delivery_time).toLocaleString()}</div>
+                      <div className="text-sm sm:text-base md:text-lg">{formatDateTime(lead.expected_delivery_time)}</div>
                     </div>
                   )}
                 </div>
@@ -852,7 +853,7 @@ export default function CSELeadDetailPage() {
                             <div className="font-semibold text-sm sm:text-base text-gray-900">{ticket.ticket_number}</div>
                             <div className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{ticket.title}</div>
                             <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
-                              {ticket.issue_category?.replace(/_/g, ' ')} • {new Date(ticket.created_at).toLocaleString()}
+                              {ticket.issue_category?.replace(/_/g, ' ')} • {formatDateTime(ticket.created_at)}
                             </div>
                           </div>
                           <span className={`px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full flex-shrink-0 ${

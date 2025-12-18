@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { User, Mail, Phone, Building, Calendar, Edit2, Save, X, Camera, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
 
 interface UserProfile {
   id: string;
@@ -324,24 +325,14 @@ export default function TelecallerProfilePage() {
               Member Since
             </p>
             <p className="text-sm sm:text-base text-text-body mt-0.5 sm:mt-1">
-              {new Date(profile.created_at).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })}
+              {formatDateDMY(profile.created_at)}
             </p>
           </div>
           {profile.last_login && (
             <div>
               <p className="text-xs sm:text-sm font-medium text-gray-700">Last Login</p>
               <p className="text-sm sm:text-base text-text-body mt-0.5 sm:mt-1">
-                {new Date(profile.last_login).toLocaleString('en-US', {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                {formatDateTime(profile.last_login)}
               </p>
             </div>
           )}

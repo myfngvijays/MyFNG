@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
+import { formatDateTime } from '@/lib/utils';
+import {
   ArrowLeft, Clock, User, Car, CheckCircle, XCircle, 
   Camera, Package, FileText, Loader2, AlertTriangle, Image as ImageIcon
 } from 'lucide-react';
@@ -394,7 +395,7 @@ export default function QCReviewPage() {
               <p className="font-bold text-lg">{mechanic?.full_name || 'Unknown'}</p>
               {lead.mechanic_completed_at && (
                 <p className="text-sm text-gray-600">
-                  Completed: {new Date(lead.mechanic_completed_at).toLocaleString()}
+                  Completed: {formatDateTime(lead.mechanic_completed_at)}
                 </p>
               )}
             </div>

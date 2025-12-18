@@ -5,9 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
-import { 
-  ArrowLeft, Phone, Wrench, MapPin, Clock, 
-  CheckCircle, XCircle, Star, TrendingUp, 
+import { formatDateTime } from '@/lib/utils';
+import {
+  ArrowLeft, Phone, Wrench, MapPin, Clock,
+  CheckCircle, XCircle, Star, TrendingUp,
   Mail, Calendar, Building, AlertCircle,
   Loader2
 } from 'lucide-react';
@@ -329,7 +330,7 @@ export default function RSAMechanicDetailPage() {
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-4 text-[10px] sm:text-xs text-text-secondary mt-1.5 sm:mt-2">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{new Date(assignment.requested_at).toLocaleString()}</span>
+                          <span className="truncate">{formatDateTime(assignment.requested_at)}</span>
                         </span>
                         {assignment.service_type && (
                           <span className="flex items-center gap-1">

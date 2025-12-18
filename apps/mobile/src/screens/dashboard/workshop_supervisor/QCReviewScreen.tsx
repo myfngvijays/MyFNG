@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -315,7 +316,7 @@ export default function QCReviewScreen() {
               <Text style={styles.summaryValue}>{mechanic?.full_name || 'Unknown'}</Text>
               {lead.mechanic_completed_at && (
                 <Text style={styles.summarySubValue}>
-                  Completed: {new Date(lead.mechanic_completed_at).toLocaleString()}
+                  Completed: {formatDateTime(lead.mechanic_completed_at)}
                 </Text>
               )}
             </View>

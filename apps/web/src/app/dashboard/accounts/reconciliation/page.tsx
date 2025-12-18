@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function ReconciliationDashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'exceptions' | 'gl-entries'>('overview');
@@ -221,7 +222,7 @@ export default function ReconciliationDashboard() {
               {glEntries.map((entry) => (
                 <tr key={entry.id} className="border-t">
                   <td className="px-4 py-3 text-sm">
-                    {new Date(entry.posted_at).toLocaleDateString()}
+                    {formatDateDMY(entry.posted_at)}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <span className={`px-2 py-1 rounded ${

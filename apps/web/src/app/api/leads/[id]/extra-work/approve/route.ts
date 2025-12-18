@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/leads/[id]/extra-work/approve
  * 
- * Approve extra work charges (Supervisor action)
+ * Approve additional job charges (Supervisor action)
  * 
  * Body:
  * - charge_id: UUID of the extra charge to approve
@@ -153,9 +153,9 @@ export async function POST(
     });
 
   } catch (error: any) {
-    console.error('Approve extra work API error:', error);
+    console.error('Approve additional job API error:', error);
     return NextResponse.json(
-      { error: 'Failed to approve extra work', details: error.message },
+      { error: 'Failed to approve additional job', details: error.message },
       { status: 500 }
     );
   }

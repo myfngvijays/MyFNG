@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -78,7 +79,7 @@ export default function DMContentScreen() {
                 <Text style={styles.contentDescription}>{item.description}</Text>
               )}
               <Text style={styles.contentDate}>
-                {new Date(item.created_at).toLocaleDateString()}
+                {formatDateDMY(item.created_at)}
               </Text>
             </View>
           ))

@@ -193,11 +193,11 @@ export default function ManageJobPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        toast.error(data.error || 'Failed to request extra work');
+        toast.error(data.error || 'Failed to request additional job');
         return;
       }
 
-      toast.success('Extra work request submitted!');
+      toast.success('Additional job request submitted!');
       setShowExtraWorkModal(false);
       setExtraWorkDescription('');
       setExtraWorkReason('');
@@ -205,7 +205,7 @@ export default function ManageJobPage() {
       setIsUrgent(false);
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Failed to request extra work');
+      toast.error('Failed to request additional job');
     } finally {
       setProcessing(false);
     }
@@ -264,7 +264,7 @@ export default function ManageJobPage() {
                 className="btn-secondary bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2"
               >
                 <DollarSign className="w-5 h-5" />
-                Request Extra Work
+                Request Additional Job
               </button>
             )}
             {canComplete && (
@@ -627,11 +627,11 @@ export default function ManageJobPage() {
           </div>
         )}
 
-        {/* Extra Work Request Modal */}
+        {/* Additional Job Request Modal */}
         {showExtraWorkModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
-              <h3 className="text-xl font-bold mb-4 text-orange-600">Request Extra Work Approval</h3>
+              <h3 className="text-xl font-bold mb-4 text-orange-600">Request Additional Job Approval</h3>
 
               <div className="space-y-4">
                 <div>

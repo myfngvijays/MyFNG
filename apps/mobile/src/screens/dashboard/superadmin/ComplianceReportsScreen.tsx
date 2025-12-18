@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -110,7 +111,7 @@ export default function ComplianceReportsScreen() {
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Last Audit:</Text>
                   <Text style={styles.detailValue}>
-                    {new Date(report.last_audit).toLocaleDateString()}
+                    {formatDateDMY(report.last_audit)}
                   </Text>
                 </View>
                 <View style={styles.detailRow}>

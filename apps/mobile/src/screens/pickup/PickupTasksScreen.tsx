@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { 
+import { formatDateTime } from "@/lib/dateFormat";
   View, 
   Text, 
   StyleSheet, 
@@ -286,7 +287,7 @@ export default function PickupTasksScreen({ userId }) {
           
           {item.scheduled_time && (
             <Text style={styles.taskTime}>
-              ⏰ Scheduled: {new Date(item.scheduled_time).toLocaleString()}
+              ⏰ Scheduled: {formatDateTime(item.scheduled_time)}
             </Text>
           )}
           

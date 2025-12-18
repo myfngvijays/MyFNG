@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { User, Mail, Phone, Briefcase, Building2, Calendar } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES, SHADOWS } from '../../constants/theme';
+import { formatDateDMY } from "@/lib/dateFormat";
 
 export default function ProfileScreen() {
   const { userProfile } = useAuth();
@@ -69,7 +70,7 @@ export default function ProfileScreen() {
         <InfoRow
           icon={<Calendar color={COLORS.primary} size={20} />}
           label="Member Since"
-          value={new Date(userProfile?.created_at || '').toLocaleDateString('en-IN')}
+          value={formatDateDMY(userProfile?.created_at || '')}
         />
       </View>
 

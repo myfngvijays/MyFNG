@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -109,7 +110,7 @@ export default function AuditorEscalationsScreen() {
               )}
               
               <Text style={styles.escalationDate}>
-                {new Date(escalation.created_at).toLocaleDateString()}
+                {formatDateDMY(escalation.created_at)}
               </Text>
             </View>
           ))

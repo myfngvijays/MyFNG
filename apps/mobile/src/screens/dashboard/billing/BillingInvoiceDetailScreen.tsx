@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -75,7 +76,7 @@ export default function BillingInvoiceDetailScreen() {
         <View style={styles.headerCard}>
           <Text style={styles.invoiceTitle}>Invoice #{invoice.invoice_number || invoice.lead_number}</Text>
           <Text style={styles.invoiceDate}>
-            {new Date(invoice.created_at).toLocaleDateString()}
+            {formatDateDMY(invoice.created_at)}
           </Text>
         </View>
 

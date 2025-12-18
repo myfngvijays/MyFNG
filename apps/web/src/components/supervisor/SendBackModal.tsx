@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { X, AlertTriangle, MessageSquare, ArrowLeft } from 'lucide-react';
+import { formatDateTime } from "@/lib/utils";
 
 interface SendBackModalProps {
   isOpen: boolean;
@@ -96,7 +97,7 @@ export default function SendBackModal({
 🔄 JOB SENT BACK BY SUPERVISOR
 
 Supervisor: ${supervisorName}
-Date: ${new Date().toLocaleString('en-IN')}
+Date: ${formatDateTime(new Date())}
 
 REASONS FOR SENDING BACK:
 ${allReasons.map((r, i) => `${i + 1}. ${r}`).join('\n')}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -246,13 +247,13 @@ export default function JobDetailScreen() {
             {job.started_at && (
               <InfoRow 
                 label="Started At" 
-                value={new Date(job.started_at).toLocaleString()} 
+                value={formatDateTime(job.started_at)} 
               />
             )}
             {job.estimated_completion_time && (
               <InfoRow 
                 label="ETA" 
-                value={new Date(job.estimated_completion_time).toLocaleString()} 
+                value={formatDateTime(job.estimated_completion_time)} 
               />
             )}
           </View>

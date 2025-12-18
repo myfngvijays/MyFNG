@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY } from "@/lib/utils";
 import { 
   Building2, 
   Search,
@@ -290,7 +291,7 @@ export default function AuditorWorkshopsPage() {
                         <td className="px-4 md:px-6 py-3 md:py-4">
                           {workshop.last_audit_date ? (
                             <div className="text-xs sm:text-sm text-gray-900">
-                              {new Date(workshop.last_audit_date).toLocaleDateString()}
+                              {formatDateDMY(workshop.last_audit_date)}
                             </div>
                           ) : (
                             <span className="text-xs sm:text-sm text-gray-500">Never</span>
@@ -368,7 +369,7 @@ export default function AuditorWorkshopsPage() {
                         <span className="text-gray-500">Last Audit: </span>
                         <span className="text-gray-900">
                           {workshop.last_audit_date
-                            ? new Date(workshop.last_audit_date).toLocaleDateString()
+                            ? formatDateDMY(workshop.last_audit_date)
                             : 'Never'}
                         </span>
                       </div>

@@ -1,3 +1,4 @@
+import { formatDateDMY } from "@/lib/dateFormat";
 /**
  * Daily Report Screen - Workshop Supervisor
  * End of day summary and reports
@@ -74,7 +75,7 @@ export default function DailyReportScreen() {
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchDailyReport(); }} />}>
       <View style={styles.header}>
         <Text style={styles.title}>Daily Report</Text>
-        <Text style={styles.date}>{new Date().toLocaleDateString()}</Text>
+        <Text style={styles.date}>{formatDateDMY()}</Text>
       </View>
       <View style={styles.grid}>
         <View style={styles.card}><Ionicons name="checkmark-circle" size={32} color={COLORS.success} /><Text style={styles.value}>{report.completed}</Text><Text style={styles.label}>Completed</Text></View>

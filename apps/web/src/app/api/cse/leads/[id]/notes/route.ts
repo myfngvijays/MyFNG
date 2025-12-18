@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/utils";
 /**
  * CSE Add Internal Note API
  * POST /api/cse/leads/[id]/notes
@@ -54,7 +55,7 @@ export async function POST(
 
     // Append note to internal_notes
     const existingNotes = lead.internal_notes || '';
-    const timestamp = new Date().toLocaleString();
+    const timestamp = formatDateTime(new Date());
     const newNote = `[${timestamp}] ${userProfile?.full_name || 'CSE'}: ${note}\n${existingNotes}`;
 
     // Update lead

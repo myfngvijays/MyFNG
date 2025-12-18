@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Users, Plus, Edit, Mail, Phone, CheckCircle, XCircle, Trash2, Key, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateTime } from "@/lib/utils";
 
 export default function WorkshopStaffPage() {
   const [staff, setStaff] = useState<any[]>([]);
@@ -511,7 +512,7 @@ export default function WorkshopStaffPage() {
 
                   {member.last_login && (
                     <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t text-[10px] sm:text-xs text-gray-500">
-                      Last login: {new Date(member.last_login).toLocaleString()}
+                      Last login: {formatDateTime(member.last_login)}
                     </div>
                   )}
                 </div>

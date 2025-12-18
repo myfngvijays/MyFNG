@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateDMY, formatTime12h } from "@/lib/utils";
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, Suspense } from 'react';
@@ -268,10 +269,10 @@ function CSETicketsContent() {
                         </td>
                         <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
                           <div className="text-xs sm:text-sm text-gray-900">
-                            {new Date(ticket.created_at).toLocaleDateString()}
+                            {formatDateDMY(ticket.created_at)}
                           </div>
                           <div className="text-[10px] sm:text-xs text-gray-500">
-                            {new Date(ticket.created_at).toLocaleTimeString()}
+                            {formatTime12h(ticket.created_at)}
                           </div>
                         </td>
                         <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
@@ -319,7 +320,7 @@ function CSETicketsContent() {
                       </div>
                       <div className="flex items-center justify-between text-xs sm:text-sm">
                         <span className="text-gray-500">Created:</span>
-                        <span className="text-gray-900">{new Date(ticket.created_at).toLocaleDateString()}</span>
+                        <span className="text-gray-900">{formatDateDMY(ticket.created_at)}</span>
                       </div>
                     </div>
 

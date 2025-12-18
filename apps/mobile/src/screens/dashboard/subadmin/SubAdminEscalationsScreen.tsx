@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/dateFormat";
 /**
  * SUB_ADMIN Escalations Screen
  */
@@ -79,7 +80,7 @@ export default function SubAdminEscalationsScreen({ navigation }: any) {
         </View>
       )}
       <Text style={styles.dateText}>
-        {new Date(item.created_at).toLocaleString()}
+        {formatDateTime(item.created_at)}
       </Text>
     </TouchableOpacity>
   );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -342,7 +343,7 @@ export default function RSAManagerDashboard() {
       )}
 
       <Text style={styles.timestamp}>
-        {new Date(lead.lead_registered_at || lead.requested_at).toLocaleString()}
+        {formatDateTime(lead.lead_registered_at || lead.requested_at)}
       </Text>
     </TouchableOpacity>
   );

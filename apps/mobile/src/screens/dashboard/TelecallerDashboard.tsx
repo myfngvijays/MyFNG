@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -391,7 +392,7 @@ export default function TelecallerDashboard() {
                   )}
                 </View>
                 <Text style={styles.followUpTime}>
-                  {new Date(followUp.scheduled_time).toLocaleString()}
+                  {formatDateTime(followUp.scheduled_time)}
                 </Text>
                 <Text style={styles.followUpType}>{followUp.follow_up_type}</Text>
               </View>

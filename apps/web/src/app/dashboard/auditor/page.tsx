@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateTime } from "@/lib/utils";
 import { 
   Shield, 
   Clock, 
@@ -353,7 +354,7 @@ export default function AuditorDashboard() {
                           )}
                           {audit.sla_deadline && (
                             <div className="text-[10px] sm:text-xs text-gray-500">
-                              {new Date(audit.sla_deadline).toLocaleString()}
+                              {formatDateTime(audit.sla_deadline)}
                             </div>
                           )}
                         </td>

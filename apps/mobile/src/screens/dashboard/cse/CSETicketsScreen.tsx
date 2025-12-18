@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/dateFormat";
 /**
  * CSE Tickets Screen - React Native
  */
@@ -90,7 +91,7 @@ export default function CSETicketsScreen({ navigation }: any) {
         <Text style={styles.leadInfo}>Lead: {item.lead.lead_number}</Text>
       )}
       <Text style={styles.dateText}>
-        {new Date(item.created_at).toLocaleString()}
+        {formatDateTime(item.created_at)}
       </Text>
     </TouchableOpacity>
   );

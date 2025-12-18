@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Users, Search, UserPlus, Shield, UserX, UserCheck } from 'lucide-react';
+import { formatDateDMY } from "@/lib/utils";
 
 const AVAILABLE_ROLES = [
   { code: 'SUPER_ADMIN', name: 'Super Admin', color: 'red' },
@@ -371,7 +372,7 @@ export default function UserManagementPage() {
                         </span>
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm text-gray-500">
-                        {new Date(user.created_at).toLocaleDateString()}
+                        {formatDateDMY(user.created_at)}
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4 text-right text-xs sm:text-sm font-medium">
                         <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1 sm:gap-2">
@@ -458,7 +459,7 @@ export default function UserManagementPage() {
                   </div>
                   <div className="flex items-center justify-between text-xs sm:text-sm">
                     <span className="text-gray-500">Joined:</span>
-                    <span className="text-gray-900">{new Date(user.created_at).toLocaleDateString()}</span>
+                    <span className="text-gray-900">{formatDateDMY(user.created_at)}</span>
                   </div>
                 </div>
 

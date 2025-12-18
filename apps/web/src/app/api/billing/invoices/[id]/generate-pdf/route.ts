@@ -1,3 +1,4 @@
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
 /**
  * Generate Invoice PDF API
  * Creates professional PDF invoice matching user's format
@@ -354,23 +355,11 @@ export async function GET(
 
 function generateInvoiceHTML(invoice: any): string {
   const invoiceDate = invoice.invoice_date 
-    ? new Date(invoice.invoice_date).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      })
-    : new Date(invoice.created_at).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  });
+    ? formatDateDMY(invoice.invoice_date)
+    : formatDateDMY(invoice.created_at);
 
   const dueDate = invoice.due_date 
-    ? new Date(invoice.due_date).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      })
+    ? formatDateDMY(invoice.due_date)
     : null;
 
   const lineItems = invoice.line_items || [];
@@ -1284,7 +1273,7 @@ function generateInvoiceHTML(invoice: any): string {
         <p><strong>Paid Via:</strong> ${invoice.payment_mode || 'UPI'}</p>
         ${invoice.payment_txn_id ? `<p><strong>Transaction Ref No.:</strong> ${invoice.payment_txn_id}</p>` : ''}
         <p><strong>Payment Status:</strong> PAID</p>
-        ${invoice.paid_at ? `<p><strong>Paid At:</strong> ${new Date(invoice.paid_at).toLocaleString('en-IN')}</p>` : ''}
+        ${invoice.paid_at ? `<p><strong>Paid At:</strong> ${formatDateTime(invoice.paid_at)}</p>` : ''}
       ` : `
         <p><strong>Payment Status:</strong> PENDING</p>
         ${dueDate ? `<p><strong>Due Date:</strong> ${dueDate}</p>` : ''}

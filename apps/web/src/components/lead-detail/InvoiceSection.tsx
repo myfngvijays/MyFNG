@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
 /**
  * Invoice Section Component
  * Generate and display invoice for completed leads
@@ -344,8 +345,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
           <div className="flex justify-between items-start p-4 bg-gradient-to-r from-brand-primary to-brand-secondary rounded-lg text-white">
             <div>
               <h3 className="text-2xl font-bold">{invoice.invoice_number}</h3>
-              <p className="text-sm opacity-90">Invoice Date: {new Date(invoice.invoice_date).toLocaleDateString()}</p>
-              <p className="text-sm opacity-90">Due Date: {new Date(invoice.due_date).toLocaleDateString()}</p>
+              <p className="text-sm opacity-90">Invoice Date: {formatDateDMY(invoice.invoice_date)}</p>
+              <p className="text-sm opacity-90">Due Date: {formatDateDMY(invoice.due_date)}</p>
             </div>
             <div className="text-right">
               <p className="text-sm opacity-90">Total Amount</p>
@@ -566,7 +567,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
 
           {/* Invoice Footer */}
           <div className="text-xs text-gray-500 text-center pt-4 border-t border-gray-200">
-            <p>Invoice created on {new Date(invoice.created_at).toLocaleString()}</p>
+            <p>Invoice created on {formatDateTime(invoice.created_at)}</p>
             <p className="mt-1">Thank you for your business!</p>
           </div>
         </div>

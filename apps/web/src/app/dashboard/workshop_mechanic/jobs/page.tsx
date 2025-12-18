@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Wrench, Clock, Camera, CheckCircle, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
+import { formatDateTime } from "@/lib/utils";
 
 export default function MechanicJobsPage() {
   const router = useRouter();
@@ -381,7 +382,7 @@ export default function MechanicJobsPage() {
 
               {job.assigned_at && (
                 <div className="mt-4 pt-4 border-t text-xs text-gray-500">
-                  Assigned: {new Date(job.assigned_at).toLocaleString()}
+                  Assigned: {formatDateTime(job.assigned_at)}
                 </div>
               )}
             </div>

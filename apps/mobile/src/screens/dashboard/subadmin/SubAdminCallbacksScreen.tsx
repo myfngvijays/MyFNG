@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/dateFormat";
 /**
  * SUB_ADMIN Callbacks Screen (CSE Department)
  */
@@ -72,7 +73,7 @@ export default function SubAdminCallbacksScreen({ navigation }: any) {
       <Text style={styles.customerPhone}>{item.customer_phone}</Text>
       {item.next_follow_up_at && (
         <Text style={styles.followUpDate}>
-          Next follow-up: {new Date(item.next_follow_up_at).toLocaleString()}
+          Next follow-up: {formatDateTime(item.next_follow_up_at)}
         </Text>
       )}
     </TouchableOpacity>

@@ -1,3 +1,4 @@
+import { formatDateDMY, formatDateTime } from "@/lib/utils";
 /**
  * Scheduled Reports Service
  * Phase 4 - Task WA-602
@@ -41,7 +42,7 @@ export async function generateDailyReport(workshopId: string): Promise<any> {
     .lt('created_at', today.toISOString());
 
   const report = {
-    date: yesterday.toLocaleDateString(),
+    date: formatDateDMY(yesterday),
     totalLeads: leads?.length || 0,
     accepted: leads?.filter(l => l.status !== 'NEW' && l.status !== 'REJECTED').length || 0,
     completed: leads?.filter(l => l.status === 'CLOSED').length || 0,
@@ -183,7 +184,7 @@ function generateReportHTML(data: any, reportType: string): string {
         </table>
       </div>
       <p style="text-align: center; color: #6B7280; font-size: 12px;">
-        Generated on ${new Date().toLocaleString()}
+        Generated on ${formatDateTime(new Date())}
       </p>
     </div>
   `;

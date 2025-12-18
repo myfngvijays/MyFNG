@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
-import { 
-  Users, 
-  AlertTriangle, 
-  Clock, 
+import { formatDateDMY } from '@/lib/utils';
+import {
+  Users,
+  AlertTriangle,
+  Clock,
   CheckCircle,
   Search,
   Loader2,
@@ -273,7 +274,7 @@ export default function TelecallerSubAdminDashboard() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(lead.created_at).toLocaleDateString()}
+                          {formatDateDMY(lead.created_at)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <Link

@@ -8,6 +8,7 @@ import WorkshopStaffScreen from '../workshop/WorkshopStaffScreen';
 import WorkshopLeadsScreen from '../workshop/WorkshopLeadsScreen';
 import WorkshopProfileScreen from '../workshop/WorkshopProfileScreen';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import { formatDateTime } from "@/lib/dateFormat";
 
 export default function WorkshopAdminDashboard() {
   const [userProfile, setUserProfile] = React.useState<any>(null);
@@ -199,7 +200,7 @@ export default function WorkshopAdminDashboard() {
                   {activity.vehicle_make} {activity.vehicle_model} - {activity.lead_type}
                 </Text>
                 <Text style={styles.activityTime}>
-                  {new Date(activity.created_at).toLocaleString()}
+                  {formatDateTime(activity.created_at)}
                 </Text>
               </View>
               <View style={[

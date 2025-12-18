@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateTime } from "@/lib/utils";
 /**
  * Internal Assignment Section
  * Assign mechanics, supervisors, and pickup boys to leads
@@ -197,7 +198,7 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
                 Currently assigned
                 {lead.pickup_assigned_at && (
                   <span className="text-gray-500">
-                    - {new Date(lead.pickup_assigned_at).toLocaleString()}
+                    - {formatDateTime(lead.pickup_assigned_at)}
                   </span>
                 )}
               </div>
@@ -243,7 +244,7 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
               Currently assigned
               {lead.mechanic_assigned_at && (
                 <span className="text-gray-500">
-                  - {new Date(lead.mechanic_assigned_at).toLocaleString()}
+                  - {formatDateTime(lead.mechanic_assigned_at)}
                 </span>
               )}
             </div>
@@ -288,7 +289,7 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
               Currently assigned
               {lead.supervisor_assigned_at && (
                 <span className="text-gray-500">
-                  - {new Date(lead.supervisor_assigned_at).toLocaleString()}
+                  - {formatDateTime(lead.supervisor_assigned_at)}
                 </span>
               )}
             </div>

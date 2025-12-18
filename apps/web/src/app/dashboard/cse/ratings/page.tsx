@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY } from "@/lib/utils";
 import { 
   Star, 
   Loader2,
@@ -106,7 +107,7 @@ export default function CSERatingsPage() {
                         <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
                           <div className="text-xs sm:text-sm text-gray-900">
                             {lead.completed_at 
-                              ? new Date(lead.completed_at).toLocaleDateString()
+                              ? formatDateDMY(lead.completed_at)
                               : 'N/A'}
                           </div>
                         </td>
@@ -144,7 +145,7 @@ export default function CSERatingsPage() {
                         <span className="text-gray-500">Completed: </span>
                         <span className="text-gray-900">
                           {lead.completed_at 
-                            ? new Date(lead.completed_at).toLocaleDateString()
+                            ? formatDateDMY(lead.completed_at)
                             : 'N/A'}
                         </span>
                       </div>

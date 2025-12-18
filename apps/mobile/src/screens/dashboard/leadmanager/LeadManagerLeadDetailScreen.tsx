@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY, formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -724,7 +725,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
                     )}
                   </View>
                   {log.notes && <Text style={styles.logNotes}>{log.notes}</Text>}
-                  <Text style={styles.logTime}>{new Date(log.created_at).toLocaleString()}</Text>
+                  <Text style={styles.logTime}>{formatDateTime(log.created_at)}</Text>
                 </View>
               ))}
             </View>
@@ -752,7 +753,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
                 <Text style={styles.eventsTitle}>Recent Events:</Text>
                 {leadEvents.slice(0, 5).map((event) => (
                   <Text key={event.id} style={styles.eventText}>
-                    • {event.description} - {new Date(event.created_at).toLocaleDateString()}
+                    • {event.description} - {formatDateDMY(event.created_at)}
                   </Text>
                 ))}
               </View>

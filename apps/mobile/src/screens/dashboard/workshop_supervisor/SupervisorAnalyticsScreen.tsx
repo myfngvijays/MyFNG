@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -242,7 +243,7 @@ export default function SupervisorAnalyticsScreen() {
         ? (completedOnTime / completedJobs) * 100
         : 0;
 
-      // Fetch extra work requests
+      // Fetch additional job requests
       const { data: extraWork } = await supabase
         .from('lead_extra_charges')
         .select(`
@@ -382,7 +383,7 @@ export default function SupervisorAnalyticsScreen() {
       const assigned = jobs?.length || 0;
 
       stats.push({
-        date: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        date: formatDateDMY(date),
         completed,
         assigned,
       });
@@ -580,7 +581,7 @@ export default function SupervisorAnalyticsScreen() {
             </View>
 
             <View style={styles.qualityMetric}>
-              <Text style={styles.qualityLabel}>Extra Work Approval Rate</Text>
+              <Text style={styles.qualityLabel}>Additional Jobs Approval Rate</Text>
               <View style={styles.progressBarContainer}>
                 <View
                   style={[

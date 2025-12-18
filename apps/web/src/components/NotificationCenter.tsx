@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Bell, Check, CheckCheck, Trash2, X, ExternalLink } from 'lucide-react';
 import { Notification } from '@/shared/types/notifications';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function NotificationCenter() {
   const router = useRouter();
@@ -103,7 +104,7 @@ export default function NotificationCenter() {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return formatDateDMY(date);
   };
 
   return (

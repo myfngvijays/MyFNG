@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -170,7 +171,7 @@ export default function RSALeadsScreen() {
               
               <View style={styles.leadFooter}>
                 <Text style={styles.leadDate}>
-                  {new Date(lead.created_at).toLocaleDateString()}
+                  {formatDateDMY(lead.created_at)}
                 </Text>
                 {lead.mechanic && (
                   <Text style={styles.mechanicName}>Mechanic: {lead.mechanic.full_name}</Text>

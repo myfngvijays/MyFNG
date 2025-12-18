@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
-  Phone, PhoneCall, PhoneMissed, Clock, CheckCircle, XCircle, 
+import { formatDateTime } from '@/lib/utils';
+import {
+  Phone, PhoneCall, PhoneMissed, Clock, CheckCircle, XCircle,
   AlertCircle, TrendingUp, Calendar, Users 
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -308,7 +309,7 @@ export default function TelecallerDashboard() {
                           {lead.vehicle_make} {lead.vehicle_model} • {lead.customer_phone}
                         </p>
                         <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
-                          {new Date(lead.created_at).toLocaleString()}
+                          {formatDateTime(lead.created_at)}
                         </p>
                       </div>
                       <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 ${
@@ -354,7 +355,7 @@ export default function TelecallerDashboard() {
                         <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 line-clamp-2">{followUp.reason}</p>
                         <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 flex items-center gap-1">
                           <Clock className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{new Date(followUp.scheduled_time).toLocaleString()}</span>
+                          <span className="truncate">{formatDateTime(followUp.scheduled_time)}</span>
                         </p>
                       </div>
                       <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 ${

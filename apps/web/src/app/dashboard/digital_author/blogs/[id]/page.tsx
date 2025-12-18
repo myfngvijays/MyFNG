@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
-  ArrowLeft, Edit, Eye, Calendar, Clock, Tag, BookOpen, 
+import { formatDateDMY } from '@/lib/utils';
+import {
+  ArrowLeft, Edit, Eye, Calendar, Clock, Tag, BookOpen,
   User, TrendingUp, Share2, Image as ImageIcon
 } from 'lucide-react';
 import Link from 'next/link';
@@ -191,8 +192,8 @@ export default function BlogDetailPage() {
                 </p>
                 <p className="font-semibold text-sm sm:text-base text-text-heading">
                   {blog.published_at 
-                    ? new Date(blog.published_at).toLocaleDateString()
-                    : new Date(blog.created_at).toLocaleDateString()}
+                    ? formatDateDMY(blog.published_at)
+                    : formatDateDMY(blog.created_at)}
                 </p>
               </div>
             </div>

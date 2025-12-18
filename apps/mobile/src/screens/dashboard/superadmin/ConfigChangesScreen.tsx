@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -74,7 +75,7 @@ export default function ConfigChangesScreen() {
               <View style={styles.changeHeader}>
                 <Text style={styles.changeKey}>{change.config_key || 'Unknown'}</Text>
                 <Text style={styles.changeTime}>
-                  {new Date(change.created_at).toLocaleString()}
+                  {formatDateTime(change.created_at)}
                 </Text>
               </View>
               

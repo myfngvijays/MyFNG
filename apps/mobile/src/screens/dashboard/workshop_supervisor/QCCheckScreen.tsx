@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -361,7 +362,7 @@ export default function QCCheckScreen({ navigation }: any) {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Completed:</Text>
             <Text style={styles.detailValue}>
-              {new Date(item.completed_at).toLocaleString()}
+              {formatDateTime(item.completed_at)}
             </Text>
           </View>
         </View>

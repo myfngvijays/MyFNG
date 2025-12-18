@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateDMY } from "@/lib/utils";
 /**
  * Service History Section
  * Display past service records for this customer/vehicle
@@ -152,13 +153,13 @@ export default function ServiceHistory({ lead }: ServiceHistoryProps) {
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4" />
             <span>
-              {new Date(pastLead.created_at).toLocaleDateString()}
+              {formatDateDMY(pastLead.created_at)}
             </span>
           </div>
 
           {pastLead.completed_at && (
             <div className="text-xs text-gray-500">
-              Completed: {new Date(pastLead.completed_at).toLocaleDateString()}
+              Completed: {formatDateDMY(pastLead.completed_at)}
             </div>
           )}
 
@@ -287,7 +288,7 @@ export default function ServiceHistory({ lead }: ServiceHistoryProps) {
             <div>
               <p className="text-gray-600">Last Service</p>
               <p className="text-sm font-bold text-green-900">
-                {new Date(vehicleHistory[0].created_at).toLocaleDateString()}
+                {formatDateDMY(vehicleHistory[0].created_at)}
               </p>
             </div>
           </div>

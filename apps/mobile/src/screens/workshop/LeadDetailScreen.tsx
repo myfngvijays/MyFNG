@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/dateFormat";
 /**
  * Lead Detail Screen - Mobile
  * Phase 3: Complete lead detail page for mobile
@@ -213,11 +214,11 @@ export default function LeadDetailScreen({ leadId, onBack }: LeadDetailScreenPro
                 <Text style={styles.statusText}>{lead.status.replace(/_/g, ' ')}</Text>
               </View>
               <Text style={styles.cardSubtext}>
-                Created: {new Date(lead.created_at).toLocaleString()}
+                Created: {formatDateTime(lead.created_at)}
               </Text>
               {lead.accepted_at && (
                 <Text style={styles.cardSubtext}>
-                  Accepted: {new Date(lead.accepted_at).toLocaleString()}
+                  Accepted: {formatDateTime(lead.accepted_at)}
                 </Text>
               )}
             </View>

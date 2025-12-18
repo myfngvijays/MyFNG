@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -330,7 +331,7 @@ export default function RSAMechanicDetailScreen({ navigation, route }: any) {
                   </Text>
                 )}
                 <Text style={styles.assignmentDate}>
-                  {new Date(assignment.requested_at).toLocaleString()}
+                  {formatDateTime(assignment.requested_at)}
                 </Text>
               </TouchableOpacity>
             ))}

@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Phone, Star, ArrowLeft, User, Car, Calendar, Save } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { formatDateTime } from "@/lib/utils";
 
 export default function LogFollowUpPage() {
   const router = useRouter();
@@ -228,7 +229,7 @@ export default function LogFollowUpPage() {
               <p className="text-3xl font-bold text-brand-primary">{lead.total_calls || 0}</p>
               {lead.last_call_at && (
                 <p className="text-sm text-gray-600 mt-1">
-                  Last call: {new Date(lead.last_call_at).toLocaleString()}
+                  Last call: {formatDateTime(lead.last_call_at)}
                 </p>
               )}
               {lead.customer_satisfaction_score && (

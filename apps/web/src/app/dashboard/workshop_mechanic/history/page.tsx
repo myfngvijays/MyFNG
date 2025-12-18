@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
+import { formatDateDMY } from '@/lib/utils';
+import {
   Clock, CheckCircle, XCircle, Calendar, 
   Filter, Search, Download, Eye
 } from 'lucide-react';
@@ -399,7 +400,7 @@ export default function JobHistoryPage() {
                         </div>
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
-                        {job.completed_at ? new Date(job.completed_at).toLocaleDateString() : 'N/A'}
+                        {job.completed_at ? formatDateDMY(job.completed_at) : 'N/A'}
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium">
                         <button
@@ -459,7 +460,7 @@ export default function JobHistoryPage() {
                     </div>
                   </div>
                   <div className="text-gray-500">
-                    Completed: {job.completed_at ? new Date(job.completed_at).toLocaleDateString() : 'N/A'}
+                    Completed: {job.completed_at ? formatDateDMY(job.completed_at) : 'N/A'}
                   </div>
                 </div>
                 <button

@@ -79,7 +79,7 @@ export async function POST(
 
     const extraWorkId = params.id;
 
-    // Get extra work request details
+    // Get additional job request details
     const { data: extraWork, error: extraWorkError } = await supabase
       .from('lead_extra_charges')
       .select('*, service_leads!inner(workshop_id, assigned_mechanic_id)')
@@ -87,25 +87,25 @@ export async function POST(
       .single();
 
     if (extraWorkError || !extraWork) {
-      return NextResponse.json({ error: 'Extra work request not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Additional job request not found' }, { status: 404 });
     }
 
-    // Verify extra work is from this workshop
+    // Verify additional job is from this workshop
     if (extraWork.service_leads.workshop_id !== userProfile.workshop_id) {
-      return NextResponse.json({ error: 'Extra work request not in your workshop' }, { status: 403 });
+      return NextResponse.json({ error: 'Additional job request not in your workshop' }, { status: 403 });
     }
 
     // Verify status is PENDING
     if (extraWork.status !== 'PENDING') {
       return NextResponse.json({ 
-        error: 'Extra work request is not pending',
+        error: 'Additional job request is not pending',
         current_status: extraWork.status
       }, { status: 400 });
     }
 
     const now = new Date().toISOString();
 
-    // Reject extra work request
+    // Reject additional job request
     // Use service-role client so DB triggers (supervisor_actions) aren't blocked by RLS
     const updater = supabaseAdmin ?? supabase;
     const { data: updatedExtraWork, error: updateError } = await updater
@@ -124,7 +124,7 @@ export async function POST(
       .single();
 
     if (updateError) {
-      console.error('Error rejecting extra work:', updateError);
+      console.error('Error rejecting additional job:', updateError);
       const msg = (updateError as any)?.message || '';
       const code = (updateError as any)?.code || null;
       const isRls =
@@ -132,7 +132,7 @@ export async function POST(
         /row-level security|violates row level security|permission denied/i.test(msg);
       return NextResponse.json(
         {
-          error: 'Failed to reject extra work',
+          error: 'Failed to reject additional job',
           details: msg,
           code,
           env: {
@@ -164,7 +164,7 @@ export async function POST(
         lead_id: extraWork.lead_id,
         user_id: userProfile.id,
         activity_type: 'EXTRA_WORK_REJECTED',
-        description: `Supervisor rejected extra work: ${reason}`,
+        description: `Supervisor rejected additional job: ${reason}`,
         metadata: {
           supervisor_id: userProfile.id,
           extra_work_id: extraWorkId,
@@ -190,7 +190,7 @@ export async function POST(
     }, { status: 200 });
 
   } catch (error) {
-    console.error('Error in reject extra work API:', error);
+    console.error('Error in reject additional job API:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: (error as any)?.message || String(error) },
       { status: 500 }

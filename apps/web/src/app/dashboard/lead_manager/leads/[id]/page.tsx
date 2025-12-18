@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
+import { formatDateDMY, formatDateTime, formatTime12h } from '@/lib/utils';
 import {
   CheckCircle, XCircle, Building, MapPin, Phone, Mail, Car,
   Calendar, DollarSign, FileText, AlertCircle, ArrowRight,
@@ -36,7 +37,7 @@ export default function LeadReviewPage() {
   const formatDate = (value: any) => {
     if (!value) return null;
     const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString();
+    return Number.isNaN(d.getTime()) ? null : formatDateDMY(d);
   };
 
   const formatTime = (value: any) => {
@@ -44,7 +45,7 @@ export default function LeadReviewPage() {
     const d = new Date(value);
     return Number.isNaN(d.getTime())
       ? null
-      : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      : formatTime12h(d);
   };
 
   const getPickupDateText = (l: any) =>
@@ -376,7 +377,7 @@ export default function LeadReviewPage() {
               </p>
               {lead.validated_at && (
                 <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
-                  Validated by {lead.validated_by?.full_name} on {new Date(lead.validated_at).toLocaleString()}
+                  Validated by {lead.validated_by?.full_name} on {formatDateTime(lead.validated_at)}
                 </p>
               )}
             </div>
@@ -600,7 +601,7 @@ export default function LeadReviewPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs sm:text-sm font-medium">Created</p>
-                    <p className="text-[10px] sm:text-xs text-gray-600">{new Date(lead.created_at).toLocaleString()}</p>
+                    <p className="text-[10px] sm:text-xs text-gray-600">{formatDateTime(lead.created_at)}</p>
                     {lead.created_by && (
                       <p className="text-[10px] sm:text-xs text-gray-500">by {lead.created_by.full_name}</p>
                     )}
@@ -614,7 +615,7 @@ export default function LeadReviewPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs sm:text-sm font-medium">Validated</p>
-                      <p className="text-[10px] sm:text-xs text-gray-600">{new Date(lead.validated_at).toLocaleString()}</p>
+                      <p className="text-[10px] sm:text-xs text-gray-600">{formatDateTime(lead.validated_at)}</p>
                       {lead.validated_by && (
                         <p className="text-[10px] sm:text-xs text-gray-500">by {lead.validated_by.full_name}</p>
                       )}
@@ -629,7 +630,7 @@ export default function LeadReviewPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs sm:text-sm font-medium">Workshop Assigned</p>
-                      <p className="text-[10px] sm:text-xs text-gray-600">{new Date(lead.assigned_to_workshop_at).toLocaleString()}</p>
+                      <p className="text-[10px] sm:text-xs text-gray-600">{formatDateTime(lead.assigned_to_workshop_at)}</p>
                     </div>
                   </div>
                 )}

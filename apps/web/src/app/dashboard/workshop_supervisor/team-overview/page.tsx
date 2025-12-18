@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
 import { User, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function TeamOverviewPage() {
   const [mechanics, setMechanics] = useState<any[]>([]);
@@ -244,7 +245,7 @@ export default function TeamOverviewPage() {
               </div>
 
               <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t text-[10px] sm:text-xs text-gray-500">
-                Joined: {new Date(mechanic.created_at).toLocaleDateString()}
+                Joined: {formatDateDMY(mechanic.created_at)}
               </div>
             </div>
           ))}

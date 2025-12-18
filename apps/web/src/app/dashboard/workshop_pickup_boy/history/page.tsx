@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
+import { formatDateDMY, formatDateTime } from '@/lib/utils';
+import {
   Calendar, Clock, MapPin, Car, CheckCircle, XCircle, 
   Truck, Navigation, Eye, Filter, Download 
 } from 'lucide-react';
@@ -387,7 +388,7 @@ export default function PickupBoyHistoryPage() {
                         <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
                         <span className="text-gray-600">Preferred:</span>
                         <span className="font-medium">
-                          {new Date(task.preferred_date).toLocaleDateString()}
+                          {formatDateDMY(task.preferred_date)}
                         </span>
                       </div>
                     )}
@@ -396,7 +397,7 @@ export default function PickupBoyHistoryPage() {
                         <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 flex-shrink-0" />
                         <span className="text-gray-600">Completed:</span>
                         <span className="font-medium text-green-600">
-                          {new Date(task.completed_at).toLocaleString()}
+                          {formatDateTime(task.completed_at)}
                         </span>
                       </div>
                     )}
@@ -405,7 +406,7 @@ export default function PickupBoyHistoryPage() {
                         <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />
                         <span className="text-gray-600">Cancelled:</span>
                         <span className="font-medium text-red-600">
-                          {new Date(task.cancelled_at).toLocaleString()}
+                          {formatDateTime(task.cancelled_at)}
                         </span>
                       </div>
                     )}

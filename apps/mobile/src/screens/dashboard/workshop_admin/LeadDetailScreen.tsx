@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -300,18 +301,18 @@ export default function LeadDetailScreen() {
           <View style={styles.infoCard}>
             <InfoRow 
               label="Created" 
-              value={new Date(lead.created_at).toLocaleString()} 
+              value={formatDateTime(lead.created_at)} 
             />
             {lead.accepted_at && (
               <InfoRow 
                 label="Accepted" 
-                value={new Date(lead.accepted_at).toLocaleString()} 
+                value={formatDateTime(lead.accepted_at)} 
               />
             )}
             {lead.completed_at && (
               <InfoRow 
                 label="Completed" 
-                value={new Date(lead.completed_at).toLocaleString()} 
+                value={formatDateTime(lead.completed_at)} 
               />
             )}
           </View>

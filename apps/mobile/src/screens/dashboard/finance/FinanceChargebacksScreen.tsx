@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -117,7 +118,7 @@ export default function FinanceChargebacksScreen() {
               </View>
               
               <Text style={styles.chargebackDate}>
-                Date: {new Date(chargeback.created_at).toLocaleDateString()}
+                Date: {formatDateDMY(chargeback.created_at)}
               </Text>
             </View>
           ))

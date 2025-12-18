@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -69,7 +70,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
         schema: 'public',
         table: 'lead_extra_charges'
       }, () => {
-        console.log('Extra Work: Real-time update received');
+        console.log('Additional Jobs: Real-time update received');
         fetchRequests();
       })
       .subscribe((status) => {
@@ -99,7 +100,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
       const workshopId = userProfile?.workshop_id;
       if (!workshopId) return;
 
-      console.log('🔍 Fetching extra work requests for workshop:', workshopId);
+      console.log('🔍 Fetching additional job requests for workshop:', workshopId);
 
       // ✅ FIX: Match web app - correct column names
       const { data: extraCharges, error } = await supabase
@@ -129,13 +130,13 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
         .order('created_at', { ascending: true });
 
       if (error) {
-        console.error('❌ Error fetching extra work:', error);
+        console.error('❌ Error fetching additional job:', error);
         setLoading(false);
         setRefreshing(false);
         return;
       }
 
-      console.log('✅ Found', extraCharges?.length || 0, 'extra work requests');
+      console.log('✅ Found', extraCharges?.length || 0, 'additional job requests');
 
       // Fetch mechanic names
       const requestsWithMechanics = await Promise.all((extraCharges || []).map(async (req: any) => {
@@ -258,7 +259,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
 
       Alert.alert(
         'Success',
-        `Extra work request ${decision === 'APPROVE' ? 'approved' : 'rejected'}!`,
+        `Additional job request ${decision === 'APPROVE' ? 'approved' : 'rejected'}!`,
         [
           {
             text: 'OK',
@@ -328,7 +329,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Requested:</Text>
             <Text style={styles.detailValue}>
-              {new Date(item.created_at).toLocaleString()}
+              {formatDateTime(item.created_at)}
             </Text>
           </View>
         </View>
@@ -381,7 +382,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Extra Work Approvals</Text>
+        <Text style={styles.title}>Additional Jobs Approval</Text>
         <Text style={styles.subtitle}>{stats.pending} pending requests</Text>
       </View>
 
@@ -449,7 +450,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No extra work requests</Text>
+            <Text style={styles.emptyText}>No additional job requests</Text>
           </View>
         }
       />
@@ -464,7 +465,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <ScrollView>
-              <Text style={styles.modalTitle}>Review Extra Work Request</Text>
+              <Text style={styles.modalTitle}>Review Additional Job Request</Text>
 
               {selectedRequest && (
                 <>

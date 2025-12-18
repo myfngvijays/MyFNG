@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
+import { formatDateTime } from "@/lib/utils";
 import { 
   Wrench, Clock, CheckCircle, Camera, AlertCircle, 
   TrendingUp, Package, AlertTriangle, Calendar, 
@@ -320,7 +321,7 @@ export default function WorkshopMechanicDashboard() {
         };
       });
 
-      // Check for pending extra work and parts
+      // Check for pending additional job and parts
       const leadIds = dashboardData.map((j: any) => j.lead_id).filter((id: any) => id);
       if (leadIds.length > 0) {
         try {
@@ -344,7 +345,7 @@ export default function WorkshopMechanicDashboard() {
             job.has_parts_assigned = partsLeadIds.has(job.lead_id);
           });
         } catch (err) {
-          console.error('Error fetching extra work/parts:', err);
+          console.error('Error fetching additional job/parts:', err);
         }
       }
 
@@ -387,7 +388,7 @@ export default function WorkshopMechanicDashboard() {
         .eq('status', 'PENDING');
 
       if (approvalError) {
-        console.error('Error fetching extra work requests:', approvalError);
+        console.error('Error fetching additional job requests:', approvalError);
       }
 
       setStats({
@@ -709,7 +710,7 @@ export default function WorkshopMechanicDashboard() {
                   {job.has_pending_extra_work && (
                     <div className="flex items-center gap-1 text-xs sm:text-sm text-orange-600">
                       <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                      Extra Work Pending
+                      Additional Jobs Pending
                     </div>
                   )}
                 </div>
@@ -751,7 +752,7 @@ export default function WorkshopMechanicDashboard() {
                   </div>
 
                 <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t text-[10px] sm:text-xs text-gray-500">
-                  Assigned: {new Date(job.assigned_at).toLocaleString()}
+                  Assigned: {formatDateTime(job.assigned_at)}
                 </div>
             </div>
             ))

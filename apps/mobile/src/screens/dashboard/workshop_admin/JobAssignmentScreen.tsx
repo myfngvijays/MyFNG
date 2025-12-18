@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -224,7 +225,7 @@ export default function JobAssignmentScreen({ navigation }: any) {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Created:</Text>
             <Text style={styles.detailValue}>
-              {new Date(item.created_at).toLocaleString()}
+              {formatDateTime(item.created_at)}
             </Text>
           </View>
         </View>

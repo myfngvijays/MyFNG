@@ -88,12 +88,12 @@ export async function POST(
     }
 
     // Verify lead is in a workable state
-    // NOTE: After requesting extra work we put the job on HOLD/ON_HOLD, so allow re-requests too.
+    // NOTE: After requesting additional job we put the job on HOLD/ON_HOLD, so allow re-requests too.
     const allowedLeadStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'REWORK_REQUIRED', 'ON_HOLD'];
     if (!allowedLeadStatuses.includes(lead.status)) {
       return NextResponse.json(
         {
-          error: 'Job must be in progress to request extra work',
+          error: 'Job must be in progress to request additional job',
           allowed_statuses: allowedLeadStatuses,
           current_status: lead.status,
         },
@@ -103,7 +103,7 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // Create extra work request
+    // Create additional job request
     const { data: extraWorkRequest, error: insertError } = await supabase
       .from('lead_extra_charges')
       .insert({
@@ -123,8 +123,8 @@ export async function POST(
       .single();
 
     if (insertError) {
-      console.error('Error creating extra work request:', insertError);
-      return NextResponse.json({ error: 'Failed to create extra work request' }, { status: 500 });
+      console.error('Error creating additional job request:', insertError);
+      return NextResponse.json({ error: 'Failed to create additional job request' }, { status: 500 });
     }
 
     // Create activity log
@@ -134,7 +134,7 @@ export async function POST(
         lead_id: leadId,
         user_id: userProfile.id,
         activity_type: 'EXTRA_WORK_REQUESTED',
-        description: `Mechanic requested extra work: ${description}`,
+        description: `Mechanic requested additional job: ${description}`,
         metadata: {
           mechanic_id: userProfile.id,
           extra_work_id: extraWorkRequest.id,
@@ -174,7 +174,7 @@ export async function POST(
           lead_id: leadId,
           mechanic_id: userProfile.id,
           action_type: 'STATUS_CHANGED',
-          action_description: `Status changed from ${currentJob.mechanic_status} to HOLD (extra work requested)`,
+          action_description: `Status changed from ${currentJob.mechanic_status} to HOLD (additional job requested)`,
           metadata: {
             old_status: currentJob.mechanic_status,
             new_status: 'HOLD',
@@ -197,13 +197,13 @@ export async function POST(
           new_status: 'ON_HOLD',
           changed_by: userProfile.id,
           changed_at: now,
-          reason: 'Extra work requested',
-          notes: `Extra work requested: ${description}`,
+          reason: 'Additional job requested',
+          notes: `Additional job requested: ${description}`,
         });
       }
     } catch (e) {
       // Don't fail request creation if status updates are blocked; UI can still show request.
-      console.error('Failed to set HOLD after extra work request:', e);
+      console.error('Failed to set HOLD after additional job request:', e);
     }
 
     // TODO: Send notification to supervisor (if assigned)
@@ -212,7 +212,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: 'Extra work request submitted successfully',
+      message: 'Additional job request submitted successfully',
       extra_work_request: extraWorkRequest,
       next_step: lead.assigned_supervisor_id 
         ? 'Supervisor will review and approve/reject your request'
@@ -223,7 +223,7 @@ export async function POST(
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Error in request extra work API:', error);
+    console.error('Error in request additional job API:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

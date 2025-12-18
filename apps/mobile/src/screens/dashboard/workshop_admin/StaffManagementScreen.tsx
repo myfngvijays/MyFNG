@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -152,7 +153,7 @@ export default function StaffManagementScreen({ navigation }: any) {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Joined:</Text>
             <Text style={styles.detailValue}>
-              {new Date(item.created_at).toLocaleDateString()}
+              {formatDateDMY(item.created_at)}
             </Text>
           </View>
         </View>

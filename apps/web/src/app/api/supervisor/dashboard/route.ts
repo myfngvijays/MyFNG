@@ -152,7 +152,7 @@ export async function GET(request: Request) {
         .in('pickup_status', ['PENDING', 'ASSIGNED']);
       metrics.pendingPickups = pickups || 0;
 
-      // Pending extra work approvals
+      // Pending additional job approvals
       const { data: workshopLeads } = await supabase
         .from('service_leads')
         .select('id')

@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/dateFormat";
 /**
  * CSE Lead Detail Screen
  * Detailed view of lead with complaint handling
@@ -100,7 +101,7 @@ export default function CSELeadDetailScreen({ route }: any) {
               </View>
             </View>
             <Text style={styles.complaintDesc}>{complaint.description}</Text>
-            <Text style={styles.complaintDate}>{new Date(complaint.created_at).toLocaleString()}</Text>
+            <Text style={styles.complaintDate}>{formatDateTime(complaint.created_at)}</Text>
           </View>
         ))}
       </View>

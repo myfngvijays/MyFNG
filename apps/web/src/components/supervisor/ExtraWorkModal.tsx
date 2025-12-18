@@ -10,6 +10,7 @@ interface ExtraCharge {
   reason: string;
   image_url?: string | null;
   requested_by_name?: string;
+  requester?: { full_name?: string | null } | null;
   created_at: string;
 }
 
@@ -104,7 +105,7 @@ export default function ExtraWorkModal({
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-text-heading">Review Extra Work Request</h2>
+            <h2 className="text-xl font-bold text-text-heading">Review Additional Job Request</h2>
             <p className="text-sm text-gray-600 mt-1">Lead: {leadNumber}</p>
           </div>
           <button
@@ -137,7 +138,7 @@ export default function ExtraWorkModal({
               <div>
                 <p className="text-sm text-gray-600">Requested by</p>
                 <p className="font-medium text-gray-800 mt-1">
-                  {extraCharge.requested_by_name || 'Unknown'}
+                  {extraCharge.requested_by_name || extraCharge.requester?.full_name || 'Unknown'}
                 </p>
               </div>
             </div>

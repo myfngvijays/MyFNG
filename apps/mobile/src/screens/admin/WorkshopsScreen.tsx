@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import { formatDateDMY } from "@/lib/dateFormat";
 
 export default function WorkshopsScreen({ onBack }) {
   const [workshops, setWorkshops] = useState([]);
@@ -67,7 +68,7 @@ export default function WorkshopsScreen({ onBack }) {
 
       <View style={styles.workshopFooter}>
         <Text style={styles.date}>
-          Registered: {new Date(item.created_at).toLocaleDateString()}
+          Registered: {formatDateDMY(item.created_at)}
         </Text>
       </View>
     </View>

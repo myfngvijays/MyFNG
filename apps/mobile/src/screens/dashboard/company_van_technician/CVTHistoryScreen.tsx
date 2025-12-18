@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   ScrollView,
@@ -80,7 +81,7 @@ export default function CVTHistoryScreen() {
               <Text style={styles.customerName}>{job.customer_name}</Text>
               {job.completed_at && (
                 <Text style={styles.completedDate}>
-                  Completed: {new Date(job.completed_at).toLocaleDateString()}
+                  Completed: {formatDateDMY(job.completed_at)}
                 </Text>
               )}
             </View>

@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateTime } from "@/lib/utils";
 /**
  * Communication Logs Section
  * Display all events and activities for this lead
@@ -167,7 +168,7 @@ export default function CommunicationLogs({ lead }: CommunicationLogsProps) {
                       {formatTimeAgo(event.created_at)}
                     </div>
                     <div className="text-gray-500">
-                      {new Date(event.created_at).toLocaleString()}
+                      {formatDateTime(event.created_at)}
                     </div>
                   </div>
                 </div>

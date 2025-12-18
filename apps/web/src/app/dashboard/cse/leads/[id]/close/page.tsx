@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { CheckCircle, ArrowLeft, User, Car, FileText, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { formatDateTime } from "@/lib/utils";
 
 export default function CloseLeadPage() {
   const router = useRouter();
@@ -263,7 +264,7 @@ export default function CloseLeadPage() {
                       </p>
                       {lead.next_follow_up_at && (
                         <p className="text-sm text-red-600 mt-1">
-                          Next follow-up: {new Date(lead.next_follow_up_at).toLocaleString()}
+                          Next follow-up: {formatDateTime(lead.next_follow_up_at)}
                         </p>
                       )}
                     </div>

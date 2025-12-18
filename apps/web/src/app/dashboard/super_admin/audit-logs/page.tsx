@@ -5,6 +5,7 @@ import { AuditLog, AuditLogsResponse } from '@/shared/types/audit';
 import { Loader2, Shield, Search, Filter, ChevronLeft, ChevronRight, Eye, Download } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
+import { formatDateTime } from "@/lib/utils";
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -116,7 +117,7 @@ export default function AuditLogsPage() {
           log.execution_time_ms || 'N/A',
           log.error_message ? `"${log.error_message.replace(/"/g, '""')}"` : 'N/A',
           log.ip_address || 'N/A',
-          new Date(log.created_at).toLocaleString(),
+          formatDateTime(log.created_at),
         ].join(',')
       ),
     ].join('\n');
@@ -331,7 +332,7 @@ export default function AuditLogsPage() {
                   {logs.map((log) => (
                     <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-text-body">
-                        <span title={new Date(log.created_at).toLocaleString()}>
+                        <span title={formatDateTime(log.created_at)}>
                           {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
                         </span>
                       </td>
@@ -580,7 +581,7 @@ export default function AuditLogsPage() {
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-500">Timestamp</p>
-                  <p className="text-xs sm:text-sm text-text-body">{new Date(selectedLog.created_at).toLocaleString()}</p>
+                  <p className="text-xs sm:text-sm text-text-body">{formatDateTime(selectedLog.created_at)}</p>
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-500">User ID</p>

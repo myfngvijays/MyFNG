@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/leads/[id]/extra-work/reject
  * 
- * Reject extra work charges (Supervisor action)
+ * Reject additional job charges (Supervisor action)
  * 
  * Body:
  * - charge_id: UUID of the extra charge to reject
@@ -160,9 +160,9 @@ export async function POST(
     });
 
   } catch (error: any) {
-    console.error('Reject extra work API error:', error);
+    console.error('Reject additional job API error:', error);
     return NextResponse.json(
-      { error: 'Failed to reject extra work', details: error.message },
+      { error: 'Failed to reject additional job', details: error.message },
       { status: 500 }
     );
   }

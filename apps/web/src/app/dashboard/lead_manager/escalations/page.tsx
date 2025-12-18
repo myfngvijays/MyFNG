@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
+import { formatDateTime } from "@/lib/utils";
 
 export default function LeadManagerEscalationsPage() {
   const supabase = createClientComponentClient();
@@ -234,7 +235,7 @@ export default function LeadManagerEscalationsPage() {
                 {/* Timestamp */}
                 <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
                   <p className="text-[10px] sm:text-xs text-gray-500">
-                    Last updated: {new Date(escalation.updated_at).toLocaleString()}
+                    Last updated: {formatDateTime(escalation.updated_at)}
                   </p>
                 </div>
               </div>

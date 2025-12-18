@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
-import { 
-  FileText, 
+import { formatDateDMY } from '@/lib/utils';
+import {
+  FileText,
   Search,
   Filter,
   Loader2,
@@ -188,7 +189,7 @@ export default function SubAdminLeadsPage() {
                           </span>
                         </td>
                         <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
-                          {new Date(lead.created_at).toLocaleDateString()}
+                          {formatDateDMY(lead.created_at)}
                         </td>
                         <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium">
                           <Link
@@ -228,7 +229,7 @@ export default function SubAdminLeadsPage() {
                     </div>
                     <div className="flex items-center justify-between mt-2">
                       <div className="text-xs text-gray-500">
-                        Created: {new Date(lead.created_at).toLocaleDateString()}
+                        Created: {formatDateDMY(lead.created_at)}
                       </div>
                       <Link
                         href={`/dashboard/sub_admin/${department.toLowerCase()}/leads/${lead.id}`}

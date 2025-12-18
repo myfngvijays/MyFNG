@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
+import { formatDateDMY } from '@/lib/utils';
+import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, 
   Award, Target, Calendar, BarChart3, Activity
 } from 'lucide-react';
@@ -347,7 +348,7 @@ export default function MechanicPerformancePage() {
           </div>
         </div>
 
-        {/* Extra Work Stats */}
+        {/* Additional Jobs Stats */}
         <div className="card p-3 sm:p-4 md:p-5">
           <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Additional Work Requests</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
@@ -391,10 +392,7 @@ export default function MechanicPerformancePage() {
               {[...currentMetrics].reverse().map((metric, index) => (
                 <div key={index} className="flex items-center gap-2 sm:gap-3 md:gap-4">
                   <div className="w-16 sm:w-20 md:w-24 text-xs sm:text-sm text-gray-600 flex-shrink-0">
-                    {new Date(metric.date).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric'
-                    })}
+                    {formatDateDMY(metric.date)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="w-full bg-gray-200 rounded-full h-2 sm:h-3">

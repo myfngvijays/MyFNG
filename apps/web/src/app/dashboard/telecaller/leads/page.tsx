@@ -1,4 +1,5 @@
 'use client';
+import { formatDateTime } from "@/lib/utils";
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, Suspense } from 'react';
@@ -304,7 +305,7 @@ function TelecallerLeadsContent() {
                           )}
                         </div>
                         <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">
-                          Created {new Date(lead.created_at).toLocaleString()}
+                          Created {formatDateTime(lead.created_at)}
                         </p>
                       </div>
                       <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold whitespace-nowrap flex-shrink-0 ${
@@ -366,13 +367,13 @@ function TelecallerLeadsContent() {
                         {lead.last_call_at && (
                           <div className="flex items-center gap-1.5 sm:gap-2 text-gray-600">
                             <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span className="truncate">Last call: {new Date(lead.last_call_at).toLocaleString()}</span>
+                            <span className="truncate">Last call: {formatDateTime(lead.last_call_at)}</span>
                           </div>
                         )}
                         {lead.next_follow_up_at && (
                           <div className="flex items-center gap-1.5 sm:gap-2 text-purple-600">
                             <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span className="truncate">Next follow-up: {new Date(lead.next_follow_up_at).toLocaleString()}</span>
+                            <span className="truncate">Next follow-up: {formatDateTime(lead.next_follow_up_at)}</span>
                           </div>
                         )}
                       </div>

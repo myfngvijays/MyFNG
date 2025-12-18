@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateDMY } from "@/lib/utils";
 /**
  * Customer Dashboard
  * Phase 4 - Task WA-403
@@ -238,7 +239,7 @@ export default function CustomerDashboardPage() {
                         🔧 {lead.service_type}
                       </p>
                       <p className="text-xs text-gray-500">
-                        Created: {new Date(lead.created_at).toLocaleDateString()}
+                        Created: {formatDateDMY(lead.created_at)}
                       </p>
                     </div>
                     <div className="text-right">

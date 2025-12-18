@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Wrench, User, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function WorkshopJobsPage() {
   const router = useRouter();
@@ -274,9 +275,9 @@ export default function WorkshopJobsPage() {
 
               <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
                 <div className="text-[10px] sm:text-xs text-gray-500 flex flex-wrap gap-2 sm:gap-4">
-                  <span>Accepted: {new Date(job.accepted_at || job.created_at).toLocaleDateString()}</span>
+                  <span>Accepted: {formatDateDMY(job.accepted_at || job.created_at)}</span>
                   {job.completed_at && (
-                    <span>Completed: {new Date(job.completed_at).toLocaleDateString()}</span>
+                    <span>Completed: {formatDateDMY(job.completed_at)}</span>
                   )}
                 </div>
                 <button 

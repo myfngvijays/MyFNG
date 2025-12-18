@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle, Clock, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatDateTime } from "@/lib/utils";
 
 export default function ReconciliationDashboard() {
   const [exceptions, setExceptions] = useState<any[]>([]);
@@ -101,7 +102,7 @@ export default function ReconciliationDashboard() {
                     <div className="text-xs sm:text-sm space-y-1 mb-2 sm:mb-3">
                       <p><strong>Transaction ID:</strong> {exception.payment.transaction_id}</p>
                       <p><strong>Amount:</strong> ₹{parseFloat(exception.payment.amount).toLocaleString()}</p>
-                      <p><strong>Date:</strong> {new Date(exception.payment.completed_at).toLocaleString()}</p>
+                      <p><strong>Date:</strong> {formatDateTime(exception.payment.completed_at)}</p>
                     </div>
                   )}
 

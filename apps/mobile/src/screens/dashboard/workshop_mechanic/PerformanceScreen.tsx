@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateDMY } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -308,7 +309,7 @@ const JobRow = ({ job }: { job: any }) => (
     <View style={styles.jobInfo}>
       <Text style={styles.jobTitle}>Job #{job.id.slice(0, 8)}</Text>
       <Text style={styles.jobDate}>
-        {new Date(job.created_at).toLocaleDateString()}
+        {formatDateDMY(job.created_at)}
       </Text>
     </View>
     <View style={[styles.jobStatus, { backgroundColor: getStatusColor(job.status) }]}>

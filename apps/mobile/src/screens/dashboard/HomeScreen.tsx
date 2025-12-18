@@ -52,7 +52,7 @@ export default function HomeScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Pending Approvals</Text>
+          <Text style={styles.sectionTitle}>Pending Lead Approval</Text>
           <TouchableOpacity>
             <Text style={styles.seeAll}>See All</Text>
           </TouchableOpacity>

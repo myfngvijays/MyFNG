@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { DollarSign, TrendingUp, Clock, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function PayoutDashboard() {
   const [payouts, setPayouts] = useState<any[]>([]);
@@ -135,7 +136,7 @@ export default function PayoutDashboard() {
                     <div>
                       <p className="text-gray-600">Period</p>
                       <p className="font-medium">
-                        {new Date(payout.payout_period_start).toLocaleDateString()} - {new Date(payout.payout_period_end).toLocaleDateString()}
+                        {formatDateDMY(payout.payout_period_start)} - {formatDateDMY(payout.payout_period_end)}
                       </p>
                     </div>
                     <div>

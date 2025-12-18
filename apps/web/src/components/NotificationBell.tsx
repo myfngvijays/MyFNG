@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, X, Check, CheckCheck, Trash2, Clock } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function NotificationBell() {
   const router = useRouter();
@@ -63,7 +64,7 @@ export default function NotificationBell() {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return formatDateDMY(date);
   };
 
   const handleNotificationClick = async (notification: any) => {

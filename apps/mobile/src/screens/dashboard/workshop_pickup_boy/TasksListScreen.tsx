@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+import { formatDateTime } from "@/lib/dateFormat";
   View,
   Text,
   StyleSheet,
@@ -246,7 +247,7 @@ export default function TasksListScreen() {
         <View style={styles.timeContainer}>
           <Text style={styles.timeLabel}>⏰ Scheduled:</Text>
           <Text style={styles.timeText}>
-            {new Date(item.pickup_scheduled_time).toLocaleString()}
+            {formatDateTime(item.pickup_scheduled_time)}
           </Text>
         </View>
       )}

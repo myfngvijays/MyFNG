@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Map, Edit, Trash2, Loader2 } from 'lucide-react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function ZonesTab() {
   const [zones, setZones] = useState<any[]>([]);
@@ -100,7 +101,7 @@ export default function ZonesTab() {
                   {zone.is_active ? 'Active' : 'Inactive'}
                 </span>
                 <span className="text-[10px] sm:text-xs text-gray-400">
-                  Added {new Date(zone.created_at).toLocaleDateString()}
+                  Added {formatDateDMY(zone.created_at)}
                 </span>
               </div>
             </div>

@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { ArrowLeft, Calendar, Clock, Share2, Tag } from 'lucide-react';
+import { formatDateDMY } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,7 @@ type Blog = {
 function formatDate(dateString?: string | null) {
   if (!dateString) return '';
   const d = new Date(dateString);
-  return d.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
+  return formatDateDMY(d);
 }
 
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {

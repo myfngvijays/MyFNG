@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { CheckCircle, Clock, Eye, Camera, AlertCircle, User, Car } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import { formatDateTime } from "@/lib/utils";
 
 interface QCJob {
   id: string;
@@ -431,7 +432,7 @@ export default function QCQueuePage() {
                     <div className="min-w-0 flex-1">
                       <span className="badge-blue text-sm sm:text-base md:text-lg">{job.lead_number}</span>
                       <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
-                        Completed: {new Date(job.mechanic_completed_at).toLocaleString()}
+                        Completed: {formatDateTime(job.mechanic_completed_at)}
                       </p>
                     </div>
                     <div className="flex gap-2 w-full sm:w-auto">

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
 import { User, Mail, Phone, Briefcase, Calendar, Edit2, Save } from 'lucide-react';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function SupervisorProfilePage() {
   const [profile, setProfile] = useState<any>(null);
@@ -148,7 +149,7 @@ export default function SupervisorProfilePage() {
                 )}
                 <div className="flex items-center justify-center gap-2">
                   <Calendar className="w-4 h-4" />
-                  <span>Joined {new Date(profile?.created_at).toLocaleDateString()}</span>
+                  <span>Joined {formatDateDMY(profile?.created_at)}</span>
                 </div>
               </div>
             </div>

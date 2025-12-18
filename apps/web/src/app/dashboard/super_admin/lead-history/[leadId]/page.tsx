@@ -6,6 +6,7 @@ import { LeadHistoryResponse } from '@/shared/types/audit';
 import { Loader2, ArrowLeft, Activity, Calendar, FileText } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
+import { formatDateTime } from "@/lib/utils";
 
 export default function LeadHistoryPage() {
   const params = useParams();
@@ -180,7 +181,7 @@ export default function LeadHistoryPage() {
                       </div>
                       <div className="text-left sm:text-right text-xs sm:text-sm text-gray-500 flex-shrink-0">
                         <p>{formatDistanceToNow(new Date(item.changed_at), { addSuffix: true })}</p>
-                        <p className="text-[10px] sm:text-xs">{new Date(item.changed_at).toLocaleString()}</p>
+                        <p className="text-[10px] sm:text-xs">{formatDateTime(item.changed_at)}</p>
                       </div>
                     </div>
                   </div>
@@ -234,7 +235,7 @@ export default function LeadHistoryPage() {
                     </div>
                     <div className="text-left sm:text-right text-xs sm:text-sm text-gray-500 flex-shrink-0">
                       <p>{formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}</p>
-                      <p className="text-[10px] sm:text-xs">{new Date(activity.created_at).toLocaleString()}</p>
+                      <p className="text-[10px] sm:text-xs">{formatDateTime(activity.created_at)}</p>
                     </div>
                   </div>
                 </div>
@@ -287,7 +288,7 @@ export default function LeadHistoryPage() {
                     </div>
                     <div className="text-left sm:text-right text-xs sm:text-sm text-gray-500 flex-shrink-0">
                       <p>{formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}</p>
-                      <p className="text-[10px] sm:text-xs">{new Date(event.created_at).toLocaleString()}</p>
+                      <p className="text-[10px] sm:text-xs">{formatDateTime(event.created_at)}</p>
                     </div>
                   </div>
                 </div>

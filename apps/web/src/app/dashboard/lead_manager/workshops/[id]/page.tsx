@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
-  Building, MapPin, Phone, Mail, Star, CheckCircle, XCircle, 
+import { formatDateDMY } from '@/lib/utils';
+import {
+  Building, MapPin, Phone, Mail, Star, CheckCircle, XCircle,
   ArrowLeft, Calendar, TrendingUp, Users, Wrench, Clock,
   AlertCircle, DollarSign, Award, FileText, Loader2
 } from 'lucide-react';
@@ -310,11 +311,7 @@ export default function WorkshopDetailPage() {
                   <div className="flex items-center gap-2 mt-1">
                     <Calendar className="w-4 h-4 text-gray-400" />
                     <p className="text-sm text-gray-900">
-                      {new Date(workshop.created_at).toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric'
-                      })}
+                      {formatDateDMY(workshop.created_at)}
                     </p>
                   </div>
                 </div>
@@ -391,13 +388,13 @@ export default function WorkshopDetailPage() {
                             <div>
                               <label className="text-xs text-gray-500">Created</label>
                               <p className="text-sm text-gray-900">
-                                {new Date(lead.created_at).toLocaleDateString()}
+                                {formatDateDMY(lead.created_at)}
                               </p>
                             </div>
                             <div>
                               <label className="text-xs text-gray-500">Last Updated</label>
                               <p className="text-sm text-gray-900">
-                                {new Date(lead.updated_at).toLocaleDateString()}
+                                {formatDateDMY(lead.updated_at)}
                               </p>
                             </div>
                           </div>

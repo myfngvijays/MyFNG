@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AlertOctagon, Shield, FileText, CheckCircle, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatDateDMY } from "@/lib/utils";
 
 export default function ChargebackManagementDashboard() {
   const [chargebacks, setChargebacks] = useState<any[]>([]);
@@ -148,7 +149,7 @@ export default function ChargebackManagementDashboard() {
                     <div>
                       <p className="text-gray-600">Response Due</p>
                       <p className="font-medium text-orange-600">
-                        {new Date(chargeback.response_due_date).toLocaleDateString()}
+                        {formatDateDMY(chargeback.response_due_date)}
                       </p>
                     </div>
                   </div>

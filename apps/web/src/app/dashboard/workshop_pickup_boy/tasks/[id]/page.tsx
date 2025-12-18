@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
+import { formatDateDMY, formatTime12h } from '@/lib/utils';
+import {
   PlayCircle, CheckCircle, Camera, Upload, ArrowLeft, User, Car, 
   MapPin, Phone, Clock, Shield, Navigation, AlertCircle
 } from 'lucide-react';
@@ -618,12 +619,7 @@ export default function PickupTaskDetailPage() {
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600">Preferred Date</p>
                       <p className="font-semibold text-sm sm:text-base">
-                        {date.toLocaleDateString('en-IN', { 
-                          weekday: 'long',
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
+                        {formatDateDMY(date)}
                       </p>
                     </div>
                     <div>
@@ -647,12 +643,7 @@ export default function PickupTaskDetailPage() {
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600">Preferred Date</p>
                       <p className="font-semibold text-sm sm:text-base">
-                        {date.toLocaleDateString('en-IN', { 
-                          weekday: 'long',
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
+                        {formatDateDMY(date)}
                       </p>
                     </div>
                       <div>
@@ -671,12 +662,7 @@ export default function PickupTaskDetailPage() {
                 
                 // Format in IST timezone
                 const formatTimeIST = (date: Date) => {
-                  return date.toLocaleTimeString('en-IN', { 
-                    timeZone: 'Asia/Kolkata', // ✨ FIX: Explicitly use IST timezone
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    hour12: true 
-                  });
+                  return formatTime12h(date);
                 };
                 
                 return (
@@ -684,13 +670,7 @@ export default function PickupTaskDetailPage() {
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600">Preferred Date</p>
                       <p className="font-semibold text-sm sm:text-base">
-                        {startDate.toLocaleDateString('en-IN', { 
-                          timeZone: 'Asia/Kolkata', // ✨ FIX: Use IST timezone
-                          weekday: 'long',
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
+                        {formatDateDMY(startDate)}
                       </p>
                     </div>
                     <div>
@@ -712,12 +692,7 @@ export default function PickupTaskDetailPage() {
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600">Preferred Date</p>
                       <p className="font-semibold text-sm sm:text-base">
-                        {date.toLocaleDateString('en-IN', { 
-                          weekday: 'long',
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
+                        {formatDateDMY(date)}
                       </p>
                     </div>
                   </>
