@@ -1309,7 +1309,7 @@ export default function MechanicJobDetailPage() {
                             <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-xs sm:text-sm flex-shrink-0 mt-0.5">1</span>
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-800 text-xs sm:text-sm">Upload Before Inspection Photos</p>
+                            <p className="font-semibold text-gray-800 text-xs sm:text-sm">Upload Pickup/Visit Photos</p>
                             <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                               Required: 6 photos (Front, Rear, Left, Right, Dashboard, Engine Bay)
                             </p>

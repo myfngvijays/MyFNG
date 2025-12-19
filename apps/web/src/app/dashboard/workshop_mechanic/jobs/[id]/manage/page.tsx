@@ -469,13 +469,13 @@ export default function ManageJobPage() {
           </div>
         )}
 
-        {/* Before Inspection Section - Show if job not started */}
+        {/* Pickup/Visit Photos Section - Show if job not started */}
         {canStart && job && (
           <div className="card shadow-lg border-2 border-blue-200">
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-t-lg -m-6 mb-4">
               <h3 className="text-xl font-bold flex items-center gap-2">
                 <Camera className="w-6 h-6" />
-                Before Inspection (Mandatory)
+                Pickup/Visit Photos (Mandatory)
               </h3>
               <p className="text-sm text-blue-100 mt-1">
                 Complete all required photos before starting repair work

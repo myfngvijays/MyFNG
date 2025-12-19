@@ -287,12 +287,12 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
 
   return (
     <div className="space-y-4">
-      {/* Before Inspection Checklist Indicator */}
+      {/* Pickup/Visit Photos Checklist Indicator */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 border-2 border-blue-200">
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-lg font-bold text-gray-800 flex items-center gap-2">
             <Camera className="w-6 h-6 text-brand-primary" />
-            Before Inspection Checklist
+            Pickup/Visit Photos Checklist
           </h4>
           <div className={`px-4 py-2 rounded-full font-bold ${
             uploadedCount >= requiredCount 

@@ -820,7 +820,7 @@ export default function HomePage() {
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start">
                 <Link
                   href="/book-service"
-                  className="btn inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl shadow-lg shadow-blue-600/20 font-semibold text-lg transition-all transform hover:-translate-y-1 hover:shadow-xl"
+                  className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-white bg-blue-600 shadow-lg shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   Book Service Now
                 </Link>
@@ -831,7 +831,7 @@ export default function HomePage() {
                     setChatDraft('I want to book a car service.');
                     setIsChatOpen(true);
                   }}
-                  className="btn inline-flex items-center justify-center gap-2 bg-white border-2 border-blue-100 hover:border-blue-600 text-blue-900 hover:text-blue-600 px-8 py-4 rounded-xl font-semibold text-lg transition-all transform hover:-translate-y-1"
+                  className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-blue-900 bg-white border border-blue-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   <Bot className="w-5 h-5" />
                   Book via MYFNG AI
@@ -839,7 +839,7 @@ export default function HomePage() {
 
                 <Link
                   href="/workshops"
-                  className="btn inline-flex items-center justify-center gap-2 bg-white/60 backdrop-blur border-2 border-gray-200 hover:border-blue-300 text-gray-900 hover:text-blue-700 px-8 py-4 rounded-xl font-semibold text-lg transition-all transform hover:-translate-y-1"
+                  className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-gray-900 bg-white/70 backdrop-blur border border-gray-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:bg-white hover:text-blue-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   <MapPin className="w-5 h-5" />
                   Workshop Locator

@@ -43,6 +43,7 @@ import {
 import InternalAssignment from '@/components/lead-detail/InternalAssignment';
 import ReassignMechanicModal from '@/components/supervisor/ReassignMechanicModal';
 import MediaSection from '@/components/lead-detail/MediaSection';
+import PickupVisitPhotosChecklistReadonly from '@/components/lead-detail/PickupVisitPhotosChecklistReadonly';
 import ExtraChargesSection from '@/components/lead-detail/ExtraChargesSection';
 import AuditSection from '@/components/lead-detail/AuditSection';
 import InvoiceSection from '@/components/lead-detail/InvoiceSection';
@@ -736,6 +737,11 @@ export default function LeadDetailPage() {
               </div>
             )}
           </>
+        )}
+
+        {/* Pickup Lead: show pickup boy photos in checklist slots (read-only) */}
+        {lead.pickup_required && (
+          <PickupVisitPhotosChecklistReadonly leadId={leadId} />
         )}
 
         {/* Section 9: Media Section */}

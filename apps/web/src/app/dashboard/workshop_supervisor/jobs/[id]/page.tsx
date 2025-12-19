@@ -21,7 +21,7 @@ import {
   ArrowLeft, Clock, User, Car, Calendar, Wrench, 
   CheckCircle, AlertTriangle, Image as ImageIcon, Package,
   DollarSign, FileText, MessageSquare, History, Loader2, Save,
-  XCircle, ArrowLeftCircle, Camera, Edit
+  XCircle, ArrowLeftCircle, Camera, Edit, MapPin, AlertCircle
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -48,6 +48,29 @@ export default function SupervisorJobDetailPage() {
   const [showServicePackageModal, setShowServicePackageModal] = useState(false);
   const [internalNotes, setInternalNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [enablingPickup, setEnablingPickup] = useState(false);
+  const [showAddPickupForm, setShowAddPickupForm] = useState(false);
+  const [pickupFormAddress, setPickupFormAddress] = useState('');
+  const [pickupFormDate, setPickupFormDate] = useState(''); // YYYY-MM-DD
+  const [pickupFormTimeSlot, setPickupFormTimeSlot] = useState(''); // "10:00 AM - 12:00 PM"
+  const PICKUP_TIME_SLOTS = useMemo(
+    () => [
+      '09:00 AM - 11:00 AM',
+      '10:00 AM - 12:00 PM',
+      '11:00 AM - 01:00 PM',
+      '12:00 PM - 02:00 PM',
+      '01:00 PM - 03:00 PM',
+      '02:00 PM - 04:00 PM',
+      '03:00 PM - 05:00 PM',
+      '04:00 PM - 06:00 PM',
+      '05:00 PM - 07:00 PM',
+      '06:00 PM - 08:00 PM',
+      'Anytime (Today)',
+      'Anytime (Tomorrow)',
+    ],
+    []
+  );
+
   const [parts, setParts] = useState<any[]>([]);
   const [showAddPartModal, setShowAddPartModal] = useState(false);
   const [editingPart, setEditingPart] = useState<any>(null);
@@ -480,6 +503,42 @@ export default function SupervisorJobDetailPage() {
     }
   }
 
+  async function enablePickupForLead() {
+    try {
+      setEnablingPickup(true);
+      const addr =
+        (pickupFormAddress || '').trim() ||
+        (lead?.customer_address || lead?.address || '')?.toString().trim() ||
+        null;
+
+      const response = await fetch(`/api/supervisor/jobs/${jobId}/enable-pickup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pickup_address: addr,
+          preferred_date: (pickupFormDate || '').trim() || null,
+          preferred_time_slot: (pickupFormTimeSlot || '').trim() || null,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((data as any)?.error || 'Failed to enable pickup');
+      }
+
+      alert((data as any)?.message || 'Pickup enabled');
+      setShowAddPickupForm(false);
+      fetchJobDetails();
+    } catch (error: any) {
+      console.error('Error enabling pickup:', error);
+      alert(`Failed to enable pickup: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setEnablingPickup(false);
+    }
+  }
+
   async function changeJobStatus(newStatus: string) {
     if (!confirm(`Are you sure you want to change status to ${newStatus}?`)) {
       return;
@@ -856,6 +915,257 @@ export default function SupervisorJobDetailPage() {
           </div>
         </div>
 
+        {/* Section 2.5: Pickup Details */}
+        <div className="card border border-orange-200 bg-orange-50">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+            <div className="min-w-0">
+              <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
+                <Package className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
+                Pickup Details
+              </h3>
+              <p className="text-[11px] sm:text-xs text-gray-600 mt-0.5">
+                Pickup info shows only when pickup is enabled on the lead.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                // Prefill from lead if available
+                if (!showAddPickupForm) {
+                  const prefill = (lead?.pickup_address || lead?.customer_address || lead?.address || '') as string;
+                  setPickupFormAddress((prefill || '').toString());
+                  setPickupFormDate((lead?.preferred_date || '') as string);
+                  setPickupFormTimeSlot((lead?.preferred_time_slot || '') as string);
+                }
+                setShowAddPickupForm((v) => !v);
+              }}
+              className={
+                lead.pickup_required
+                  ? 'btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start'
+                  : 'btn bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start'
+              }
+            >
+              {showAddPickupForm ? 'Close' : lead.pickup_required ? 'Update Pickup Details' : 'Add Pickup'}
+            </button>
+          </div>
+
+          {/* Ask pickup details right here (enable/update) */}
+          {showAddPickupForm && (
+            <div className="p-3 sm:p-4 bg-white border border-orange-200 rounded-lg mb-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                    Pickup Address
+                  </label>
+                  <textarea
+                    value={pickupFormAddress}
+                    onChange={(e) => setPickupFormAddress(e.target.value)}
+                    rows={3}
+                    className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-2"
+                    placeholder="Enter pickup address (house/area/landmark)"
+                  />
+                  {!!(pickupFormAddress || '').trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                          pickupFormAddress.trim()
+                        )}`;
+                        window.open(url, '_blank');
+                      }}
+                      className="text-[11px] sm:text-xs text-brand-primary hover:underline mt-1"
+                    >
+                      Open in Google Maps
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Pickup Date</label>
+                  <input
+                    type="date"
+                    value={pickupFormDate}
+                    onChange={(e) => setPickupFormDate(e.target.value)}
+                    className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Pickup Time Slot</label>
+                  <input
+                    type="text"
+                    value={pickupFormTimeSlot}
+                    onChange={(e) => setPickupFormTimeSlot(e.target.value)}
+                    className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-2"
+                    placeholder="e.g. 10:00 AM - 12:00 PM"
+                    list="pickup-time-slots"
+                  />
+                  <datalist id="pickup-time-slots">
+                    {PICKUP_TIME_SLOTS.map((s) => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
+
+                  {/* Quick suggestions */}
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {PICKUP_TIME_SLOTS.slice(0, 6).map((slot) => (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => setPickupFormTimeSlot(slot)}
+                        className="px-2.5 py-1 rounded-full text-[11px] sm:text-xs border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-800"
+                      >
+                        {slot}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddPickupForm(false)}
+                  className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                  disabled={enablingPickup}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={enablePickupForLead}
+                  disabled={enablingPickup || !(pickupFormAddress || '').trim()}
+                  className="btn bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                >
+                  {enablingPickup ? 'Saving…' : lead.pickup_required ? 'Save Pickup Details' : 'Save & Enable Pickup'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {lead.pickup_required ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+              <div>
+                <p className="text-xs sm:text-sm text-gray-600">Pickup Status</p>
+                <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
+                  {lead.pickup_status === 'COMPLETED' ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      <span className="font-semibold text-green-700 text-xs sm:text-sm">Completed</span>
+                    </>
+                  ) : lead.pickup_status === 'IN_PROGRESS' || lead.pickup_status === 'ON_THE_WAY' ? (
+                    <>
+                      <Clock className="w-4 h-4 text-blue-600" />
+                      <span className="font-semibold text-blue-700 text-xs sm:text-sm">
+                        {lead.pickup_status === 'ON_THE_WAY' ? 'On The Way' : 'In Progress'}
+                      </span>
+                    </>
+                  ) : lead.pickup_status === 'ASSIGNED' ? (
+                    <>
+                      <User className="w-4 h-4 text-yellow-600" />
+                      <span className="font-semibold text-yellow-700 text-xs sm:text-sm">Assigned</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-gray-500" />
+                      <span className="font-semibold text-gray-700 text-xs sm:text-sm">Not Assigned</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 md:col-span-2">
+                <p className="text-xs sm:text-sm text-gray-600">Pickup Address</p>
+                <div className="flex items-start gap-2 mt-0.5 sm:mt-1">
+                  <MapPin className="w-4 h-4 text-gray-500 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm font-semibold text-gray-900 break-words">
+                      {lead.pickup_address || lead.customer_address || lead.address || '—'}
+                    </p>
+                    {(lead.pickup_address || lead.customer_address || lead.address) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const addr = (lead.pickup_address || lead.customer_address || lead.address || '').toString();
+                          const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+                          window.open(url, '_blank');
+                        }}
+                        className="text-[11px] sm:text-xs text-brand-primary hover:underline mt-0.5"
+                      >
+                        Open in Google Maps
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 md:col-span-3">
+                <p className="text-xs sm:text-sm text-gray-600">Pickup Scheduled</p>
+                {lead.preferred_date || lead.preferred_time_slot ? (
+                  <p className="font-semibold text-xs sm:text-sm text-gray-900 mt-0.5 sm:mt-1">
+                    {lead.preferred_date ? formatDateDMY(lead.preferred_date) : '—'}
+                    {lead.preferred_time_slot ? ` • ${lead.preferred_time_slot}` : ''}
+                  </p>
+                ) : (
+                  <p className="text-xs sm:text-sm text-gray-700 mt-0.5 sm:mt-1">
+                    Not set. Click <strong>Update Pickup Details</strong> and add date/time.
+                  </p>
+                )}
+              </div>
+
+              {lead.pickup_boy && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-600">Assigned Pickup Boy</p>
+                  <p className="font-semibold text-xs sm:text-sm text-gray-900 mt-0.5 sm:mt-1">
+                    {lead.pickup_boy.full_name}
+                  </p>
+                </div>
+              )}
+
+              {lead.pickup_assigned_at && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-600">Pickup Assigned At</p>
+                  <p className="font-semibold text-xs sm:text-sm mt-0.5 sm:mt-1">{formatDateTime(lead.pickup_assigned_at)}</p>
+                </div>
+              )}
+
+              {lead.pickup_otp && lead.pickup_status !== 'COMPLETED' && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-600">Pickup OTP</p>
+                  <p className="font-mono text-xl sm:text-2xl font-bold text-orange-700 tracking-wider mt-0.5 sm:mt-1">
+                    {lead.pickup_otp}
+                  </p>
+                </div>
+              )}
+
+              {!lead.assigned_pickup_boy_id && (lead.pickup_status === 'NOT_ASSIGNED' || !lead.pickup_status) && (
+                <div className="sm:col-span-2 md:col-span-3 p-3 sm:p-4 bg-white border border-orange-200 rounded-lg">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5" />
+                      <p className="text-xs sm:text-sm text-gray-700">
+                        <strong>Pickup not assigned.</strong> Assign a pickup boy from Pickup & Delivery.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => router.push('/dashboard/workshop_supervisor/pickup-delivery')}
+                      className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
+                    >
+                      Open Pickup & Delivery
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-xs sm:text-sm text-gray-700">
+                Pickup is not enabled for this lead. Supervisor can add pickup with address + schedule.
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Section 3: Service Details */}
         <div className="card">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
@@ -935,11 +1245,11 @@ export default function SupervisorJobDetailPage() {
           <InternalAssignment lead={lead} onUpdate={fetchJobDetails} />
         )}
 
-        {/* Section 5: Before Inspection Photos */}
+        {/* Section 5: Pickup/Visit Photos */}
         <div className="card border-2 border-blue-300">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
             <Camera className="w-6 h-6 text-blue-600" />
-            Before Work Photos (Required)
+            Pickup/Visit Photos (Required)
           </h2>
           <BeforeInspectionUpload
             leadId={jobId}

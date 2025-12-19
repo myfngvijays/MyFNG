@@ -505,14 +505,15 @@ export default function LeadReviewPage() {
               </div>
             </div>
 
-            {/* Pickup & Delivery Details */}
-            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
-                <Truck className="w-5 h-5 text-brand-primary" />
-                Pickup & Delivery
-              </h2>
+            {/* Pickup & Delivery Details (show only when pickup selected) */}
+            {lead.pickup_required && (
+              <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+                  <Truck className="w-5 h-5 text-brand-primary" />
+                  Pickup & Delivery
+                </h2>
 
-              <div className="space-y-4 sm:space-y-5">
+                <div className="space-y-4 sm:space-y-5">
                 {/* Pickup */}
                 <div>
                   <p className="text-sm sm:text-base font-semibold text-gray-800 mb-2">Pickup</p>
@@ -585,8 +586,9 @@ export default function LeadReviewPage() {
                     </div>
                   </div>
                 </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Sidebar */}
