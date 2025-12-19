@@ -203,6 +203,13 @@ export async function POST(request: NextRequest) {
       image_urls = []
     } = body;
 
+    // Normalize optional UUID/text fields (avoid sending empty string to DB)
+    const normalizedCategoryId =
+      typeof category_id === 'string' ? (category_id.trim() ? category_id.trim() : null) : (category_id ?? null);
+    const normalizedFeaturedImage =
+      typeof featured_image === 'string' ? (featured_image.trim() ? featured_image.trim() : null) : (featured_image ?? null);
+    const normalizedExcerpt = typeof excerpt === 'string' ? (excerpt.trim() ? excerpt.trim() : null) : (excerpt ?? null);
+
     // Digital Author restrictions
     let finalStatus = requestedStatus;
     let finalIsFeatured = requestedIsFeatured;
@@ -254,15 +261,15 @@ export async function POST(request: NextRequest) {
       .insert({
         title,
         slug,
-        excerpt,
+        excerpt: normalizedExcerpt,
         content,
         seo_data: seo_data || {},
-        category_id,
+        category_id: normalizedCategoryId,
         author_id: userProfile.id,
         created_by: userProfile.id,
         updated_by: userProfile.id,
         read_time: read_time || 3,
-        featured_image,
+        featured_image: normalizedFeaturedImage,
         status: finalStatus,
         is_featured: finalIsFeatured,
         is_premium: finalIsPremium,

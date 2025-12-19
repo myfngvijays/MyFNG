@@ -62,6 +62,33 @@ export default function QCReviewPage() {
       setError(null);
 
       const supabase = createClient();
+      
+      const inferSlotKey = (row: any): string => {
+        const direct = String(row?.photo_type || row?.category || '').trim().toUpperCase();
+        if (direct) return direct;
+        const fn = String(row?.file_name || '').trim();
+        const m = fn.match(/^(BEFORE_[A-Z0-9_]+)__+/);
+        if (m?.[1]) return String(m[1]).toUpperCase();
+        return '';
+      };
+
+      // NOTE:
+      // In Next.js dev (React StrictMode), useEffect can run twice.
+      // Avoid setState(prev => [...prev, ...]) merges which can cause duplicate keys.
+      const dedupePhotos = (list: any[]) => {
+        const seen = new Set<string>();
+        const out: any[] = [];
+        for (const p of list || []) {
+          const url = String(p?.photo_url || p?.file_url || p?.media_url || '');
+          const id = String(p?.id || '');
+          const key = `${id}__${url}`;
+          if (!url && !id) continue;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(p);
+        }
+        return out;
+      };
 
       // Fetch lead details
       const { data: leadData, error: leadError } = await supabase
@@ -138,6 +165,11 @@ export default function QCReviewPage() {
         setMechanic(mechanicData);
       }
 
+      // Collect photos from multiple sources, then set state once (de-duped).
+      const beforeCollected: any[] = [];
+      const afterCollected: any[] = [];
+      const duringCollected: any[] = [];
+
       // Fetch photos from mechanic_job_photos table (primary source)
       const { data: jobPhotosData, error: jobPhotosError } = await supabase
         .from('mechanic_job_photos')
@@ -146,12 +178,9 @@ export default function QCReviewPage() {
         .order('created_at', { ascending: false });
 
       if (!jobPhotosError && jobPhotosData) {
-        const before = jobPhotosData.filter(p => p.photo_category === 'before');
-        const after = jobPhotosData.filter(p => p.photo_category === 'after');
-        const during = jobPhotosData.filter(p => p.photo_category === 'during');
-        setBeforePhotos(before);
-        setAfterPhotos(after);
-        setDuringPhotos(during);
+        beforeCollected.push(...jobPhotosData.filter((p: any) => p.photo_category === 'before'));
+        afterCollected.push(...jobPhotosData.filter((p: any) => p.photo_category === 'after'));
+        duringCollected.push(...jobPhotosData.filter((p: any) => p.photo_category === 'during'));
       }
 
       // Also try fetching from lead_media table as fallback
@@ -163,8 +192,16 @@ export default function QCReviewPage() {
 
       if (!photosError && photosData) {
         const beforeFromLeadMedia = photosData
-          .filter(p => p.category === 'BEFORE')
-          .map(p => ({ ...p, photo_url: p.file_url })); // Map file_url to photo_url
+          .filter((p: any) => {
+            const pc = String(p?.photo_category || '').toLowerCase();
+            const slot = inferSlotKey(p);
+            return pc === 'before' || slot.startsWith('BEFORE_') || String(p?.category || '').toUpperCase() === 'BEFORE';
+          })
+          .map((p: any) => ({
+            ...p,
+            photo_url: p.file_url,
+            photo_type: inferSlotKey(p) || p.photo_type || p.category || 'BEFORE',
+          })); // Map file_url to photo_url + infer slot key
         const afterFromLeadMedia = photosData
           .filter(p => p.category === 'AFTER')
           .map(p => ({ ...p, photo_url: p.file_url }));
@@ -172,16 +209,9 @@ export default function QCReviewPage() {
           .filter(p => p.category === 'PROGRESS' || p.category === 'DURING')
           .map(p => ({ ...p, photo_url: p.file_url }));
         
-        // Merge with existing photos if any
-        if (beforeFromLeadMedia.length > 0) {
-          setBeforePhotos(prev => [...prev, ...beforeFromLeadMedia]);
-        }
-        if (afterFromLeadMedia.length > 0) {
-          setAfterPhotos(prev => [...prev, ...afterFromLeadMedia]);
-        }
-        if (duringFromLeadMedia.length > 0) {
-          setDuringPhotos(prev => [...prev, ...duringFromLeadMedia]);
-        }
+        beforeCollected.push(...beforeFromLeadMedia);
+        afterCollected.push(...afterFromLeadMedia);
+        duringCollected.push(...duringFromLeadMedia);
       }
 
       // Also try fetching from mechanic_media table as additional fallback
@@ -202,17 +232,15 @@ export default function QCReviewPage() {
           .filter(p => p.media_category === 'PROGRESS' || p.media_category === 'DURING')
           .map(p => ({ ...p, photo_url: p.media_url }));
         
-        // Merge with existing photos if any
-        if (beforeFromMechanic.length > 0) {
-          setBeforePhotos(prev => [...prev, ...beforeFromMechanic]);
-        }
-        if (afterFromMechanic.length > 0) {
-          setAfterPhotos(prev => [...prev, ...afterFromMechanic]);
-        }
-        if (duringFromMechanic.length > 0) {
-          setDuringPhotos(prev => [...prev, ...duringFromMechanic]);
-        }
+        beforeCollected.push(...beforeFromMechanic);
+        afterCollected.push(...afterFromMechanic);
+        duringCollected.push(...duringFromMechanic);
       }
+
+      // Set final de-duped lists once
+      setBeforePhotos(dedupePhotos(beforeCollected));
+      setAfterPhotos(dedupePhotos(afterCollected));
+      setDuringPhotos(dedupePhotos(duringCollected));
 
       // Fetch parts used
       const { data: partsData, error: partsError } = await supabase
@@ -455,11 +483,11 @@ export default function QCReviewPage() {
 
         {/* Photos Section */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Before Photos */}
+          {/* Pickup/Visit Photos */}
           <div className="card border-2 border-blue-300">
             <h3 className="text-lg font-semibold mb-3 flex items-center gap-2 text-blue-700">
               <Camera className="w-5 h-5" />
-              Before Photos ({beforePhotos.length})
+              Pickup/Visit Photos ({beforePhotos.length})
             </h3>
             {beforePhotos.length > 4 && (
               <button
@@ -476,7 +504,7 @@ export default function QCReviewPage() {
                   <div key={photo.id} className="relative">
                     <img
                       src={photo.photo_url || photo.file_url || photo.media_url}
-                      alt="Before"
+                      alt="Pickup/Visit"
                       className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90"
                       onClick={() => window.open(photo.photo_url || photo.file_url || photo.media_url, '_blank')}
                     />
@@ -487,7 +515,7 @@ export default function QCReviewPage() {
             ) : (
               <div className="text-center py-8 text-gray-400">
                 <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
-                <p className="text-sm">No before photos</p>
+                <p className="text-sm">No pickup/visit photos</p>
               </div>
             )}
           </div>
@@ -697,7 +725,7 @@ export default function QCReviewPage() {
           {(beforePhotos.length === 0 || afterPhotos.length === 0) && (
             <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-sm text-yellow-800">
-                ⚠️ Missing photos: Before ({beforePhotos.length}), After ({afterPhotos.length})
+                ⚠️ Missing photos: Pickup/Visit ({beforePhotos.length}), After ({afterPhotos.length})
               </p>
             </div>
           )}

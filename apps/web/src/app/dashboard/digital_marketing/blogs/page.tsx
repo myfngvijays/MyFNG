@@ -7,7 +7,7 @@ import { formatDateDMY } from '@/lib/utils';
 import {
   FileText, Plus, Search, Filter, Edit, Trash2, Eye,
   Calendar, Tag, BookOpen, CheckCircle, XCircle, Clock,
-  TrendingUp
+  TrendingUp, Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -148,12 +148,20 @@ export default function BlogsPage() {
             <h1 className="text-2xl sm:text-3xl font-bold text-text-heading">Blog Management</h1>
             <p className="text-text-body mt-1">Create, edit, and manage blog posts</p>
           </div>
-          <Link href="/dashboard/digital_marketing/blogs/create">
-            <button className="btn btn-primary flex items-center gap-2">
-              <Plus className="w-5 h-5" />
-              Create Blog
-            </button>
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Link href="/dashboard/digital_marketing/blogs/ai-create">
+              <button className="btn btn-outline flex items-center gap-2 w-full sm:w-auto">
+                <Sparkles className="w-5 h-5" />
+                AI Written Blogs
+              </button>
+            </Link>
+            <Link href="/dashboard/digital_marketing/blogs/create">
+              <button className="btn btn-primary flex items-center gap-2 w-full sm:w-auto">
+                <Plus className="w-5 h-5" />
+                Create Blog
+              </button>
+            </Link>
+          </div>
         </div>
 
         {/* Filters */}
@@ -209,9 +217,17 @@ export default function BlogsPage() {
             <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-text-heading mb-2">No blogs found</h3>
             <p className="text-text-body mb-4">Get started by creating your first blog post</p>
-            <Link href="/dashboard/digital_marketing/blogs/create">
-              <button className="btn btn-primary">Create Blog</button>
-            </Link>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-3">
+              <Link href="/dashboard/digital_marketing/blogs/ai-create">
+                <button className="btn btn-outline flex items-center justify-center gap-2 w-full sm:w-auto">
+                  <Sparkles className="w-4 h-4" />
+                  AI Written Blogs
+                </button>
+              </Link>
+              <Link href="/dashboard/digital_marketing/blogs/create">
+                <button className="btn btn-primary w-full sm:w-auto">Create Blog</button>
+              </Link>
+            </div>
           </div>
         ) : (
           <>

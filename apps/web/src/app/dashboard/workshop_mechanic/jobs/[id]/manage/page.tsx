@@ -409,16 +409,16 @@ export default function ManageJobPage() {
         {/* Images Gallery - Show when mechanic has submitted work completion */}
         {['WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'INVOICE_GENERATED', 'AWAITING_PAYMENT', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Before Images */}
+          {/* Pickup/Visit Photos */}
           <div className="card">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Camera className="w-5 h-5 text-brand-primary" />
-              Before Images ({beforeImages.length})
+              Pickup/Visit Photos ({beforeImages.length})
             </h3>
             {beforeImages.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <Camera className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No before images uploaded yet</p>
+                <p className="text-sm">No pickup/visit photos uploaded yet</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
@@ -426,7 +426,7 @@ export default function ManageJobPage() {
                     <div key={img.id} className="relative aspect-square group">
                     <img
                         src={img.photo_url}
-                        alt={img.photo_type || 'Before'}
+                        alt={img.photo_type || 'Pickup/Visit'}
                         className="w-full h-full object-cover rounded cursor-pointer hover:opacity-80 transition"
                     />
                       <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 rounded-b">
@@ -517,7 +517,7 @@ export default function ManageJobPage() {
               {beforeImages.filter((img: any) => img.photo_category === 'before').length < 6 && (
                 <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
                   <p className="text-sm text-red-700">
-                    ⚠️ Before inspection incomplete. Please upload all required photos first.
+                    ⚠️ Pickup/Visit photos incomplete. Please upload all required photos first.
                   </p>
                 </div>
               )}
@@ -565,7 +565,7 @@ export default function ManageJobPage() {
               {/* Validation warnings */}
               {beforeImages.filter((img: any) => img.photo_category === 'before').length < 6 && (
                 <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
-                  <p className="text-sm text-red-700">⚠️ Before inspection incomplete (minimum 6 photos required)</p>
+                  <p className="text-sm text-red-700">⚠️ Pickup/Visit photos incomplete (minimum 6 photos required)</p>
                 </div>
               )}
               {afterImages.filter((img: any) => img.photo_category === 'after').length < 6 && (

@@ -618,7 +618,16 @@ export default function WorkshopMechanicDashboard() {
                     <div className="flex-1 min-w-0 w-full">
                     <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
                       <h3 className="text-lg sm:text-xl font-bold truncate">{job.lead_number}</h3>
-                      {job.lead_status ? (
+                      {/* Show mechanic status if available; otherwise fall back to lead status */}
+                      {job.mechanic_status ? (
+                        <span
+                          className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 ${getStatusColor(
+                            job.mechanic_status
+                          )}`}
+                        >
+                          {getMechanicStatusLabel(job.mechanic_status)}
+                        </span>
+                      ) : job.lead_status ? (
                         <span
                           className={[
                             'px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 border',
@@ -629,11 +638,7 @@ export default function WorkshopMechanicDashboard() {
                         >
                           {getLeadStatusLabel(job.lead_status)}
                         </span>
-                      ) : (
-                      <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 ${getStatusColor(job.mechanic_status)}`}>
-                          {getMechanicStatusLabel(job.mechanic_status)}
-                      </span>
-                      )}
+                      ) : null}
                       {job.job_priority !== 'NORMAL' && (
                         <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold border flex-shrink-0 ${getPriorityColor(job.job_priority)}`}>
                           {job.job_priority}
@@ -680,7 +685,7 @@ export default function WorkshopMechanicDashboard() {
                   <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
                     <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
                     <span className={job.before_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
-                      📷 Before: {job.before_images_count}
+                      📷 Pickup/Visit: {job.before_images_count}
                     </span>
                     <span className={job.progress_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
                       Progress: {job.progress_images_count}

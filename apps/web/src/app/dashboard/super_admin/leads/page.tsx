@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import DashboardLayout from '@/components/DashboardLayout';
 import { FileText, Search, Filter, Download, MapPin, Phone, Calendar, TrendingUp } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { formatDateDMY } from "@/lib/utils";
@@ -124,20 +123,17 @@ export default function LeadsOverviewPage() {
 
   if (loading) {
     return (
-      <DashboardLayout role="super_admin">
-        <div className="flex items-center justify-center h-48 sm:h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-3 sm:mt-4 text-gray-600 text-xs sm:text-sm md:text-base">Loading leads...</p>
-          </div>
+      <div className="flex items-center justify-center h-48 sm:h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary mx-auto"></div>
+          <p className="mt-3 sm:mt-4 text-gray-600 text-xs sm:text-sm md:text-base">Loading leads...</p>
         </div>
-      </DashboardLayout>
+      </div>
     );
   }
 
   return (
-    <DashboardLayout role="super_admin">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
+    <div className="space-y-4 sm:space-y-5 md:space-y-6 p-4 sm:p-6">
         {/* Header */}
         <div>
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Leads Overview</h1>
@@ -322,8 +318,7 @@ export default function LeadsOverviewPage() {
             <p className="text-gray-500 text-sm sm:text-base">No leads found</p>
           </div>
         )}
-      </div>
-    </DashboardLayout>
+    </div>
   );
 }
 

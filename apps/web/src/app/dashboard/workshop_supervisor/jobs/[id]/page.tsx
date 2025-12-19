@@ -1254,6 +1254,7 @@ export default function SupervisorJobDetailPage() {
           <BeforeInspectionUpload
             leadId={jobId}
             jobId={(lead as any).mechanic_job_id || ''}
+            mode="LEAD_MEDIA"
             onUploadComplete={() => {
               fetchJobDetails();
             }}

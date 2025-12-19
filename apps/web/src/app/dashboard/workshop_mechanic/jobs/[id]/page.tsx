@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime } from '@/lib/utils';
 import {
   ArrowLeft, PlayCircle, PauseCircle, CheckCircle, Camera, 
   Package, AlertTriangle, MessageSquare, FileText, Clock,
-  Upload, X, Save, Send, Minus
+  Upload, X, Save, Send
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
@@ -81,6 +81,14 @@ interface PartsItem {
   supplier: string | null;
 }
 
+type AdditionalMasterItem = {
+  id: string;
+  name: string;
+  category: string | null;
+  default_price?: number | null;
+  workshop_id?: string | null;
+};
+
 export default function MechanicJobDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -102,12 +110,20 @@ export default function MechanicJobDetailPage() {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('PROGRESS');
   const [selectedPhotoType, setSelectedPhotoType] = useState<string>('');
-  const [showExtraWorkForm, setShowExtraWorkForm] = useState(false);
+  // Additional jobs request is handled inline in the "Additional Jobs" tab
   const [extraWorkForm, setExtraWorkForm] = useState({
     issue_description: '',
     additional_work_required: '',
     estimated_cost: ''
   });
+  const [additionalMasterItems, setAdditionalMasterItems] = useState<AdditionalMasterItem[]>([]);
+  const [additionalMasterLoading, setAdditionalMasterLoading] = useState(false);
+  const [additionalMasterQuery, setAdditionalMasterQuery] = useState('');
+  const [additionalMasterCategory, setAdditionalMasterCategory] = useState<string>('');
+  const [rowPriority, setRowPriority] = useState<Record<string, 'HIGH' | 'MEDIUM' | 'LOW'>>({});
+  const [rowNote, setRowNote] = useState<Record<string, string>>({});
+  const [rowCost, setRowCost] = useState<Record<string, string>>({});
+  const [submittingJobIds, setSubmittingJobIds] = useState<Record<string, boolean>>({});
   const [zoomedMedia, setZoomedMedia] = useState<MediaItem | null>(null);
   const [beforePhotoTypes, setBeforePhotoTypes] = useState<string[]>([]);
   const [missingBeforePhotos, setMissingBeforePhotos] = useState<string[]>([]);
@@ -189,6 +205,174 @@ export default function MechanicJobDetailPage() {
       setActiveTab('media');
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (activeTab === 'extra-work') {
+      // In-tab checklist: load master list (best-effort)
+      fetchAdditionalJobsMaster().catch(() => {});
+    } else {
+      setAdditionalMasterQuery('');
+      setAdditionalMasterCategory('');
+      setRowPriority({});
+      setRowNote({});
+      setRowCost({});
+      setSubmittingJobIds({});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  async function getMechanicProfileForWorkshop(supabase: ReturnType<typeof createClient>, user: any) {
+    const email = (user?.email || '').trim();
+    const phone = (user?.phone || '').trim();
+
+    const selectProfile = 'id, email, phone, workshop_id';
+    const { data: byEmail } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+      : { data: null };
+    const { data: byPhone } = !byEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null };
+
+    return (byEmail || byPhone) as { id: string; workshop_id: string | null } | null;
+  }
+
+  async function fetchAdditionalJobsMaster() {
+    try {
+      setAdditionalMasterLoading(true);
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const profile = await getMechanicProfileForWorkshop(supabase, user);
+      const workshopId = profile?.workshop_id || null;
+
+      let query = supabase
+        .from('additional_jobs_master')
+        .select('id, name, category, default_price, workshop_id')
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .order('category', { ascending: true })
+        .order('name', { ascending: true })
+        .limit(500);
+
+      if (workshopId) {
+        // show workshop-wise + global
+        query = query.or(`workshop_id.eq.${workshopId},workshop_id.is.null`);
+      } else {
+        query = query.is('workshop_id', null);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      // Prefer workshop-specific rows if name collides with global seed
+      const byName = new Map<string, AdditionalMasterItem>();
+      const list = (data || []) as AdditionalMasterItem[];
+      for (const it of list) {
+        const key = (it.name || '').trim().toLowerCase();
+        const existing = byName.get(key);
+        if (!existing) {
+          byName.set(key, it);
+          continue;
+        }
+        // prefer workshop_id-specific over global
+        if (!existing.workshop_id && it.workshop_id) {
+          byName.set(key, it);
+        }
+      }
+
+      setAdditionalMasterItems(Array.from(byName.values()));
+    } catch (e) {
+      console.error('Failed to fetch additional jobs master:', e);
+      setAdditionalMasterItems([]);
+    } finally {
+      setAdditionalMasterLoading(false);
+    }
+  }
+
+  const additionalMasterCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of additionalMasterItems) {
+      const c = (it.category || '').trim();
+      if (c) set.add(c);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [additionalMasterItems]);
+
+  const filteredAdditionalMasterItems = useMemo(() => {
+    const q = additionalMasterQuery.trim().toLowerCase();
+    return additionalMasterItems
+      .filter((it) => {
+        if (additionalMasterCategory && (it.category || '').trim() !== additionalMasterCategory) return false;
+        if (!q) return true;
+        return (
+          (it.name || '').toLowerCase().includes(q) ||
+          (it.category || '').toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 120);
+  }, [additionalMasterCategory, additionalMasterItems, additionalMasterQuery]);
+
+  async function submitSingleAdditionalJob(it: AdditionalMasterItem) {
+    const issue = extraWorkForm.issue_description.trim();
+    const priority = rowPriority[it.id] || 'MEDIUM';
+    const note = (rowNote[it.id] || '').trim();
+    if (priority === 'HIGH' && !note) {
+      alert('High priority selected. Please add a note.');
+      return;
+    }
+
+    const costStr = (rowCost[it.id] || '').trim();
+    const fallbackCost = it.default_price && Number(it.default_price) > 0 ? Number(it.default_price) : 0;
+    const cost = costStr ? Number.parseFloat(costStr) : fallbackCost;
+
+    try {
+      setSubmittingJobIds((p) => ({ ...p, [it.id]: true }));
+      const priorityLine = `Priority: ${priority}`;
+      const noteLine = note ? `Note: ${note}` : '';
+      const issueLine = issue ? `Issue Found: ${issue}` : '';
+      const reason = [issueLine, priorityLine, noteLine].filter(Boolean).join('\n');
+
+      const res = await fetch(`/api/mechanic/jobs/${leadId}/request-extra-work`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: it.name,
+          reason,
+          estimated_cost: Number.isFinite(cost) ? cost : 0,
+          category: 'ADDITIONAL_JOB',
+          is_urgent: priority === 'HIGH',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed');
+
+      // Clear row inputs after submit
+      setRowPriority((p) => {
+        const next = { ...p };
+        delete next[it.id];
+        return next;
+      });
+      setRowNote((p) => {
+        const next = { ...p };
+        delete next[it.id];
+        return next;
+      });
+      setRowCost((p) => {
+        const next = { ...p };
+        delete next[it.id];
+        return next;
+      });
+
+      await fetchJobDetails();
+      // Advisor/Supervisor will see immediately via their listing; mechanic sees it below in requests list.
+      alert('Request submitted!');
+    } catch (e: any) {
+      alert(`Error: ${e?.message || 'Failed'}`);
+    } finally {
+      setSubmittingJobIds((p) => ({ ...p, [it.id]: false }));
+    }
+  }
 
   async function fetchJobDetails() {
     const supabase = createClient();
@@ -464,12 +648,36 @@ export default function MechanicJobDetailPage() {
           .eq('job_id', jobData.id)
           .eq('photo_category', 'before');
 
-        const uploadedTypes = (beforePhotos || []).map((p: any) => p.photo_type);
-        setBeforePhotoTypes(uploadedTypes);
-
-        // Check for missing required types
         const requiredTypes = ['BEFORE_FRONT', 'BEFORE_REAR', 'BEFORE_LEFT', 'BEFORE_RIGHT', 'BEFORE_DASHBOARD', 'BEFORE_ENGINE_BAY'];
-        const missing = requiredTypes.filter(type => !uploadedTypes.includes(type));
+        const uploadedFromJob = (beforePhotos || []).map((p: any) => String(p.photo_type || '').toUpperCase()).filter(Boolean);
+
+        // Also consider supervisor/pickup uploads stored in lead_media (Pickup/Visit)
+        let uploadedFromLead: string[] = [];
+        try {
+          const res = await fetch(`/api/leads/${leadId}/media`, { method: 'GET' });
+          const data = await res.json().catch(() => ({}));
+          const media = Array.isArray(data?.media) ? data.media : [];
+          uploadedFromLead = media
+            .map((m: any) => {
+              const t = String(m?.photo_type || m?.category || '').toUpperCase().trim();
+              if (t) return t;
+              const fn = String(m?.file_name || '');
+              const mm = fn.match(/^(BEFORE_[A-Z0-9_]+)__+/);
+              if (mm?.[1]) return (mm[1] || '').toUpperCase();
+              const url = String(m?.file_url || '');
+              const mu = url.match(/(BEFORE_[A-Z0-9_]+)_\d{4,}/);
+              return (mu?.[1] || '').toUpperCase();
+            })
+            .filter((t: string) => requiredTypes.includes(t));
+        } catch {
+          uploadedFromLead = [];
+        }
+
+        const combinedSet = new Set<string>([...uploadedFromJob, ...uploadedFromLead]);
+        const combinedUploadedTypes = Array.from(combinedSet);
+        setBeforePhotoTypes(combinedUploadedTypes);
+
+        const missing = requiredTypes.filter((type) => !combinedSet.has(type));
         setMissingBeforePhotos(missing);
 
         // Get progress photos count
@@ -491,7 +699,8 @@ export default function MechanicJobDetailPage() {
           if (!prevJob) return prevJob;
           return {
             ...prevJob,
-            before_images_count: beforePhotos?.length || 0,
+            // Count required slots satisfied (max 6), so UI shows 6/6 when lead_media has them
+            before_images_count: requiredTypes.filter((t) => combinedSet.has(t)).length,
             progress_images_count: progressCount || 0,
             after_images_count: afterCount || 0,
           };
@@ -730,66 +939,6 @@ export default function MechanicJobDetailPage() {
     }
   }
 
-  async function submitExtraWorkRequest() {
-    if (!extraWorkForm.issue_description || !extraWorkForm.additional_work_required) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
-        alert('User not authenticated');
-        return;
-      }
-
-      // Get mechanic profile
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
-
-      if (!userProfile) {
-        alert('User profile not found');
-        return;
-      }
-
-      // Insert into lead_extra_charges table
-    const { error } = await supabase
-        .from('lead_extra_charges')
-      .insert({
-        lead_id: leadId,
-          requested_by: userProfile.id,
-          description: extraWorkForm.additional_work_required,
-          reason: extraWorkForm.issue_description,
-          amount: extraWorkForm.estimated_cost ? parseFloat(extraWorkForm.estimated_cost) : 0,
-          category: 'ADDITIONAL_SERVICE',
-          is_urgent: false,
-        status: 'PENDING'
-      });
-
-      if (error) {
-        console.error('Error submitting additional job request:', error);
-        alert(`Failed to submit request: ${error.message}`);
-        return;
-      }
-
-      alert('Additional job request submitted successfully!');
-      setShowExtraWorkForm(false);
-      setExtraWorkForm({ issue_description: '', additional_work_required: '', estimated_cost: '' });
-      fetchJobDetails();
-      
-      // Update job status to HOLD (waiting for approval)
-      await updateJobStatus('HOLD');
-    } catch (error) {
-      console.error('Error submitting additional job request:', error);
-      alert('Failed to submit additional job request. Please try again.');
-    }
-  }
-
   async function updatePartUsage(partId: string, field: string, value: any) {
     try {
       // Call API to update part usage
@@ -970,7 +1119,17 @@ export default function MechanicJobDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            {job.lead_status ? (
+            {/* Show mechanic status if available; otherwise fall back to lead status */}
+            {job.mechanic_status ? (
+              <span
+                className={`px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm ${getStatusColor(
+                  job.mechanic_status
+                )}`}
+                title={job.qc_status ? `QC: ${job.qc_status}` : undefined}
+              >
+                {getMechanicStatusLabel(job.mechanic_status)}
+              </span>
+            ) : job.lead_status ? (
               <span
                 className={[
                   'px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm border',
@@ -982,11 +1141,7 @@ export default function MechanicJobDetailPage() {
               >
                 {getLeadStatusLabel(job.lead_status)}
               </span>
-            ) : (
-            <span className={`px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm ${getStatusColor(job.mechanic_status)}`}>
-                {getMechanicStatusLabel(job.mechanic_status)}
-            </span>
-            )}
+            ) : null}
             {job.job_priority !== 'NORMAL' && (
               <span className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold bg-red-100 text-red-800 border border-red-300 text-xs sm:text-sm">
                 {job.job_priority}
@@ -1105,7 +1260,12 @@ export default function MechanicJobDetailPage() {
           )}
 
           <button 
-            onClick={() => setShowExtraWorkForm(true)}
+            onClick={() => {
+              setActiveTab('extra-work');
+              setTimeout(() => {
+                document.getElementById('extra-work-request-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 0);
+            }}
             className="btn bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
           >
             <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -2169,18 +2329,188 @@ export default function MechanicJobDetailPage() {
         )}
 
         {activeTab === 'extra-work' && (
-          <div id="extra-work-requests" className="card p-3 sm:p-4 md:p-5">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
-              <h2 className="text-lg sm:text-xl font-bold">Additional Job Requests</h2>
-              <button
-                type="button"
-                onClick={() => setShowExtraWorkForm(true)}
-                className="btn bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
-              >
-                <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
-                Request Additional Job
-              </button>
+          <div className="space-y-4">
+            {/* In-tab Additional Job Request (Checklist style) */}
+            <div id="extra-work-request-form" className="card p-3 sm:p-4 md:p-5">
+              <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold">Request Additional Job</h2>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">
+                    Select required jobs from master list, set priority, and add notes.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fetchAdditionalJobsMaster().catch(() => {})}
+                  className="btn btn-outline text-xs sm:text-sm"
+                  disabled={additionalMasterLoading}
+                  title="Refresh list"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              <div className="space-y-3 sm:space-y-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Issue Found</label>
+                  <textarea
+                    value={extraWorkForm.issue_description}
+                    onChange={(e) => setExtraWorkForm({ ...extraWorkForm, issue_description: e.target.value })}
+                    rows={3}
+                    className="input w-full text-xs sm:text-sm"
+                    placeholder="Describe the issue you found..."
+                  />
+                </div>
+
+                <div>
+                  <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between mb-2">
+                    <label className="block text-xs sm:text-sm font-medium">Additional Jobs Master</label>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                      <input
+                        value={additionalMasterQuery}
+                        onChange={(e) => setAdditionalMasterQuery(e.target.value)}
+                        className="input text-xs sm:text-sm w-full sm:w-72"
+                        placeholder="Search (e.g., Brake Pads)"
+                      />
+                      <select
+                        className="p-2 border rounded-lg bg-gray-50 text-xs sm:text-sm w-full sm:w-56"
+                        value={additionalMasterCategory}
+                        onChange={(e) => setAdditionalMasterCategory(e.target.value)}
+                        title="Filter by category"
+                      >
+                        <option value="">All Categories</option>
+                        {additionalMasterCategories.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="border rounded-lg overflow-hidden bg-white">
+                    {additionalMasterLoading ? (
+                      <div className="p-3 text-xs sm:text-sm text-gray-500">Loading list...</div>
+                    ) : filteredAdditionalMasterItems.length === 0 ? (
+                      <div className="p-3 text-xs sm:text-sm text-gray-500">No matching jobs found.</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs sm:text-sm">
+                          <thead className="bg-gray-50 border-b">
+                            <tr>
+                              <th className="p-3 font-semibold text-gray-700">Job</th>
+                              <th className="p-3 font-semibold text-gray-700">Remark / Note</th>
+                              <th className="p-3 font-semibold text-gray-700">Priority</th>
+                              <th className="p-3 font-semibold text-gray-700">Cost (₹)</th>
+                              <th className="p-3 font-semibold text-gray-700 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {filteredAdditionalMasterItems.map((it) => {
+                              const pr = rowPriority[it.id] || 'MEDIUM';
+                              const note = rowNote[it.id] || '';
+                              const cost =
+                                rowCost[it.id] ??
+                                (it.default_price && Number(it.default_price) > 0 ? String(it.default_price) : '');
+                              const busy = Boolean(submittingJobIds[it.id]);
+                              const noteMissing = pr === 'HIGH' && !note.trim();
+                              return (
+                                <tr key={it.id} className="hover:bg-gray-50">
+                                  <td className="p-3">
+                                    <div className="font-semibold text-gray-900">{it.name}</div>
+                                    <div className="text-[10px] sm:text-xs text-gray-500">{it.category || '-'}</div>
+                                  </td>
+                                  <td className="p-3">
+                                    <textarea
+                                      rows={2}
+                                      className="input w-full text-xs sm:text-sm"
+                                      value={note}
+                                      onChange={(e) => setRowNote((p) => ({ ...p, [it.id]: e.target.value }))}
+                                      placeholder={pr === 'HIGH' ? 'High priority note required…' : 'Optional note…'}
+                                    />
+                                  </td>
+                                  <td className="p-3">
+                                    <select
+                                      className="input w-full text-xs sm:text-sm"
+                                      value={pr}
+                                      onChange={(e) => setRowPriority((p) => ({ ...p, [it.id]: e.target.value as any }))}
+                                    >
+                                      <option value="HIGH">High</option>
+                                      <option value="MEDIUM">Medium</option>
+                                      <option value="LOW">Low</option>
+                                    </select>
+                                  </td>
+                                  <td className="p-3">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      className="input w-full text-xs sm:text-sm"
+                                      value={cost}
+                                      onChange={(e) => setRowCost((p) => ({ ...p, [it.id]: e.target.value }))}
+                                      placeholder={it.default_price && it.default_price > 0 ? String(it.default_price) : '0'}
+                                    />
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => submitSingleAdditionalJob(it)}
+                                      disabled={busy || noteMissing}
+                                      className={`btn px-3 py-1.5 text-xs sm:text-sm ${
+                                        busy || noteMissing
+                                          ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                      }`}
+                                      title={
+                                        noteMissing
+                                          ? 'High priority requires note'
+                                          : 'Submit this request'
+                                      }
+                                    >
+                                      {busy ? 'Submitting…' : 'Submit'}
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-yellow-800">
+                    <strong>Note:</strong> Please upload proof images in the Media tab before submitting this request.
+                    Your job status will change to "Waiting for Approval" until the admin reviews this request.
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdditionalMasterQuery('');
+                      setAdditionalMasterCategory('');
+                      setRowPriority({});
+                      setRowNote({});
+                      setRowCost({});
+                      setExtraWorkForm({ ...extraWorkForm, issue_description: '' });
+                    }}
+                    className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
             </div>
+
+            {/* Existing requests */}
+            <div id="extra-work-requests" className="card p-3 sm:p-4 md:p-5">
+              <div className="flex items-start justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
+                <h2 className="text-lg sm:text-xl font-bold">Additional Job Requests</h2>
+              </div>
 
             {extraWorkRequests.length === 0 ? (
               <div className="text-center py-6 sm:py-8">
@@ -2196,8 +2526,8 @@ export default function MechanicJobDetailPage() {
                   <div key={request.id} className="p-3 sm:p-4 border rounded-lg">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm sm:text-base">{request.reason}</p>
-                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{request.description}</p>
+                        <p className="font-semibold text-sm sm:text-base">{request.description}</p>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 whitespace-pre-line">{request.reason}</p>
                         {request.amount !== null && request.amount !== undefined && Number(request.amount) > 0 && (
                           <p className="text-xs sm:text-sm font-medium text-green-600 mt-1 sm:mt-2">
                             Estimated: ₹{Number(request.amount)}
@@ -2226,84 +2556,11 @@ export default function MechanicJobDetailPage() {
                 ))}
               </div>
             )}
-          </div>
-        )}
-
-        {/* Additional Job Request Modal */}
-        {showExtraWorkForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
-            <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3 sm:mb-4">
-                <h2 className="text-lg sm:text-xl md:text-2xl font-bold">Request Additional Work</h2>
-                <button onClick={() => setShowExtraWorkForm(false)} className="btn btn-outline p-1.5 sm:p-2">
-                  <X className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-              </div>
-              
-              <div className="space-y-3 sm:space-y-4">
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Issue Found</label>
-                  <textarea
-                    value={extraWorkForm.issue_description}
-                    onChange={(e) => setExtraWorkForm({ ...extraWorkForm, issue_description: e.target.value })}
-                    rows={4}
-                    className="input w-full text-xs sm:text-sm"
-                    placeholder="Describe the issue you found..."
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Additional Work Required</label>
-                  <textarea
-                    value={extraWorkForm.additional_work_required}
-                    onChange={(e) => setExtraWorkForm({ ...extraWorkForm, additional_work_required: e.target.value })}
-                    rows={4}
-                    className="input w-full text-xs sm:text-sm"
-                    placeholder="What additional work is needed?"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Estimated Cost (Optional)</label>
-                  <input
-                    type="number"
-                    value={extraWorkForm.estimated_cost}
-                    onChange={(e) => setExtraWorkForm({ ...extraWorkForm, estimated_cost: e.target.value })}
-                    className="input w-full text-xs sm:text-sm"
-                    placeholder="Enter estimated cost"
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
-                  <p className="text-xs sm:text-sm text-yellow-800">
-                    <strong>Note:</strong> Please upload proof images in the Media tab before submitting this request.
-                    Your job status will change to "Waiting for Approval" until the admin reviews this request.
-                  </p>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                  <button
-                    onClick={submitExtraWorkRequest}
-                    disabled={!extraWorkForm.issue_description || !extraWorkForm.additional_work_required}
-                    className="btn btn-primary flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                  >
-                    <Send className="w-4 h-4 sm:w-5 sm:h-5" />
-                    Submit Request
-                  </button>
-                  <button onClick={() => setShowExtraWorkForm(false)} className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
-                    Cancel
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         )}
 
-        {/* Additional Job Requests List moved into "Additional Jobs" tab */}
+        {/* Additional Job Requests List is in "Additional Jobs" tab */}
       </div>
 
       {/* Image Zoom Modal */}

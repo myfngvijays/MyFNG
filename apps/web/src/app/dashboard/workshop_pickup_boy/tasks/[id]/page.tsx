@@ -5,11 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY, formatTime12h } from '@/lib/utils';
 import {
-  PlayCircle, CheckCircle, Camera, Upload, ArrowLeft, User, Car, 
+  PlayCircle, CheckCircle, Camera, ArrowLeft, User, Car, 
   MapPin, Phone, Clock, Shield, Navigation, AlertCircle
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import BeforeInspectionUpload from '@/components/mechanic/BeforeInspectionUpload';
 
 export default function PickupTaskDetailPage() {
   const router = useRouter();
@@ -19,20 +20,16 @@ export default function PickupTaskDetailPage() {
   const [task, setTask] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [uploading, setUploading] = useState(false);
   
   // Modals
   const [showStartModal, setShowStartModal] = useState(false);
   const [showOTPModal, setShowOTPModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
-  const [showUploadModal, setShowUploadModal] = useState(false);
   
   // Form states
   const [otpInput, setOtpInput] = useState('');
   const [otpVerified, setOtpVerified] = useState(false);
   const [beforePhotos, setBeforePhotos] = useState<any[]>([]);
-  const [photoCategory, setPhotoCategory] = useState<'BEFORE_PICKUP' | 'AFTER_DELIVERY'>('BEFORE_PICKUP');
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   useEffect(() => {
     fetchTaskDetails();
@@ -91,9 +88,17 @@ export default function PickupTaskDetailPage() {
         .from('lead_media')
         .select('*')
         .eq('lead_id', taskId)
-        .in('category', ['BEFORE_PICKUP', 'AFTER_DELIVERY']);
+        .order('created_at', { ascending: false })
+        .limit(200);
 
-      setBeforePhotos(photos || []);
+      // Keep for warnings / legacy; actual upload UI uses BeforeInspectionUpload (mode=LEAD_MEDIA)
+      setBeforePhotos(
+        (photos || []).filter((p: any) => {
+          const pc = String(p?.photo_category || '').toLowerCase();
+          const cat = String(p?.category || '').toUpperCase();
+          return pc === 'before' || cat.startsWith('BEFORE_') || cat === 'BEFORE_PICKUP';
+        })
+      );
 
       // Fetch pickup tracking for time slot
       const { data: pickupTracking } = await supabase
@@ -214,8 +219,13 @@ export default function PickupTaskDetailPage() {
 
   async function handleCompleteDelivery() {
     // Warning if no photos (but allow to proceed)
-    if (beforePhotos.filter(p => p.category === 'BEFORE_PICKUP').length === 0) {
-      toast('⚠️ Warning: No before pickup photos uploaded', { icon: '⚠️' });
+    const hasPickupVisit = beforePhotos.some((p: any) => {
+      const pc = String(p?.photo_category || '').toLowerCase();
+      const cat = String(p?.category || '').toUpperCase();
+      return pc === 'before' || cat.startsWith('BEFORE_') || cat === 'BEFORE_PICKUP';
+    });
+    if (!hasPickupVisit) {
+      toast('⚠️ Warning: No pickup/visit photos uploaded', { icon: '⚠️' });
     }
 
     setProcessing(true);
@@ -266,78 +276,7 @@ export default function PickupTaskDetailPage() {
     }
   }
 
-  async function handleUploadPhotos() {
-    if (selectedFiles.length === 0) {
-      toast.error('Please select files to upload');
-      return;
-    }
-
-    setUploading(true);
-    const supabase = createClient();
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      let successCount = 0;
-      let failCount = 0;
-
-      // Upload each file
-      for (const file of selectedFiles) {
-        try {
-          // Upload to Supabase Storage
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${taskId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-          const filePath = `lead-media/${fileName}`;
-
-          const { error: uploadError } = await supabase.storage
-            .from('service-media')
-            .upload(filePath, file);
-
-          if (uploadError) throw uploadError;
-
-          // Get public URL
-          const { data: { publicUrl } } = supabase.storage
-            .from('service-media')
-            .getPublicUrl(filePath);
-
-          // Save media record
-          const { error: insertError } = await supabase.from('lead_media').insert({
-            lead_id: taskId,
-            file_url: publicUrl,
-            media_type: 'IMAGE',
-          category: photoCategory,
-            description: `${photoCategory} photo taken by pickup boy`,
-            file_name: file.name,
-            file_size: file.size,
-            mime_type: file.type,
-            uploaded_by: user.id,
-          });
-
-          if (insertError) throw insertError;
-
-          successCount++;
-        } catch (error) {
-          console.error(`Error uploading ${file.name}:`, error);
-          failCount++;
-      }
-      }
-
-      if (successCount > 0) {
-        toast.success(`✅ ${successCount} photo(s) uploaded!${failCount > 0 ? ` (${failCount} failed)` : ''}`);
-      setShowUploadModal(false);
-        setSelectedFiles([]);
-      fetchTaskDetails();
-      } else {
-        toast.error('All uploads failed. Please try again.');
-      }
-    } catch (error: any) {
-      console.error('Error uploading photos:', error);
-      toast.error(`Failed to upload: ${error.message}`);
-    } finally {
-      setUploading(false);
-    }
-  }
+  // Upload handled by BeforeInspectionUpload (mode=LEAD_MEDIA)
 
   const openGoogleMaps = async () => {
     if (!task) return;
@@ -705,45 +644,26 @@ export default function PickupTaskDetailPage() {
           </div>
         </div>
 
-        {/* Photos */}
+        {/* Pickup/Visit Photos (syncs with supervisor) */}
         <div className="card p-3 sm:p-4 md:p-5">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
+          <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
             <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
               <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
-              Photos ({beforePhotos.length})
+              Pickup/Visit Photos
             </h3>
-            <button
-              onClick={() => setShowUploadModal(true)}
-              className="btn-secondary bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
-            >
-              <Upload className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Upload Photos</span>
-              <span className="sm:hidden">Upload</span>
-            </button>
+            <div className="text-[10px] sm:text-xs text-gray-500 text-right">
+              Upload here → Supervisor automatically sees it
+            </div>
           </div>
 
-          {beforePhotos.length === 0 ? (
-            <div className="text-center py-6 sm:py-8 bg-gray-50 rounded">
-              <Camera className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-1.5 sm:mb-2 text-gray-400" />
-              <p className="text-xs sm:text-sm text-gray-600">No photos uploaded yet</p>
-              <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">Upload before and after photos for documentation</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-              {beforePhotos.map((photo) => (
-                <div key={photo.id} className="relative aspect-square">
-                  <img
-                    src={photo.file_url}
-                    alt={photo.category}
-                    className="w-full h-full object-cover rounded"
-                  />
-                  <span className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 px-1.5 sm:px-2 py-0.5 sm:py-1 bg-black bg-opacity-60 text-white text-[10px] sm:text-xs rounded">
-                    {photo.category.replace(/_/g, ' ')}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+          <BeforeInspectionUpload
+            leadId={taskId}
+            jobId=""
+            mode="LEAD_MEDIA"
+            onUploadComplete={() => {
+              fetchTaskDetails();
+            }}
+          />
         </div>
 
         {/* Start Pickup Modal */}
@@ -845,9 +765,13 @@ export default function PickupTaskDetailPage() {
                 Confirm that you have successfully delivered the vehicle to the workshop.
               </p>
 
-              {beforePhotos.filter(p => p.category === 'BEFORE_PICKUP').length === 0 && (
+              {!beforePhotos.some((p: any) => {
+                const pc = String(p?.photo_category || '').toLowerCase();
+                const cat = String(p?.category || '').toUpperCase();
+                return pc === 'before' || cat.startsWith('BEFORE_') || cat === 'BEFORE_PICKUP';
+              }) && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded p-2.5 sm:p-3 mb-3 sm:mb-4">
-                  <p className="text-xs sm:text-sm text-yellow-700">⚠️ Recommendation: Upload before pickup photos for documentation</p>
+                  <p className="text-xs sm:text-sm text-yellow-700">⚠️ Recommendation: Upload pickup/visit photos for documentation</p>
                 </div>
               )}
 
@@ -876,88 +800,7 @@ export default function PickupTaskDetailPage() {
           </div>
         )}
 
-        {/* Upload Photos Modal */}
-        {showUploadModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
-            <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
-              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-blue-600">Upload Photos</h3>
-              
-              <div className="space-y-3 sm:space-y-4">
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    Photo Category
-                  </label>
-                  <select
-                    value={photoCategory}
-                    onChange={(e) => setPhotoCategory(e.target.value as any)}
-                    className="input w-full text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2"
-                    disabled={uploading}
-                  >
-                    <option value="BEFORE_PICKUP">Before Pickup</option>
-                    <option value="AFTER_DELIVERY">After Delivery</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    Select Photos (Multiple)
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
-                    disabled={uploading}
-                    className="block w-full text-xs sm:text-sm text-gray-500
-                      file:mr-2 sm:file:mr-4 file:py-1.5 sm:file:py-2 file:px-2 sm:file:px-4
-                      file:rounded-lg file:border-0
-                      file:text-xs sm:file:text-sm file:font-semibold
-                      file:bg-blue-50 file:text-blue-700
-                      hover:file:bg-blue-100
-                      cursor-pointer"
-                  />
-                  {selectedFiles.length > 0 && (
-                    <p className="text-xs sm:text-sm text-green-600 mt-1.5 sm:mt-2">
-                      ✓ {selectedFiles.length} file(s) selected
-                    </p>
-                  )}
-                </div>
-
-                <div className="bg-yellow-50 border border-yellow-200 rounded p-2.5 sm:p-3">
-                  <p className="text-xs sm:text-sm text-yellow-800">
-                    📸 Take clear photos of:
-                  </p>
-                  <ul className="text-[10px] sm:text-xs text-gray-700 mt-1.5 sm:mt-2 space-y-0.5 sm:space-y-1 ml-3 sm:ml-4 list-disc">
-                    <li>Vehicle from all 4 sides</li>
-                    <li>Odometer reading</li>
-                    <li>Any existing damage</li>
-                    <li>Customer ID/signature</li>
-                  </ul>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6">
-                <button
-                  onClick={handleUploadPhotos}
-                  disabled={uploading || selectedFiles.length === 0}
-                  className="btn-primary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  {uploading ? 'Uploading...' : `Upload ${selectedFiles.length} Photo(s)`}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowUploadModal(false);
-                    setSelectedFiles([]);
-                  }}
-                  disabled={uploading}
-                  className="btn-secondary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Photo upload handled inline above */}
       </div>
     </DashboardLayout>
   );

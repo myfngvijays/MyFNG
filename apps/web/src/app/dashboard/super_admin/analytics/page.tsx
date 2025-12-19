@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import DashboardLayout from '@/components/DashboardLayout';
 import { 
   TrendingUp, TrendingDown, DollarSign, Users, FileText, 
   Star, Clock, CheckCircle, XCircle, BarChart3, Download
@@ -137,17 +136,14 @@ export default function SuperAdminAnalyticsPage() {
 
   if (loading) {
     return (
-      <DashboardLayout role="super_admin">
-        <div className="flex items-center justify-center h-48 sm:h-64">
-          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center h-48 sm:h-64">
+        <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
+      </div>
     );
   }
 
   return (
-    <DashboardLayout role="super_admin">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
+    <div className="space-y-4 sm:space-y-5 md:space-y-6 p-4 sm:p-6">
         {/* Header */}
         <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
@@ -333,7 +329,6 @@ export default function SuperAdminAnalyticsPage() {
           </>
         )}
       </div>
-    </DashboardLayout>
   );
 }
 

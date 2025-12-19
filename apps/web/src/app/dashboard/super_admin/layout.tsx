@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   History,
   FileCheck,
+  ClipboardCheck,
   Car
 } from 'lucide-react';
 
@@ -49,6 +50,12 @@ const navigationItems = [
     href: '/dashboard/super_admin/inventory/packages',
     icon: Package,
     description: 'Manage Service Packages'
+  },
+  {
+    name: 'Additional Jobs Master',
+    href: '/dashboard/super_admin/additional-jobs-master',
+    icon: ClipboardCheck,
+    description: 'Manage workshop-wise additional jobs'
   },
   {
     name: 'Workshop Pricing',

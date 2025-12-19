@@ -20,6 +20,7 @@ interface Props {
   leadId: string;
   jobId: string;
   onUploadComplete: () => void;
+  mode?: 'MECHANIC_JOB' | 'LEAD_MEDIA';
 }
 
 const REQUIRED_PHOTOS = [
@@ -33,7 +34,7 @@ const REQUIRED_PHOTOS = [
   { type: 'BEFORE_TYRE', label: 'Tyres (Optional)', required: false },
 ];
 
-export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete }: Props) {
+export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete, mode = 'MECHANIC_JOB' }: Props) {
   const [photos, setPhotos] = useState<PhotoState[]>([]);
   const [odometerReading, setOdometerReading] = useState('');
   const [showOdometerModal, setShowOdometerModal] = useState(false);
@@ -47,12 +48,14 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
       initializePhotos();
     }
     getLocation();
-    if (jobId) {
-      fetchExistingPhotos();
+    if (mode === 'MECHANIC_JOB') {
+      if (jobId) fetchExistingPhotosFromJob();
+    } else {
+      if (leadId) fetchExistingPhotosFromLead();
     }
-  }, [leadId, jobId]);
+  }, [leadId, jobId, mode]);
 
-  const fetchExistingPhotos = async () => {
+  const fetchExistingPhotosFromJob = async () => {
     // Guard: Don't fetch if jobId is empty or invalid
     if (!jobId || jobId.trim() === '') {
       return;
@@ -70,8 +73,21 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
       if (error) throw error;
 
       if (data && data.length > 0) {
-        setPhotos((prevPhotos) =>
-          prevPhotos.map((photo) => {
+        setPhotos((prevPhotos) => {
+          const base =
+            prevPhotos && prevPhotos.length
+              ? prevPhotos
+              : REQUIRED_PHOTOS.map((p) => ({
+                  type: p.type,
+                  label: p.label,
+                  file: null,
+                  preview: null,
+                  uploaded: false,
+                  uploading: false,
+                  required: p.required,
+                }));
+
+          return base.map((photo) => {
             const existing = data.find((d) => d.photo_type === photo.type);
             if (existing) {
               return {
@@ -81,8 +97,8 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
               };
             }
             return photo;
-          })
-        );
+          });
+        });
 
         // Set odometer reading if dashboard photo exists
         const dashboardPhoto = data.find((d) => d.photo_type === 'BEFORE_DASHBOARD');
@@ -92,6 +108,57 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
       }
     } catch (error) {
       console.error('Error fetching photos:', error);
+    }
+  };
+
+  const fetchExistingPhotosFromLead = async () => {
+    try {
+      const res = await fetch(`/api/leads/${leadId}/media`, { method: 'GET' });
+      const data = await res.json().catch(() => ({}));
+      const media = Array.isArray(data?.media) ? data.media : [];
+      // Support both schemas:
+      // - legacy typed columns: photo_category/photo_type
+      // - fallback: category contains BEFORE_* slot key
+      const typedBefore = media.filter((m: any) => {
+        const pc = String(m?.photo_category || '').toLowerCase();
+        const cat = String(m?.category || '').toUpperCase();
+        return pc === 'before' || cat.startsWith('BEFORE_');
+      });
+
+      setPhotos((prevPhotos) => {
+        const base =
+          prevPhotos && prevPhotos.length
+            ? prevPhotos
+            : REQUIRED_PHOTOS.map((p) => ({
+                type: p.type,
+                label: p.label,
+                file: null,
+                preview: null,
+                uploaded: false,
+                uploading: false,
+                required: p.required,
+              }));
+
+        return base.map((photo) => {
+          const existing = typedBefore.find((d: any) => {
+            const t = String(d.photo_type || d.category || '').toUpperCase();
+            if (t) return t === photo.type;
+            const fn = String(d.file_name || '');
+            const m = fn.match(/^(BEFORE_[A-Z0-9_]+)__+/);
+            return (m?.[1] || '').toUpperCase() === photo.type;
+          });
+          if (existing) {
+            return {
+              ...photo,
+              preview: existing.file_url || existing.photo_url || null,
+              uploaded: true,
+            };
+          }
+          return photo;
+        });
+      });
+    } catch (e) {
+      console.error('Error fetching lead media:', e);
     }
   };
 
@@ -224,7 +291,12 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
         formData.append('longitude', location.longitude.toString());
       }
 
-      const response = await fetch(`/api/mechanic/jobs/${leadId}/upload-photos`, {
+      const endpoint =
+        mode === 'LEAD_MEDIA'
+          ? `/api/leads/${leadId}/upload-pickup-visit-photos`
+          : `/api/mechanic/jobs/${leadId}/upload-photos`;
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,

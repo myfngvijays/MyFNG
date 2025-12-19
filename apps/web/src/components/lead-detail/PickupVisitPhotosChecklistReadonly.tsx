@@ -21,7 +21,7 @@ function pickUrl(row: any): string | null {
  * Read-only checklist view for Pickup/Visit photos on Adviser lead view.
  *
  * Source priority:
- * 1) typed photos if present (lead_media.photo_category='before' with known photo_type)
+ * 1) typed slots if present (photo_type OR category contains BEFORE_* slot keys)
  * 2) pickup boy photos (lead_media.category='BEFORE_PICKUP') mapped sequentially into slots
  */
 export default function PickupVisitPhotosChecklistReadonly({ leadId }: { leadId: string }) {
@@ -50,8 +50,15 @@ export default function PickupVisitPhotosChecklistReadonly({ leadId }: { leadId:
 
   const slotUrls = useMemo(() => {
     // Try to map typed BEFORE_* photos if they exist
-    const typedBefore = (media || []).filter((m: any) => String(m?.photo_category || '').toLowerCase() === 'before');
-    const hasTyped = typedBefore.some((m: any) => typeof m?.photo_type === 'string' && m.photo_type.startsWith('BEFORE_'));
+    const typedBefore = (media || []).filter((m: any) => {
+      const pc = String(m?.photo_category || '').toLowerCase();
+      const t = String(m?.photo_type || m?.category || '').toUpperCase();
+      return pc === 'before' || t.startsWith('BEFORE_');
+    });
+    const hasTyped = typedBefore.some((m: any) => {
+      const t = String(m?.photo_type || m?.category || '').toUpperCase();
+      return t.startsWith('BEFORE_');
+    });
 
     const map: Record<string, { url: string; source: 'typed' | 'pickup' } | null> = {};
     for (const s of SLOTS) map[s.key] = null;
@@ -59,7 +66,12 @@ export default function PickupVisitPhotosChecklistReadonly({ leadId }: { leadId:
     if (hasTyped) {
       const byType: Record<string, any> = {};
       for (const row of typedBefore) {
-        const t = String(row?.photo_type || '').trim().toUpperCase();
+        let t = String(row?.photo_type || row?.category || '').trim().toUpperCase();
+        if (!t) {
+          const fn = String(row?.file_name || '');
+          const m = fn.match(/^(BEFORE_[A-Z0-9_]+)__+/);
+          if (m?.[1]) t = String(m[1]).toUpperCase();
+        }
         if (!t) continue;
         // prefer latest (api sorts desc)
         if (!byType[t]) byType[t] = row;

@@ -58,10 +58,16 @@ export async function POST(
       }, { status: 400 });
     }
 
-    if (!estimated_cost || estimated_cost <= 0) {
-      return NextResponse.json({ 
-        error: 'Valid estimated cost is required' 
-      }, { status: 400 });
+    const costNum = estimated_cost === undefined || estimated_cost === null || estimated_cost === ''
+      ? 0
+      : Number(estimated_cost);
+    if (!Number.isFinite(costNum) || costNum < 0) {
+      return NextResponse.json(
+        {
+          error: 'Estimated cost must be a valid number (>= 0)',
+        },
+        { status: 400 }
+      );
     }
 
     const leadId = params.id;
@@ -87,15 +93,30 @@ export async function POST(
       return NextResponse.json({ error: 'Job not assigned to you' }, { status: 403 });
     }
 
-    // Verify lead is in a workable state
-    // NOTE: After requesting additional job we put the job on HOLD/ON_HOLD, so allow re-requests too.
+    // Verify job is in a workable state.
+    // IMPORTANT: In this codebase, service_leads.status may not immediately change when mechanic starts.
+    // So we also trust mechanic_jobs.mechanic_status for validation.
     const allowedLeadStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'REWORK_REQUIRED', 'ON_HOLD'];
-    if (!allowedLeadStatuses.includes(lead.status)) {
+    const allowedMechanicStatuses = ['IN_PROGRESS', 'HOLD', 'ON_HOLD'];
+
+    const { data: currentJobForGate } = await supabase
+      .from('mechanic_jobs')
+      .select('id, mechanic_status')
+      .eq('lead_id', leadId)
+      .eq('mechanic_id', userProfile.id)
+      .maybeSingle();
+
+    const leadOk = allowedLeadStatuses.includes(lead.status);
+    const mechanicOk = allowedMechanicStatuses.includes(String(currentJobForGate?.mechanic_status || ''));
+
+    if (!leadOk && !mechanicOk) {
       return NextResponse.json(
         {
-          error: 'Job must be in progress to request additional job',
-          allowed_statuses: allowedLeadStatuses,
-          current_status: lead.status,
+          error: 'Job must be started (in progress) to request additional job',
+          allowed_lead_statuses: allowedLeadStatuses,
+          current_lead_status: lead.status,
+          allowed_mechanic_statuses: allowedMechanicStatuses,
+          current_mechanic_status: currentJobForGate?.mechanic_status || null,
         },
         { status: 400 }
       );
@@ -110,7 +131,7 @@ export async function POST(
         lead_id: leadId,
         description: description,
         reason: reason,
-        amount: estimated_cost,
+        amount: costNum,
         category: category || 'EXTRA_WORK',
         attachment_url: attachment_url,
         is_urgent: is_urgent || false,
@@ -140,7 +161,7 @@ export async function POST(
           extra_work_id: extraWorkRequest.id,
           description: description,
           reason: reason,
-          estimated_cost: estimated_cost,
+          estimated_cost: costNum,
           category: category,
           is_urgent: is_urgent,
           requested_at: now

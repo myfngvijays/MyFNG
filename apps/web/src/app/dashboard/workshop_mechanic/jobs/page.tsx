@@ -255,7 +255,28 @@ export default function MechanicJobsPage() {
                     </p>
                   )}
                 </div>
-                {job.lead_status ? (
+                {/* Show mechanic status if available; otherwise fall back to lead workflow status */}
+                {job.mechanic_status ? (
+                  <span
+                    className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold flex-shrink-0 ${
+                      job.mechanic_status === 'IN_PROGRESS'
+                        ? 'bg-blue-100 text-blue-700'
+                        : job.mechanic_status === 'HOLD' || job.mechanic_status === 'ON_HOLD'
+                          ? 'bg-orange-100 text-orange-700'
+                          : job.mechanic_status === 'COMPLETED'
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-green-100 text-green-700'
+                    }`}
+                  >
+                    {job.mechanic_status === 'IN_PROGRESS'
+                      ? 'In Progress'
+                      : job.mechanic_status === 'HOLD' || job.mechanic_status === 'ON_HOLD'
+                        ? 'On Hold'
+                        : job.mechanic_status === 'COMPLETED'
+                          ? 'Completed'
+                          : 'Assigned'}
+                  </span>
+                ) : job.lead_status ? (
                   <span
                     className={[
                       'px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold flex-shrink-0 border',
@@ -266,21 +287,7 @@ export default function MechanicJobsPage() {
                   >
                     {getLeadStatusLabel(job.lead_status)}
                   </span>
-                ) : (
-                <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold flex-shrink-0 ${
-                  job.mechanic_status === 'IN_PROGRESS' 
-                    ? 'bg-blue-100 text-blue-700' 
-                    : job.mechanic_status === 'COMPLETED'
-                    ? 'bg-purple-100 text-purple-700'
-                    : 'bg-green-100 text-green-700'
-                }`}>
-                  {job.mechanic_status === 'IN_PROGRESS' 
-                    ? 'In Progress' 
-                    : job.mechanic_status === 'COMPLETED'
-                      ? 'Work Submitted (QC Pending)'
-                    : 'Assigned'}
-                </span>
-                )}
+                ) : null}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
