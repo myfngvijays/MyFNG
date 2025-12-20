@@ -140,7 +140,12 @@ export async function POST(request: NextRequest) {
       category: (body?.category ?? null) as string | null,
       hsn_sac_code: (body?.hsn_sac_code ?? null) as string | null,
       unit: (body?.unit ?? 'job') as string,
-      default_price: Number(body?.default_price ?? 0),
+      // Pricing (default_price is legacy; map to oem_price)
+      oem_price: Number(
+        body?.oem_price ?? (Object.prototype.hasOwnProperty.call(body || {}, 'default_price') ? body?.default_price : 0) ?? 0
+      ),
+      oes_price: Number(body?.oes_price ?? 0),
+      labour_price: Number(body?.labour_price ?? 0),
       tax_rate: Number(body?.tax_rate ?? 18),
       is_active: body?.is_active === false ? false : true,
       created_by: profile.id,

@@ -56,7 +56,7 @@ export async function POST(
 
     // Get request body
     const body = await request.json();
-    const { reason, failed_checklist_items, notes } = body;
+    const { reason, failed_checklist_items, notes, checklist_data } = body;
 
     if (!reason) {
       return NextResponse.json({ error: 'Rejection reason is required' }, { status: 400 });
@@ -152,7 +152,10 @@ export async function POST(
         qc_status: 'FAILED',
         failed_reason: reason,
         supervisor_notes: notes || reason,
-        checklist_data: failed_checklist_items || {},
+        checklist_data: {
+          failed_checklist_items: failed_checklist_items || {},
+          ...(checklist_data ? { checklist_data } : {}),
+        },
         created_at: now,
         updated_at: now
       }, {

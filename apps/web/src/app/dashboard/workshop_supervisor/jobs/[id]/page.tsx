@@ -12,7 +12,6 @@ import SendBackModal from '@/components/supervisor/SendBackModal';
 import ServicePackageChangeModal from '@/components/supervisor/ServicePackageChangeModal';
 import BeforeInspectionUpload from '@/components/mechanic/BeforeInspectionUpload';
 import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
-import JobCardSection from '@/components/lead-detail/JobCardSection';
 import InternalAssignment from '@/components/lead-detail/InternalAssignment';
 import InvoiceSection from '@/components/lead-detail/InvoiceSection';
 import MediaSection from '@/components/lead-detail/MediaSection';
@@ -36,10 +35,13 @@ export default function SupervisorJobDetailPage() {
   const router = useRouter();
   const jobId = params.id as string;
 
+  type MainTab = 'overview' | 'service' | 'photos' | 'billing' | 'workflow' | 'timeline';
+
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showQC, setShowQC] = useState(false);
+  const [activeTab, setActiveTab] = useState<MainTab>('overview');
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [selectedExtraCharge, setSelectedExtraCharge] = useState<any>(null);
@@ -804,6 +806,14 @@ export default function SupervisorJobDetailPage() {
   }
 
   const pendingExtraCharges = (lead.extra_charges || []).filter((c: any) => c.status === 'PENDING');
+  const mediaCount = Array.isArray(lead?.media) ? lead.media.length : 0;
+  const eventsCount = Array.isArray(lead?.events) ? lead.events.length : 0;
+  const qcPending = ['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING';
+
+  const tabBtn = (tab: MainTab) => {
+    const base = 'btn !px-4 !py-2 text-xs sm:text-sm';
+    return activeTab === tab ? `${base} btn-primary` : `${base} btn-outline bg-white`;
+  };
 
   return (
     <DashboardLayout role="workshop_supervisor">
@@ -850,6 +860,32 @@ export default function SupervisorJobDetailPage() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" className={tabBtn('overview')} onClick={() => setActiveTab('overview')}>
+            Overview
+          </button>
+          <button type="button" className={tabBtn('service')} onClick={() => setActiveTab('service')}>
+            Service
+          </button>
+          <button type="button" className={tabBtn('photos')} onClick={() => setActiveTab('photos')}>
+            Photos {mediaCount > 0 && <span className="ml-1">({mediaCount})</span>}
+          </button>
+          <button type="button" className={tabBtn('billing')} onClick={() => setActiveTab('billing')}>
+            Billing & Parts {(pendingExtraCharges.length > 0 || parts.length > 0) && (
+              <span className="ml-1">({pendingExtraCharges.length + parts.length})</span>
+            )}
+          </button>
+          <button type="button" className={tabBtn('workflow')} onClick={() => setActiveTab('workflow')}>
+            Workflow {qcPending && <span className="ml-1 text-yellow-700 font-semibold">(QC)</span>}
+          </button>
+          <button type="button" className={tabBtn('timeline')} onClick={() => setActiveTab('timeline')}>
+            Timeline {eventsCount > 0 && <span className="ml-1">({eventsCount})</span>}
+          </button>
+        </div>
+
+        {activeTab === 'overview' && (
+        <>
         {/* Section 1: Job Summary */}
         <div className="card">
           <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Job Summary</h2>
@@ -1165,7 +1201,11 @@ export default function SupervisorJobDetailPage() {
             </div>
           )}
         </div>
+        </>
+        )}
 
+        {activeTab === 'service' && (
+        <>
         {/* Section 3: Service Details */}
         <div className="card">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
@@ -1244,7 +1284,11 @@ export default function SupervisorJobDetailPage() {
         {lead.status !== 'NEW' && lead.status !== 'REJECTED' && (
           <InternalAssignment lead={lead} onUpdate={fetchJobDetails} />
         )}
+        </>
+        )}
 
+        {activeTab === 'photos' && (
+        <>
         {/* Section 5: Pickup/Visit Photos */}
         <div className="card border-2 border-blue-300">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -1275,14 +1319,13 @@ export default function SupervisorJobDetailPage() {
             }}
           />
         </div>
-
-        {/* Section 5.7: Job Card & Parts */}
-        {lead.status !== 'NEW' && lead.status !== 'REJECTED' && (
-          <JobCardSection lead={lead} onUpdate={fetchJobDetails} />
+        </>
         )}
 
+        {/* Job Card section hidden as requested */}
+
         {/* Section 6: Extra Charges */}
-        {pendingExtraCharges.length > 0 && (
+        {activeTab === 'billing' && pendingExtraCharges.length > 0 && (
           <div className="card bg-orange-50 border-orange-200">
             <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
               <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
@@ -1318,7 +1361,7 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Section 6: Media */}
-        {lead.media && lead.media.length > 0 && (
+        {activeTab === 'photos' && lead.media && lead.media.length > 0 && (
           <div className="card">
             <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
               <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1342,7 +1385,7 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Section 7: Mechanic Parts Assignment */}
-        {lead.mechanic && (
+        {activeTab === 'billing' && lead.mechanic && (
           <div className="card">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
               <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
@@ -1416,6 +1459,7 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Section 8: Internal Notes */}
+        {activeTab === 'workflow' && (
         <div className="card bg-blue-50 border-blue-200">
           <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
             <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
@@ -1451,9 +1495,10 @@ export default function SupervisorJobDetailPage() {
             </button>
           </div>
         </div>
+        )}
 
         {/* Invoice Section - should stay visible through billing/payment/delivery */}
-        {[
+        {activeTab === 'billing' && [
           'WORK_COMPLETED',
           'COMPLETED',
           'QC_APPROVED',
@@ -1472,10 +1517,12 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Media Section (Adviser can upload; owner upload removed elsewhere) */}
-        <MediaSection lead={lead} onUpdate={fetchJobDetails} canUpload={true} />
+        {activeTab === 'photos' && (
+          <MediaSection lead={lead} onUpdate={fetchJobDetails} canUpload={true} />
+        )}
 
         {/* Section 8: Status Management */}
-        {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS' || lead.status === 'INSPECTED' || lead.status === 'QC_PENDING' || lead.status === 'COMPLETED' || lead.status === 'WORK_COMPLETED') && (
+        {activeTab === 'workflow' && (lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS' || lead.status === 'INSPECTED' || lead.status === 'QC_PENDING' || lead.status === 'COMPLETED' || lead.status === 'WORK_COMPLETED') && (
           <div className="card bg-purple-50 border-purple-200">
             <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3">Change Job Status</h3>
             <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
@@ -1527,7 +1574,7 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Section 9: QC Section */}
-        {['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING' && !showQC && (
+        {activeTab === 'workflow' && ['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING' && !showQC && (
           <div className="card bg-purple-50 border-purple-200">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
               <div className="flex-1 min-w-0">
@@ -1547,7 +1594,7 @@ export default function SupervisorJobDetailPage() {
           </div>
         )}
 
-        {showQC && (
+        {activeTab === 'workflow' && showQC && (
           <QCChecklist
             leadId={lead.id}
             leadNumber={lead.lead_number}
@@ -1560,7 +1607,7 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Section 10: Activity Timeline */}
-        {lead.events && lead.events.length > 0 && (
+        {activeTab === 'timeline' && lead.events && lead.events.length > 0 && (
           <div className="card">
             <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
               <History className="w-4 h-4 sm:w-5 sm:h-5" />

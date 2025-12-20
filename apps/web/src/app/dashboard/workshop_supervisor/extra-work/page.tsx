@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { CheckCircle, XCircle, Clock, DollarSign, AlertTriangle, User, Car, FileText } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, DollarSign, AlertTriangle, User, Car, FileText, ExternalLink, Copy } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import { formatDateDMY } from "@/lib/utils";
@@ -18,6 +18,16 @@ interface ExtraWorkRequest {
   description: string;
   reason: string;
   amount: number;
+  oem_price?: number;
+  oes_price?: number;
+  labour_price?: number;
+  part_price_type?: string;
+  customer_approved?: boolean;
+  customer_approved_at?: string | null;
+  rejection_reason?: string | null;
+  master_oem_price?: number;
+  master_oes_price?: number;
+  master_labour_price?: number;
   category: string;
   is_urgent: boolean;
   created_at: string;
@@ -28,15 +38,94 @@ export default function ExtraWorkApprovalsPage() {
   const router = useRouter();
   const [requests, setRequests] = useState<ExtraWorkRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRequest, setSelectedRequest] = useState<ExtraWorkRequest | null>(null);
-  const [showApproveModal, setShowApproveModal] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [editedPricing, setEditedPricing] = useState<Record<string, { oem: string; oes: string; labour: string }>>(
+    {}
+  );
+  const [expandedRequestIds, setExpandedRequestIds] = useState<Record<string, boolean>>({});
   
-  const [approvalNotes, setApprovalNotes] = useState('');
-  const [approvedAmount, setApprovedAmount] = useState('');
-  const [rejectionReason, setRejectionReason] = useState('');
-  
-  const [processing, setProcessing] = useState(false);
+  const [savingLeadIds, setSavingLeadIds] = useState<Record<string, boolean>>({});
+  const [cancellingRequestIds, setCancellingRequestIds] = useState<Record<string, boolean>>({});
+  const [approvingRequestIds, setApprovingRequestIds] = useState<Record<string, boolean>>({});
+  const [approveModal, setApproveModal] = useState<{
+    open: boolean;
+    requestId: string | null;
+    choice: 'OEM' | 'OES';
+  }>({ open: false, requestId: null, choice: 'OEM' });
+
+  function getDecisionLabel(r: ExtraWorkRequest) {
+    const status = String(r.status || 'PENDING').toUpperCase();
+    const byCustomer = Boolean(r.customer_approved_at);
+    if (status === 'REJECTED') return byCustomer ? 'REJECTED • Customer' : 'REJECTED • Advisor';
+    if (status === 'APPROVED') {
+      const choice = String(r.part_price_type || 'OEM').toUpperCase();
+      return byCustomer ? `APPROVED • Customer (${choice})` : 'APPROVED • Advisor';
+    }
+    return 'PENDING';
+  }
+
+  const pendingRequests = useMemo(
+    () => requests.filter((r) => String(r.status || 'PENDING').toUpperCase() === 'PENDING'),
+    [requests]
+  );
+
+  async function cancelRequest(requestId: string) {
+    const reason = (typeof window !== 'undefined'
+      ? window.prompt('Cancel reason (optional):', '')
+      : '') || '';
+    try {
+      setCancellingRequestIds((p) => ({ ...p, [requestId]: true }));
+      const res = await fetch('/api/supervisor/extra-work/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: requestId, reason }),
+      });
+      const data = await safeReadJson(res);
+      if (!res.ok) {
+        toast.error(data?.error || 'Failed to cancel');
+        return;
+      }
+      toast.success('Cancelled');
+      await fetchExtraWorkRequests();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to cancel');
+    } finally {
+      setCancellingRequestIds((p) => ({ ...p, [requestId]: false }));
+    }
+  }
+
+  async function approveRequest(requestId: string, part_price_type: 'OEM' | 'OES') {
+    try {
+      setApprovingRequestIds((p) => ({ ...p, [requestId]: true }));
+      const res = await fetch('/api/supervisor/extra-work/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: requestId, part_price_type }),
+      });
+      const data = await safeReadJson(res);
+      if (!res.ok) {
+        toast.error(data?.error || 'Failed to approve');
+        return;
+      }
+      toast.success(`Approved (${part_price_type})`);
+      await fetchExtraWorkRequests();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to approve');
+    } finally {
+      setApprovingRequestIds((p) => ({ ...p, [requestId]: false }));
+    }
+  }
+
+  const approveModalRequest = useMemo(() => {
+    if (!approveModal.open || !approveModal.requestId) return null;
+    return requests.find((r) => r.id === approveModal.requestId) || null;
+  }, [approveModal.open, approveModal.requestId, requests]);
+
+  const approveModalTotals = useMemo(() => {
+    const r = approveModalRequest;
+    if (!r) return { oem: 0, oes: 0 };
+    const p = getEffectivePricingForRequest(r);
+    return { oem: p.total_oem, oes: p.total_oes };
+  }, [approveModalRequest, editedPricing]);
 
   async function safeReadJson(res: Response): Promise<any | null> {
     try {
@@ -107,10 +196,79 @@ export default function ExtraWorkApprovalsPage() {
         return;
       }
 
+      // Fetch workshop additional jobs master prices (for fallback display)
+      const { data: masterJobs, error: masterError } = await supabase
+        .from('additional_jobs_master')
+        .select('name, oem_price, oes_price, labour_price, workshop_id, is_active, deleted_at')
+        .or(`workshop_id.eq.${userProfile.workshop_id},workshop_id.is.null`)
+        .eq('is_active', true)
+        .is('deleted_at', null);
+
+      if (masterError) {
+        console.warn('Failed to fetch additional_jobs_master:', masterError);
+      }
+
+      const normalizeName = (s: string) =>
+        (s || '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, ' ');
+
+      const masterByName = new Map<string, { oem: number; oes: number; labour: number }>();
+      for (const it of masterJobs || []) {
+        const key = normalizeName(String((it as any).name || ''));
+        const oem = Number((it as any).oem_price);
+        const oes = Number((it as any).oes_price);
+        const labour = Number((it as any).labour_price);
+        if (!key) continue;
+        // Prefer workshop-specific row over global (null workshop_id) if duplicates exist
+        if ((it as any).workshop_id === userProfile.workshop_id) {
+          masterByName.set(key, {
+            oem: Number.isFinite(oem) ? oem : 0,
+            oes: Number.isFinite(oes) ? oes : 0,
+            labour: Number.isFinite(labour) ? labour : 0,
+          });
+        } else if (!masterByName.has(key)) {
+          masterByName.set(key, {
+            oem: Number.isFinite(oem) ? oem : 0,
+            oes: Number.isFinite(oes) ? oes : 0,
+            labour: Number.isFinite(labour) ? labour : 0,
+          });
+        }
+      }
+
       // Fetch pending additional job requests
-      const { data: extraWork, error } = await supabase
-        .from('lead_extra_charges')
-        .select(`
+      // Some DBs may not yet have OEM/OES/Labour columns. Try full select first, fallback to legacy.
+      let extraWork: any[] | null = null;
+      let error: any = null;
+
+      const fullSelect = `
+          id,
+          lead_id,
+          description,
+          reason,
+          amount,
+          oem_price,
+          oes_price,
+          labour_price,
+          part_price_type,
+          customer_approved,
+          customer_approved_at,
+          rejection_reason,
+          category,
+          is_urgent,
+          created_at,
+          status,
+          requested_by,
+          service_leads!inner(
+            lead_number,
+            customer_name,
+            vehicle_number,
+            workshop_id
+          )
+        `;
+
+      const legacySelect = `
           id,
           lead_id,
           description,
@@ -127,11 +285,30 @@ export default function ExtraWorkApprovalsPage() {
             vehicle_number,
             workshop_id
           )
-        `)
+        `;
+
+      const attempt = await supabase
+        .from('lead_extra_charges')
+        .select(fullSelect)
         .eq('service_leads.workshop_id', userProfile.workshop_id)
-        .eq('status', 'PENDING')
+        .in('status', ['PENDING', 'APPROVED', 'REJECTED'])
         .order('is_urgent', { ascending: false })
         .order('created_at', { ascending: true });
+
+      extraWork = attempt.data as any;
+      error = attempt.error as any;
+
+      if (error && (error.code === '42703' || /does not exist/i.test(String(error.message || '')))) {
+        const fallback = await supabase
+          .from('lead_extra_charges')
+          .select(legacySelect)
+          .eq('service_leads.workshop_id', userProfile.workshop_id)
+          .in('status', ['PENDING', 'APPROVED', 'REJECTED'])
+          .order('is_urgent', { ascending: false })
+          .order('created_at', { ascending: true });
+        extraWork = fallback.data as any;
+        error = fallback.error as any;
+      }
 
       if (error) {
         console.error('Error fetching additional job:', error);
@@ -147,6 +324,14 @@ export default function ExtraWorkApprovalsPage() {
           .eq('id', req.requested_by)
           .single();
 
+        const savedAmount = Number(req.amount);
+        const amount = Number.isFinite(savedAmount) ? savedAmount : 0;
+        const savedOem = Number((req as any).oem_price);
+        const savedOes = Number((req as any).oes_price);
+        const savedLabour = Number((req as any).labour_price);
+
+        const master = masterByName.get(normalizeName(String(req.description || ''))) || { oem: 0, oes: 0, labour: 0 };
+
         return {
           id: req.id,
           lead_id: req.lead_id,
@@ -156,7 +341,17 @@ export default function ExtraWorkApprovalsPage() {
           mechanic_name: mechanic?.full_name || 'Unknown',
           description: req.description,
           reason: req.reason,
-          amount: parseFloat(req.amount),
+          amount,
+          oem_price: Number.isFinite(savedOem) ? savedOem : 0,
+          oes_price: Number.isFinite(savedOes) ? savedOes : 0,
+          labour_price: Number.isFinite(savedLabour) ? savedLabour : 0,
+          part_price_type: (req as any).part_price_type,
+          customer_approved: (req as any).customer_approved,
+          customer_approved_at: (req as any).customer_approved_at,
+          rejection_reason: (req as any).rejection_reason,
+          master_oem_price: master.oem,
+          master_oes_price: master.oes,
+          master_labour_price: master.labour,
           category: req.category,
           is_urgent: req.is_urgent,
           created_at: req.created_at,
@@ -164,7 +359,31 @@ export default function ExtraWorkApprovalsPage() {
         };
       }));
 
+      const statusWeight: Record<string, number> = { PENDING: 0, REJECTED: 1, APPROVED: 2 };
+      requestsWithMechanics.sort((a, b) => (statusWeight[a.status] ?? 9) - (statusWeight[b.status] ?? 9));
       setRequests(requestsWithMechanics);
+      setEditedPricing((prev) => {
+        const next: Record<string, { oem: string; oes: string; labour: string }> = {};
+        for (const r of requestsWithMechanics) {
+          // Preserve any in-progress edits
+          if (prev[r.id] !== undefined) {
+            next[r.id] = prev[r.id];
+            continue;
+          }
+
+          // If DB values exist use them, else fallback to master; legacy fallback: if amount > 0 and oem is 0 treat amount as OEM
+          const oem = r.oem_price && r.oem_price > 0 ? r.oem_price : (r.amount > 0 ? r.amount : (r.master_oem_price || 0));
+          const oes = r.oes_price && r.oes_price > 0 ? r.oes_price : (r.master_oes_price || 0);
+          const labour = r.labour_price && r.labour_price > 0 ? r.labour_price : (r.master_labour_price || 0);
+
+          next[r.id] = {
+            oem: Number.isFinite(oem) ? String(oem) : '0',
+            oes: Number.isFinite(oes) ? String(oes) : '0',
+            labour: Number.isFinite(labour) ? String(labour) : '0',
+          };
+        }
+        return next;
+      });
     } catch (error) {
       console.error('Error:', error);
       toast.error('Failed to load additional job requests');
@@ -173,127 +392,140 @@ export default function ExtraWorkApprovalsPage() {
     }
   }
 
-  async function handleApprove() {
-    if (!selectedRequest) return;
-
-    const finalAmount = approvedAmount ? parseFloat(approvedAmount) : selectedRequest.amount;
-
-    if (isNaN(finalAmount) || finalAmount <= 0) {
-      toast.error('Please enter a valid amount');
-      return;
-    }
-
-    setProcessing(true);
-
+  async function saveLeadAmounts(leadId: string, requestIds: string[]) {
     try {
-      const response = await fetch(`/api/supervisor/extra-work/${selectedRequest.id}/approve`, {
+      setSavingLeadIds((p) => ({ ...p, [leadId]: true }));
+      const payload = {
+        lead_id: leadId,
+        items: requestIds.map((id) => {
+          const r = requests.find((x) => x.id === id);
+          if (!r) {
+            return { id, oem_price: 0, oes_price: 0, labour_price: 0 };
+          }
+          const p = getEffectivePricingForRequest(r);
+          return {
+            id,
+            oem_price: p.oem,
+            oes_price: p.oes,
+            labour_price: p.labour,
+          };
+        }),
+      };
+      const res = await fetch('/api/supervisor/extra-work/bulk-save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          notes: approvalNotes,
-          approved_amount: finalAmount
-        })
+        body: JSON.stringify(payload),
       });
-
-      const data = await safeReadJson(response);
-
-      if (!response.ok) {
-        const primary =
-          data?.error ||
-          data?.message ||
-          'Failed to approve additional job';
-        const details = typeof data?.details === 'string' ? data.details : null;
-        const hint = typeof data?.hint === 'string' ? data.hint : null;
-        const code = data?.code ? String(data.code) : null;
-        const envBits =
-          data?.env
-            ? `env: url=${data.env.hasSupabaseUrl ? 'yes' : 'no'}, key=${data.env.hasServiceRoleKey ? 'yes' : 'no'}${data.env.serviceKeySource ? ` (${data.env.serviceKeySource})` : ''}${data.env.usingServiceRoleClient !== undefined ? `, using=${data.env.usingServiceRoleClient ? 'service_role' : 'user'}` : ''}`
-            : null;
-        toast.error(
-          [
-            primary,
-            details && details !== primary ? `details: ${details}` : null,
-            hint ? `hint: ${hint}` : null,
-            code ? `code: ${code}` : null,
-            envBits,
-          ]
-            .filter(Boolean)
-            .join(' • ')
-        );
+      const data = await safeReadJson(res);
+      if (!res.ok) {
+        toast.error(data?.error || 'Failed to save');
         return;
       }
-
-      toast.success(`Extra work approved: ₹${finalAmount}`);
-      setShowApproveModal(false);
-      setSelectedRequest(null);
-      setApprovalNotes('');
-      setApprovedAmount('');
-      fetchExtraWorkRequests();
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Failed to approve additional job');
+      toast.success('Saved');
+      await fetchExtraWorkRequests();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save');
     } finally {
-      setProcessing(false);
+      setSavingLeadIds((p) => ({ ...p, [leadId]: false }));
     }
   }
 
-  async function handleReject() {
-    if (!selectedRequest || !rejectionReason) {
-      toast.error('Please provide a rejection reason');
+  function buildQuoteHtml(group: any) {
+    const publicPath = `/customer/track/${group.lead_id}`;
+    const publicUrl = typeof window !== 'undefined' ? `${window.location.origin}${publicPath}` : publicPath;
+    const rows = group.items
+      .map((r: ExtraWorkRequest) => {
+        const p = getEffectivePricingForRequest(r);
+        const priority = r.is_urgent ? 'HIGH' : 'NORMAL';
+        const reason = (r.reason || '').replace(/\n/g, '<br/>');
+        return `
+          <tr>
+            <td style="padding:8px;border:1px solid #ddd;">${r.description || '-'}</td>
+            <td style="padding:8px;border:1px solid #ddd;">${priority}</td>
+            <td style="padding:8px;border:1px solid #ddd;">${reason || '-'}</td>
+            <td style="padding:8px;border:1px solid #ddd;text-align:right;">₹${p.oem.toFixed(2)}</td>
+            <td style="padding:8px;border:1px solid #ddd;text-align:right;">₹${p.oes.toFixed(2)}</td>
+            <td style="padding:8px;border:1px solid #ddd;text-align:right;">₹${p.labour.toFixed(2)}</td>
+            <td style="padding:8px;border:1px solid #ddd;text-align:right;">₹${p.total_oem.toFixed(2)}</td>
+            <td style="padding:8px;border:1px solid #ddd;text-align:right;">₹${p.total_oes.toFixed(2)}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const totalOem = group.items.reduce((sum: number, r: ExtraWorkRequest) => sum + getEffectivePricingForRequest(r).total_oem, 0);
+    const totalOes = group.items.reduce((sum: number, r: ExtraWorkRequest) => sum + getEffectivePricingForRequest(r).total_oes, 0);
+
+    return `
+      <html>
+        <head>
+          <title>Additional Work Quote - ${group.lead_number}</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+        </head>
+        <body style="font-family: Arial, sans-serif; padding: 24px;">
+          <h2 style="margin:0 0 6px 0;">Additional Work Quote</h2>
+          <div style="color:#444;margin-bottom:16px;">
+            <div><strong>Lead:</strong> ${group.lead_number}</div>
+            <div><strong>Customer:</strong> ${group.customer_name}</div>
+            <div><strong>Vehicle:</strong> ${group.vehicle_number}</div>
+            <div><strong>Tracking:</strong> <a href="${publicUrl}">${publicUrl}</a></div>
+          </div>
+
+          <table style="border-collapse:collapse;width:100%;font-size:14px;">
+            <thead>
+              <tr>
+                <th style="padding:8px;border:1px solid #ddd;text-align:left;background:#f5f5f5;">Item</th>
+                <th style="padding:8px;border:1px solid #ddd;text-align:left;background:#f5f5f5;">Priority</th>
+                <th style="padding:8px;border:1px solid #ddd;text-align:left;background:#f5f5f5;">Remark / Note</th>
+                <th style="padding:8px;border:1px solid #ddd;text-align:right;background:#f5f5f5;">OEM</th>
+                <th style="padding:8px;border:1px solid #ddd;text-align:right;background:#f5f5f5;">OES</th>
+                <th style="padding:8px;border:1px solid #ddd;text-align:right;background:#f5f5f5;">Labour</th>
+                <th style="padding:8px;border:1px solid #ddd;text-align:right;background:#f5f5f5;">Total (OEM)</th>
+                <th style="padding:8px;border:1px solid #ddd;text-align:right;background:#f5f5f5;">Total (OES)</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+            <tfoot>
+              <tr>
+                <td colspan="6" style="padding:8px;border:1px solid #ddd;text-align:right;"><strong>Total</strong></td>
+                <td style="padding:8px;border:1px solid #ddd;text-align:right;"><strong>₹${totalOem.toFixed(2)}</strong></td>
+                <td style="padding:8px;border:1px solid #ddd;text-align:right;"><strong>₹${totalOes.toFixed(2)}</strong></td>
+              </tr>
+            </tfoot>
+          </table>
+        </body>
+      </html>
+    `;
+  }
+
+  function openPreview(group: any, autoPrint: boolean) {
+    const w = window.open('', '_blank');
+    if (!w) {
+      toast.error('Popup blocked');
       return;
     }
+    w.document.open();
+    w.document.write(buildQuoteHtml(group));
+    w.document.close();
+    if (autoPrint) {
+      w.focus();
+      setTimeout(() => w.print(), 400);
+    }
+  }
 
-    setProcessing(true);
-
+  async function sendToCustomer(group: any) {
+    const publicPath = `/customer/track/${group.lead_id}`;
+    const publicUrl = typeof window !== 'undefined' ? `${window.location.origin}${publicPath}` : publicPath;
+    const totalOem = group.items.reduce((sum: number, r: ExtraWorkRequest) => sum + getEffectivePricingForRequest(r).total_oem, 0);
+    const totalOes = group.items.reduce((sum: number, r: ExtraWorkRequest) => sum + getEffectivePricingForRequest(r).total_oes, 0);
+    const msg = `Additional work quote for ${group.lead_number} (${group.vehicle_number})\\nOEM Total: ₹${totalOem.toFixed(
+      2
+    )}\\nOES Total: ₹${totalOes.toFixed(2)}\\nView: ${publicUrl}`;
     try {
-      const response = await fetch(`/api/supervisor/extra-work/${selectedRequest.id}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reason: rejectionReason,
-          notes: approvalNotes
-        })
-      });
-
-      const data = await safeReadJson(response);
-
-      if (!response.ok) {
-        const primary =
-          data?.error ||
-          data?.message ||
-          'Failed to reject additional job';
-        const details = typeof data?.details === 'string' ? data.details : null;
-        const hint = typeof data?.hint === 'string' ? data.hint : null;
-        const code = data?.code ? String(data.code) : null;
-        const envBits =
-          data?.env
-            ? `env: url=${data.env.hasSupabaseUrl ? 'yes' : 'no'}, key=${data.env.hasServiceRoleKey ? 'yes' : 'no'}${data.env.serviceKeySource ? ` (${data.env.serviceKeySource})` : ''}${data.env.usingServiceRoleClient !== undefined ? `, using=${data.env.usingServiceRoleClient ? 'service_role' : 'user'}` : ''}`
-            : null;
-        toast.error(
-          [
-            primary,
-            details && details !== primary ? `details: ${details}` : null,
-            hint ? `hint: ${hint}` : null,
-            code ? `code: ${code}` : null,
-            envBits,
-          ]
-            .filter(Boolean)
-            .join(' • ')
-        );
-        return;
-      }
-
-      toast.success('Additional job request rejected');
-      setShowRejectModal(false);
-      setSelectedRequest(null);
-      setRejectionReason('');
-      setApprovalNotes('');
-      fetchExtraWorkRequests();
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Failed to reject additional job');
-    } finally {
-      setProcessing(false);
+      await navigator.clipboard.writeText(msg);
+      toast.success('Message copied (share to customer)');
+    } catch {
+      toast.error('Failed to copy message');
     }
   }
 
@@ -306,6 +538,64 @@ export default function ExtraWorkApprovalsPage() {
       'OTHER': 'badge-gray'
     };
     return badges[category] || 'badge-gray';
+  };
+
+  const groupedRequests = useMemo(() => {
+    const byLead = new Map<
+      string,
+      {
+        lead_id: string;
+        lead_number: string;
+        customer_name: string;
+        vehicle_number: string;
+        items: ExtraWorkRequest[];
+        urgentCount: number;
+      }
+    >();
+
+    for (const r of requests) {
+      const existing = byLead.get(r.lead_id);
+      const isPending = String(r.status || 'PENDING').toUpperCase() === 'PENDING';
+      if (existing) {
+        existing.items.push(r);
+        if (isPending && r.is_urgent) existing.urgentCount += 1;
+      } else {
+        byLead.set(r.lead_id, {
+          lead_id: r.lead_id,
+          lead_number: r.lead_number,
+          customer_name: r.customer_name,
+          vehicle_number: r.vehicle_number,
+          items: [r],
+          urgentCount: isPending && r.is_urgent ? 1 : 0,
+        });
+      }
+    }
+
+    return Array.from(byLead.values());
+  }, [requests]);
+
+  const getEditedPartNumber = (raw: string, fallback: number) => {
+    const v = (raw ?? '').trim();
+    const n = v === '' ? NaN : Number.parseFloat(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const getEffectivePricingForRequest = (r: ExtraWorkRequest) => {
+    const p = editedPricing[r.id];
+    const baseOem = r.oem_price && r.oem_price > 0 ? r.oem_price : (r.master_oem_price || 0);
+    const baseOes = r.oes_price && r.oes_price > 0 ? r.oes_price : (r.master_oes_price || 0);
+    const baseLabour = r.labour_price && r.labour_price > 0 ? r.labour_price : (r.master_labour_price || 0);
+    const oem = p ? getEditedPartNumber(p.oem, baseOem) : baseOem;
+    const oes = p ? getEditedPartNumber(p.oes, baseOes) : baseOes;
+    const labour = p ? getEditedPartNumber(p.labour, baseLabour) : baseLabour;
+    const total_oem = oem + labour;
+    const total_oes = oes + labour;
+    return { oem, oes, labour, total_oem, total_oes };
+  };
+
+  const getComputedTotalForRequest = (r: ExtraWorkRequest) => {
+    // For dashboard summary we default to OEM total (customer may later pick OES)
+    return getEffectivePricingForRequest(r).total_oem;
   };
 
   if (loading) {
@@ -334,7 +624,7 @@ export default function ExtraWorkApprovalsPage() {
               <Clock className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-yellow-600 flex-shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-sm text-gray-600">Pending Lead Approval</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-800">{requests.length}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-800">{pendingRequests.length}</p>
               </div>
             </div>
           </div>
@@ -345,7 +635,7 @@ export default function ExtraWorkApprovalsPage() {
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-sm text-gray-600">Urgent Requests</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-800">
-                  {requests.filter(r => r.is_urgent).length}
+                  {pendingRequests.filter((r) => r.is_urgent).length}
                 </p>
               </div>
             </div>
@@ -356,8 +646,11 @@ export default function ExtraWorkApprovalsPage() {
               <DollarSign className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-green-600 flex-shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-sm text-gray-600">Total Amount</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-800">
-                  ₹{requests.reduce((sum, r) => sum + r.amount, 0).toFixed(2)}
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">
+                  OEM: ₹{pendingRequests.reduce((sum, r) => sum + getEffectivePricingForRequest(r).total_oem, 0).toFixed(2)}
+                </p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">
+                  OES: ₹{pendingRequests.reduce((sum, r) => sum + getEffectivePricingForRequest(r).total_oes, 0).toFixed(2)}
                 </p>
               </div>
             </div>
@@ -369,243 +662,430 @@ export default function ExtraWorkApprovalsPage() {
           <div className="card text-center py-8 sm:py-10 md:py-12">
             <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-green-500 mx-auto mb-3 sm:mb-4" />
             <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">All Caught Up!</h3>
-            <p className="text-gray-500 text-sm sm:text-base">No pending additional job requests.</p>
+            <p className="text-gray-500 text-sm sm:text-base">No additional job requests.</p>
           </div>
         ) : (
           <div className="space-y-3 sm:space-y-4">
-            {requests.map((request) => (
+            {groupedRequests.map((group) => (
               <div 
-                key={request.id} 
+                key={group.lead_id}
                 className={`card hover:shadow-xl transition-shadow border-l-4 ${
-                  request.is_urgent ? 'border-red-500 bg-red-50' : 'border-orange-500'
+                  group.urgentCount > 0 ? 'border-red-500 bg-red-50/40' : 'border-orange-500'
                 }`}
               >
                 <div className="space-y-3 sm:space-y-4">
-                  {/* Header */}
+                  {/* Lead Header */}
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
-                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                      <span className="badge-blue text-sm sm:text-base md:text-lg">{request.lead_number}</span>
-                      <span className={getCategoryBadge(request.category)}>
-                        {request.category.replace(/_/g, ' ')}
-                      </span>
-                      {request.is_urgent && (
-                        <span className="badge-red flex items-center gap-1 text-[10px] sm:text-xs">
-                          <AlertTriangle className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />
-                          URGENT
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className="badge-blue text-sm sm:text-base md:text-lg">{group.lead_number}</span>
+                        {group.urgentCount > 0 && (
+                          <span className="badge-red flex items-center gap-1 text-[10px] sm:text-xs">
+                            <AlertTriangle className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />
+                            URGENT ({group.urgentCount})
+                          </span>
+                        )}
+                        <span className="badge-gray text-[10px] sm:text-xs">
+                          {group.items.length} request{group.items.length > 1 ? 's' : ''}
                         </span>
-                      )}
+                      </div>
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                          <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-semibold text-sm sm:text-base truncate">{group.customer_name}</span>
+                              <span className="text-[10px] sm:text-xs text-gray-400 hidden sm:inline">|</span>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {(() => {
+                                  const publicPath = `/customer/track/${group.lead_id}`;
+                                  const publicUrl =
+                                    typeof window !== 'undefined' ? `${window.location.origin}${publicPath}` : publicPath;
+                                  return (
+                                    <>
+                                      <a
+                                        href={publicPath}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[10px] sm:text-xs text-blue-700 hover:text-blue-800 font-semibold"
+                                        title="Open customer public page"
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                        <span className="hidden sm:inline">Public</span>
+                                      </a>
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1 text-[10px] sm:text-xs text-gray-600 hover:text-gray-800"
+                                        title="Copy public URL"
+                                        onClick={async () => {
+                                          try {
+                                            await navigator.clipboard.writeText(publicUrl);
+                                            toast.success('Public URL copied');
+                                          } catch {
+                                            toast.error('Failed to copy URL');
+                                          }
+                                        }}
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
+                                        <span className="hidden md:inline">Copy</span>
+                                      </button>
+                                      <code className="hidden lg:inline text-[10px] text-gray-500 bg-gray-50 border px-2 py-0.5 rounded max-w-[280px] truncate">
+                                        {publicUrl}
+                                      </code>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                          <Car className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs sm:text-sm truncate">{group.vehicle_number}</span>
+                              <span className="text-[10px] sm:text-xs text-gray-400 hidden sm:inline">|</span>
+                              {(() => {
+                                const publicPath = `/customer/track/${group.lead_id}`;
+                                const publicUrl =
+                                  typeof window !== 'undefined' ? `${window.location.origin}${publicPath}` : publicPath;
+                                return (
+                                  <span className="text-[10px] sm:text-xs text-gray-500 truncate hidden md:inline">
+                                    Public: <span className="font-mono">{publicUrl}</span>
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
+
                     <div className="text-left sm:text-right flex-shrink-0">
-                      <p className="text-lg sm:text-xl md:text-2xl font-bold text-orange-600">₹{request.amount.toFixed(2)}</p>
-                      <p className="text-[10px] sm:text-xs text-gray-500">
-                        {formatDateDMY(request.created_at)}
+                      <p className="text-xs sm:text-sm text-gray-600">Total (editable)</p>
+                      <p className="text-lg sm:text-xl md:text-2xl font-bold text-orange-600">
+                        ₹
+                        {group.items
+                          .reduce((sum: number, r: ExtraWorkRequest) => sum + getComputedTotalForRequest(r), 0)
+                          .toFixed(2)}
                       </p>
                     </div>
                   </div>
 
-                  {/* Details Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                    <div className="space-y-1.5 sm:space-y-2">
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
-                        <span className="font-semibold text-sm sm:text-base truncate">{request.customer_name}</span>
+                  {/* Requests under same lead */}
+                  <div className="rounded-lg border bg-white overflow-hidden">
+                    <div className="p-3 sm:p-4 border-b bg-gray-50 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+                      <div className="text-xs sm:text-sm text-gray-600">
+                        Edit amounts below, then use lead actions.
                       </div>
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <Car className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
-                        <span className="text-xs sm:text-sm truncate">{request.vehicle_number}</span>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        {(() => {
+                          const pendingIds = group.items
+                            .filter((i) => String(i.status || 'PENDING').toUpperCase() === 'PENDING')
+                            .map((i) => i.id);
+                          const disabledSave = pendingIds.length === 0;
+                          const pendingGroup = { ...group, items: group.items.filter((i) => pendingIds.includes(i.id)) } as any;
+                          const previewGroup = pendingIds.length ? pendingGroup : group;
+                          return (
+                            <>
+                        <button
+                          type="button"
+                          className="btn btn-primary text-xs sm:text-sm"
+                          disabled={disabledSave || Boolean(savingLeadIds[group.lead_id])}
+                          onClick={() => saveLeadAmounts(group.lead_id, pendingIds)}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline text-xs sm:text-sm"
+                          onClick={() => openPreview(previewGroup, false)}
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline text-xs sm:text-sm"
+                          onClick={() => openPreview(previewGroup, true)}
+                        >
+                          Download as PDF
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline text-xs sm:text-sm"
+                          onClick={() => sendToCustomer(previewGroup)}
+                        >
+                          Send to customer
+                        </button>
+                        {disabledSave && (
+                          <span className="text-xs text-gray-500 self-center">All items responded</span>
+                        )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
 
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600">Requested by:</p>
-                      <p className="font-semibold text-sm sm:text-base truncate">{request.mechanic_name}</p>
-                    </div>
-                  </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs sm:text-sm">
+                        <thead className="bg-white border-b">
+                          <tr>
+                            <th className="p-3 font-semibold text-gray-700 whitespace-nowrap">Item</th>
+                            <th className="p-3 font-semibold text-gray-700 whitespace-nowrap">Priority</th>
+                            <th className="p-3 font-semibold text-gray-700">Remark / Note</th>
+                            <th className="p-3 font-semibold text-gray-700 whitespace-nowrap">Requested by</th>
+                            <th className="p-3 font-semibold text-gray-700 whitespace-nowrap text-right">Prices (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {group.items.map((request: ExtraWorkRequest) => {
+                            const p = editedPricing[request.id] || {
+                              oem: String(request.oem_price || request.master_oem_price || 0),
+                              oes: String(request.oes_price || request.master_oes_price || 0),
+                              labour: String(request.labour_price || request.master_labour_price || 0),
+                            };
+                            const isExpanded = expandedRequestIds[request.id] ?? request.is_urgent;
+                            const status = String(request.status || 'PENDING').toUpperCase();
+                            const isPending = status === 'PENDING';
+                            const decisionLabel = getDecisionLabel(request);
+                            return (
+                              <tr
+                                key={request.id}
+                                className={
+                                  !isPending ? 'bg-gray-50/60' : request.is_urgent ? 'bg-red-50/60' : 'bg-white'
+                                }
+                              >
+                                  <td className="p-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="font-semibold text-gray-900">{request.description}</div>
+                                      <span
+                                        className={`px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold ${
+                                          status === 'PENDING'
+                                            ? 'bg-yellow-100 text-yellow-800'
+                                            : status === 'APPROVED'
+                                              ? 'bg-green-100 text-green-800'
+                                              : 'bg-red-100 text-red-800'
+                                        }`}
+                                      >
+                                        {decisionLabel}
+                                      </span>
+                                      {isPending && (
+                                        <button
+                                          type="button"
+                                          className="ml-1 inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold border border-green-200 text-green-700 hover:bg-green-50"
+                                          disabled={Boolean(approvingRequestIds[request.id])}
+                                          onClick={() =>
+                                            setApproveModal({
+                                              open: true,
+                                              requestId: request.id,
+                                              choice: 'OEM',
+                                            })
+                                          }
+                                          title="Approve this request as advisor (skips customer action)"
+                                        >
+                                          {approvingRequestIds[request.id] ? 'Approving…' : 'Approve'}
+                                        </button>
+                                      )}
+                                      {isPending && (
+                                        <button
+                                          type="button"
+                                          className="ml-1 inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold border border-red-200 text-red-700 hover:bg-red-50"
+                                          disabled={Boolean(cancellingRequestIds[request.id])}
+                                          onClick={() => cancelRequest(request.id)}
+                                          title="Cancel (reject) this request as advisor"
+                                        >
+                                          {cancellingRequestIds[request.id] ? 'Cancelling…' : 'Cancel'}
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] sm:text-xs text-gray-500">{formatDateDMY(request.created_at)}</div>
+                                    {status === 'REJECTED' && request.rejection_reason && (
+                                      <div className="mt-1 text-[10px] sm:text-xs text-red-700">
+                                        Reason: <span className="font-semibold">{request.rejection_reason}</span>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="p-3">
+                                    {request.is_urgent ? (
+                                      <span className="badge-red inline-flex items-center gap-1 text-[10px] sm:text-xs">
+                                        <AlertTriangle className="w-3 h-3" />
+                                        HIGH
+                                      </span>
+                                    ) : (
+                                      <span className="badge-gray text-[10px] sm:text-xs">NORMAL</span>
+                                    )}
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="text-gray-700 truncate max-w-[520px]">
+                                        {isExpanded ? (request.reason || '—').split('\n')[0] : (request.reason || '—').split('\n')[0]}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="text-[10px] sm:text-xs font-semibold text-blue-700 hover:text-blue-800 whitespace-nowrap"
+                                        onClick={() =>
+                                          setExpandedRequestIds((p) => ({
+                                            ...p,
+                                            [request.id]: !(p[request.id] ?? request.is_urgent),
+                                          }))
+                                        }
+                                      >
+                                        {isExpanded ? 'Hide' : 'Show'}
+                                      </button>
+                                    </div>
+                                    {isExpanded && (
+                                      <div className="mt-2 rounded-md border bg-gray-50 p-2 text-xs text-gray-700 whitespace-pre-line">
+                                        {request.reason || '—'}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="p-3 font-semibold text-gray-800">{request.mechanic_name}</td>
+                                  <td className="p-3 text-right">
+                                    <div className="grid grid-cols-2 gap-2 justify-end">
+                                      <div className="flex items-center gap-1 justify-end">
+                                        <span className="text-[10px] sm:text-xs text-gray-500">OEM</span>
+                                        <input
+                                          type="number"
+                                          value={p.oem}
+                                          onChange={(e) => setEditedPricing((prev) => ({ ...prev, [request.id]: { ...p, oem: e.target.value } }))}
+                                          className="input w-24 sm:w-28 text-sm px-3 py-1.5 text-right"
+                                          min="0"
+                                          step="0.01"
+                                          disabled={!isPending}
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-1 justify-end">
+                                        <span className="text-[10px] sm:text-xs text-gray-500">OES</span>
+                                        <input
+                                          type="number"
+                                          value={p.oes}
+                                          onChange={(e) => setEditedPricing((prev) => ({ ...prev, [request.id]: { ...p, oes: e.target.value } }))}
+                                          className="input w-24 sm:w-28 text-sm px-3 py-1.5 text-right"
+                                          min="0"
+                                          step="0.01"
+                                          disabled={!isPending}
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-1 justify-end">
+                                        <span className="text-[10px] sm:text-xs text-gray-500">Lab</span>
+                                        <input
+                                          type="number"
+                                          value={p.labour}
+                                          onChange={(e) => setEditedPricing((prev) => ({ ...prev, [request.id]: { ...p, labour: e.target.value } }))}
+                                          className="input w-24 sm:w-28 text-sm px-3 py-1.5 text-right"
+                                          min="0"
+                                          step="0.01"
+                                          disabled={!isPending}
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-2 justify-end text-[10px] sm:text-xs text-gray-500">
+                                        Customer will choose OEM/OES
+                                      </div>
+                                    </div>
 
-                  {/* Description & Reason */}
-                  <div className="space-y-2 sm:space-y-3">
-                    <div className="bg-white p-2.5 sm:p-3 rounded border">
-                      <p className="text-xs sm:text-sm font-medium text-gray-700 mb-0.5 sm:mb-1 flex items-center gap-1.5 sm:gap-2">
-                        <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                        Description:
-                      </p>
-                      <p className="text-xs sm:text-sm text-gray-600">{request.description}</p>
+                                    <div className="mt-1 text-[10px] sm:text-xs text-gray-500 text-right">
+                                      Total (OEM): ₹{getEffectivePricingForRequest(request).total_oem.toFixed(2)} | Total (OES): ₹{getEffectivePricingForRequest(request).total_oes.toFixed(2)}
+                                    </div>
+                                  </td>
+                                </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="bg-gray-50 border-t">
+                          <tr>
+                            <td className="p-3 text-right font-semibold text-gray-700" colSpan={4}>
+                              Total
+                            </td>
+                            <td className="p-3 text-right font-bold text-gray-900">
+                              <div>OEM: ₹{group.items.reduce((sum: number, r: ExtraWorkRequest) => sum + getEffectivePricingForRequest(r).total_oem, 0).toFixed(2)}</div>
+                              <div>OES: ₹{group.items.reduce((sum: number, r: ExtraWorkRequest) => sum + getEffectivePricingForRequest(r).total_oes, 0).toFixed(2)}</div>
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
-
-                    <div className="bg-white p-2.5 sm:p-3 rounded border">
-                      <p className="text-xs sm:text-sm font-medium text-gray-700 mb-0.5 sm:mb-1">Reason:</p>
-                      <p className="text-xs sm:text-sm text-gray-600">{request.reason}</p>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t">
-                    <button
-                      onClick={() => {
-                        setSelectedRequest(request);
-                        setApprovedAmount(request.amount.toString());
-                        setShowApproveModal(true);
-                      }}
-                      className="btn-primary flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                    >
-                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedRequest(request);
-                        setShowRejectModal(true);
-                      }}
-                      className="btn-secondary bg-red-600 hover:bg-red-700 text-white flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                    >
-                      <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      Reject
-                    </button>
                   </div>
                 </div>
               </div>
             ))}
           </div>
         )}
-
-        {/* Approve Modal */}
-        {showApproveModal && selectedRequest && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
-            <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
-              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-green-600">Approve Additional Jobs</h3>
-              <p className="text-sm sm:text-base text-gray-700 mb-3 sm:mb-4">
-                Lead: <strong>{selectedRequest.lead_number}</strong>
-              </p>
-
-              <div className="space-y-3 sm:space-y-4">
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    Requested Amount
-                  </label>
-                  <p className="text-xl sm:text-2xl font-bold text-orange-600">₹{selectedRequest.amount.toFixed(2)}</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    Approved Amount (₹) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={approvedAmount}
-                    onChange={(e) => setApprovedAmount(e.target.value)}
-                    className="input w-full text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                  />
-                  <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
-                    You can modify the amount if needed
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    Approval Notes (Optional)
-                  </label>
-                  <textarea
-                    value={approvalNotes}
-                    onChange={(e) => setApprovalNotes(e.target.value)}
-                    className="input w-full text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                    rows={3}
-                    placeholder="Any notes or conditions..."
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 border-t">
-                <button
-                  onClick={handleApprove}
-                  disabled={processing}
-                  className="btn-primary bg-green-600 hover:bg-green-700 flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  {processing ? 'Approving...' : 'Approve'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowApproveModal(false);
-                    setSelectedRequest(null);
-                    setApprovalNotes('');
-                    setApprovedAmount('');
-                  }}
-                  disabled={processing}
-                  className="btn-secondary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Reject Modal */}
-        {showRejectModal && selectedRequest && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
-            <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
-              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-red-600">Reject Additional Jobs</h3>
-              <p className="text-sm sm:text-base text-gray-700 mb-3 sm:mb-4">
-                Lead: <strong>{selectedRequest.lead_number}</strong><br />
-                Amount: <strong>₹{selectedRequest.amount.toFixed(2)}</strong>
-              </p>
-
-              <div className="space-y-3 sm:space-y-4">
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    Rejection Reason <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    className="input w-full text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                    rows={3}
-                    placeholder="Explain why this request is being rejected..."
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    Additional Notes (Optional)
-                  </label>
-                  <textarea
-                    value={approvalNotes}
-                    onChange={(e) => setApprovalNotes(e.target.value)}
-                    className="input w-full text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                    rows={2}
-                    placeholder="Suggestions or alternative approaches..."
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 border-t">
-                <button
-                  onClick={handleReject}
-                  disabled={processing || !rejectionReason}
-                  className="btn-secondary bg-red-600 hover:bg-red-700 text-white flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  {processing ? 'Rejecting...' : 'Reject Request'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowRejectModal(false);
-                    setSelectedRequest(null);
-                    setRejectionReason('');
-                    setApprovalNotes('');
-                  }}
-                  disabled={processing}
-                  className="btn-secondary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Approve Modal */}
+      {approveModal.open && approveModalRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setApproveModal({ open: false, requestId: null, choice: 'OEM' })}
+          />
+          <div className="relative w-full max-w-md rounded-xl bg-white shadow-xl border">
+            <div className="p-4 border-b">
+              <div className="text-lg font-bold text-gray-900">Approve Additional Work</div>
+              <div className="text-sm text-gray-600 mt-1">{approveModalRequest.description}</div>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Select price type</label>
+                <select
+                  className="input w-full"
+                  value={approveModal.choice}
+                  onChange={(e) =>
+                    setApproveModal((p) => ({
+                      ...p,
+                      choice: (String(e.target.value).toUpperCase() === 'OES' ? 'OES' : 'OEM') as 'OEM' | 'OES',
+                    }))
+                  }
+                >
+                  <option value="OEM">OEM</option>
+                  <option value="OES">OES</option>
+                </select>
+                <div className="mt-2 text-xs text-gray-600">
+                  Total (OEM): <span className="font-semibold">₹{approveModalTotals.oem.toFixed(2)}</span> • Total (OES):{' '}
+                  <span className="font-semibold">₹{approveModalTotals.oes.toFixed(2)}</span>
+                </div>
+                <div className="mt-1 text-xs text-gray-600">
+                  Selected total:{' '}
+                  <span className="font-bold text-gray-900">
+                    ₹{(approveModal.choice === 'OES' ? approveModalTotals.oes : approveModalTotals.oem).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {approveModalRequest.reason && (
+                <div className="text-xs text-gray-600 bg-gray-50 border rounded p-3 whitespace-pre-line">
+                  {approveModalRequest.reason}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setApproveModal({ open: false, requestId: null, choice: 'OEM' })}
+                disabled={Boolean(approvingRequestIds[approveModalRequest.id])}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={Boolean(approvingRequestIds[approveModalRequest.id])}
+                onClick={async () => {
+                  await approveRequest(approveModalRequest.id, approveModal.choice);
+                  setApproveModal({ open: false, requestId: null, choice: 'OEM' });
+                }}
+              >
+                {approvingRequestIds[approveModalRequest.id]
+                  ? 'Approving…'
+                  : `Approve (${approveModal.choice})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

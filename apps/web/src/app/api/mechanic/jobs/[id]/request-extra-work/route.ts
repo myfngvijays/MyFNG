@@ -131,7 +131,13 @@ export async function POST(
         lead_id: leadId,
         description: description,
         reason: reason,
+        // Legacy total (kept for downstream billing)
         amount: costNum,
+        // Price breakdown (if columns exist in this DB)
+        oem_price: costNum,
+        oes_price: 0,
+        labour_price: 0,
+        part_price_type: (is_urgent ? 'OEM' : 'OEM'),
         category: category || 'EXTRA_WORK',
         attachment_url: attachment_url,
         is_urgent: is_urgent || false,

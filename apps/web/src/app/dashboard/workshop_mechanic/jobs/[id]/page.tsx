@@ -7,7 +7,7 @@ import { formatDateTime } from '@/lib/utils';
 import {
   ArrowLeft, PlayCircle, PauseCircle, CheckCircle, Camera, 
   Package, AlertTriangle, MessageSquare, FileText, Clock,
-  Upload, X, Save, Send
+  Upload, X, Save, Send, RefreshCw
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
@@ -85,7 +85,7 @@ type AdditionalMasterItem = {
   id: string;
   name: string;
   category: string | null;
-  default_price?: number | null;
+  oem_price?: number | null;
   workshop_id?: string | null;
 };
 
@@ -120,6 +120,8 @@ export default function MechanicJobDetailPage() {
   const [additionalMasterLoading, setAdditionalMasterLoading] = useState(false);
   const [additionalMasterQuery, setAdditionalMasterQuery] = useState('');
   const [additionalMasterCategory, setAdditionalMasterCategory] = useState<string>('');
+  // Mechanic selection: only selected jobs should be shown (not the full master list)
+  const [selectedAdditionalJobIds, setSelectedAdditionalJobIds] = useState<string[]>([]);
   const [rowPriority, setRowPriority] = useState<Record<string, 'HIGH' | 'MEDIUM' | 'LOW'>>({});
   const [rowNote, setRowNote] = useState<Record<string, string>>({});
   const [rowCost, setRowCost] = useState<Record<string, string>>({});
@@ -213,6 +215,7 @@ export default function MechanicJobDetailPage() {
     } else {
       setAdditionalMasterQuery('');
       setAdditionalMasterCategory('');
+      setSelectedAdditionalJobIds([]);
       setRowPriority({});
       setRowNote({});
       setRowCost({});
@@ -248,7 +251,7 @@ export default function MechanicJobDetailPage() {
 
       let query = supabase
         .from('additional_jobs_master')
-        .select('id, name, category, default_price, workshop_id')
+        .select('id, name, category, oem_price, workshop_id')
         .eq('is_active', true)
         .is('deleted_at', null)
         .order('category', { ascending: true })
@@ -313,8 +316,48 @@ export default function MechanicJobDetailPage() {
       .slice(0, 120);
   }, [additionalMasterCategory, additionalMasterItems, additionalMasterQuery]);
 
+  const selectedAdditionalItems = useMemo(() => {
+    const byId = new Map<string, AdditionalMasterItem>();
+    for (const it of additionalMasterItems) byId.set(it.id, it);
+    return selectedAdditionalJobIds.map((id) => byId.get(id)).filter(Boolean) as AdditionalMasterItem[];
+  }, [additionalMasterItems, selectedAdditionalJobIds]);
+
+  const searchResults = useMemo(() => {
+    const selected = new Set(selectedAdditionalJobIds);
+    return filteredAdditionalMasterItems.filter((it) => !selected.has(it.id)).slice(0, 20);
+  }, [filteredAdditionalMasterItems, selectedAdditionalJobIds]);
+
+  function addSelectedAdditionalJob(it: AdditionalMasterItem) {
+    setSelectedAdditionalJobIds((prev) => (prev.includes(it.id) ? prev : [...prev, it.id]));
+    // Default row values
+    setRowPriority((p) => (p[it.id] ? p : { ...p, [it.id]: 'MEDIUM' }));
+  }
+
+  function removeSelectedAdditionalJob(id: string) {
+    setSelectedAdditionalJobIds((prev) => prev.filter((x) => x !== id));
+    setRowPriority((p) => {
+      const next = { ...p };
+      delete next[id];
+      return next;
+    });
+    setRowNote((p) => {
+      const next = { ...p };
+      delete next[id];
+      return next;
+    });
+    setRowCost((p) => {
+      const next = { ...p };
+      delete next[id];
+      return next;
+    });
+    setSubmittingJobIds((p) => {
+      const next = { ...p };
+      delete next[id];
+      return next;
+    });
+  }
+
   async function submitSingleAdditionalJob(it: AdditionalMasterItem) {
-    const issue = extraWorkForm.issue_description.trim();
     const priority = rowPriority[it.id] || 'MEDIUM';
     const note = (rowNote[it.id] || '').trim();
     if (priority === 'HIGH' && !note) {
@@ -323,15 +366,14 @@ export default function MechanicJobDetailPage() {
     }
 
     const costStr = (rowCost[it.id] || '').trim();
-    const fallbackCost = it.default_price && Number(it.default_price) > 0 ? Number(it.default_price) : 0;
+    const fallbackCost = it.oem_price && Number(it.oem_price) > 0 ? Number(it.oem_price) : 0;
     const cost = costStr ? Number.parseFloat(costStr) : fallbackCost;
 
     try {
       setSubmittingJobIds((p) => ({ ...p, [it.id]: true }));
       const priorityLine = `Priority: ${priority}`;
       const noteLine = note ? `Note: ${note}` : '';
-      const issueLine = issue ? `Issue Found: ${issue}` : '';
-      const reason = [issueLine, priorityLine, noteLine].filter(Boolean).join('\n');
+      const reason = [priorityLine, noteLine].filter(Boolean).join('\n');
 
       const res = await fetch(`/api/mechanic/jobs/${leadId}/request-extra-work`, {
         method: 'POST',
@@ -367,10 +409,84 @@ export default function MechanicJobDetailPage() {
       await fetchJobDetails();
       // Advisor/Supervisor will see immediately via their listing; mechanic sees it below in requests list.
       alert('Request submitted!');
+      // Remove from selected list after successful submit
+      setSelectedAdditionalJobIds((prev) => prev.filter((x) => x !== it.id));
     } catch (e: any) {
       alert(`Error: ${e?.message || 'Failed'}`);
     } finally {
       setSubmittingJobIds((p) => ({ ...p, [it.id]: false }));
+    }
+  }
+
+  async function submitSelectedAdditionalJobs() {
+    const selected = selectedAdditionalItems;
+    if (!selected.length) {
+      alert('Please add at least 1 additional job first.');
+      return;
+    }
+
+    // Validate: High priority requires note
+    for (const it of selected) {
+      const pr = rowPriority[it.id] || 'MEDIUM';
+      const note = (rowNote[it.id] || '').trim();
+      if (pr === 'HIGH' && !note) {
+        alert(`High priority selected for "${it.name}". Please add a note.`);
+        return;
+      }
+    }
+
+    try {
+      // Mark all rows busy
+      setSubmittingJobIds((p) => {
+        const next = { ...p };
+        for (const it of selected) next[it.id] = true;
+        return next;
+      });
+
+      const results = await Promise.all(
+        selected.map(async (it) => {
+          const priority = rowPriority[it.id] || 'MEDIUM';
+          const note = (rowNote[it.id] || '').trim();
+          const priorityLine = `Priority: ${priority}`;
+          const noteLine = note ? `Note: ${note}` : '';
+          const reason = [priorityLine, noteLine].filter(Boolean).join('\n');
+
+          // Cost hidden in UI: default to master OEM price (or 0)
+          const costNum = it.oem_price && Number(it.oem_price) > 0 ? Number(it.oem_price) : 0;
+
+          const res = await fetch(`/api/mechanic/jobs/${leadId}/request-extra-work`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              description: it.name,
+              reason,
+              estimated_cost: Number.isFinite(costNum) ? costNum : 0,
+              category: 'ADDITIONAL_JOB',
+              is_urgent: priority === 'HIGH',
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          return { ok: res.ok, error: data?.error, id: it.id };
+        })
+      );
+
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length) {
+        alert(failed[0]?.error || `Failed to submit ${failed.length} request(s).`);
+        return;
+      }
+
+      // Clear selection + inputs
+      setSelectedAdditionalJobIds([]);
+      setRowPriority({});
+      setRowNote({});
+      setRowCost({});
+
+      await fetchJobDetails();
+      alert('Requests submitted!');
+    } finally {
+      // Clear busy flags
+      setSubmittingJobIds({});
     }
   }
 
@@ -2332,39 +2448,36 @@ export default function MechanicJobDetailPage() {
           <div className="space-y-4">
             {/* In-tab Additional Job Request (Checklist style) */}
             <div id="extra-work-request-form" className="card p-3 sm:p-4 md:p-5">
-              <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-bold">Request Additional Job</h2>
-                  <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-3 sm:mb-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg sm:text-xl font-bold">Request Additional Job</h2>
+                    {selectedAdditionalItems.length > 0 && (
+                      <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[10px] sm:text-xs font-semibold">
+                        {selectedAdditionalItems.length} selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1 leading-relaxed">
                     Select required jobs from master list, set priority, and add notes.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => fetchAdditionalJobsMaster().catch(() => {})}
-                  className="btn btn-outline text-xs sm:text-sm"
+                  className="btn btn-outline text-xs sm:text-sm inline-flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-center"
                   disabled={additionalMasterLoading}
                   title="Refresh list"
                 >
+                  <RefreshCw className={`w-4 h-4 ${additionalMasterLoading ? 'animate-spin' : ''}`} />
                   Refresh
                 </button>
               </div>
 
               <div className="space-y-3 sm:space-y-4">
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Issue Found</label>
-                  <textarea
-                    value={extraWorkForm.issue_description}
-                    onChange={(e) => setExtraWorkForm({ ...extraWorkForm, issue_description: e.target.value })}
-                    rows={3}
-                    className="input w-full text-xs sm:text-sm"
-                    placeholder="Describe the issue you found..."
-                  />
-                </div>
-
-                <div>
                   <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between mb-2">
-                    <label className="block text-xs sm:text-sm font-medium">Additional Jobs Master</label>
+                    <label className="block text-xs sm:text-sm font-medium">Find Additional Jobs</label>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                       <input
                         value={additionalMasterQuery}
@@ -2373,7 +2486,7 @@ export default function MechanicJobDetailPage() {
                         placeholder="Search (e.g., Brake Pads)"
                       />
                       <select
-                        className="p-2 border rounded-lg bg-gray-50 text-xs sm:text-sm w-full sm:w-56"
+                        className="input text-xs sm:text-sm w-full sm:w-56"
                         value={additionalMasterCategory}
                         onChange={(e) => setAdditionalMasterCategory(e.target.value)}
                         title="Filter by category"
@@ -2388,120 +2501,216 @@ export default function MechanicJobDetailPage() {
                     </div>
                   </div>
 
-                  <div className="border rounded-lg overflow-hidden bg-white">
-                    {additionalMasterLoading ? (
-                      <div className="p-3 text-xs sm:text-sm text-gray-500">Loading list...</div>
-                    ) : filteredAdditionalMasterItems.length === 0 ? (
-                      <div className="p-3 text-xs sm:text-sm text-gray-500">No matching jobs found.</div>
+                  {/* Search results (do not show full list; only show when searching) */}
+                  {(additionalMasterQuery.trim() || additionalMasterCategory) && (
+                    <div className="border rounded-lg overflow-hidden bg-white">
+                      {additionalMasterLoading ? (
+                        <div className="p-3 text-xs sm:text-sm text-gray-500">Loading…</div>
+                      ) : searchResults.length === 0 ? (
+                        <div className="p-3 text-xs sm:text-sm text-gray-500">No matching jobs found.</div>
+                      ) : (
+                        <div className="divide-y max-h-72 overflow-auto">
+                          {searchResults.map((it) => {
+                            const isSelected = selectedAdditionalJobIds.includes(it.id);
+                            return (
+                              <div key={it.id} className="p-3 flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="font-semibold text-gray-900 truncate">{it.name}</div>
+                                  <div className="text-[10px] sm:text-xs text-gray-500 truncate">{it.category || '-'}</div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline text-xs sm:text-sm whitespace-nowrap"
+                                  onClick={() => addSelectedAdditionalJob(it)}
+                                  disabled={isSelected}
+                                  title={isSelected ? 'Already selected' : 'Add to selected'}
+                                >
+                                  {isSelected ? 'Added' : 'Add'}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Selected jobs only */}
+                  <div className="mt-3 border rounded-lg overflow-hidden bg-white">
+                    {selectedAdditionalItems.length === 0 ? (
+                      <div className="p-3 text-xs sm:text-sm text-gray-500">
+                        No additional jobs selected. Search and add jobs above — only selected jobs will show here.
+                      </div>
                     ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs sm:text-sm">
-                          <thead className="bg-gray-50 border-b">
-                            <tr>
-                              <th className="p-3 font-semibold text-gray-700">Job</th>
-                              <th className="p-3 font-semibold text-gray-700">Remark / Note</th>
-                              <th className="p-3 font-semibold text-gray-700">Priority</th>
-                              <th className="p-3 font-semibold text-gray-700">Cost (₹)</th>
-                              <th className="p-3 font-semibold text-gray-700 text-right">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y">
-                            {filteredAdditionalMasterItems.map((it) => {
-                              const pr = rowPriority[it.id] || 'MEDIUM';
-                              const note = rowNote[it.id] || '';
-                              const cost =
-                                rowCost[it.id] ??
-                                (it.default_price && Number(it.default_price) > 0 ? String(it.default_price) : '');
-                              const busy = Boolean(submittingJobIds[it.id]);
-                              const noteMissing = pr === 'HIGH' && !note.trim();
-                              return (
-                                <tr key={it.id} className="hover:bg-gray-50">
-                                  <td className="p-3">
-                                    <div className="font-semibold text-gray-900">{it.name}</div>
-                                    <div className="text-[10px] sm:text-xs text-gray-500">{it.category || '-'}</div>
-                                  </td>
-                                  <td className="p-3">
-                                    <textarea
-                                      rows={2}
-                                      className="input w-full text-xs sm:text-sm"
-                                      value={note}
-                                      onChange={(e) => setRowNote((p) => ({ ...p, [it.id]: e.target.value }))}
-                                      placeholder={pr === 'HIGH' ? 'High priority note required…' : 'Optional note…'}
-                                    />
-                                  </td>
-                                  <td className="p-3">
+                      <>
+                        {/* Mobile: cards (no horizontal scroll) */}
+                        <div className="sm:hidden divide-y">
+                          {selectedAdditionalItems.map((it) => {
+                            const pr = rowPriority[it.id] || 'MEDIUM';
+                            const note = rowNote[it.id] || '';
+                            const busy = Boolean(submittingJobIds[it.id]);
+                            const noteMissing = pr === 'HIGH' && !note.trim();
+                            return (
+                              <div key={it.id} className="p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="font-semibold text-gray-900 leading-tight">{it.name}</div>
+                                    <div className="text-[10px] text-gray-500 truncate">{it.category || '-'}</div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeSelectedAdditionalJob(it.id)}
+                                    className="btn btn-outline px-3 py-1.5 text-xs whitespace-nowrap"
+                                    disabled={busy}
+                                    title="Remove from selected"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+
+                                <div className="mt-2 grid grid-cols-1 gap-2">
+                                  <div>
+                                    <label className="block text-[10px] font-semibold text-gray-600 mb-1">Priority</label>
                                     <select
-                                      className="input w-full text-xs sm:text-sm"
+                                      className="input w-full text-xs"
                                       value={pr}
-                                      onChange={(e) => setRowPriority((p) => ({ ...p, [it.id]: e.target.value as any }))}
+                                      onChange={(e) =>
+                                        setRowPriority((p) => ({ ...p, [it.id]: e.target.value as any }))
+                                      }
                                     >
                                       <option value="HIGH">High</option>
                                       <option value="MEDIUM">Medium</option>
                                       <option value="LOW">Low</option>
                                     </select>
-                                  </td>
-                                  <td className="p-3">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      className="input w-full text-xs sm:text-sm"
-                                      value={cost}
-                                      onChange={(e) => setRowCost((p) => ({ ...p, [it.id]: e.target.value }))}
-                                      placeholder={it.default_price && it.default_price > 0 ? String(it.default_price) : '0'}
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[10px] font-semibold text-gray-600 mb-1">Remark / Note</label>
+                                    <textarea
+                                      rows={2}
+                                      className={`input w-full text-xs ${noteMissing ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : ''}`}
+                                      value={note}
+                                      onChange={(e) => setRowNote((p) => ({ ...p, [it.id]: e.target.value }))}
+                                      placeholder={pr === 'HIGH' ? 'High priority note required…' : 'Optional note…'}
                                     />
-                                  </td>
-                                  <td className="p-3 text-right">
-                                    <button
-                                      type="button"
-                                      onClick={() => submitSingleAdditionalJob(it)}
-                                      disabled={busy || noteMissing}
-                                      className={`btn px-3 py-1.5 text-xs sm:text-sm ${
-                                        busy || noteMissing
-                                          ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                                          : 'bg-blue-600 hover:bg-blue-700 text-white'
-                                      }`}
-                                      title={
-                                        noteMissing
-                                          ? 'High priority requires note'
-                                          : 'Submit this request'
-                                      }
-                                    >
-                                      {busy ? 'Submitting…' : 'Submit'}
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                                    {noteMissing && (
+                                      <p className="mt-1 text-[10px] text-red-600 font-semibold">
+                                        Note required for High priority.
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Desktop/tablet: table */}
+                        <div className="hidden sm:block overflow-x-auto">
+                          <table className="w-full text-left text-xs sm:text-sm">
+                            <thead className="bg-gray-50 border-b">
+                              <tr>
+                                <th className="p-3 font-semibold text-gray-700 whitespace-nowrap">Job</th>
+                                <th className="p-3 font-semibold text-gray-700">Remark / Note</th>
+                                <th className="p-3 font-semibold text-gray-700 whitespace-nowrap">Priority</th>
+                                <th className="p-3 font-semibold text-gray-700 text-right">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {selectedAdditionalItems.map((it) => {
+                                const pr = rowPriority[it.id] || 'MEDIUM';
+                                const note = rowNote[it.id] || '';
+                                const busy = Boolean(submittingJobIds[it.id]);
+                                const noteMissing = pr === 'HIGH' && !note.trim();
+                                return (
+                                  <tr key={it.id} className="hover:bg-gray-50">
+                                    <td className="p-3">
+                                      <div className="font-semibold text-gray-900">{it.name}</div>
+                                      <div className="text-[10px] sm:text-xs text-gray-500">{it.category || '-'}</div>
+                                    </td>
+                                    <td className="p-3">
+                                      <textarea
+                                        rows={2}
+                                        className={`input w-full text-xs sm:text-sm ${noteMissing ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : ''}`}
+                                        value={note}
+                                        onChange={(e) => setRowNote((p) => ({ ...p, [it.id]: e.target.value }))}
+                                        placeholder={pr === 'HIGH' ? 'High priority note required…' : 'Optional note…'}
+                                      />
+                                      {noteMissing && (
+                                        <p className="mt-1 text-[10px] sm:text-xs text-red-600 font-semibold">
+                                          Note required for High priority.
+                                        </p>
+                                      )}
+                                    </td>
+                                    <td className="p-3">
+                                      <select
+                                        className="input w-full text-xs sm:text-sm"
+                                        value={pr}
+                                        onChange={(e) =>
+                                          setRowPriority((p) => ({ ...p, [it.id]: e.target.value as any }))
+                                        }
+                                      >
+                                        <option value="HIGH">High</option>
+                                        <option value="MEDIUM">Medium</option>
+                                        <option value="LOW">Low</option>
+                                      </select>
+                                    </td>
+                                    <td className="p-3 text-right">
+                                      <button
+                                        type="button"
+                                        onClick={() => removeSelectedAdditionalJob(it.id)}
+                                        className="btn btn-outline px-3 py-1.5 text-xs sm:text-sm"
+                                        disabled={busy}
+                                        title="Remove from selected"
+                                      >
+                                        Remove
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
 
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
-                  <p className="text-xs sm:text-sm text-yellow-800">
-                    <strong>Note:</strong> Please upload proof images in the Media tab before submitting this request.
-                    Your job status will change to "Waiting for Approval" until the admin reviews this request.
-                  </p>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-center sm:justify-between">
+                  <div className="text-[10px] sm:text-xs text-gray-500">
+                    {selectedAdditionalItems.length > 0
+                      ? `You’re about to submit ${selectedAdditionalItems.length} request(s).`
+                      : 'Select jobs above to enable submit.'}
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={submitSelectedAdditionalJobs}
+                    disabled={selectedAdditionalItems.length === 0 || Object.values(submittingJobIds).some(Boolean)}
+                    className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto flex items-center justify-center gap-1.5 sm:gap-2"
+                    title="Submit all selected additional jobs"
+                  >
+                    <Send className="w-4 h-4" />
+                    {Object.values(submittingJobIds).some(Boolean)
+                      ? 'Submitting…'
+                      : `Submit Selected${selectedAdditionalItems.length ? ` (${selectedAdditionalItems.length})` : ''}`}
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
                       setAdditionalMasterQuery('');
                       setAdditionalMasterCategory('');
+                      setSelectedAdditionalJobIds([]);
                       setRowPriority({});
                       setRowNote({});
                       setRowCost({});
-                      setExtraWorkForm({ ...extraWorkForm, issue_description: '' });
                     }}
                     className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
                   >
                     Clear
                   </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2522,7 +2731,20 @@ export default function MechanicJobDetailPage() {
               </div>
             ) : (
               <div className="space-y-2 sm:space-y-3">
-                {extraWorkRequests.map((request) => (
+                {extraWorkRequests.map((request: any) => {
+                  const status = String(request.status || 'PENDING').toUpperCase();
+                  const byCustomer = Boolean(request.customer_approved_at);
+                  const decisionLabel =
+                    status === 'REJECTED'
+                      ? byCustomer
+                        ? 'REJECTED • Customer'
+                        : 'REJECTED • Advisor'
+                      : status === 'APPROVED'
+                        ? byCustomer
+                          ? `APPROVED • Customer (${String(request.part_price_type || 'OEM').toUpperCase()})`
+                          : 'APPROVED • Advisor'
+                        : 'PENDING';
+                  return (
                   <div key={request.id} className="p-3 sm:p-4 border rounded-lg">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
                       <div className="flex-1 min-w-0">
@@ -2539,13 +2761,17 @@ export default function MechanicJobDetailPage() {
                         request.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
                         'bg-yellow-100 text-yellow-800'
                       }`}>
-                        {request.status}
+                        {decisionLabel}
                       </span>
                     </div>
                     {(request.supervisor_approval_notes || request.rejection_reason) && (
                       <div className="pt-2 sm:pt-3 border-t">
                         <p className="text-xs sm:text-sm text-gray-600">
-                          <strong>Review Notes:</strong> {request.supervisor_approval_notes || request.rejection_reason}
+                          <strong>Review Notes:</strong>{' '}
+                          {request.supervisor_approval_notes ||
+                            (status === 'REJECTED' && byCustomer
+                              ? `Customer: ${request.rejection_reason || ''}`
+                              : request.rejection_reason)}
                         </p>
                       </div>
                     )}
@@ -2553,7 +2779,8 @@ export default function MechanicJobDetailPage() {
                       Requested: {formatDateTime(request.created_at)}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             </div>

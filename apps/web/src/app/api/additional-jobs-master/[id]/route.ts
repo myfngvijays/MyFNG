@@ -72,12 +72,32 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       updated_at: new Date().toISOString(),
     };
 
-    const fields = ['name', 'description', 'category', 'hsn_sac_code', 'unit', 'default_price', 'tax_rate', 'is_active'];
+    const fields = [
+      'name',
+      'description',
+      'category',
+      'hsn_sac_code',
+      'unit',
+      'oem_price',
+      'oes_price',
+      'labour_price',
+      // legacy
+      'default_price',
+      'tax_rate',
+      'is_active',
+    ];
     for (const f of fields) {
       if (Object.prototype.hasOwnProperty.call(body, f)) update[f] = body[f];
     }
     if (typeof update.name === 'string') update.name = update.name.trim();
-    if (Object.prototype.hasOwnProperty.call(update, 'default_price')) update.default_price = Number(update.default_price ?? 0);
+    // Legacy: if default_price is provided, map it to oem_price
+    if (Object.prototype.hasOwnProperty.call(update, 'default_price')) {
+      update.oem_price = Number(update.default_price ?? 0);
+      delete update.default_price;
+    }
+    if (Object.prototype.hasOwnProperty.call(update, 'oem_price')) update.oem_price = Number(update.oem_price ?? 0);
+    if (Object.prototype.hasOwnProperty.call(update, 'oes_price')) update.oes_price = Number(update.oes_price ?? 0);
+    if (Object.prototype.hasOwnProperty.call(update, 'labour_price')) update.labour_price = Number(update.labour_price ?? 0);
     if (Object.prototype.hasOwnProperty.call(update, 'tax_rate')) update.tax_rate = Number(update.tax_rate ?? 18);
 
     // Only super admin can change workshop_id (and only if explicitly provided)

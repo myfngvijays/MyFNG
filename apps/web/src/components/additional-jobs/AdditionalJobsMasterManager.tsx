@@ -14,7 +14,9 @@ type Item = {
   category?: string | null;
   hsn_sac_code?: string | null;
   unit?: string | null;
-  default_price?: number | null;
+  oem_price?: number | null;
+  oes_price?: number | null;
+  labour_price?: number | null;
   tax_rate?: number | null;
   is_active?: boolean | null;
   created_at?: string | null;
@@ -55,7 +57,9 @@ export default function AdditionalJobsMasterManager({
     category: '',
     hsn_sac_code: '',
     unit: 'job',
-    default_price: '',
+    oem_price: '',
+    oes_price: '',
+    labour_price: '',
     tax_rate: '18.00',
     is_active: true,
   });
@@ -185,7 +189,9 @@ export default function AdditionalJobsMasterManager({
         category: it.category ?? null,
         hsn_sac_code: it.hsn_sac_code ?? null,
         unit: it.unit ?? 'job',
-        default_price: Number(it.default_price || 0),
+        oem_price: Number(it.oem_price || 0),
+        oes_price: Number(it.oes_price || 0),
+        labour_price: Number(it.labour_price || 0),
         tax_rate: Number(it.tax_rate || 18),
         is_active: it.is_active !== false,
       };
@@ -228,7 +234,9 @@ export default function AdditionalJobsMasterManager({
               category: it.category ?? null,
               hsn_sac_code: it.hsn_sac_code ?? null,
               unit: it.unit ?? 'job',
-              default_price: Number(it.default_price || 0),
+              oem_price: Number(it.oem_price || 0),
+              oes_price: Number(it.oes_price || 0),
+              labour_price: Number(it.labour_price || 0),
               tax_rate: Number(it.tax_rate || 18),
               is_active: it.is_active !== false,
             }),
@@ -259,7 +267,9 @@ export default function AdditionalJobsMasterManager({
       category: '',
       hsn_sac_code: '',
       unit: 'job',
-      default_price: '',
+      oem_price: '',
+      oes_price: '',
+      labour_price: '',
       tax_rate: '18.00',
       is_active: true,
     });
@@ -275,7 +285,9 @@ export default function AdditionalJobsMasterManager({
       category: item.category || '',
       hsn_sac_code: item.hsn_sac_code || '',
       unit: item.unit || 'job',
-      default_price: (item.default_price ?? 0).toString(),
+      oem_price: (item.oem_price ?? 0).toString(),
+      oes_price: (item.oes_price ?? 0).toString(),
+      labour_price: (item.labour_price ?? 0).toString(),
       tax_rate: (item.tax_rate ?? 18).toString(),
       is_active: item.is_active !== false,
     });
@@ -295,7 +307,9 @@ export default function AdditionalJobsMasterManager({
         category: form.category.trim() || null,
         hsn_sac_code: form.hsn_sac_code.trim() || null,
         unit: form.unit.trim() || 'job',
-        default_price: Number(form.default_price || 0),
+        oem_price: Number(form.oem_price || 0),
+        oes_price: Number(form.oes_price || 0),
+        labour_price: Number(form.labour_price || 0),
         tax_rate: Number(form.tax_rate || 18),
         is_active: Boolean(form.is_active),
       };
@@ -337,7 +351,9 @@ export default function AdditionalJobsMasterManager({
         category: form.category.trim() || null,
         hsn_sac_code: form.hsn_sac_code.trim() || null,
         unit: form.unit.trim() || 'job',
-        default_price: Number(form.default_price || 0),
+        oem_price: Number(form.oem_price || 0),
+        oes_price: Number(form.oes_price || 0),
+        labour_price: Number(form.labour_price || 0),
         tax_rate: Number(form.tax_rate || 18),
         is_active: Boolean(form.is_active),
       };
@@ -519,7 +535,9 @@ export default function AdditionalJobsMasterManager({
                 {isSuperAdmin && <th className="p-4 font-medium text-gray-600">Scope</th>}
                 <th className="p-4 font-medium text-gray-600">Category</th>
                 <th className="p-4 font-medium text-gray-600">HSN/SAC</th>
-                <th className="p-4 font-medium text-gray-600 text-right">Default Price</th>
+                <th className="p-4 font-medium text-gray-600 text-right">OEM</th>
+                <th className="p-4 font-medium text-gray-600 text-right">OES</th>
+                <th className="p-4 font-medium text-gray-600 text-right">Labour</th>
                 <th className="p-4 font-medium text-gray-600 text-center">Tax %</th>
                 <th className="p-4 font-medium text-gray-600 text-center">Unit</th>
                 <th className="p-4 font-medium text-gray-600 text-center">Status</th>
@@ -529,7 +547,7 @@ export default function AdditionalJobsMasterManager({
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-gray-500">
+                  <td colSpan={11} className="p-8 text-center text-gray-500">
                     <div className="inline-flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" />
                       Loading...
@@ -538,7 +556,7 @@ export default function AdditionalJobsMasterManager({
                 </tr>
               ) : displayedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-gray-500">
+                  <td colSpan={11} className="p-8 text-center text-gray-500">
                     No additional jobs found.
                   </td>
                 </tr>
@@ -566,7 +584,9 @@ export default function AdditionalJobsMasterManager({
                     {isSuperAdmin && <td className="p-4 text-gray-600">{workshopLabel(it)}</td>}
                     <td className="p-4 text-gray-600">{it.category || '-'}</td>
                     <td className="p-4 font-mono text-xs bg-gray-50 rounded w-fit">{it.hsn_sac_code || '-'}</td>
-                    <td className="p-4 text-right font-medium">₹{Number(it.default_price || 0).toFixed(0)}</td>
+                    <td className="p-4 text-right font-medium">₹{Number(it.oem_price || 0).toFixed(0)}</td>
+                    <td className="p-4 text-right font-medium">₹{Number(it.oes_price || 0).toFixed(0)}</td>
+                    <td className="p-4 text-right font-medium">₹{Number(it.labour_price || 0).toFixed(0)}</td>
                     <td className="p-4 text-center">{Number(it.tax_rate || 0).toFixed(0)}%</td>
                     <td className="p-4 text-center text-gray-500">{it.unit || 'job'}</td>
                     <td className="p-4 text-center">
@@ -694,16 +714,41 @@ export default function AdditionalJobsMasterManager({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Price</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">OEM Price</label>
                   <input
                     type="number"
                     className="input w-full"
-                    value={form.default_price}
-                    onChange={(e) => setForm((p) => ({ ...p, default_price: e.target.value }))}
+                    value={form.oem_price}
+                    onChange={(e) => setForm((p) => ({ ...p, oem_price: e.target.value }))}
                     min="0"
                     step="1"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">OES Price</label>
+                  <input
+                    type="number"
+                    className="input w-full"
+                    value={form.oes_price}
+                    onChange={(e) => setForm((p) => ({ ...p, oes_price: e.target.value }))}
+                    min="0"
+                    step="1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Labour Price</label>
+                  <input
+                    type="number"
+                    className="input w-full"
+                    value={form.labour_price}
+                    onChange={(e) => setForm((p) => ({ ...p, labour_price: e.target.value }))}
+                    min="0"
+                    step="1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Tax %</label>
                   <input
@@ -817,16 +862,41 @@ export default function AdditionalJobsMasterManager({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Price</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">OEM Price</label>
                   <input
                     type="number"
                     className="input w-full"
-                    value={form.default_price}
-                    onChange={(e) => setForm((p) => ({ ...p, default_price: e.target.value }))}
+                    value={form.oem_price}
+                    onChange={(e) => setForm((p) => ({ ...p, oem_price: e.target.value }))}
                     min="0"
                     step="1"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">OES Price</label>
+                  <input
+                    type="number"
+                    className="input w-full"
+                    value={form.oes_price}
+                    onChange={(e) => setForm((p) => ({ ...p, oes_price: e.target.value }))}
+                    min="0"
+                    step="1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Labour Price</label>
+                  <input
+                    type="number"
+                    className="input w-full"
+                    value={form.labour_price}
+                    onChange={(e) => setForm((p) => ({ ...p, labour_price: e.target.value }))}
+                    min="0"
+                    step="1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Tax %</label>
                   <input

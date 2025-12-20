@@ -17,7 +17,6 @@ import { formatDateDMY, formatDateTime } from "@/lib/utils";
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 import {
   ArrowLeft,
   CheckCircle,
@@ -39,97 +38,63 @@ export default function TrackLeadPage() {
   const [lead, setLead] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [media, setMedia] = useState<any[]>([]);
+  const [extraWork, setExtraWork] = useState<any[]>([]);
+  const [pricingItems, setPricingItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [decisionByRequestId, setDecisionByRequestId] = useState<Record<string, 'OEM' | 'OES'>>({});
+  const [rejectReasonByRequestId, setRejectReasonByRequestId] = useState<Record<string, string>>({});
+  const [actingByRequestId, setActingByRequestId] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchLeadDetails();
-    
-    // Setup real-time subscription
-    const supabase = createClient();
-    const channel = supabase
-      .channel('lead_updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'service_leads',
-          filter: `id=eq.${leadId}`,
-        },
-        (payload) => {
-          console.log('Lead updated:', payload);
-          fetchLeadDetails();
-        }
-      )
-      .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [leadId]);
+    // Polling keeps this page working publicly (no auth required)
+    const t = setInterval(() => {
+      // Don't spam the server if we're already erroring; user can refresh.
+      if (!loadError) fetchLeadDetails();
+    }, 15000);
+
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId, loadError]);
 
   async function fetchLeadDetails() {
-    const supabase = createClient();
-
     try {
-      // Fetch lead
-      const { data: leadData } = await supabase
-        .from('service_leads')
-        .select(`
-          *,
-          assigned_mechanic:users_login!service_leads_assigned_mechanic_id_fkey(full_name, phone),
-          workshop:workshops!workshop_id(name, address, phone)
-        `)
-        .eq('id', leadId)
-        .single();
+      const res = await fetch(`/api/public/lead/${leadId}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLead(null);
+        setEvents([]);
+        setMedia([]);
+        const parts = [
+          data?.error ? String(data.error) : 'Failed to load service request',
+          data?.details ? `details: ${String(data.details)}` : null,
+          data?.code ? `code: ${String(data.code)}` : null,
+          data?.hint ? `hint: ${String(data.hint)}` : null,
+          data?.env
+            ? `env: url=${data.env.hasSupabaseUrl ? 'yes' : 'no'}, serviceKey=${data.env.hasServiceRoleKey ? 'yes' : 'no'}, using=${data.env.usingServiceRoleClient ? 'service_role' : 'anon'}`
+            : null,
+        ].filter(Boolean);
+        setLoadError(parts.join(' • '));
+        return;
+      }
 
-      setLead(leadData);
-
-      // Fetch events
-      const { data: eventsData } = await supabase
-        .from('lead_events')
-        .select('*')
-        .eq('lead_id', leadId)
-        .order('created_at', { ascending: false });
-
-      setEvents(eventsData || []);
-
-      // Fetch media
-      const { data: mediaData } = await supabase
-        .from('lead_media')
-        .select('*')
-        .eq('lead_id', leadId)
-        .order('created_at', { ascending: false });
-
-      setMedia(mediaData || []);
-
+      setLead(data.lead || null);
+      setEvents(data.events || []);
+      setMedia(data.media || []);
+      setExtraWork(data.extra_work || []);
+      setPricingItems(data.pricing_items || []);
+      setLoadError(null);
     } catch (error) {
       console.error('Error fetching lead:', error);
+      setLoadError('Failed to load service request');
     } finally {
       setLoading(false);
     }
   }
 
-  function getStatusInfo(status: string) {
-    const statusMap: any = {
-      'NEW': { label: 'New Request', color: 'blue', icon: Clock },
-      'ACCEPTED': { label: 'Accepted', color: 'green', icon: CheckCircle },
-      'ASSIGNED': { label: 'Mechanic Assigned', color: 'purple', icon: User },
-      'IN_PROGRESS': { label: 'Work in Progress', color: 'yellow', icon: Wrench },
-      'READY_FOR_DELIVERY': { label: 'Ready for Delivery', color: 'green', icon: CheckCircle },
-      'DELIVERED': { label: 'Delivered', color: 'green', icon: CheckCircle },
-      'CLOSED': { label: 'Completed', color: 'gray', icon: CheckCircle },
-      'REJECTED': { label: 'Rejected', color: 'red', icon: Clock },
-    };
-
-    return statusMap[status] || { label: status, color: 'gray', icon: Clock };
-  }
-
-  function getStatusProgress(status: string) {
-    const steps = ['NEW', 'ACCEPTED', 'ASSIGNED', 'IN_PROGRESS', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
-    const currentIndex = steps.indexOf(status);
-    return ((currentIndex + 1) / steps.length) * 100;
-  }
+  // Note: Public page intentionally hides live status/progress per requirements.
 
   if (loading) {
     return (
@@ -143,243 +108,807 @@ export default function TrackLeadPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-xl text-gray-600 mb-4">Service request not found</p>
-          <Link href="/customer/dashboard" className="text-brand-primary hover:underline">
-                Back to Dashboard
+          <p className="text-xl text-gray-600 mb-2">
+            {loadError ? 'Unable to load service request' : 'Service request not found'}
+          </p>
+          {loadError && (
+            <p className="text-sm text-gray-500 max-w-xl mx-auto mb-4">
+              {loadError}
+            </p>
+          )}
+          <Link href="/" className="text-brand-primary hover:underline">
+            Back to Home
           </Link>
         </div>
       </div>
     );
   }
 
-  const statusInfo = getStatusInfo(lead.status);
-  const StatusIcon = statusInfo.icon;
+  const customerCity =
+    typeof lead.city === 'object' && lead.city
+      ? lead.city.name || lead.city.city_name || ''
+      : (lead.city || '').toString();
+  const customerAddress =
+    (lead.customer_address || lead.address || lead.pickup_address || '').toString();
+  const looksLikeUuid = (v: any) =>
+    typeof v === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v.trim());
+
+  const serviceTypeLabel = !looksLikeUuid(lead.service_type_name) && (lead.service_type_name || '').toString().trim()
+    ? String(lead.service_type_name).trim()
+    : '—';
+  const subServiceLabel = (lead.subservice_names || '').toString();
+  const serviceItems = Array.isArray(pricingItems) ? pricingItems.filter((i) => !i?.is_addon) : [];
+  const addonItems = Array.isArray(pricingItems) ? pricingItems.filter((i) => Boolean(i?.is_addon)) : [];
+
+  const fallbackServices = Array.isArray(lead.selected_services) ? lead.selected_services : [];
+  const fallbackAddons = Array.isArray(lead.selected_addons) ? lead.selected_addons : [];
+
+  type DisplayItem = { id: string; name: string; qty: number; price: number };
+
+  const displayServiceItems: DisplayItem[] =
+    serviceItems.length > 0
+      ? serviceItems.map((it) => ({
+          id: String(it.id),
+          name: String(it.item_name || ''),
+          qty: Number(it?.qty ?? 1),
+          price: Number(it?.final_price ?? 0),
+        }))
+      : fallbackServices.map((it: any) => ({
+          id: String(it.id),
+          name: String(it.name || ''),
+          qty: 1,
+          price: Number(it?.base_price ?? 0),
+        }));
+
+  const displayAddonItems: DisplayItem[] =
+    addonItems.length > 0
+      ? addonItems.map((it) => ({
+          id: String(it.id),
+          name: String(it.item_name || ''),
+          qty: Number(it?.qty ?? 1),
+          price: Number(it?.final_price ?? 0),
+        }))
+      : fallbackAddons.map((it: any) => ({
+          id: String(it.id),
+          name: String(it.name || ''),
+          qty: 1,
+          price: Number(it?.base_price ?? 0),
+        }));
+
+  const serviceTotal = displayServiceItems.reduce((sum: number, it: DisplayItem) => sum + it.price * it.qty, 0);
+  const addonTotal = displayAddonItems.reduce((sum: number, it: DisplayItem) => sum + it.price * it.qty, 0);
+  const approvedExtraWork = Array.isArray(extraWork)
+    ? extraWork.filter((r) => String(r?.status || 'PENDING').toUpperCase() === 'APPROVED')
+    : [];
+  const pendingExtraWork = Array.isArray(extraWork)
+    ? extraWork.filter((r) => String(r?.status || 'PENDING').toUpperCase() === 'PENDING')
+    : [];
+
+  // Potential totals for pending items (customer choice)
+  const pendingExtraWorkTotalOem = pendingExtraWork.reduce(
+    (sum, r) => sum + (Number(r?.oem_price ?? 0) + Number(r?.labour_price ?? 0)),
+    0
+  );
+  const pendingExtraWorkTotalOes = pendingExtraWork.reduce(
+    (sum, r) => sum + (Number(r?.oes_price ?? 0) + Number(r?.labour_price ?? 0)),
+    0
+  );
+
+  const GST_RATE = 0.18;
+  const fmt = (n: number) => `₹${Number(n || 0).toFixed(2)}`;
+
+  const serviceAddonSubtotal = serviceTotal + addonTotal;
+  const serviceAddonGst = serviceAddonSubtotal * GST_RATE;
+  const serviceAddonTotal = serviceAddonSubtotal + serviceAddonGst;
+
+  // Approved additional work gets added into estimate total (based on selected part_price_type)
+  const approvedExtraWorkSubtotal = approvedExtraWork.reduce((sum, r) => {
+    const choice = String(r?.part_price_type || 'OEM').toUpperCase() === 'OES' ? 'OES' : 'OEM';
+    const parts = choice === 'OES' ? Number(r?.oes_price ?? 0) : Number(r?.oem_price ?? 0);
+    const labour = Number(r?.labour_price ?? 0);
+    return sum + (parts + labour);
+  }, 0);
+  const approvedExtraWorkGst = approvedExtraWorkSubtotal * GST_RATE;
+  const approvedExtraWorkTotal = approvedExtraWorkSubtotal + approvedExtraWorkGst;
+
+  // Pending additional work (for information only)
+  const pendingExtraWorkGstOem = pendingExtraWorkTotalOem * GST_RATE;
+  const pendingExtraWorkGstOes = pendingExtraWorkTotalOes * GST_RATE;
+  const pendingExtraWorkTotalWithGstOem = pendingExtraWorkTotalOem + pendingExtraWorkGstOem;
+  const pendingExtraWorkTotalWithGstOes = pendingExtraWorkTotalOes + pendingExtraWorkGstOes;
+
+  const getExtraWorkDecisionLabel = (req: any) => {
+    const status = String(req?.status || 'PENDING').toUpperCase();
+    const byCustomer = Boolean(req?.customer_approved_at);
+    const choice = String(req?.part_price_type || 'OEM').toUpperCase() === 'OES' ? 'OES' : 'OEM';
+    if (status === 'REJECTED') return byCustomer ? 'REJECTED • Customer' : 'REJECTED • Advisor';
+    if (status === 'APPROVED') return byCustomer ? `APPROVED • Customer (${choice})` : `APPROVED • Advisor (${choice})`;
+    return 'PENDING';
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-5xl mx-auto px-4">
-        {/* Header */}
-        <div className="mb-8">
-          <Link href="/customer/dashboard" className="text-brand-primary hover:underline flex items-center gap-2 mb-4">
+    <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
+      <div className="max-w-5xl mx-auto px-4 print:px-0">
+        {/* Top actions (hidden on print) */}
+        <div className="flex items-center justify-between gap-3 mb-4 print:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.history.length > 1) router.back();
+              else router.push('/');
+            }}
+            className="text-brand-primary hover:underline inline-flex items-center gap-2"
+          >
             <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Track Service Request</h1>
-          <p className="text-gray-600 mt-1">Lead Number: {lead.lead_number}</p>
+            Back
+          </button>
+          <button type="button" className="btn btn-outline" onClick={() => window.print()}>
+            Print / Download
+          </button>
         </div>
 
-        {/* Status Card */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className={`w-12 h-12 rounded-full bg-${statusInfo.color}-100 flex items-center justify-center`}>
-                <StatusIcon className={`w-6 h-6 text-${statusInfo.color}-600`} />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">{statusInfo.label}</h2>
-                <p className="text-sm text-gray-600">Current Status</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-600">Created</p>
-              <p className="font-medium">{formatDateDMY(lead.created_at)}</p>
-            </div>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="relative pt-4">
-            <div className="flex mb-2 items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold inline-block text-brand-primary">
-                  Progress
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="text-xs font-semibold inline-block text-brand-primary">
-                  {Math.round(getStatusProgress(lead.status))}%
-                </span>
-              </div>
-            </div>
-            <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-gray-200">
-              <div
-                style={{ width: `${getStatusProgress(lead.status)}%` }}
-                className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-brand-primary transition-all duration-500"
-              ></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Vehicle & Service Details */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Service Details</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Vehicle:</span>
-                  <span className="font-medium">
-                    {lead.vehicle_make} {lead.vehicle_model} ({lead.vehicle_number})
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Service Type:</span>
-                  <span className="font-medium">{lead.service_type}</span>
-                </div>
-                {lead.problem_description && (
-                  <div>
-                    <span className="text-gray-600 block mb-1">Problem:</span>
-                    <p className="text-sm bg-gray-50 p-3 rounded">{lead.problem_description}</p>
+        {/* Estimate sheet */}
+        <div className="bg-white border rounded-xl shadow-sm print:shadow-none print:border-0 overflow-hidden">
+          {/* Header */}
+          <div className="p-5 sm:p-6 border-b bg-gradient-to-r from-brand-secondary to-brand-primary text-white">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-3 mb-3">
+                  <img
+                    src="/logo.png"
+                    alt="MyFNG"
+                    className="h-9 w-auto bg-white rounded-md p-1"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-lg font-extrabold leading-tight">MyFNG</div>
+                    <div className="text-xs text-white/80 leading-tight">
+                      Powered by MyFNG
+                    </div>
                   </div>
+                </div>
+                <div className="text-xs uppercase tracking-wide text-white/80">Workshop</div>
+                <div className="text-xl sm:text-2xl font-bold truncate">
+                  {lead.workshop?.name || 'Workshop'}
+                </div>
+                {lead.workshop?.address && (
+                  <div className="text-sm text-white/90 mt-1">{lead.workshop.address}</div>
+                )}
+                {lead.workshop?.phone && (
+                  <div className="text-sm text-white/90 mt-1">Phone: {lead.workshop.phone}</div>
                 )}
               </div>
-            </div>
 
-            {/* Timeline */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Activity Timeline</h3>
-              <div className="space-y-4">
-                {events.map((event, index) => (
-                  <div key={event.id} className="flex gap-3">
-                    <div className="relative">
-                      <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center">
-                        <CheckCircle className="w-4 h-4 text-white" />
-                      </div>
-                      {index < events.length - 1 && (
-                        <div className="absolute top-8 left-4 w-0.5 h-full bg-gray-200 -ml-px" />
-                      )}
-                    </div>
-                    <div className="flex-1 pb-4">
-                      <p className="font-medium text-gray-900">{event.event_description}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {formatDateTime(event.created_at)}
-                      </p>
-                    </div>
+              <div className="sm:text-right">
+                <div className="inline-flex items-center px-2.5 py-1 rounded bg-white/15 text-white text-xs font-semibold tracking-wide">
+                  ESTIMATE
+                </div>
+                <div className="mt-2 text-sm text-white/90">
+                  <div>
+                    Estimate ID: <span className="font-semibold text-white">{lead.lead_number}</span>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Media */}
-            {media.length > 0 && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <ImageIcon className="w-5 h-5" />
-                  Photos & Updates
-                </h3>
-                <div className="grid grid-cols-3 gap-3">
-                  {media.map((item) => (
-                    <div key={item.id} className="relative group">
-                      <img
-                        src={item.media_url}
-                        alt="Service photo"
-                        className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90 transition-opacity"
-                        onClick={() => window.open(item.media_url, '_blank')}
-                      />
-                      <span className="absolute bottom-1 left-1 text-xs bg-black bg-opacity-50 text-white px-2 py-0.5 rounded">
-                        {item.media_category}
-                      </span>
-                    </div>
-                  ))}
+                  <div>
+                    Date: <span className="font-semibold text-white">{formatDateDMY(lead.created_at)}</span>
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Right Column */}
-          <div className="space-y-6">
-            {/* Workshop Info */}
-            {lead.workshop && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Workshop</h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="font-medium text-gray-900">{lead.workshop.name}</p>
-                    <p className="text-sm text-gray-600 mt-1 flex items-start gap-2">
-                      <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      {lead.workshop.address}
-                    </p>
+          {/* Party details */}
+          <div className="p-5 sm:p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-lg border p-4">
+                <div className="text-xs uppercase tracking-wide text-gray-500">Customer</div>
+                <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">Name</span>
+                    <span className="font-semibold text-gray-900">{lead.customer_name || '—'}</span>
                   </div>
-                  <a
-                    href={`tel:${lead.workshop.phone}`}
-                    className="flex items-center gap-2 text-brand-primary hover:underline"
-                  >
-                    <Phone className="w-4 h-4" />
-                    {lead.workshop.phone}
-                  </a>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">Phone</span>
+                    <span className="font-semibold text-gray-900">{lead.customer_phone || lead.phone || '—'}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-gray-600">Address</span>
+                    <span className="font-medium text-gray-900 text-right leading-snug">{customerAddress || '—'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">City</span>
+                    <span className="font-medium text-gray-900">{customerCity || '—'}</span>
+                  </div>
                 </div>
               </div>
-            )}
 
-            {/* Mechanic Info */}
-            {lead.assigned_mechanic && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Assigned Mechanic</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-brand-primary flex items-center justify-center">
-                      <User className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{lead.assigned_mechanic.full_name}</p>
-                      <p className="text-sm text-gray-600">Mechanic</p>
-                    </div>
+              <div className="rounded-lg border p-4">
+                <div className="text-xs uppercase tracking-wide text-gray-500">Vehicle & Advisor</div>
+                <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">Car No</span>
+                    <span className="font-semibold text-gray-900">{lead.vehicle_number || '—'}</span>
                   </div>
-                  {lead.assigned_mechanic.phone && (
-                    <a
-                      href={`tel:${lead.assigned_mechanic.phone}`}
-                      className="flex items-center gap-2 text-brand-primary hover:underline text-sm"
-                    >
-                      <Phone className="w-4 h-4" />
-                      Call Mechanic
-                    </a>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">Vehicle</span>
+                    <span className="font-medium text-gray-900 text-right">
+                      {`${lead.vehicle_make || ''} ${lead.vehicle_model || ''}`.trim() || '—'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">Odometer</span>
+                    <span className="font-medium text-gray-900">
+                      {lead.vehicle_odometer ? `${lead.vehicle_odometer} km` : '—'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">Service</span>
+                    <span className="font-semibold text-gray-900 text-right">{serviceTypeLabel}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">Add-on</span>
+                    <span className="font-semibold text-gray-900 text-right">{subServiceLabel || '—'}</span>
+                  </div>
+                  {lead.assigned_advisor && (
+                    <div className="flex items-center justify-between gap-3 pt-2 border-t mt-1">
+                      <span className="text-gray-600">Advisor</span>
+                      <span className="font-semibold text-gray-900 text-right">
+                        {lead.assigned_advisor.full_name}
+                        {lead.assigned_advisor.phone ? ` • ${lead.assigned_advisor.phone}` : ''}
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
+            </div>
+
+            {lead.problem_description && (
+              <div className="mt-4 rounded-lg border p-4 bg-gray-50">
+                <div className="text-xs uppercase tracking-wide text-gray-500">Customer Notes</div>
+                <p className="mt-2 text-sm text-gray-800 whitespace-pre-line">{lead.problem_description}</p>
+              </div>
             )}
 
-            {/* Pickup Info */}
-            {lead.pickup_required && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-semibold text-blue-900 mb-2">Pickup Service</h4>
-                <p className="text-sm text-blue-800">
-                  Our team will pick up your vehicle from your location.
-                </p>
-                {lead.pickup_address && (
-                  <p className="text-xs text-blue-700 mt-2">
-                    Pickup Address: {lead.pickup_address}
-                  </p>
+            {/* Service + Add-ons table */}
+            <div className="mt-6 rounded-lg border overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 flex items-center justify-between">
+                <div className="font-semibold text-gray-900">Estimate Items</div>
+                <div className="text-xs text-gray-600">GST: 18%</div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-white border-b text-gray-600">
+                    <tr>
+                      <th className="text-left py-2 px-3">Type</th>
+                      <th className="text-left py-2 px-3">Item</th>
+                      <th className="text-right py-2 px-3">Qty</th>
+                      <th className="text-right py-2 px-3">Rate</th>
+                      <th className="text-right py-2 px-3">Amount</th>
+                      <th className="text-right py-2 px-3">GST</th>
+                      <th className="text-right py-2 px-3">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {[...displayServiceItems.map((x) => ({ ...x, _type: 'Service' })), ...displayAddonItems.map((x) => ({ ...x, _type: 'Add-on' }))].map((it) => {
+                      const amount = it.price * it.qty;
+                      const gst = amount * GST_RATE;
+                      const total = amount + gst;
+                      return (
+                        <tr key={`${it._type}-${it.id}`}>
+                          <td className="py-2 px-3">
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+                              {it._type}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 font-medium text-gray-900">{it.name}</td>
+                          <td className="py-2 px-3 text-right">{it.qty}</td>
+                          <td className="py-2 px-3 text-right">{fmt(it.price)}</td>
+                          <td className="py-2 px-3 text-right font-semibold">{fmt(amount)}</td>
+                          <td className="py-2 px-3 text-right">{fmt(gst)}</td>
+                          <td className="py-2 px-3 text-right font-bold">{fmt(total)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Approved additional work added to estimate */}
+              {approvedExtraWork.length > 0 && (
+                <div className="border-t">
+                  <div className="px-4 py-3 bg-white flex items-center justify-between">
+                    <div className="font-semibold text-gray-900">Approved Additional Work</div>
+                    <div className="text-xs text-gray-600">Included in total</div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-600 border-y">
+                        <tr>
+                          <th className="text-left py-2 px-3">Item</th>
+                          <th className="text-left py-2 px-3">Type</th>
+                          <th className="text-right py-2 px-3">Parts</th>
+                          <th className="text-right py-2 px-3">Labour</th>
+                          <th className="text-right py-2 px-3">Amount</th>
+                          <th className="text-right py-2 px-3">GST</th>
+                          <th className="text-right py-2 px-3">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {approvedExtraWork.map((r) => {
+                          const choice = String(r?.part_price_type || 'OEM').toUpperCase() === 'OES' ? 'OES' : 'OEM';
+                          const parts = choice === 'OES' ? Number(r?.oes_price ?? 0) : Number(r?.oem_price ?? 0);
+                          const labour = Number(r?.labour_price ?? 0);
+                          const amount = parts + labour;
+                          const gst = amount * GST_RATE;
+                          const total = amount + gst;
+                          return (
+                            <tr key={`approved-${r.id}`}>
+                              <td className="py-2 px-3 font-medium text-gray-900">{r.description}</td>
+                              <td className="py-2 px-3">
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-green-100 text-green-800">
+                                  {choice}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 text-right">{fmt(parts)}</td>
+                              <td className="py-2 px-3 text-right">{fmt(labour)}</td>
+                              <td className="py-2 px-3 text-right font-semibold">{fmt(amount)}</td>
+                              <td className="py-2 px-3 text-right">{fmt(gst)}</td>
+                              <td className="py-2 px-3 text-right font-bold">{fmt(total)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-4 border-t bg-gray-50">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="text-xs text-gray-600">
+                    Prices are indicative. Final billing may vary after inspection.
+                  </div>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Subtotal</span>
+                      <span className="font-semibold text-gray-900">{fmt(serviceAddonSubtotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">GST (18%)</span>
+                      <span className="font-semibold text-gray-900">{fmt(serviceAddonGst)}</span>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="text-gray-600">Total (incl. GST)</span>
+                      <span className="font-bold text-gray-900">{fmt(serviceAddonTotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="text-gray-600">Approved Additional Work (incl. GST)</span>
+                      <span className="font-semibold text-gray-900">{fmt(approvedExtraWorkTotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="text-gray-600">Grand Total</span>
+                      <span className="font-bold text-gray-900">{fmt(serviceAddonTotal + approvedExtraWorkTotal)}</span>
+                    </div>
+                    {pendingExtraWork.length > 0 && (
+                      <div className="pt-2 border-t text-xs text-gray-600">
+                        Pending additional work (if approved): OEM {fmt(pendingExtraWorkTotalWithGstOem)} • OES {fmt(pendingExtraWorkTotalWithGstOes)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Attachments / Invoice */}
+            {(media.length > 0 || lead.final_amount) && (
+              <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {media.length > 0 && (
+                  <div className="lg:col-span-2 rounded-lg border p-4">
+                    <div className="flex items-center gap-2 font-semibold text-gray-900">
+                      <ImageIcon className="w-4 h-4" />
+                      Attachments
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {media.map((item) => (
+                        <div key={item.id} className="relative group">
+                          <img
+                            src={item.media_url}
+                            alt="Attachment"
+                            className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => window.open(item.media_url, '_blank')}
+                          />
+                          <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-2 py-0.5 rounded">
+                            {item.media_category}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {lead.final_amount && (
+                  <div className="rounded-lg border p-4 bg-green-50 border-green-200">
+                    <div className="flex items-center gap-2 font-semibold text-green-900">
+                      <FileText className="w-4 h-4" />
+                      Final Invoice (if available)
+                    </div>
+                    <div className="mt-2 text-sm text-green-800">
+                      Total: <span className="font-bold">₹{lead.final_amount.toFixed(2)}</span>
+                    </div>
+                    <Link
+                      href={`/customer/invoices/${lead.id}`}
+                      className="inline-block mt-3 text-green-800 hover:underline text-sm font-medium"
+                    >
+                      View Invoice →
+                    </Link>
+                  </div>
                 )}
               </div>
             )}
+          </div>
+        </div>
 
-            {/* Estimated Completion */}
-            {lead.preferred_service_slot && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Calendar className="w-5 h-5" />
-                  Scheduled For
-                </h3>
-                <p className="text-gray-900 font-medium">{lead.preferred_service_slot}</p>
-              </div>
-            )}
+        {/* (Removed old cards-based summary blocks; estimate sheet above contains totals + GST) */}
 
-            {/* Invoice */}
-            {lead.final_amount && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-                <h3 className="text-lg font-semibold text-green-900 mb-2 flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Total Amount
-                </h3>
-                <p className="text-3xl font-bold text-green-900">₹{lead.final_amount.toFixed(2)}</p>
-                <Link
-                  href={`/customer/invoices/${lead.id}`}
-                  className="inline-block mt-3 text-green-800 hover:underline text-sm font-medium"
-                >
-                  View Invoice →
-                </Link>
+        {/* Additional Work (full width, table on desktop) */}
+        <div className="mt-6">
+          <div className="bg-white border rounded-xl shadow-sm p-6 print:shadow-none">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Additional Job Requests</h3>
+                <p className="text-sm text-gray-600">Review OEM/OES/Labour and accept or reject each item.</p>
               </div>
+              <span className="text-sm text-gray-600">
+                {Array.isArray(extraWork) ? `${extraWork.length} item(s)` : '0 item(s)'}
+              </span>
+            </div>
+
+            {Array.isArray(extraWork) && extraWork.length > 0 ? (
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="text-left py-2 px-3">Item</th>
+                        <th className="text-left py-2 px-3">Priority</th>
+                        <th className="text-right py-2 px-3">OEM</th>
+                        <th className="text-right py-2 px-3">OES</th>
+                        <th className="text-right py-2 px-3">Labour</th>
+                        <th className="text-right py-2 px-3">Total</th>
+                        <th className="text-left py-2 px-3">Choice</th>
+                        <th className="text-left py-2 px-3">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {extraWork.map((req) => {
+                        const status = String(req.status || 'PENDING');
+                        const decisionLabel = getExtraWorkDecisionLabel(req);
+                        const oem = Number(req.oem_price ?? 0);
+                        const oes = Number(req.oes_price ?? 0);
+                        const labour = Number(req.labour_price ?? 0);
+                        const choice = decisionByRequestId[req.id] || (req.part_price_type === 'OES' ? 'OES' : 'OEM');
+                        const total = (choice === 'OES' ? oes : oem) + labour;
+                        const acting = Boolean(actingByRequestId[req.id]);
+                        const isHigh = Boolean(req.is_urgent);
+                        return (
+                          <tr key={req.id} className={isHigh ? 'bg-red-50/40' : undefined}>
+                            <td className="py-3 px-3">
+                              <div className="font-semibold text-gray-900">{req.description}</div>
+                              {req.reason && (
+                                <div className="text-xs text-gray-600 mt-1 line-clamp-2">{req.reason}</div>
+                              )}
+                              {status === 'REJECTED' && req.rejection_reason && (
+                                <div className="text-xs text-red-700 mt-1">
+                                  Rejection reason: <span className="font-semibold">{req.rejection_reason}</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span
+                                className={`px-2 py-1 rounded text-xs font-semibold ${
+                                  isHigh ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {isHigh ? 'HIGH' : 'MEDIUM'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right font-semibold">₹{oem.toFixed(2)}</td>
+                            <td className="py-3 px-3 text-right font-semibold">₹{oes.toFixed(2)}</td>
+                            <td className="py-3 px-3 text-right font-semibold">₹{labour.toFixed(2)}</td>
+                            <td className="py-3 px-3 text-right font-bold text-gray-900">₹{total.toFixed(2)}</td>
+                            <td className="py-3 px-3">
+                              {status === 'PENDING' ? (
+                                <div className="flex items-center gap-3">
+                                  <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
+                                    <input
+                                      type="radio"
+                                      name={`choice-desktop-${req.id}`}
+                                      className="h-4 w-4"
+                                      checked={choice === 'OEM'}
+                                      onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OEM' }))}
+                                      aria-label="Approve choice OEM"
+                                    />
+                                    OEM
+                                  </label>
+                                  <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
+                                    <input
+                                      type="radio"
+                                      name={`choice-desktop-${req.id}`}
+                                      className="h-4 w-4"
+                                      checked={choice === 'OES'}
+                                      onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OES' }))}
+                                      aria-label="Approve choice OES"
+                                    />
+                                    OES
+                                  </label>
+                                </div>
+                              ) : (
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-semibold ${
+                                    status === 'APPROVED'
+                                      ? 'bg-green-100 text-green-800'
+                                      : status === 'REJECTED'
+                                        ? 'bg-red-100 text-red-800'
+                                        : 'bg-yellow-100 text-yellow-800'
+                                  }`}
+                                >
+                                  {decisionLabel}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              {status === 'PENDING' ? (
+                                <div className="flex flex-col gap-2 min-w-[240px]">
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={acting}
+                                      className="btn btn-primary btn-sm"
+                                      onClick={async () => {
+                                        try {
+                                          setActingByRequestId((p) => ({ ...p, [req.id]: true }));
+                                          const res = await fetch(
+                                            `/api/public/lead/${leadId}/extra-work/${req.id}/respond`,
+                                            {
+                                              method: 'POST',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ action: 'APPROVE', part_price_type: choice }),
+                                            }
+                                          );
+                                          const data = await res.json().catch(() => ({}));
+                                          if (!res.ok) throw new Error(data?.error || 'Failed');
+                                          await fetchLeadDetails();
+                                        } catch (e: any) {
+                                          alert(e?.message || 'Failed');
+                                        } finally {
+                                          setActingByRequestId((p) => ({ ...p, [req.id]: false }));
+                                        }
+                                      }}
+                                    >
+                                      Approve
+                                    </button>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <input
+                                      className="input input-sm flex-1"
+                                      placeholder="Reject reason"
+                                      value={rejectReasonByRequestId[req.id] || ''}
+                                      onChange={(e) =>
+                                        setRejectReasonByRequestId((p) => ({ ...p, [req.id]: e.target.value }))
+                                      }
+                                    />
+                                    <button
+                                      type="button"
+                                      disabled={acting || !(rejectReasonByRequestId[req.id] || '').trim()}
+                                      className="btn btn-outline btn-sm"
+                                      onClick={async () => {
+                                        try {
+                                          setActingByRequestId((p) => ({ ...p, [req.id]: true }));
+                                          const res = await fetch(
+                                            `/api/public/lead/${leadId}/extra-work/${req.id}/respond`,
+                                            {
+                                              method: 'POST',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({
+                                                action: 'REJECT',
+                                                rejection_reason: (rejectReasonByRequestId[req.id] || '').trim(),
+                                              }),
+                                            }
+                                          );
+                                          const data = await res.json().catch(() => ({}));
+                                          if (!res.ok) throw new Error(data?.error || 'Failed');
+                                          await fetchLeadDetails();
+                                        } catch (e: any) {
+                                          alert(e?.message || 'Failed');
+                                        } finally {
+                                          setActingByRequestId((p) => ({ ...p, [req.id]: false }));
+                                        }
+                                      }}
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-600">
+                                  {status === 'APPROVED'
+                                    ? `Approved (${String(req.part_price_type || 'OEM')})`
+                                    : status}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile cards */}
+                <div className="md:hidden space-y-4">
+                  {extraWork.map((req) => {
+                    const status = String(req.status || 'PENDING');
+                    const decisionLabel = getExtraWorkDecisionLabel(req);
+                    const oem = Number(req.oem_price ?? 0);
+                    const oes = Number(req.oes_price ?? 0);
+                    const labour = Number(req.labour_price ?? 0);
+                    const choice = decisionByRequestId[req.id] || (req.part_price_type === 'OES' ? 'OES' : 'OEM');
+                    const total = (choice === 'OES' ? oes : oem) + labour;
+                    const acting = Boolean(actingByRequestId[req.id]);
+                    const isHigh = Boolean(req.is_urgent);
+                    return (
+                      <div key={req.id} className={`border rounded-lg p-4 ${isHigh ? 'border-red-200 bg-red-50/30' : ''}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-900">{req.description}</p>
+                            <div className="mt-1 flex items-center gap-2">
+                              <span
+                                className={`px-2 py-1 rounded text-xs font-semibold ${
+                                  isHigh ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {isHigh ? 'HIGH' : 'MEDIUM'}
+                              </span>
+                              <span
+                                className={`px-2 py-1 rounded text-xs font-semibold ${
+                                  status === 'APPROVED'
+                                    ? 'bg-green-100 text-green-800'
+                                    : status === 'REJECTED'
+                                      ? 'bg-red-100 text-red-800'
+                                      : 'bg-yellow-100 text-yellow-800'
+                                }`}
+                              >
+                                {decisionLabel}
+                              </span>
+                            </div>
+                            {req.reason && (
+                              <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{req.reason}</p>
+                            )}
+                            {status === 'REJECTED' && req.rejection_reason && (
+                              <p className="text-sm text-red-700 mt-2">
+                                Rejection reason: <strong>{req.rejection_reason}</strong>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                          <div className="bg-gray-50 rounded p-2">
+                            <div className="text-xs text-gray-600">OEM</div>
+                            <div className="font-semibold">₹{oem.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-gray-50 rounded p-2">
+                            <div className="text-xs text-gray-600">OES</div>
+                            <div className="font-semibold">₹{oes.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-gray-50 rounded p-2">
+                            <div className="text-xs text-gray-600">Labour</div>
+                            <div className="font-semibold">₹{labour.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-gray-50 rounded p-2">
+                            <div className="text-xs text-gray-600">Total</div>
+                            <div className="font-bold">₹{total.toFixed(2)}</div>
+                          </div>
+                        </div>
+
+                        {status === 'PENDING' && (
+                          <div className="mt-3 space-y-3">
+                            <div className="flex items-center gap-4">
+                              <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+                                <input
+                                  type="radio"
+                                  name={`choice-mobile-${req.id}`}
+                                  className="h-4 w-4"
+                                  checked={choice === 'OEM'}
+                                  onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OEM' }))}
+                                  aria-label="Approve choice OEM"
+                                />
+                                OEM
+                              </label>
+                              <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+                                <input
+                                  type="radio"
+                                  name={`choice-mobile-${req.id}`}
+                                  className="h-4 w-4"
+                                  checked={choice === 'OES'}
+                                  onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OES' }))}
+                                  aria-label="Approve choice OES"
+                                />
+                                OES
+                              </label>
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                              <button
+                                type="button"
+                                disabled={acting}
+                                className="btn btn-primary w-full"
+                                onClick={async () => {
+                                  try {
+                                    setActingByRequestId((p) => ({ ...p, [req.id]: true }));
+                                    const res = await fetch(`/api/public/lead/${leadId}/extra-work/${req.id}/respond`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ action: 'APPROVE', part_price_type: choice }),
+                                    });
+                                    const data = await res.json().catch(() => ({}));
+                                    if (!res.ok) throw new Error(data?.error || 'Failed');
+                                    await fetchLeadDetails();
+                                  } catch (e: any) {
+                                    alert(e?.message || 'Failed');
+                                  } finally {
+                                    setActingByRequestId((p) => ({ ...p, [req.id]: false }));
+                                  }
+                                }}
+                              >
+                                Approve
+                              </button>
+                              <div className="flex gap-2">
+                                <input
+                                  className="input flex-1"
+                                  placeholder="Rejection reason"
+                                  value={rejectReasonByRequestId[req.id] || ''}
+                                  onChange={(e) =>
+                                    setRejectReasonByRequestId((p) => ({ ...p, [req.id]: e.target.value }))
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  disabled={acting || !(rejectReasonByRequestId[req.id] || '').trim()}
+                                  className="btn btn-outline"
+                                  onClick={async () => {
+                                    try {
+                                      setActingByRequestId((p) => ({ ...p, [req.id]: true }));
+                                      const res = await fetch(`/api/public/lead/${leadId}/extra-work/${req.id}/respond`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          action: 'REJECT',
+                                          rejection_reason: (rejectReasonByRequestId[req.id] || '').trim(),
+                                        }),
+                                      });
+                                      const data = await res.json().catch(() => ({}));
+                                      if (!res.ok) throw new Error(data?.error || 'Failed');
+                                      await fetchLeadDetails();
+                                    } catch (e: any) {
+                                      alert(e?.message || 'Failed');
+                                    } finally {
+                                      setActingByRequestId((p) => ({ ...p, [req.id]: false }));
+                                    }
+                                  }}
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-gray-600">No additional job requests.</div>
             )}
           </div>
         </div>

@@ -9,13 +9,17 @@ interface PhotoUploadProps {
   maxPhotos?: number;
   label?: string;
   required?: boolean;
+  uploadEndpoint?: string; // when provided, uploads via server route (recommended)
+  extraFormFields?: Record<string, string>;
 }
 
 export default function PhotoUpload({ 
   onUpload, 
   maxPhotos = 5, 
   label = 'Upload Photos',
-  required = false 
+  required = false,
+  uploadEndpoint,
+  extraFormFields
 }: PhotoUploadProps) {
   const [photos, setPhotos] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -59,22 +63,52 @@ export default function PhotoUpload({
       const supabase = createClient();
       const uploadedUrls: string[] = [];
 
-      for (const photo of photos) {
-        const fileExt = photo.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const filePath = `photos/${fileName}`;
+      if (uploadEndpoint) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          throw new Error('Not authenticated');
+        }
+        for (const photo of photos) {
+          const formData = new FormData();
+          formData.append('file', photo);
+          if (extraFormFields) {
+            Object.entries(extraFormFields).forEach(([k, v]) => formData.append(k, v));
+          }
+          const res = await fetch(uploadEndpoint, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}` },
+            body: formData,
+          });
+          const contentType = res.headers.get('content-type') || '';
+          const data = contentType.includes('application/json') ? await res.json() : await res.text();
+          if (!res.ok) {
+            const msg = typeof data === 'string' ? data : (data?.error || data?.details || 'Failed to upload');
+            throw new Error(msg);
+          }
+          const url = (data as any)?.file_url || (data as any)?.media?.file_url;
+          if (!url) throw new Error('Upload succeeded but URL missing');
+          uploadedUrls.push(String(url));
+        }
+      } else {
+        // Fallback: direct storage upload (requires bucket + policies)
+        const bucket = 'service-media';
+        for (const photo of photos) {
+          const fileExt = photo.name.split('.').pop();
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+          const filePath = `photos/${fileName}`;
 
-        const { data, error } = await supabase.storage
-          .from('media')
-          .upload(filePath, photo);
+          const { error } = await supabase.storage
+            .from(bucket)
+            .upload(filePath, photo);
 
-        if (error) throw error;
+          if (error) throw error;
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('media')
-          .getPublicUrl(filePath);
+          const { data: { publicUrl } } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(filePath);
 
-        uploadedUrls.push(publicUrl);
+          uploadedUrls.push(publicUrl);
+        }
       }
 
       setUploaded(true);
@@ -87,9 +121,9 @@ export default function PhotoUpload({
         setUploaded(false);
       }, 2000);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Upload error:', error);
-      alert('Failed to upload photos. Please try again.');
+      alert(error?.message || 'Failed to upload photos. Please try again.');
     } finally {
       setUploading(false);
     }
