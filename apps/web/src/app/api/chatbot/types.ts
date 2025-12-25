@@ -4,6 +4,8 @@ export type ChatbotVehicleType = 'CAR' | 'BIKE' | 'UNKNOWN';
 
 export type ChatbotSafetyFlag = 'EMERGENCY' | 'COMPLAINT' | 'ABUSIVE';
 
+export type ChatPaymentType = 'BOOKING_TOKEN' | 'ADVANCE' | 'INVOICE';
+
 export interface IntentDetectionResult {
   intent: ChatbotIntent;
   urgency: ChatbotUrgency;
@@ -19,6 +21,27 @@ export interface IntentDetectionResult {
 export interface ChatbotContext {
   // Optional context coming from UI (web/mobile) or from prior turns
   conversationId?: string;
+  // IDs created by server-side flows (chatbot booking / invoice / payments)
+  leadId?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+  // Payment intent / link (optional)
+  paymentIntentId?: string;
+  paymentShortUrl?: string;
+  // UI hints (web chat)
+  showPayNow?: boolean;
+  bookingTokenAmount?: number | null;
+
+  // ============================
+  // DOC MODE (sales-first qualification flow)
+  // ============================
+  docMode?: boolean;
+  docNeedType?: 'REGULAR_SERVICE' | 'REPAIR_ISSUE' | 'CLEANING_DETAILING';
+  docCarModelText?: string;
+  docLastServiceText?: string; // last service date / km run (free text)
+  docLocationText?: string; // area/city
+  docPreferredServiceDateText?: string; // today / later this week / date text
+  docUspIndex?: number; // to sprinkle USPs one by one
 
   // New 6-step conversation flow (matches book-service)
   conversationStage?:
@@ -67,6 +90,14 @@ export interface ChatbotContext {
   selectedServiceTypeIds?: string[];
   selectedPackageId?: string;
 
+  // Catalog UI state (non-doc "book-service like" chat browsing)
+  catalogServiceOptionIds?: string[];
+  catalogOptionChoices?: Array<{ kind: 'SERVICE_TYPE' | 'PACKAGE' | 'RSA'; id: string; name: string }>;
+  catalogStage?: 'CATEGORY_MENU' | 'AWAITING_PHONE' | 'SERVICE_LIST' | null;
+
+  // Non-doc: remember last shown options so "Option 6" selects from the same list.
+  lastOptionChoices?: Array<{ kind: 'SERVICE_TYPE' | 'PACKAGE' | 'RSA'; id: string; name: string }>;
+
   // Step 5: Pickup preference
   pickupRequired?: boolean; // true = pickup, false = self come
   pickupDate?: string;
@@ -83,6 +114,8 @@ export interface ChatbotContext {
   // Step 6: Payment
   paymentMethod?: string; // UPI, CARD, CASH, etc.
   paymentStatus?: 'PAY_NOW' | 'PAY_LATER';
+  // What kind of payment user is trying to make in chat
+  paymentType?: ChatPaymentType;
 }
 
 export interface ChatbotMessageRequest {
@@ -106,13 +139,34 @@ export interface PriceRange {
   source: 'workshop_service_pricing' | 'service_packages' | 'fallback';
 }
 
+export interface ExactPrice {
+  currency: 'INR';
+  amount: number; // exact amount from DB
+  source: 'workshop_service_pricing' | 'service_packages' | 'fallback';
+}
+
 export interface SuggestedOption {
   suggestion: ServiceSuggestion;
   priceRange?: PriceRange;
+  exactPrice?: ExactPrice;
   checklistItems?: string[]; // What's included in this service
   checklistNote?: string; // Summary note for checklist
   category?: string; // Service category for display
 }
+
+export type ChatbotUiPayload =
+  | {
+      kind: 'CATEGORY_CAROUSEL';
+      title?: string;
+      items: Array<{ id: string; label: string; subtitle?: string }>;
+    }
+  | {
+      kind: 'DUAL_CAROUSEL';
+      title?: string;
+      category: string;
+      packages: SuggestedOption[];
+      services: SuggestedOption[];
+    };
 
 export interface BookingResult {
   leadId: string;
@@ -123,6 +177,7 @@ export interface ChatbotResponse {
   conversationId: string;
   intent: IntentDetectionResult;
   suggestions?: SuggestedOption[];
+  ui?: ChatbotUiPayload;
   assistantMessage: string;
   // Updated context to send back to client for next turn
   contextPatch?: Partial<ChatbotContext>;

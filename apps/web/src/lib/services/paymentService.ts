@@ -25,7 +25,7 @@ export interface PaymentOrder {
   orderId: string;
   amount: number;
   currency: string;
-  receipt: string;
+  receipt: string | null;
 }
 
 export interface PaymentDetails {
@@ -35,6 +35,35 @@ export interface PaymentDetails {
   amount: number;
   status: 'SUCCESS' | 'FAILED' | 'PENDING';
 }
+
+export type ChatPaymentType = 'BOOKING_TOKEN' | 'ADVANCE' | 'INVOICE';
+
+export type CreateChatPaymentOrderResponse = {
+  success: true;
+  order: PaymentOrder;
+  payment_intent: {
+    id: string;
+    order_id: string;
+    amount: number;
+    amount_paise: number;
+    currency: 'INR';
+    razorpay_key?: string;
+    invoice_id?: string;
+    invoice_number?: string;
+    payment_type?: string;
+  };
+  invoice?: {
+    id: string;
+    invoice_number: string;
+    total_amount: any;
+    final_amount: any;
+    paid_amount: any;
+    remaining_amount: number;
+  };
+  customer?: { name: string; phone: string; email: string };
+  pay_link?: string | null;
+  reused?: boolean;
+};
 
 /**
  * Create a Razorpay order
@@ -67,6 +96,48 @@ export async function createPaymentOrder(
     return data.order || null;
   } catch (error) {
     console.error('Error creating payment order:', error);
+    return null;
+  }
+}
+
+/**
+ * Create a Razorpay order for chatbot flows (booking token / advance / invoice).
+ * This calls /api/payments/create-intent which also creates payment_intents + payment_transactions.
+ */
+export type CreateChatPaymentOrderError = { success: false; error: string; status?: number };
+
+export async function createChatPaymentOrder(params: {
+  leadId?: string | null;
+  invoiceId?: string | null;
+  paymentType: ChatPaymentType;
+  amountOverride?: number | null; // for ADVANCE only
+}): Promise<CreateChatPaymentOrderResponse | CreateChatPaymentOrderError | null> {
+  try {
+    const body: any = {
+      payment_method: 'RAZORPAY',
+      payment_type: params.paymentType,
+    };
+    if (params.leadId) body.lead_id = params.leadId;
+    if (params.invoiceId) body.invoice_id = params.invoiceId;
+    if (params.paymentType === 'ADVANCE' && params.amountOverride) body.amount = params.amountOverride;
+
+    const res = await fetch('/api/payments/create-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => null)) as any;
+    if (!res.ok) {
+      const errMsg =
+        (typeof data?.error === 'string' && data.error) ||
+        (typeof data?.message === 'string' && data.message) ||
+        'Failed to create payment order';
+      return { success: false, error: errMsg, status: res.status };
+    }
+    if (!data?.success || !data?.order?.orderId) return { success: false, error: 'Invalid payment response' };
+    return data as CreateChatPaymentOrderResponse;
+  } catch (e) {
+    console.error('Error creating chat payment order:', e);
     return null;
   }
 }

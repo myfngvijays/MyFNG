@@ -726,6 +726,13 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     const ConfigChangesScreen = require('../screens/dashboard/superadmin/ConfigChangesScreen').default;
     const ComplianceReportsScreen = require('../screens/dashboard/superadmin/ComplianceReportsScreen').default;
     const BrandsScreen = require('../screens/dashboard/superadmin/BrandsScreen').default;
+    const InventoryProductsScreen = require('../screens/dashboard/superadmin/InventoryProductsScreen').default;
+    const InventoryPackagesScreen = require('../screens/dashboard/superadmin/InventoryPackagesScreen').default;
+    const InventoryPackageDetailScreen = require('../screens/dashboard/superadmin/InventoryPackageDetailScreen').default;
+    const InventoryZonesScreen = require('../screens/dashboard/superadmin/InventoryZonesScreen').default;
+    const InventoryPricingScreen = require('../screens/dashboard/superadmin/InventoryPricingScreen').default;
+    const InventoryServicePricingScreen = require('../screens/dashboard/superadmin/InventoryServicePricingScreen').default;
+    const WorkshopRatesScreen = require('../screens/dashboard/superadmin/WorkshopRatesScreen').default;
     
     return (
       <Stack.Navigator screenOptions={screenOptions}>

@@ -3,6 +3,11 @@ import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from './src/screens/LoginScreen';
+import PublicBookServiceNowScreen from './src/screens/PublicBookServiceNowScreen';
+import PublicHomeScreen from './src/screens/PublicHomeScreen';
+import AIBookingScreen from './src/screens/AIBookingScreen';
+import PublicServicePackagesScreen from './src/screens/PublicServicePackagesScreen';
+import PublicWorkshopLocatorScreen from './src/screens/PublicWorkshopLocatorScreen';
 import DashboardNavigator from './src/navigation/DashboardNavigator';
 import { AuthProvider } from './src/context/AuthContext';
 import { NotificationProvider } from './src/context/NotificationContext';
@@ -102,11 +107,18 @@ function AppContent() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user || !userProfile ? (
+          <>
+            {/* Public Home (marketing + navigation hub) */}
+            <Stack.Screen name="PublicHome" component={PublicHomeScreen} />
+            {/* Website-style Book Service Now wizard (opened via CTA button) */}
+            <Stack.Screen name="PublicBookServiceNow" component={PublicBookServiceNowScreen} />
+            <Stack.Screen name="AIBooking" component={AIBookingScreen} />
+            <Stack.Screen name="PublicServicePackages" component={PublicServicePackagesScreen} />
+            <Stack.Screen name="PublicWorkshopLocator" component={PublicWorkshopLocatorScreen} />
           <Stack.Screen name="Login">
-            {(props) => (
-              <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />
-            )}
+              {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
           </Stack.Screen>
+          </>
         ) : (
           <Stack.Screen name="Dashboard">
             {(props) => (

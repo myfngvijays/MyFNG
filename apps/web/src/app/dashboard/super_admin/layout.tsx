@@ -23,7 +23,8 @@ import {
   History,
   FileCheck,
   ClipboardCheck,
-  Car
+  Car,
+  MessageSquare
 } from 'lucide-react';
 
 const navigationItems = [
@@ -86,6 +87,12 @@ const navigationItems = [
     href: '/dashboard/super_admin/users',
     icon: Users,
     description: 'User & Role Management'
+  },
+  {
+    name: 'AI Learning Inbox',
+    href: '/dashboard/super_admin/kb-questions',
+    icon: MessageSquare,
+    description: 'Review & add answers to KB'
   },
   {
     name: 'Audit Logs',
@@ -204,7 +211,7 @@ export default function SuperAdminLayout({
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-6 px-3">
+        <nav className="flex-1 min-h-0 overflow-y-auto py-6 px-3">
           <div className="space-y-2">
             {navigationItems.map((item) => {
               const Icon = item.icon;
@@ -271,7 +278,7 @@ export default function SuperAdminLayout({
           />
 
           {/* Mobile Menu */}
-          <aside className="lg:hidden fixed inset-y-0 left-0 w-72 bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 text-white z-40 shadow-2xl">
+          <aside className="lg:hidden fixed inset-y-0 left-0 w-72 flex flex-col bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 text-white z-40 shadow-2xl">
             {/* Header */}
             <div className="p-6 border-b border-blue-400/30">
               <div className="flex items-center gap-2">
@@ -284,7 +291,7 @@ export default function SuperAdminLayout({
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 overflow-y-auto py-6 px-3">
+            <nav className="flex-1 min-h-0 overflow-y-auto py-6 px-3">
               <div className="space-y-2">
                 {navigationItems.map((item) => {
                   const Icon = item.icon;

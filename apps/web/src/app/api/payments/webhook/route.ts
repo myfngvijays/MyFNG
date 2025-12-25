@@ -87,6 +87,41 @@ async function handlePaymentSuccess(payload: any, supabase: any) {
     .maybeSingle();
 
   if (!transaction) {
+    // Fallback: if transaction row was not created, try payment_intents as source of truth
+    const { data: intentRow } = await supabase
+      .from('payment_intents')
+      .select('id, invoice_id, lead_id')
+      .eq('gateway_order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (intentRow?.invoice_id) {
+      // Create a minimal pending transaction so existing logic can proceed and so ops dashboards have a row.
+      const { data: createdTxn } = await supabase
+        .from('payment_transactions')
+        .insert({
+          transaction_id: `TXN-${Date.now()}-${String(intentRow.invoice_id).substring(0, 8)}`,
+          invoice_id: intentRow.invoice_id,
+          lead_id: intentRow.lead_id,
+          amount: amount,
+          currency: 'INR',
+          payment_method: payment.method || 'ONLINE',
+          payment_gateway: 'RAZORPAY',
+          gateway_order_id: orderId,
+          gateway_payment_id: paymentId,
+          status: 'SUCCESS',
+          initiated_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          webhook_received_at: new Date().toISOString(),
+          webhook_data: payload,
+          updated_at: new Date().toISOString(),
+        })
+        .select('*, invoice:invoices!invoice_id(*)')
+        .single();
+      transaction = createdTxn || null;
+    }
+
     // Fallback: try invoice_id from notes (if present)
     const invoiceIdFromNotes = payment?.notes?.invoice_id;
     if (invoiceIdFromNotes) {
@@ -107,6 +142,23 @@ async function handlePaymentSuccess(payload: any, supabase: any) {
   }
 
   const now = new Date().toISOString();
+
+  // Update payment_intents (best-effort) so chat/payment links can reflect status without joining transactions.
+  try {
+    await supabase
+      .from('payment_intents')
+      .update({
+        status: 'SUCCEEDED',
+        updated_at: now,
+        metadata: {
+          last_event: 'payment_success',
+          gateway_payment_id: paymentId,
+        },
+      })
+      .eq('gateway_order_id', orderId);
+  } catch {
+    // ignore
+  }
 
   // Idempotency: already processed
   if (transaction.status === 'SUCCESS' && transaction.gateway_payment_id === paymentId) {
@@ -232,6 +284,26 @@ async function handlePaymentFailed(payload: any, supabase: any) {
   const paymentId = payment.id;
   const failureReason = payment.error_description || payment.error_code || 'Payment failed';
 
+  const now = new Date().toISOString();
+
+  // Update payment_intents (best-effort)
+  try {
+    await supabase
+      .from('payment_intents')
+      .update({
+        status: 'FAILED',
+        updated_at: now,
+        metadata: {
+          last_event: 'payment_failed',
+          gateway_payment_id: paymentId,
+          failure_reason: failureReason,
+        },
+      })
+      .eq('gateway_order_id', orderId);
+  } catch {
+    // ignore
+  }
+
   // Find transaction
   const { data: transaction } = await supabase
     .from('payment_transactions')
@@ -246,10 +318,10 @@ async function handlePaymentFailed(payload: any, supabase: any) {
         gateway_payment_id: paymentId,
         status: 'FAILED',
         failure_reason: failureReason,
-        failed_at: new Date().toISOString(),
-        webhook_received_at: new Date().toISOString(),
+        failed_at: now,
+        webhook_received_at: now,
         webhook_data: payload,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq('id', transaction.id);
 

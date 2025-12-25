@@ -3,27 +3,32 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Bot } from 'lucide-react';
+import { createChatPaymentOrder, initializeRazorpayCheckout, loadRazorpayScript } from '@/lib/services/paymentService';
 
 type ChatRole = 'user' | 'assistant';
+type UiSuggestion = {
+  optionNumber?: number;
+  kind: 'SERVICE_TYPE' | 'PACKAGE' | 'RSA';
+  id: string;
+  name: string;
+  exactPrice?: number | null;
+  checklistItems?: string[];
+  checklistNote?: string | null;
+};
+type UiPayload =
+  | { kind: 'CATEGORY_CAROUSEL'; title?: string; items: Array<{ id: string; label: string; subtitle?: string }> }
+  | { kind: 'DUAL_CAROUSEL'; title?: string; category: string; packages: UiSuggestion[]; services: UiSuggestion[] };
 type ChatMsg = {
   id: string;
   role: ChatRole;
   text: string;
-  suggestions?: Array<{ 
-    label: string; 
-    optionIndex: number; 
-    bookable: boolean;
-    type?: 'CAR_MODEL' | 'SERVICE' | 'PAYMENT' | 'GENERIC' | 'MORE';
-    price?: string;
-    category?: string;
-    hasDetails?: boolean;
-    checklistItems?: string[];
-    checklistNote?: string | null;
-  }>;
+  suggestions?: UiSuggestion[];
+  ui?: UiPayload;
 };
 
 const STORAGE_KEY = 'myfng_ai_chat_state_v1';
 const CHANNEL_NAME = 'myfng_ai_chat_channel_v1';
+const REQUEST_TIMEOUT_MS = 45000;
 
 function safeParseJson<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -38,132 +43,25 @@ export default function AIBookingPage() {
   const [chatDraft, setChatDraft] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatConnected, setChatConnected] = useState(false);
-  const [selectedMake, setSelectedMake] = useState<string | null>(null);
-  const [makeChips, setMakeChips] = useState<string[]>([]);
-  const [modelChips, setModelChips] = useState<Array<{ id: string; make: string; model: string; variant?: string | null }>>([]);
-  const [chipsLoading, setChipsLoading] = useState(false);
-  const [quickChips, setQuickChips] = useState<Array<{ label: string; send: string }>>([]);
-  const [planChips, setPlanChips] = useState<Array<{ label: string; send: string }>>([]);
+  const [razorpayReady, setRazorpayReady] = useState(false);
+  const [payLoading, setPayLoading] = useState(false);
+  const [suggestionModal, setSuggestionModal] = useState<UiSuggestion | null>(null);
 
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
     {
       id: 'm0',
       role: 'assistant',
-      text: "Hi! I'm MY FNG AI Assistant. Aap apni car problem simple words me batao — main service/RSA suggest kar dunga aur approx price range dikhा dunga. Aapko kis type ka issue aa raha hai?",
+      text: "Hi! I'm MY FNG AI Assistant.\nMY FNG Mumbai, Thane, Navi Mumbai & Palghar me 50+ A-grade workshops ke saath car service karata hai.\nAap regular service / repair issue / cleaning me se kya chahte ho?\nNote: Exact pricing & workshop address service expert callback pe confirm karega.",
     },
   ]);
 
-  const [chatContext, setChatContext] = useState<any>({});
+  // Use full booking workflow (exact pricing + lead creation + paynow button),
+  // while keeping doc-mode available for other channels if enabled.
+  const [chatContext, setChatContext] = useState<any>({ docMode: false });
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
-  const chipsAbortRef = useRef<AbortController | null>(null);
-  const chipsDebounceRef = useRef<any>(null);
+  const lastAppliedSyncAtRef = useRef<number>(0);
 
   const stageNow: string = chatContext?.conversationStage || 'INITIAL';
-
-  // Static chips per stage (always visible even if user doesn't type)
-  useEffect(() => {
-    const base: Array<{ label: string; send: string }> = [];
-    if (stageNow === 'INITIAL') {
-      base.push(
-        { label: 'Car Service', send: 'service' },
-        { label: 'RSA (Roadside)', send: 'rsa' },
-        { label: 'Price Enquiry', send: 'price' },
-        { label: 'Nearest Workshop', send: 'near workshop' },
-        { label: 'Track Booking', send: 'status' }
-      );
-    } else if (stageNow === 'NEED_PHONE') {
-      base.push(
-        { label: 'Why mobile number?', send: 'why need mobile number' },
-        { label: 'Skip', send: 'skip' }
-      );
-    } else if (stageNow === 'NEED_ISSUE') {
-      base.push(
-        { label: 'PERIODIC SERVICE', send: 'PERIODIC SERVICE' },
-        { label: 'AC SERVICE', send: 'AC SERVICE' },
-        { label: 'BATTERY SERVICE', send: 'BATTERY SERVICE' },
-        { label: 'BRAKE SERVICE', send: 'BRAKE SERVICE' },
-        { label: 'CLUTCH SERVICE', send: 'CLUTCH SERVICE' },
-        { label: 'DENTING PAINTING', send: 'DENTING PAINTING' },
-        { label: 'TYRE & WHEEL CARE', send: 'TYRE & WHEEL CARE' },
-        { label: 'DETAILING SERVICE', send: 'DETAILING SERVICE' }
-      );
-    } else if (stageNow === 'NEED_VEHICLE_NUMBER') {
-      base.push(
-        { label: 'Example: MH12AB1234', send: 'MH12AB1234' }
-      );
-    } else if (stageNow === 'NEED_PICKUP_PREF') {
-      base.push(
-        { label: 'Pickup Required', send: 'pickup' },
-        { label: 'Self Visit', send: 'self' }
-      );
-    } else if (stageNow === 'NEED_PAYMENT') {
-      base.push(
-        { label: 'UPI', send: 'UPI' },
-        { label: 'Card', send: 'CARD' },
-        { label: 'Cash', send: 'CASH' },
-        { label: 'Pay Later', send: 'PAY_LATER' }
-      );
-    }
-
-    const q = (chatDraft || '').toLowerCase().trim();
-    const filtered = q ? base.filter((c) => c.label.toLowerCase().includes(q) || c.send.toLowerCase().includes(q)) : base;
-    setQuickChips(filtered);
-    // When user types, we don't clear planChips; they are filtered separately below.
-  }, [stageNow, chatDraft]);
-
-  // Live chips suggestions for car model flow (Make -> Model)
-  useEffect(() => {
-    // Reset chips if we are not in car model stage or model already selected
-    if (stageNow !== 'NEED_CAR_MODEL' || chatContext?.modelId) {
-      setMakeChips([]);
-      setModelChips([]);
-      setSelectedMake(null);
-      setChipsLoading(false);
-      return;
-    }
-
-    // cancel any in-flight request
-    chipsAbortRef.current?.abort();
-    const ac = new AbortController();
-    chipsAbortRef.current = ac;
-
-    if (chipsDebounceRef.current) clearTimeout(chipsDebounceRef.current);
-    chipsDebounceRef.current = setTimeout(async () => {
-      try {
-        setChipsLoading(true);
-        const q = (chatDraft || '').trim();
-
-        if (!selectedMake) {
-          // Make suggestions (endpoint returns popular makes even when q is empty/short)
-          const res = await fetch(`/api/car-models/search?mode=make&q=${encodeURIComponent(q)}`, { signal: ac.signal });
-          const data: any = await res.json().catch(() => null);
-          const makes = Array.isArray(data?.makes) ? data.makes : [];
-          setMakeChips(makes);
-          setModelChips([]);
-        } else {
-          // Model suggestions scoped by make
-          const query = q ? `${selectedMake} ${q}` : selectedMake;
-          const res = await fetch(`/api/car-models/search?q=${encodeURIComponent(query)}`, { signal: ac.signal });
-          const data: any = await res.json().catch(() => null);
-          const models = Array.isArray(data?.models) ? data.models : [];
-          setModelChips(models);
-          setMakeChips([]);
-        }
-      } catch (e: any) {
-        if (e?.name !== 'AbortError') {
-          setMakeChips([]);
-          setModelChips([]);
-        }
-      } finally {
-        setChipsLoading(false);
-      }
-    }, 250);
-
-    return () => {
-      ac.abort();
-      if (chipsDebounceRef.current) clearTimeout(chipsDebounceRef.current);
-    };
-  }, [stageNow, chatContext?.modelId, chatDraft, selectedMake]);
 
   const channel = useMemo(() => {
     if (typeof window === 'undefined') return null;
@@ -178,8 +76,15 @@ export default function AIBookingPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const saved = safeParseJson<any>(window.localStorage.getItem(STORAGE_KEY));
+    const incomingAt = typeof saved?.updatedAt === 'number' ? saved.updatedAt : 0;
+    if (incomingAt) lastAppliedSyncAtRef.current = incomingAt;
     if (saved?.chatMessages?.length) setChatMessages(saved.chatMessages);
-    if (saved?.chatContext) setChatContext(saved.chatContext);
+    if (saved?.chatContext) setChatContext({ ...(saved.chatContext || {}), docMode: false });
+  }, []);
+
+  // Load Razorpay checkout script
+  useEffect(() => {
+    loadRazorpayScript().then((ok) => setRazorpayReady(ok));
   }, []);
 
   // Persist + broadcast
@@ -190,6 +95,7 @@ export default function AIBookingPage() {
       chatContext,
       updatedAt: Date.now(),
     };
+    lastAppliedSyncAtRef.current = payload.updatedAt;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     channel?.postMessage({ type: 'SYNC', payload });
   }, [chatMessages, chatContext, channel]);
@@ -201,8 +107,13 @@ export default function AIBookingPage() {
       const msg = ev.data;
       if (msg?.type !== 'SYNC') return;
       const payload = msg.payload;
+      const incomingAt = typeof payload?.updatedAt === 'number' ? payload.updatedAt : 0;
+      // Ignore payloads without monotonic timestamp to prevent accidental overwrites.
+      if (!incomingAt) return;
+      if (incomingAt <= lastAppliedSyncAtRef.current) return;
+      lastAppliedSyncAtRef.current = incomingAt;
       if (payload?.chatMessages?.length) setChatMessages(payload.chatMessages);
-      if (payload?.chatContext) setChatContext(payload.chatContext);
+      if (payload?.chatContext) setChatContext({ ...(payload.chatContext || {}), docMode: false });
     };
     channel.addEventListener('message', handler);
     return () => channel.removeEventListener('message', handler);
@@ -214,8 +125,12 @@ export default function AIBookingPage() {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEY) return;
       const payload = safeParseJson<any>(e.newValue);
+      const incomingAt = typeof payload?.updatedAt === 'number' ? payload.updatedAt : 0;
+      if (!incomingAt) return;
+      if (incomingAt <= lastAppliedSyncAtRef.current) return;
+      lastAppliedSyncAtRef.current = incomingAt;
       if (payload?.chatMessages?.length) setChatMessages(payload.chatMessages);
-      if (payload?.chatContext) setChatContext(payload.chatContext);
+      if (payload?.chatContext) setChatContext({ ...(payload.chatContext || {}), docMode: false });
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -265,94 +180,111 @@ export default function AIBookingPage() {
     };
   }, [chatContext?.addressText, chatContext?.locationLat, chatContext?.locationLng]);
 
-  async function sendChatMessage(rawText: string) {
+  async function sendChatMessage(rawText: string, displayText?: string) {
     const text = (rawText || '').trim();
+    const shown = (displayText || rawText || '').trim();
     if (!text || chatLoading) return;
 
     const userId = `u_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    setChatMessages((prev) => [...prev, { id: userId, role: 'user', text }]);
+    setChatMessages((prev) => [...prev, { id: userId, role: 'user', text: shown }]);
     setChatDraft('');
     setChatLoading(true);
 
     const nextContext = { ...(chatContext || {}) };
 
     try {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       const res = await fetch('/api/chatbot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, context: nextContext }),
+        signal: controller.signal,
       });
+      clearTimeout(t);
 
       const data: any = await res.json().catch(() => null);
       if (res.ok && data?.conversationId) setChatConnected(true);
 
-      const assistantText = data?.assistantMessage || 'Sorry, kuch issue aa gaya. Please try again.';
+      const assistantText =
+        (typeof data?.assistantMessage === 'string' && data.assistantMessage.trim()) ||
+        (typeof data?.error === 'string' && data.error.trim()) ||
+        'Sorry, kuch issue aa gaya. Please try again.';
 
-      const suggestions = Array.isArray(data?.suggestions) ? data.suggestions : [];
+      const uiSuggestions: UiSuggestion[] | undefined = Array.isArray(data?.suggestions)
+        ? data.suggestions
+            .map((s: any, idx: number) => ({
+              optionNumber: idx + 1,
+              kind: String(s?.suggestion?.kind || 'SERVICE_TYPE').toUpperCase(),
+              id: String(s?.suggestion?.id || ''),
+              name: String(s?.suggestion?.name || '').trim(),
+              exactPrice:
+                typeof s?.exactPrice?.amount === 'number'
+                  ? s.exactPrice.amount
+                  : typeof s?.exactPrice === 'number'
+                    ? s.exactPrice
+                    : null,
+              checklistItems: Array.isArray(s?.checklistItems) ? s.checklistItems.map((x: any) => String(x)) : undefined,
+              checklistNote: typeof s?.checklistNote === 'string' ? s.checklistNote : null,
+            }))
+            .filter((x: UiSuggestion) => Boolean(x.name) && Boolean(x.id))
+        : undefined;
+
+      const uiPayload: UiPayload | undefined = (() => {
+        const ui = data?.ui;
+        if (!ui || typeof ui !== 'object') return undefined;
+        if (ui.kind === 'CATEGORY_CAROUSEL' && Array.isArray(ui.items)) {
+          return {
+            kind: 'CATEGORY_CAROUSEL',
+            title: typeof ui.title === 'string' ? ui.title : undefined,
+            items: ui.items
+              .map((it: any) => ({
+                id: String(it?.id || ''),
+                label: String(it?.label || '').trim(),
+                subtitle: typeof it?.subtitle === 'string' ? it.subtitle : undefined,
+              }))
+              .filter((it: any) => it.id && it.label),
+          };
+        }
+        if (ui.kind === 'DUAL_CAROUSEL' && Array.isArray(ui.packages) && Array.isArray(ui.services)) {
+          const mapOpt = (o: any, optionNumber?: number): UiSuggestion | null => {
+            const s = o?.suggestion;
+            const kind = String(s?.kind || '').toUpperCase();
+            const id = String(s?.id || '');
+            const name = String(s?.name || '').trim();
+            if (!id || !name || !kind) return null;
+            return {
+              optionNumber,
+              kind: kind as any,
+              id,
+              name,
+              exactPrice: typeof o?.exactPrice?.amount === 'number' ? o.exactPrice.amount : null,
+              checklistItems: Array.isArray(o?.checklistItems) ? o.checklistItems.map((x: any) => String(x)) : undefined,
+              checklistNote: typeof o?.checklistNote === 'string' ? o.checklistNote : null,
+            };
+          };
+          const pkg = ui.packages.map((o: any, i: number) => mapOpt(o, i + 1)).filter(Boolean) as UiSuggestion[];
+          const svc = ui.services
+            .map((o: any, i: number) => mapOpt(o, pkg.length + i + 1))
+            .filter(Boolean) as UiSuggestion[];
+          return {
+            kind: 'DUAL_CAROUSEL',
+            title: typeof ui.title === 'string' ? ui.title : undefined,
+            category: String(ui.category || '').trim(),
+            packages: pkg,
+            services: svc,
+          };
+        }
+        return undefined;
+      })();
+
       const carModels = data?.contextPatch?.carModelSuggestions || [];
       const stage = data?.contextPatch?.conversationStage || '';
 
-      console.log('[AI-BOOKING DEBUG]', { stage, carModels, suggestions });
-
-      let suggestionButtons: any[] | undefined = undefined;
-
-      // Service Plans with "See Details"
-      if (suggestions.length > 0 && stage === 'NEED_ISSUE') {
-        // Also build plan chips above input (Option 1/2/3...)
-        const q = (chatDraft || '').toLowerCase().trim();
-        const chips = suggestions.slice(0, 8).map((s: any, idx: number) => {
-          const name = s?.suggestion?.name || `Option ${idx + 1}`;
-          return { label: `${idx + 1}. ${name}`, send: `Option ${idx + 1}` };
-        });
-        setPlanChips(q ? chips.filter((c: { label: string; send: string }) => c.label.toLowerCase().includes(q)) : chips);
-
-        suggestionButtons = suggestions.slice(0, 6).map((s: any, idx: number) => {
-          const name = s?.suggestion?.name || `Option ${idx + 1}`;
-          const range = s?.priceRange?.label || '';
-          const hasDetails = (s?.checklistItems && s.checklistItems.length > 0) || s?.checklistNote;
-          return {
-            label: `${idx + 1}. ${name}`,
-            price: range,
-            optionIndex: idx,
-            bookable: false,
-            type: 'SERVICE',
-            hasDetails,
-            checklistItems: s?.checklistItems || [],
-            checklistNote: s?.checklistNote || null,
-            category: s?.category || null,
-          };
-        });
-      }
-      // Payment Options
-      else if (stage === 'NEED_PAYMENT') {
-        suggestionButtons = [
-          { label: '1. UPI/Online Payment', optionIndex: 0, bookable: false, type: 'PAYMENT' },
-          { label: '2. Credit/Debit Card', optionIndex: 1, bookable: false, type: 'PAYMENT' },
-          { label: '3. Cash on Service', optionIndex: 2, bookable: false, type: 'PAYMENT' },
-          { label: '4. Pay Later at Workshop', optionIndex: 3, bookable: false, type: 'PAYMENT' },
-        ];
-      }
-      // Generic (fallback)
-      else if (suggestions.length > 0) {
-        suggestionButtons = suggestions.slice(0, 6).map((s: any, idx: number) => {
-          const name = s?.suggestion?.name || `Option ${idx + 1}`;
-          const range = s?.priceRange?.label ? ` ${s.priceRange.label}` : '';
-          return {
-            label: `Option ${idx + 1}: ${name}${range ? ` (${range})` : ''}`,
-            optionIndex: idx,
-            bookable: true,
-            type: 'GENERIC',
-          };
-        });
-      }
-
-      const extendedButtons =
-        suggestionButtons && suggestions.length > 6 && stage === 'NEED_ISSUE'
-          ? [...suggestionButtons, { label: 'Show more plans', optionIndex: -1, bookable: false, type: 'MORE' }]
-          : suggestionButtons;
+      console.log('[AI-BOOKING DEBUG]', { stage, carModels });
 
       const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: assistantText, suggestions: extendedButtons }]);
+      setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: assistantText, suggestions: uiSuggestions, ui: uiPayload }]);
 
       if (data?.contextPatch) {
         setChatContext((prev: any) => ({ ...(prev || {}), ...(nextContext || {}), ...(data.contextPatch || {}) }));
@@ -361,27 +293,137 @@ export default function AIBookingPage() {
       }
 
       // If backend returned model suggestions (user typed a make like "tata"), treat make as selected
-      if (stage === 'NEED_CAR_MODEL' && Array.isArray(carModels) && carModels.length > 0) {
-        const uniqMakes = Array.from(new Set(carModels.map((c: any) => c?.make).filter(Boolean)));
-        if (uniqMakes.length === 1) setSelectedMake(String(uniqMakes[0]));
-        setModelChips(carModels);
-        setMakeChips([]);
-      }
-      if (stage !== 'NEED_CAR_MODEL') {
-        setMakeChips([]);
-        setModelChips([]);
-        setSelectedMake(null);
-      }
-      if (stage !== 'NEED_ISSUE') {
-        setPlanChips([]);
-      }
-    } catch {
+      // Pure chat mode: no UI suggestions
+    } catch (e: any) {
       setChatConnected(false);
       const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: 'Network issue. Please try again.' }]);
+      const msg =
+        e?.name === 'AbortError'
+          ? 'Response timeout. Please try again.'
+          : 'Network issue. Please try again.';
+      setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: msg }]);
       setChatContext(nextContext);
     } finally {
       setChatLoading(false);
+    }
+  }
+
+  async function payNow(paymentType: 'BOOKING_TOKEN' | 'ADVANCE' | 'INVOICE') {
+    if (payLoading) return;
+    if (!razorpayReady) {
+      const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: 'Payment gateway is loading. Please try again in a moment.' }]);
+      return;
+    }
+
+    const leadId = chatContext?.leadId || null;
+    const invoiceId = chatContext?.invoiceId || null;
+
+    if (!leadId) {
+      const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: 'Payment link/tab open karne se pehle booking create karni hogi. Please continue chat to create lead.' }]);
+      return;
+    }
+
+    let amountOverride: number | null = null;
+    if (paymentType === 'ADVANCE') {
+      const raw = typeof window !== 'undefined' ? window.prompt('Advance amount (INR)') : null;
+      const n = raw ? Number(String(raw).replace(/[^\d.]/g, '')) : 0;
+      if (!Number.isFinite(n) || n <= 0) return;
+      amountOverride = n;
+    }
+
+    // Allow full payment even if invoiceId is not present yet.
+    // Server will create/fetch invoice when creating the payment order.
+
+    setPayLoading(true);
+    try {
+      const resp = await createChatPaymentOrder({ leadId, invoiceId, paymentType, amountOverride });
+      if (!resp) {
+        const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: 'Payment order create nahi ho paaya. Please try again.' }]);
+        return;
+      }
+      if ((resp as any).success === false) {
+        const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const msg = typeof (resp as any)?.error === 'string' ? `Payment setup failed: ${(resp as any).error}` : 'Payment order create nahi ho paaya. Please try again.';
+        setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: msg }]);
+        return;
+      }
+      if (!(resp as any)?.order?.orderId) {
+        const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: 'Payment order create nahi ho paaya. Please try again.' }]);
+        return;
+      }
+
+      const ok = resp as any;
+
+      // Keep invoice context (useful for later invoice pay button)
+      if (ok.payment_intent?.invoice_id) {
+        setChatContext((prev: any) => ({
+          ...(prev || {}),
+          leadId,
+          invoiceId: ok.payment_intent.invoice_id,
+          invoiceNumber: ok.payment_intent.invoice_number,
+        }));
+      }
+
+      const customerName = ok.customer?.name || 'Customer';
+      const customerEmail = ok.customer?.email || '';
+      const customerPhone = ok.customer?.phone || '';
+
+      initializeRazorpayCheckout(
+        ok.order,
+        customerName,
+        customerEmail,
+        customerPhone,
+        async (rzpResp: any) => {
+          // Verify on server quickly (webhook will also update eventually)
+          try {
+            const invId = ok.payment_intent?.invoice_id || invoiceId;
+            if (invId) {
+              await fetch('/api/payments/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  orderId: rzpResp.razorpay_order_id,
+                  paymentId: rzpResp.razorpay_payment_id,
+                  signature: rzpResp.razorpay_signature,
+                  invoiceId: invId,
+                }),
+              });
+            }
+          } catch {
+            // ignore
+          }
+
+          const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+          setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: 'Payment successful. Thank you!\nOur service expert will call you shortly to confirm pickup & plan.' }]);
+          setPayLoading(false);
+        },
+        (err: any) => {
+          const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+          const rawMsg = String(err?.message || err?.description || err?.error?.description || '').toLowerCase();
+          const isUserCancelled =
+            rawMsg.includes('cancel') ||
+            rawMsg.includes('dismiss') ||
+            rawMsg.includes('closed') ||
+            rawMsg.includes('user') ||
+            err?.code === 'PAYMENT_CANCELLED';
+
+          const text = isUserCancelled
+            ? 'Payment cancelled. Koi baat nahi — aap Pay Booking Token / Pay Full Amount se dubara try kar sakte ho, ya “Pay Later” choose kar sakte ho.'
+            : err?.message
+              ? `Payment failed: ${err.message}`
+              : 'Payment failed. Please try again.';
+
+          setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text }]);
+          setPayLoading(false);
+        }
+      );
+    } finally {
+      // If user closes the modal, onFailure handler will reset; this is just a safety net.
+      setTimeout(() => setPayLoading(false), 5000);
     }
   }
 
@@ -407,6 +449,67 @@ export default function AIBookingPage() {
       </header>
 
       <main className="mx-auto max-w-4xl px-4 py-6">
+        {suggestionModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+              <div className="p-4 border-b flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  {typeof suggestionModal.optionNumber === 'number' && (
+                    <div className="text-xs text-gray-500">Option {suggestionModal.optionNumber}</div>
+                  )}
+                  <div className="font-bold text-gray-900 truncate">{suggestionModal.name}</div>
+                  {typeof suggestionModal.exactPrice === 'number' && suggestionModal.exactPrice > 0 && (
+                    <div className="text-sm text-green-700 mt-1">
+                      ₹{Math.round(suggestionModal.exactPrice).toLocaleString('en-IN')}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSuggestionModal(null)}
+                  className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-4 max-h-[55vh] overflow-y-auto">
+                {Array.isArray(suggestionModal.checklistItems) && suggestionModal.checklistItems.length > 0 ? (
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900 mb-2">Checkpoints</div>
+                    <ul className="list-disc pl-5 text-sm text-gray-800 space-y-1">
+                      {suggestionModal.checklistItems.map((it, idx) => (
+                        <li key={idx}>{it}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-700">No detailed checklist available for this service.</div>
+                )}
+              </div>
+              <div className="p-4 border-t flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const raw = `__select__ ${suggestionModal.kind} ${suggestionModal.id}`;
+                    const shown = suggestionModal.name;
+                    setSuggestionModal(null);
+                    sendChatMessage(raw, shown);
+                  }}
+                  className="flex-1 px-4 py-2 rounded-lg bg-brand-primary text-white hover:bg-brand-primary-hover text-sm font-semibold"
+                >
+                  Choose this
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSuggestionModal(null)}
+                  className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div ref={chatScrollRef} className="h-[65vh] bg-gray-50 p-4 overflow-y-auto">
             {chatMessages.map((m) => {
@@ -426,111 +529,131 @@ export default function AIBookingPage() {
                           : 'bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-sm text-gray-800'
                       }
                     >
-                      {m.text.split('\n').map((line, idx) => (
-                        <span key={idx}>
-                          {line}
-                          <br />
-                        </span>
-                      ))}
-                    </div>
-
-                    {!isUser && m.suggestions && m.suggestions.length > 0 && (
-                      <div className="mt-2 flex flex-col gap-2">
-                        {m.suggestions.map((s) => {
-                          // Car model suggestions are shown as chips above the input now
-                          if (s.type === 'CAR_MODEL') return null;
-
-                          // Service Plans with "See Details"
-                          if (s.type === 'SERVICE' && s.optionIndex >= 0) {
-                            return (
-                              <div key={`${m.id}_${s.optionIndex}`} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                                <div className="p-3">
-                                  <div className="flex items-start justify-between gap-2 mb-1">
-                                    <span className="font-semibold text-sm text-gray-900">{s.label}</span>
-                                    {s.category && (
-                                      <span className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium whitespace-nowrap">
-                                        {s.category}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {s.price && (
-                                    <p className="text-brand-primary font-bold text-sm mb-2">{s.price}</p>
-                                  )}
-                                  <div className="flex gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => sendChatMessage(`Option ${s.optionIndex + 1}`)}
-                                      className="flex-1 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition"
-                                    >
-                                      Select Plan
-                                    </button>
-                                    {s.hasDetails && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          alert(`What's Included:\n\n${s.checklistNote || s.checklistItems?.join('\n• ') || 'Details coming soon'}`);
-                                        }}
-                                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition whitespace-nowrap"
-                                      >
-                                        See Details
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          // Payment Options
-                          if (s.type === 'PAYMENT') {
-                            return (
-                              <button
-                                key={`${m.id}_${s.optionIndex}`}
-                                type="button"
-                                onClick={() => sendChatMessage(`Option ${s.optionIndex + 1}`)}
-                                className="w-full text-left bg-white border border-gray-200 hover:border-green-400 hover:bg-green-50 rounded-xl px-3 py-2 text-xs text-gray-700 shadow-sm transition flex items-center gap-2"
-                              >
-                                💳 {s.label}
-                              </button>
-                            );
-                          }
-
-                          // "Show more plans"
-                          if (s.optionIndex === -1) {
-                            return (
-                              <button
-                                key={`${m.id}_more`}
-                                type="button"
-                                onClick={() => sendChatMessage('aur koi plan')}
-                                className="w-full text-center bg-blue-50 border border-blue-200 hover:border-blue-400 rounded-xl px-3 py-2 text-xs text-blue-700 font-semibold shadow-sm transition"
-                              >
-                                {s.label}
-                              </button>
-                            );
-                          }
-
-                          // Generic (fallback)
+                      {m.text.split('\n').map((line, idx) => {
+                        const urlMatch = line.match(/(https?:\/\/[^\s]+)/i);
+                        if (urlMatch?.[1]) {
+                          const url = urlMatch[1];
+                          const before = line.slice(0, urlMatch.index || 0);
+                          const after = line.slice((urlMatch.index || 0) + url.length);
                           return (
-                            <div key={`${m.id}_${s.optionIndex}`} className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => sendChatMessage(`Option ${s.optionIndex + 1}`)}
-                                className="flex-1 text-left bg-white border border-gray-200 hover:border-brand-primary/40 rounded-xl px-3 py-2 text-xs text-gray-700 shadow-sm"
+                            <span key={idx}>
+                              {before}
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={isUser ? 'underline text-white' : 'underline text-brand-primary'}
                               >
-                                {s.label}
-                              </button>
-                              {s.bookable && (
-                                <button
-                                  type="button"
-                                  onClick={() => sendChatMessage(`Yes, book option ${s.optionIndex + 1}`)}
-                                  className="bg-brand-primary hover:bg-brand-primary-hover text-white rounded-xl px-3 py-2 text-xs font-semibold shadow-sm whitespace-nowrap"
-                                >
-                                  Book
-                                </button>
-                              )}
-                            </div>
+                                {url}
+                              </a>
+                              {after}
+                              <br />
+                            </span>
                           );
-                        })}
+                        }
+                        return (
+                          <span key={idx}>
+                            {line}
+                            <br />
+                          </span>
+                        );
+                      })}
+                    </div>
+                    {!isUser && m.ui?.kind === 'CATEGORY_CAROUSEL' && (
+                      <div className="mt-2">
+                        <div className="flex gap-2 overflow-x-auto pb-2">
+                          {m.ui.items.map((it) => (
+                            <button
+                              key={it.id}
+                              type="button"
+                              onClick={() => sendChatMessage(it.id, it.label)}
+                              className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                            >
+                              <div className="font-semibold text-sm text-gray-900">{it.label}</div>
+                              {it.subtitle && <div className="text-xs text-gray-500 mt-1">{it.subtitle}</div>}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!isUser && m.ui?.kind === 'DUAL_CAROUSEL' && (
+                      <div className="mt-2 space-y-3">
+                        {m.ui.packages.length > 0 && (
+                          <div>
+                            <div className="text-xs font-semibold text-gray-600 mb-1">Packages</div>
+                            <div className="flex gap-2 overflow-x-auto pb-2">
+                              {m.ui.packages.map((s) => (
+                                <button
+                                  key={`${s.kind}:${s.id}`}
+                                  type="button"
+                                  onClick={() => setSuggestionModal(s)}
+                                  className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                                >
+                                  {typeof s.optionNumber === 'number' && <div className="text-xs text-gray-500">Option {s.optionNumber}</div>}
+                                  <div className="font-semibold text-sm text-gray-900">{s.name}</div>
+                                  {typeof s.exactPrice === 'number' && s.exactPrice > 0 && (
+                                    <div className="text-sm text-green-700 mt-1">₹{Math.round(s.exactPrice).toLocaleString('en-IN')}</div>
+                                  )}
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {Array.isArray(s.checklistItems) && s.checklistItems.length > 0 ? 'View details' : 'Tap to select'}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {m.ui.services.length > 0 && (
+                          <div>
+                            <div className="text-xs font-semibold text-gray-600 mb-1">Services</div>
+                            <div className="flex gap-2 overflow-x-auto pb-2">
+                              {m.ui.services.map((s) => (
+                                <button
+                                  key={`${s.kind}:${s.id}`}
+                                  type="button"
+                                  onClick={() => setSuggestionModal(s)}
+                                  className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                                >
+                                  {typeof s.optionNumber === 'number' && <div className="text-xs text-gray-500">Option {s.optionNumber}</div>}
+                                  <div className="font-semibold text-sm text-gray-900">{s.name}</div>
+                                  {typeof s.exactPrice === 'number' && s.exactPrice > 0 && (
+                                    <div className="text-sm text-green-700 mt-1">₹{Math.round(s.exactPrice).toLocaleString('en-IN')}</div>
+                                  )}
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {Array.isArray(s.checklistItems) && s.checklistItems.length > 0 ? 'View checkpoints' : 'Tap to select'}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!isUser && !m.ui && Array.isArray(m.suggestions) && m.suggestions.length > 0 && (
+                      <div className="mt-2">
+                        <div className="flex gap-2 overflow-x-auto pb-2">
+                          {m.suggestions.map((s) => (
+                            <button
+                              key={`${s.kind}:${s.id}:${s.optionNumber || 0}`}
+                              type="button"
+                              onClick={() => setSuggestionModal(s)}
+                              className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                            >
+                              {typeof s.optionNumber === 'number' && <div className="text-xs text-gray-500">Option {s.optionNumber}</div>}
+                              <div className="font-semibold text-sm text-gray-900">{s.name}</div>
+                              {typeof s.exactPrice === 'number' && s.exactPrice > 0 && (
+                                <div className="text-sm text-green-700 mt-1">
+                                  ₹{Math.round(s.exactPrice).toLocaleString('en-IN')}
+                                </div>
+                              )}
+                              <div className="text-xs text-gray-500 mt-1">
+                                {Array.isArray(s.checklistItems) && s.checklistItems.length > 0 ? 'View checkpoints' : 'Tap to select'}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -551,148 +674,68 @@ export default function AIBookingPage() {
           </div>
 
           <div className="p-4 border-t border-gray-200 bg-white">
-            {/* Chips (shown above input) */}
-            {(stageNow === 'NEED_CAR_MODEL' || stageNow === 'INITIAL' || stageNow === 'NEED_ISSUE' || stageNow === 'NEED_PHONE' || stageNow === 'NEED_VEHICLE_NUMBER' || stageNow === 'NEED_PICKUP_PREF' || stageNow === 'NEED_PAYMENT') && (
-              <div className="mb-3">
-                {/* INITIAL/ISSUE/PHONE/PICKUP/PAYMENT chips */}
-                {stageNow !== 'NEED_CAR_MODEL' && quickChips.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {quickChips.map((c) => (
-                      <button
-                        key={`${stageNow}_${c.label}`}
-                        type="button"
-                        onClick={() => sendChatMessage(c.send)}
-                        className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-800 hover:border-brand-primary/40 hover:bg-blue-50"
-                      >
-                        {c.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Plan chips (when plans are available in NEED_ISSUE) */}
-                {stageNow === 'NEED_ISSUE' && planChips.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {planChips.map((c) => (
-                      <button
-                        key={`plan_${c.label}`}
-                        type="button"
-                        onClick={() => sendChatMessage(c.send)}
-                        className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800 hover:border-blue-400"
-                      >
-                        {c.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Car model chips */}
-                {stageNow === 'NEED_CAR_MODEL' && !chatContext?.modelId && (
-                  <>
-                {selectedMake && (
-                  <div className="mb-2 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedMake(null);
-                        setModelChips([]);
-                        setMakeChips([]);
-                        setChatDraft('');
-                      }}
-                      className="inline-flex items-center gap-1 rounded-full border border-brand-primary/30 bg-brand-primary/5 px-3 py-1 text-xs font-semibold text-brand-primary hover:bg-brand-primary/10"
-                      title="Change make"
-                    >
-                      {selectedMake} <span className="text-xs">✕</span>
-                    </button>
-                    {chipsLoading && <span className="text-xs text-gray-500">Loading…</span>}
-                  </div>
-                )}
-
-                {!selectedMake && makeChips.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {makeChips.map((mk) => (
-                      <button
-                        key={mk}
-                        type="button"
-                        onClick={() => {
-                          setSelectedMake(mk);
-                          setMakeChips([]);
-                          setChatDraft('');
-                        }}
-                        className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-800 hover:border-brand-primary/40 hover:bg-blue-50"
-                      >
-                        {mk}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {selectedMake && modelChips.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {modelChips.map((car) => {
-                      const label = `${car.model}${car.variant ? ` ${car.variant}` : ''}`.trim();
-                      return (
-                        <button
-                          key={car.id}
-                          type="button"
-                          onClick={() => sendChatMessage(`${selectedMake} ${label}`)}
-                          className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-800 hover:border-brand-primary/40 hover:bg-blue-50"
-                          title={`${selectedMake} ${label}`}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                  </>
-                )}
+            {chatContext?.showPayNow && chatContext?.leadId && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={payLoading || !razorpayReady}
+                  onClick={() => payNow('BOOKING_TOKEN')}
+                  className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 text-sm font-semibold"
+                >
+                  Pay Booking Token{typeof chatContext?.bookingTokenAmount === 'number' ? ` (₹${Math.round(chatContext.bookingTokenAmount).toLocaleString('en-IN')})` : ''}
+                </button>
+                <button
+                  type="button"
+                  disabled={payLoading || !razorpayReady}
+                  onClick={() => payNow('INVOICE')}
+                  className="px-4 py-2 rounded-lg bg-brand-primary text-white hover:bg-brand-primary-hover disabled:opacity-60 text-sm font-semibold"
+                >
+                  Pay Full Amount
+                </button>
+                <button
+                  type="button"
+                  disabled={payLoading}
+                  onClick={() => setChatContext((prev: any) => ({ ...(prev || {}), showPayNow: false }))}
+                  className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-60 text-sm"
+                >
+                  Not now
+                </button>
               </div>
             )}
-
-            <div className="flex gap-2">
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                sendChatMessage(chatDraft);
+              }}
+            >
               <input
                 type="text"
                 value={chatDraft}
                 onChange={(e) => setChatDraft(e.target.value)}
                 placeholder={
-                  stageNow === 'NEED_CAR_MODEL'
-                    ? selectedMake
-                      ? 'Type car model (e.g. Tigor)'
-                      : 'Type car make (e.g. Tata)'
-                    : stageNow === 'INITIAL'
-                      ? 'Select a chip or type...'
+                  stageNow === 'INITIAL'
+                      ? 'Type your message...'
                     : 'Type your message...'
                 }
                 className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-brand-primary"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    const composed =
-                      stageNow === 'NEED_CAR_MODEL' && selectedMake
-                        ? `${selectedMake} ${(chatDraft || '').trim()}`.trim()
-                        : chatDraft;
-                    sendChatMessage(composed);
+                    sendChatMessage(chatDraft);
                   }
                 }}
               />
               <button
-                type="button"
-                onClick={() => {
-                  const composed =
-                    stageNow === 'NEED_CAR_MODEL' && selectedMake
-                      ? `${selectedMake} ${(chatDraft || '').trim()}`.trim()
-                      : chatDraft;
-                  sendChatMessage(composed);
-                }}
+                type="submit"
                 disabled={chatLoading}
                 className="bg-brand-primary text-white p-2 rounded-full hover:bg-brand-primary-hover flex-shrink-0 disabled:opacity-60"
               >
                 <ArrowRight className="w-4 h-4" />
               </button>
-            </div>
+            </form>
             <div className="mt-2 text-xs text-gray-500">
-              Tip: “near workshop”, “price”, “denting”, “ac issue”, or “Yes, book option 1”.
+              Tip: Describe your issue in simple words (e.g. “AC cooling kam”, “puncture”, “price”, “warranty”).
             </div>
           </div>
         </div>

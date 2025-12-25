@@ -5,6 +5,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 
 // Ensure short_urls table exists (will be created by migration)
 // This is a fallback check
@@ -47,12 +48,22 @@ export async function createShortUrl(
 ): Promise<{ shortUrl: string; shortCode: string }> {
   try {
     const supabase = await createClient();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const serviceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY ||
+      process.env.SUPABASE_ADMIN_KEY;
+    const admin =
+      supabaseUrl && serviceRoleKey
+        ? createSupabaseAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+        : null;
+    const db = admin || supabase;
     
     // Generate short code
     const shortCode = generateShortCode(entityId);
     
     // Check if short code already exists
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from('short_urls')
       .select('*')
       .eq('short_code', shortCode)
@@ -73,7 +84,7 @@ export async function createShortUrl(
     }
     
     // Create short URL record
-    const { data: shortUrl, error } = await supabase
+    const { data: shortUrl, error } = await db
       .from('short_urls')
       .insert({
         short_code: finalShortCode,
@@ -87,7 +98,7 @@ export async function createShortUrl(
     
     if (error) {
       // If insert fails, try to get existing
-      const { data: existingUrl } = await supabase
+      const { data: existingUrl } = await db
         .from('short_urls')
         .select('*')
         .eq('entity_id', entityId)
@@ -124,8 +135,18 @@ export async function createShortUrl(
 export async function getLongUrl(shortCode: string): Promise<string | null> {
   try {
     const supabase = await createClient();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const serviceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY ||
+      process.env.SUPABASE_ADMIN_KEY;
+    const admin =
+      supabaseUrl && serviceRoleKey
+        ? createSupabaseAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+        : null;
+    const db = admin || supabase;
     
-    const { data: shortUrl, error } = await supabase
+    const { data: shortUrl, error } = await db
       .from('short_urls')
       .select('long_url, clicks')
       .eq('short_code', shortCode)
@@ -136,7 +157,7 @@ export async function getLongUrl(shortCode: string): Promise<string | null> {
     }
     
     // Increment click count
-    await supabase
+    await db
       .from('short_urls')
       .update({
         clicks: (shortUrl.clicks || 0) + 1,

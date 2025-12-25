@@ -18,7 +18,31 @@ const RULES: Rule[] = [
   {
     id: 'rsa-breakdown',
     intents: ['RSA'],
-    keywords: ['rsa', 'roadside', 'breakdown', 'stuck', 'stranded', 'towing', 'tow', 'jump start', 'jumpstart'],
+    keywords: [
+      'rsa',
+      'roadside',
+      'breakdown',
+      'stuck',
+      'stranded',
+      'towing',
+      'tow',
+      'jump start',
+      'jumpstart',
+      // Hinglish
+      'start nahi',
+      'start nhi',
+      'nahi start',
+      'nhi start',
+      'car start',
+      'gadi start',
+      'gaadi start',
+      // Hindi/Hinglish
+      'car band',
+      'gaadi band',
+      'gadi band',
+      'band ho',
+      'band hai',
+    ],
     serviceTypeNameHints: ['rsa', 'roadside', 'towing', 'tow', 'jump start', 'jumpstart'],
     why: 'Aapki car road par stuck / start nahi ho rahi lag rahi hai, is case me on-road help (towing/jumpstart) best hota hai.',
     kind: 'RSA',
@@ -35,7 +59,34 @@ const RULES: Rule[] = [
   {
     id: 'battery',
     intents: ['SERVICE_BOOKING', 'PRICE_ENQUIRY', 'RSA'],
-    keywords: ['battery', 'self', 'jump', 'not starting', "won't start", 'clicking'],
+    keywords: [
+      'battery',
+      'battry',
+      'jump',
+      'jumpstart',
+      'jump start',
+      'not starting',
+      "won't start",
+      'wont start',
+      'clicking',
+      // Hinglish
+      'start nahi',
+      'start nhi',
+      'nahi start',
+      'nhi start',
+      'start nahi ho rha',
+      'start nahi ho raha',
+      'start nahi ho rahi',
+      'self nahi',
+      'crank nahi',
+      'starter',
+      // Hindi/Hinglish
+      'car band',
+      'gaadi band',
+      'gadi band',
+      'band ho',
+      'band hai',
+    ],
     serviceTypeNameHints: ['battery', 'jump'],
     why: 'Not-starting/clicking sound aksar weak battery ya charging issue ki wajah se hota hai.',
     kind: 'SERVICE_TYPE',
@@ -197,7 +248,13 @@ function inferForcedCategory(message: string, context?: ChatbotContext): string 
 
   if (/(periodic|general service|maintenance|basic service|service due)/i.test(message)) return 'PERIODIC SERVICE';
   if (/(ac|air ?con|air ?condition|cooling|gas top|compressor)/i.test(message)) return 'AC SERVICE';
-  if (/(battery|jump ?start|jumpstart|not starting|won't start|clicking)/i.test(message)) return 'BATTERY SERVICE';
+  if (
+    /(battery|battry|jump ?start|jumpstart|not starting|won't start|wont start|clicking|start\s*nahi|start\s*nhi|nahi\s*start|nhi\s*start|car\s*band|gaadi\s*band|gadi\s*band|band\s*ho|band\s*hai)/i.test(
+      message
+    )
+  ) {
+    return 'BATTERY SERVICE';
+  }
   if (/(brake|abs|pad|disc|braking|squeal)/i.test(message)) return 'BRAKE SERVICE';
   if (/(clutch|gear|gearbox|transmission|hard gear|slipping)/i.test(message)) return 'CLUTCH SERVICE';
   if (/(dent|denting|paint|painting|scratch|bumper|panel|body|coating|antirust|underbody)/i.test(message)) return 'DENTING PAINTING';

@@ -86,6 +86,23 @@ export async function POST(request: Request) {
         const now = new Date().toISOString();
         const transactionId = paymentId;
 
+        // Update payment_intents (best-effort)
+        try {
+          await supabase
+            .from('payment_intents')
+            .update({
+              status: 'SUCCEEDED',
+              updated_at: now,
+              metadata: {
+                last_event: 'verified_client',
+                gateway_payment_id: paymentId,
+              },
+            })
+            .eq('gateway_order_id', orderId);
+        } catch {
+          // ignore
+        }
+
         // Update or create payment transaction
         const { data: existingTransaction } = await supabase
           .from('payment_transactions')

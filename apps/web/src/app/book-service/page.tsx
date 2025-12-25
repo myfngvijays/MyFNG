@@ -1011,7 +1011,7 @@ export default function BookServicePage() {
         vehicle_variant: formData.carModel.variant || null,
         service_type_ids: formData.selectedServices.length > 0 ? formData.selectedServices : null,
         pickup_required: formData.pickupRequired,
-        assigned_workshop_id: formData.pickupRequired ? null : formData.selectedWorkshop?.id || null,
+        workshop_id: formData.pickupRequired ? null : formData.selectedWorkshop?.id || null,
         address: formData.pickupRequired ? completeAddress : (formData.selectedWorkshop?.address || completeAddress),
         customer_address: formData.pickupRequired ? completeAddress : (formData.selectedWorkshop?.address || completeAddress),
         pickup_address: formData.pickupRequired ? completeAddress : null,

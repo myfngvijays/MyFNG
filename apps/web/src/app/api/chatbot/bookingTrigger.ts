@@ -16,6 +16,19 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function normalizeVehicleModel(make: string | null | undefined, model: string | null | undefined) {
+  const m = (model || '').trim();
+  const mk = (make || '').trim();
+  if (!m) return null;
+  if (!mk) return m;
+  const upModel = m.toUpperCase();
+  const upMake = mk.toUpperCase();
+  // If model already includes make prefix (e.g. "MAHINDRA SCORPIO"), strip it.
+  if (upModel === upMake) return mk;
+  if (upModel.startsWith(upMake + ' ')) return m.slice(mk.length + 1).trim() || m;
+  return m;
+}
+
 export class BookingValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -120,8 +133,24 @@ export async function triggerBooking(
 
   const pickupAddress = (ctx.pickupAddress || ctx.addressText || '').trim() || null;
 
+  // If chosenSuggestion.name is a placeholder ("Selected Service"), fetch a proper label from DB.
+  let serviceTypeLabel = (input.chosenSuggestion?.name || '').trim() || 'Service';
+  if (/^selected service$/i.test(serviceTypeLabel) || /^service$/i.test(serviceTypeLabel)) {
+    try {
+      const firstId = serviceTypeIds[0];
+      if (firstId && isUuid(firstId)) {
+        const { data } = await db.from('service_types').select('name').eq('id', firstId).maybeSingle();
+        const nm = (data as any)?.name;
+        if (nm && typeof nm === 'string') serviceTypeLabel = nm;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const payload: any = {
     lead_number: leadNumber,
+    lead_type: input.intent.intent === 'RSA' ? 'RSA' : 'NORMAL',
     created_from: 'CHATBOT',
     status: 'NEW',
 
@@ -134,11 +163,11 @@ export async function triggerBooking(
 
     vehicle_make: ctx.vehicleMake || null,
     model_id: typeof ctx.modelId === 'string' && isUuid(ctx.modelId) ? ctx.modelId : null,
-    vehicle_model: ctx.vehicleModel || null,
+    vehicle_model: normalizeVehicleModel(ctx.vehicleMake || null, ctx.vehicleModel || null),
     vehicle_variant: ctx.vehicleVariant || null,
 
     // Legacy required column in many schemas
-    service_type: input.chosenSuggestion?.name || 'Service',
+    service_type: serviceTypeLabel,
     service_type_ids: serviceTypeIds,
 
     pickup_required: pickupRequired,

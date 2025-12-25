@@ -14,5 +14,11 @@ config.resolver.blockList = exclusionList([
   /.*\/node_modules\/.*\/node_modules\/.*/,
 ]);
 
+// Support `@/..` imports (matches tsconfig `paths`)
+config.resolver.extraNodeModules = {
+  ...(config.resolver.extraNodeModules || {}),
+  '@': path.resolve(projectRoot, 'src'),
+};
+
 module.exports = config;
 
