@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyQCDecision, notifyAccountsTeam } from '@/lib/notifications';
+import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
 
 export const dynamic = 'force-dynamic';
 
@@ -197,7 +198,7 @@ export async function POST(
 
     // Check if audit is required
     let nextStep = 'Job ready for billing/invoice generation';
-    let finalLeadStatus: string = 'READY_FOR_BILLING';
+    let finalLeadStatus: string = 'PAYMENT_AWAITING';
     if (lead.audit_required) {
       await supabase
         .from('service_leads')
@@ -211,26 +212,189 @@ export async function POST(
       finalLeadStatus = 'AUDIT_PENDING';
       nextStep = 'Job sent to auditor for final verification';
     } else {
-      // Move to invoice generation - Update status to READY_FOR_BILLING
+      // NEW FLOW:
+      // QC Approved triggers Order Summary (no GST) generation and moves status to PAYMENT_AWAITING.
+
+      // 1) Ensure shared series suffix is allocated on the lead (OS/CI/TI share same suffix)
+      let seriesYear = (lead as any).invoice_series_year as number | null;
+      let seriesMonth = (lead as any).invoice_series_month as number | null;
+      let seriesSeq = (lead as any).invoice_series_seq as number | null;
+
+      if (!seriesYear || !seriesMonth || !seriesSeq) {
+        const d = new Date();
+        seriesYear = d.getFullYear();
+        seriesMonth = d.getMonth() + 1;
+
+        const { data: seqData, error: seqError } = await supabase.rpc('next_invoice_series_seq', {
+          p_year: seriesYear,
+          p_month: seriesMonth,
+        });
+
+        if (seqError) {
+          return NextResponse.json(
+            { error: 'Failed to allocate invoice series sequence', details: seqError.message },
+            { status: 500 }
+          );
+        }
+
+        seriesSeq = typeof seqData === 'number' ? seqData : parseInt(String(seqData || '0'), 10);
+
+        await supabase
+          .from('service_leads')
+          .update({
+            invoice_series_year: seriesYear,
+            invoice_series_month: seriesMonth,
+            invoice_series_seq: seriesSeq,
+            updated_at: now,
+          })
+          .eq('id', leadId);
+      }
+
+      // 2) Create (or reuse) Order Summary invoice (no GST)
+      const osNumber = generateSeriesDocumentNumber('OS', seriesYear!, seriesMonth!, seriesSeq!);
+
+      const { data: existingOS } = await supabase
+        .from('invoices')
+        .select('id, invoice_number')
+        .eq('lead_id', leadId)
+        .eq('invoice_type', 'ORDER_SUMMARY')
+        .maybeSingle();
+
+      let orderSummaryInvoiceId: string | null = existingOS?.id || null;
+
+      if (!orderSummaryInvoiceId) {
+        // Fetch pricing items + approved extra charges + job card parts (best-effort)
+        const [{ data: pricingItems }, { data: extraCharges }, { data: jobCard }] = await Promise.all([
+          supabase
+            .from('lead_pricing_items')
+            .select('name, final_price, quantity, category')
+            .eq('lead_id', leadId)
+            .eq('status', 'ACTIVE'),
+          supabase
+            .from('lead_extra_charges')
+            .select('description, amount, charge_type')
+            .eq('lead_id', leadId)
+            .eq('status', 'APPROVED'),
+          supabase
+            .from('job_cards')
+            .select('id, jobcard_number, job_card_parts(part_name, part_number, quantity, unit_price, total_price)')
+            .eq('lead_id', leadId)
+            .maybeSingle(),
+        ]);
+
+        const pricingTotal =
+          (pricingItems || []).reduce((sum: number, it: any) => sum + parseFloat(it.final_price || '0'), 0) || 0;
+        const extraTotal =
+          (extraCharges || []).reduce((sum: number, it: any) => sum + parseFloat(it.amount || '0'), 0) || 0;
+        const partsTotal =
+          (jobCard?.job_card_parts || []).reduce((sum: number, p: any) => sum + parseFloat(p.total_price || '0'), 0) || 0;
+        const discountAmount = parseFloat((lead as any).discount_amount || '0') || 0;
+
+        const subTotal = Math.max(0, pricingTotal + extraTotal + partsTotal);
+        const finalAmount = Math.max(0, subTotal - discountAmount);
+
+        const lineItems: any[] = [];
+        (pricingItems || []).forEach((it: any) => {
+          const qty = it.quantity ? parseFloat(String(it.quantity)) : 1;
+          const amt = parseFloat(it.final_price || '0') || 0;
+          lineItems.push({
+            description: it.name || 'Service',
+            qty,
+            rate: qty ? amt / qty : amt,
+            amount: amt,
+            category: it.category || 'SERVICE',
+          });
+        });
+        (jobCard?.job_card_parts || []).forEach((p: any) => {
+          lineItems.push({
+            description: `${p.part_name || 'Part'}${p.part_number ? ` (${p.part_number})` : ''}`,
+            qty: p.quantity || 1,
+            rate: p.unit_price || 0,
+            amount: p.total_price || 0,
+            category: 'PART',
+          });
+        });
+        (extraCharges || []).forEach((c: any) => {
+          lineItems.push({
+            description: c.description || 'Extra Charge',
+            qty: 1,
+            rate: parseFloat(c.amount || '0') || 0,
+            amount: parseFloat(c.amount || '0') || 0,
+            category: c.charge_type || 'EXTRA',
+          });
+        });
+
+        const osInsert: any = {
+          invoice_number: osNumber,
+          lead_id: leadId,
+          workshop_id: lead.workshop_id,
+          base_amount: pricingTotal,
+          parts_cost: partsTotal,
+          extra_charges: extraTotal,
+          labour_cost: 0,
+          sub_total: subTotal,
+          discount_amount: discountAmount,
+          cgst_percentage: 0,
+          cgst_amount: 0,
+          sgst_percentage: 0,
+          sgst_amount: 0,
+          igst_percentage: 0,
+          igst_amount: 0,
+          total_tax: 0,
+          final_amount: finalAmount,
+          amount_in_words: null,
+          status: 'GENERATED',
+          payment_status: 'PENDING',
+          generated_by: userProfile.id,
+          invoice_type: 'ORDER_SUMMARY',
+          series_year: seriesYear,
+          series_month: seriesMonth,
+          series_seq: seriesSeq,
+          visible_to_customer: true,
+          show_gst_breakup: false,
+          line_items: lineItems,
+        };
+
+        const { data: createdOS, error: createOsErr } = await supabase
+          .from('invoices')
+          .insert(osInsert)
+          .select('id')
+          .single();
+
+        if (createOsErr || !createdOS) {
+          return NextResponse.json(
+            { error: 'Failed to create order summary', details: createOsErr?.message },
+            { status: 500 }
+          );
+        }
+        orderSummaryInvoiceId = createdOS.id;
+      }
+
+      // 3) Lock billing edits + move lead to PAYMENT_AWAITING and point lead.invoice_id to OS for quick access
       await supabase
         .from('service_leads')
         .update({
-          status: 'READY_FOR_BILLING',
-          updated_at: now
+          status: 'PAYMENT_AWAITING',
+          billing_locked_at: now,
+          invoice_id: orderSummaryInvoiceId,
+          invoice_number: osNumber,
+          invoice_generated_at: now,
+          invoice_generated_by: userProfile.id,
+          updated_at: now,
         })
         .eq('id', leadId);
-      
-      // Log status change to READY_FOR_BILLING
+
+      // Log status change
       await supabase
         .from('lead_status_history')
         .insert({
           lead_id: leadId,
           old_status: 'QC_APPROVED',
-          new_status: 'READY_FOR_BILLING',
+          new_status: 'PAYMENT_AWAITING',
           changed_by: userProfile.id,
           changed_at: now,
-          reason: 'QC approved - ready for billing/invoice generation',
-          notes: 'Job passed QC and is now ready for billing team to generate invoice'
+          reason: 'QC approved - order summary generated; awaiting payment/confirmation',
+          notes: `Order Summary ${osNumber} generated. Billing locked.`,
         });
     }
 
@@ -271,15 +435,15 @@ export async function POST(
         );
       }
 
-      // Notify accounts team when billing is ready (no audit)
-      if (finalLeadStatus === 'READY_FOR_BILLING') {
+      // Notify accounts team when order summary is ready (no audit)
+      if (finalLeadStatus === 'PAYMENT_AWAITING') {
         await notifyAccountsTeam(
           lead.workshop_id,
           leadId,
           lead.lead_number || leadId,
-          'Ready for Billing',
-          `QC approved for lead ${lead.lead_number || leadId}. Please generate invoice.`,
-          `/dashboard/billing/leads/${leadId}/generate-invoice`,
+          'Order Summary Ready',
+          `QC approved for lead ${lead.lead_number || leadId}. Order Summary generated; proceed with billing finalization.`,
+          `/dashboard/billing/leads/${leadId}`,
           'HIGH'
         );
       }

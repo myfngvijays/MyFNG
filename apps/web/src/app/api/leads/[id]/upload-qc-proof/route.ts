@@ -100,6 +100,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const now = new Date().toISOString();
 
+    // IMPORTANT:
+    // UI expects lead_media.media_type to be 'IMAGE' | 'VIDEO' | 'DOCUMENT' (see MediaSection).
+    // Older code used 'PHOTO' which gets rendered as a video placeholder.
+    const inferredMediaType = (file.type || '').toLowerCase().startsWith('video/') ? 'VIDEO' : 'IMAGE';
+
     // Save record in lead_media (schema-safe: only base + optional fields)
     const payloadBase: any = {
       lead_id: leadId,
@@ -119,7 +124,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     let inserted: any = null;
     let lastError: any = null;
     for (const variant of ['full', 'base'] as const) {
-      const payload = variant === 'full' ? { ...payloadBase, ...optional, media_type: 'PHOTO' } : { ...payloadBase, media_type: 'PHOTO' };
+      const payload =
+        variant === 'full'
+          ? { ...payloadBase, ...optional, media_type: inferredMediaType }
+          : { ...payloadBase, media_type: inferredMediaType };
       const { data, error } = await supabaseAdmin.from('lead_media').insert(payload as any).select().maybeSingle();
       if (!error && data) {
         inserted = data;

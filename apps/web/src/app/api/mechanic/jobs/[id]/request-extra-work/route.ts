@@ -88,6 +88,41 @@ export async function POST(
       return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
     }
 
+    // Lock editing after QC approval / billing lock (NEW FLOW)
+    if (lead.billing_locked_at) {
+      return NextResponse.json(
+        {
+          error: 'Edits are locked after QC approval',
+          hint: 'After QC Approved, mechanic cannot add/edit parts or labour. Ask workshop manager/supervisor.',
+          billing_locked_at: lead.billing_locked_at,
+        },
+        { status: 400 }
+      );
+    }
+
+    const lockedLeadStatuses = [
+      'QC_APPROVED',
+      'READY_FOR_BILLING',
+      'PAYMENT_AWAITING',
+      'INVOICE_GENERATED',
+      'AWAITING_PAYMENT',
+      'PAID',
+      'READY_FOR_DELIVERY',
+      'DELIVERED_TO_CUSTOMER',
+      'DELIVERED',
+      'CLOSED',
+    ];
+    if (lockedLeadStatuses.includes(lead.status)) {
+      return NextResponse.json(
+        {
+          error: 'Job is locked in billing/payment stage',
+          current_status: lead.status,
+          hint: 'Mechanic cannot request extra work after QC/billing stages. Ask workshop manager/supervisor.',
+        },
+        { status: 400 }
+      );
+    }
+
     // Verify lead is assigned to this mechanic
     if (lead.assigned_mechanic_id !== userProfile.id) {
       return NextResponse.json({ error: 'Job not assigned to you' }, { status: 403 });

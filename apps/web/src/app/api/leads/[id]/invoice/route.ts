@@ -84,17 +84,29 @@ export async function POST(
       );
     }
 
-    // Check if invoice already exists
-    const { data: existingInvoice } = await supabase
+    // Check if any invoice already exists for this lead.
+    // NEW FLOW: a lead can have multiple invoices (ORDER_SUMMARY, CUSTOMER_INVOICE, TAX_INVOICE).
+    const { data: existingInvoices } = await supabase
       .from('invoices')
       .select('*')
       .eq('lead_id', leadId)
-      .single();
+      .order('created_at', { ascending: false });
 
-    if (existingInvoice) {
+    if (existingInvoices && existingInvoices.length > 0) {
+      const preferred =
+        existingInvoices.find((i: any) => i.invoice_type === 'TAX_INVOICE') ||
+        existingInvoices.find((i: any) => i.invoice_type === 'CUSTOMER_INVOICE') ||
+        existingInvoices.find((i: any) => i.invoice_type === 'ORDER_SUMMARY') ||
+        existingInvoices[0];
+
       return NextResponse.json(
-        { error: 'Invoice already generated', invoice: existingInvoice },
-        { status: 409 }
+        {
+          success: true,
+          invoice: preferred,
+          invoices: existingInvoices,
+          note: 'Existing invoice(s) found for this lead',
+        },
+        { status: 200 }
       );
     }
 
@@ -256,6 +268,9 @@ export async function POST(
       total_amount: totalAmount,
       payment_status: 'PENDING',
       status: 'GENERATED',
+      invoice_type: 'TAX_INVOICE',
+      visible_to_customer: false,
+      show_gst_breakup: true,
       generated_by: userProfile.id,
     };
 

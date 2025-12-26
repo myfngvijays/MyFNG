@@ -65,7 +65,7 @@ export default function PhotoUploadScreen({
   const initializePhotos = () => {
     const photoTypes: VehiclePhotoType[] = photoCategory === 'PICKUP'
       ? ['PICKUP_FRONT', 'PICKUP_LEFT', 'PICKUP_RIGHT', 'PICKUP_REAR', 'PICKUP_INTERIOR', 'PICKUP_ODOMETER', 'PICKUP_FUEL', 'PICKUP_DAMAGE']
-      : ['DROP_FRONT', 'DROP_LEFT', 'DROP_RIGHT', 'DROP_REAR', 'DROP_INTERIOR', 'DROP_ODOMETER', 'AFTER_WORK'];
+      : ['DROP_FRONT', 'DROP_LEFT', 'DROP_RIGHT', 'DROP_REAR', 'DROP_INTERIOR', 'DROP_ODOMETER', 'AFTER_WORK', 'DELIVERY_SIGNATURE'];
 
     setPhotos(
       photoTypes.map((type) => ({
@@ -235,6 +235,7 @@ export default function PhotoUploadScreen({
       DROP_INTERIOR: 'Interior',
       DROP_ODOMETER: 'Odometer',
       AFTER_WORK: 'After Service',
+      DELIVERY_SIGNATURE: 'Customer Signature (Delivery)',
     };
     return labels[type] || type;
   };
@@ -243,7 +244,7 @@ export default function PhotoUploadScreen({
     if (photoCategory === 'PICKUP') {
       return ['PICKUP_FRONT', 'PICKUP_LEFT', 'PICKUP_RIGHT', 'PICKUP_INTERIOR'].includes(type);
     } else {
-      return ['DROP_FRONT', 'DROP_INTERIOR', 'AFTER_WORK'].includes(type);
+      return ['DROP_FRONT', 'DROP_INTERIOR', 'AFTER_WORK', 'DELIVERY_SIGNATURE'].includes(type);
     }
   };
 

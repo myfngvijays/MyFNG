@@ -16,6 +16,9 @@ import toast from 'react-hot-toast';
 interface Invoice {
   id: string;
   invoice_number: string;
+  invoice_type?: 'ORDER_SUMMARY' | 'CUSTOMER_INVOICE' | 'TAX_INVOICE' | string;
+  show_gst_breakup?: boolean;
+  visible_to_customer?: boolean;
   invoice_date: string;
   created_at?: string;
   final_amount: number;
@@ -65,6 +68,13 @@ export default function CustomerInvoicePage() {
     setError(null);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      // NEW FLOW: Tax Invoice (TI-...) should not be publicly visible without login
+      if (!user && invoiceNumber?.toUpperCase().startsWith('TI-')) {
+        setError('Tax Invoice requires login');
+        return;
+      }
+
       const { data: invoiceData, error: invoiceError } = await supabase
         .from('invoices')
         .select(`
@@ -90,6 +100,12 @@ export default function CustomerInvoicePage() {
 
       if (invoiceError || !invoiceData) {
         setError('Invoice not found');
+        return;
+      }
+
+      // Gate customer visibility for CI when not yet activated/confirmed
+      if (!user && (invoiceData as any).invoice_type === 'CUSTOMER_INVOICE' && (invoiceData as any).visible_to_customer !== true) {
+        setError('Customer Invoice not active yet');
         return;
       }
 
@@ -162,6 +178,13 @@ export default function CustomerInvoicePage() {
   const remainingAmount = invoice.final_amount - (invoice.paid_amount || 0);
   const isPaid = invoice.payment_status === 'PAID';
   const isPartial = invoice.payment_status === 'PARTIAL';
+  const docTitle =
+    invoice.invoice_type === 'ORDER_SUMMARY'
+      ? 'ORDER SUMMARY'
+      : invoice.invoice_type === 'CUSTOMER_INVOICE'
+        ? 'CUSTOMER INVOICE'
+        : 'TAX INVOICE';
+  const showGst = invoice.show_gst_breakup !== false && invoice.invoice_type === 'TAX_INVOICE';
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -170,7 +193,7 @@ export default function CustomerInvoicePage() {
         <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
           <div className="flex justify-between items-start mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">TAX INVOICE</h1>
+              <h1 className="text-3xl font-bold text-gray-800">{docTitle}</h1>
               <p className="text-gray-600 mt-1">Invoice #{invoice.invoice_number}</p>
             </div>
             <div className="text-right">
@@ -239,26 +262,26 @@ export default function CustomerInvoicePage() {
               <span>Subtotal:</span>
               <span>₹{(invoice.base_amount + invoice.extra_charges + invoice.parts_cost - invoice.discount_amount).toFixed(2)}</span>
             </div>
-            {invoice.cgst_amount > 0 && (
+            {showGst && invoice.cgst_amount > 0 && (
               <div className="flex justify-between">
                 <span>CGST (9%):</span>
                 <span>₹{invoice.cgst_amount.toFixed(2)}</span>
               </div>
             )}
-            {invoice.sgst_amount > 0 && (
+            {showGst && invoice.sgst_amount > 0 && (
               <div className="flex justify-between">
                 <span>SGST (9%):</span>
                 <span>₹{invoice.sgst_amount.toFixed(2)}</span>
               </div>
             )}
-            {invoice.igst_amount > 0 && (
+            {showGst && invoice.igst_amount > 0 && (
               <div className="flex justify-between">
                 <span>IGST (18%):</span>
                 <span>₹{invoice.igst_amount.toFixed(2)}</span>
               </div>
             )}
             <div className="border-t pt-2 mt-2 flex justify-between font-bold text-lg">
-              <span>Total Amount:</span>
+              <span>{showGst ? 'Total Amount:' : 'Total to Pay:'}</span>
               <span className="text-green-600">₹{invoice.final_amount.toFixed(2)}</span>
             </div>
             {invoice.amount_in_words && (
@@ -279,33 +302,76 @@ export default function CustomerInvoicePage() {
             <p className="text-green-600">Thank you for your payment!</p>
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-            <h2 className="text-xl font-bold mb-4">Payment</h2>
-            {isPartial && (
-              <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-yellow-800">
-                  Partial payment received: ₹{invoice.paid_amount.toFixed(2)}
+          <>
+            {invoice.invoice_type === 'CUSTOMER_INVOICE' ? (
+              <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
+                <h2 className="text-xl font-bold mb-4">Payment</h2>
+                {isPartial && (
+                  <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-yellow-800">
+                      Partial payment received: ₹{invoice.paid_amount.toFixed(2)}
+                    </p>
+                    <p className="text-yellow-800 font-semibold">
+                      Remaining amount: ₹{remainingAmount.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+                {invoice.lead && (
+                  <RazorpayPaymentButton
+                    invoiceId={invoice.id}
+                    amount={remainingAmount}
+                    customerName={invoice.lead.customer_name}
+                    customerEmail={invoice.lead.customer_email || ''}
+                    customerPhone={invoice.lead.customer_phone || ''}
+                    invoiceNumber={invoice.invoice_number}
+                    onPaymentSuccess={() => {
+                      fetchInvoice();
+                    }}
+                    className="w-full"
+                  />
+                )}
+              </div>
+            ) : invoice.invoice_type === 'ORDER_SUMMARY' ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+                <div className="flex items-center gap-2 text-blue-700 mb-2">
+                  <Clock className="w-5 h-5" />
+                  <span className="font-semibold text-lg">Awaiting Confirmation</span>
+                </div>
+                <p className="text-blue-700">
+                  This is an Order Summary for approval. Please confirm to activate the Customer Invoice for payment.
                 </p>
-                <p className="text-yellow-800 font-semibold">
-                  Remaining amount: ₹{remainingAmount.toFixed(2)}
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/customer/leads/${(invoice as any)?.lead?.id}/confirm-order-summary`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.error || 'Failed to confirm');
+                      toast.success('Order Summary confirmed. Opening Customer Invoice...');
+                      if (data?.customer_invoice?.invoice_number) {
+                        window.location.href = `/invoice/${data.customer_invoice.invoice_number}`;
+                      } else {
+                        fetchInvoice();
+                      }
+                    } catch (e: any) {
+                      toast.error(e?.message || 'Failed to confirm order summary');
+                    }
+                  }}
+                  className="btn-primary mt-4 w-full"
+                >
+                  Confirm Order Summary
+                </button>
+              </div>
+            ) : (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
+                <p className="text-gray-700">
+                  Payment is not available on this document type.
                 </p>
               </div>
             )}
-            {invoice.lead && (
-              <RazorpayPaymentButton
-                invoiceId={invoice.id}
-                amount={remainingAmount}
-                customerName={invoice.lead.customer_name}
-                customerEmail={invoice.lead.customer_email || ''}
-                customerPhone={invoice.lead.customer_phone || ''}
-                invoiceNumber={invoice.invoice_number}
-                onPaymentSuccess={() => {
-                  fetchInvoice();
-                }}
-                className="w-full"
-              />
-            )}
-          </div>
+          </>
         )}
 
         {/* Action Buttons */}

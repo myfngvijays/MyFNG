@@ -50,6 +50,9 @@ export default function SupervisorJobDetailPage() {
   const [showServicePackageModal, setShowServicePackageModal] = useState(false);
   const [internalNotes, setInternalNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [showObservationModal, setShowObservationModal] = useState(false);
+  const [observationText, setObservationText] = useState('');
+  const [savingObservation, setSavingObservation] = useState(false);
   const [enablingPickup, setEnablingPickup] = useState(false);
   const [showAddPickupForm, setShowAddPickupForm] = useState(false);
   const [pickupFormAddress, setPickupFormAddress] = useState('');
@@ -440,6 +443,7 @@ export default function SupervisorJobDetailPage() {
 
       setLead(data);
       setInternalNotes(data.notes_internal || '');
+      setObservationText(String((data as any)?.pickup_observation || ''));
 
       // Fetch parts if mechanic is assigned
       if (mechanicJob?.mechanic_id) {
@@ -502,6 +506,31 @@ export default function SupervisorJobDetailPage() {
       alert('Failed to save notes');
     } finally {
       setSavingNotes(false);
+    }
+  }
+
+  async function savePickupObservation() {
+    const text = (observationText || '').trim();
+    if (!text) {
+      alert('Please enter an observation');
+      return;
+    }
+    try {
+      setSavingObservation(true);
+      const res = await fetch(`/api/pickup/tasks/${jobId}/observation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ observation: text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || (data as any)?.details || 'Failed to save observation');
+      setShowObservationModal(false);
+      fetchJobDetails();
+      alert('Observation saved');
+    } catch (e: any) {
+      alert(`Failed to save observation: ${e?.message || 'Unknown error'}`);
+    } finally {
+      setSavingObservation(false);
     }
   }
 
@@ -985,6 +1014,36 @@ export default function SupervisorJobDetailPage() {
             </button>
           </div>
 
+          {/* Pickup Observation (shared between pickup boy + supervisor) */}
+          <div className="mb-3 p-3 bg-white border border-orange-200 rounded-lg">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-semibold text-gray-800 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-gray-700" />
+                  Pickup Observation
+                </p>
+                <p className="text-xs sm:text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words">
+                  {String((lead as any)?.pickup_observation || '').trim() ? (lead as any).pickup_observation : '—'}
+                </p>
+                {(lead as any)?.pickup_observation_updated_at && (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Last updated: {formatDateTime((lead as any).pickup_observation_updated_at)}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start"
+                onClick={() => {
+                  setObservationText(String((lead as any)?.pickup_observation || ''));
+                  setShowObservationModal(true);
+                }}
+              >
+                Edit
+              </button>
+            </div>
+          </div>
+
           {/* Ask pickup details right here (enable/update) */}
           {showAddPickupForm && (
             <div className="p-3 sm:p-4 bg-white border border-orange-200 rounded-lg mb-3">
@@ -1202,6 +1261,42 @@ export default function SupervisorJobDetailPage() {
           )}
         </div>
         </>
+        )}
+
+        {/* Pickup Observation Modal */}
+        {showObservationModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-gray-800">Pickup Observation</h3>
+              <p className="text-xs sm:text-sm text-gray-600 mb-3">
+                Add/edit observation for this lead. This will be visible to Pickup Boy and Supervisor.
+              </p>
+              <textarea
+                value={observationText}
+                onChange={(e) => setObservationText(e.target.value)}
+                className="input w-full min-h-[140px] text-sm"
+                placeholder="Write observation..."
+              />
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={savePickupObservation}
+                  disabled={savingObservation || !observationText.trim()}
+                  className="btn bg-orange-600 hover:bg-orange-700 text-white flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                >
+                  {savingObservation ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowObservationModal(false)}
+                  disabled={savingObservation}
+                  className="btn btn-outline flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {activeTab === 'service' && (
@@ -1503,6 +1598,7 @@ export default function SupervisorJobDetailPage() {
           'COMPLETED',
           'QC_APPROVED',
           'READY_FOR_BILLING',
+          'PAYMENT_AWAITING',
           'INVOICE_GENERATED',
           'AWAITING_PAYMENT',
           'PARTIAL_PAYMENT',

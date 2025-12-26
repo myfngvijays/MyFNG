@@ -28,12 +28,14 @@ interface MediaSectionProps {
 interface MediaFile {
   id: string;
   file_url: string;
-  media_type: 'IMAGE' | 'VIDEO' | 'DOCUMENT';
+  // NOTE: legacy uploads may store 'PHOTO' etc, so keep this as string and infer via mime_type.
+  media_type: string;
   category: string;
   title?: string;
   description?: string;
   file_name?: string;
   uploaded_by?: string;
+  mime_type?: string | null;
   created_at: string;
   uploader?: { full_name: string };
 }
@@ -305,14 +307,22 @@ export default function MediaSection({
                 {files.map((file) => (
                   <div key={file.id} className="relative group">
                     <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
-                      {file.media_type === 'IMAGE' ? (
+                      {(() => {
+                        const mt = String(file.media_type || '').toUpperCase();
+                        const mime = String(file.mime_type || '').toLowerCase();
+                        const isVideo = mt === 'VIDEO' || mime.startsWith('video/');
+                        const isImage = mt === 'IMAGE' || mt === 'PHOTO' || mime.startsWith('image/');
+                        if (isImage && !isVideo) {
+                          return (
                         <img
                           src={file.file_url}
                           alt={file.description || 'Lead media'}
                           className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition"
                           onClick={() => setPreviewMedia({ url: file.file_url, type: 'IMAGE' })}
                         />
-                      ) : (
+                          );
+                        }
+                        return (
                         <div className="relative w-full h-full">
                         <video
                             src={file.file_url}
@@ -327,7 +337,8 @@ export default function MediaSection({
                             </div>
                           </div>
                         </div>
-                      )}
+                        );
+                      })()}
                     </div>
                     {file.description && (
                       <p className="text-xs text-gray-600 mt-1 truncate">{file.description}</p>

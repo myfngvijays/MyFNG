@@ -293,6 +293,8 @@ export enum VehiclePhotoType {
   DROP_ODOMETER = 'DROP_ODOMETER',         // Odometer at delivery
   // After work photos
   AFTER_WORK = 'AFTER_WORK',               // After service completion
+  // Delivery signature (for home delivery)
+  DELIVERY_SIGNATURE = 'DELIVERY_SIGNATURE', // Customer signature at delivery
 }
 
 // Fuel Level

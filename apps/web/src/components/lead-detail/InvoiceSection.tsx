@@ -8,7 +8,7 @@ import { formatDateDMY, formatDateTime } from "@/lib/utils";
  */
 
 import { useState, useEffect } from 'react';
-import { FileText, Download, Printer, Send, CheckCircle, Clock, RefreshCw } from 'lucide-react';
+import { FileText, Download, Printer, Send, CheckCircle, Clock, RefreshCw, CreditCard, DollarSign } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 interface InvoiceSectionProps {
@@ -19,6 +19,9 @@ interface InvoiceSectionProps {
 interface Invoice {
   id: string;
   invoice_number: string;
+  invoice_type?: 'ORDER_SUMMARY' | 'CUSTOMER_INVOICE' | 'TAX_INVOICE' | string;
+  visible_to_customer?: boolean;
+  show_gst_breakup?: boolean;
   base_amount: number;
   parts_cost?: number;
   parts_amount?: number;
@@ -68,8 +71,14 @@ interface Invoice {
 export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<'CASH' | 'POS' | 'UPI' | 'CARD'>('CASH');
+  const [staffName, setStaffName] = useState('');
+  const [paymentRemarks, setPaymentRemarks] = useState('');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
     fetchInvoice();
@@ -110,63 +119,83 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
   }
 
-  async function generateInvoice() {
-    setGenerating(true);
+  async function finalizeBill() {
+    setFinalizing(true);
     try {
-      // Use the new billing API route
-      const response = await fetch(`/api/billing/leads/${lead.id}/generate-invoice`, {
+      const res = await fetch(`/api/billing/leads/${lead.id}/finalize-bill`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate invoice');
-      }
-
-      const data = await response.json();
-      setInvoice(data.invoice);
-      alert('✅ Invoice generated successfully!');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to finalize bill');
+      alert(`✅ Bill finalized. Customer Invoice: ${data?.invoice?.invoice_number || ''}`);
+      await fetchInvoice();
       onUpdate?.();
-    } catch (error: any) {
-      console.error('Error generating invoice:', error);
-      alert(`Failed to generate invoice: ${error.message}`);
+    } catch (e: any) {
+      alert(`Failed to finalize bill: ${e?.message || 'Unknown error'}`);
     } finally {
-      setGenerating(false);
+      setFinalizing(false);
     }
   }
 
-  async function regenerateInvoice() {
-    if (!confirm('Are you sure you want to regenerate this invoice? This will create a new invoice with updated amounts.')) {
+  async function activateCustomerInvoice() {
+    if (!invoice) return;
+    setActivating(true);
+    try {
+      const res = await fetch(`/api/billing/invoices/${invoice.id}/activate`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to activate invoice');
+      alert('✅ Customer invoice activated for payment');
+      await fetchInvoice();
+      onUpdate?.();
+    } catch (e: any) {
+      alert(`Failed to activate: ${e?.message || 'Unknown error'}`);
+    } finally {
+      setActivating(false);
+    }
+  }
+
+  async function recordOfflinePayment() {
+    if (!invoice) return;
+    const remaining = ((invoice.final_amount || invoice.total_amount) || 0) - (invoice.paid_amount || 0);
+    if (remaining <= 0) {
+      alert('No balance due');
       return;
     }
-
-    setRegenerating(true);
+    if (!staffName.trim()) {
+      alert('Staff name is required');
+      return;
+    }
+    if (!paymentRemarks.trim()) {
+      alert('Payment remarks are required');
+      return;
+    }
+    setPaying(true);
     try {
-      // Use the new billing API route with regenerate parameter
-      const response = await fetch(`/api/billing/leads/${lead.id}/generate-invoice?regenerate=true`, {
+      const res = await fetch(`/api/payments/invoices/${invoice.id}/record-payment`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_mode: paymentMode,
+          paid_amount: remaining,
+          payment_reference: paymentRef || undefined,
+          payment_remarks: paymentRemarks,
+          staff_name: staffName,
+        }),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to regenerate invoice');
-      }
-
-      const data = await response.json();
-      setInvoice(data.invoice);
-      alert('✅ Invoice regenerated successfully!');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to record payment');
+      alert('✅ Payment recorded');
+      setShowPaymentForm(false);
+      setPaymentRef('');
+      setPaymentRemarks('');
+      await fetchInvoice();
       onUpdate?.();
-    } catch (error: any) {
-      console.error('Error regenerating invoice:', error);
-      alert(`Failed to regenerate invoice: ${error.message}`);
+    } catch (e: any) {
+      alert(`Failed to record payment: ${e?.message || 'Unknown error'}`);
     } finally {
-      setRegenerating(false);
+      setPaying(false);
     }
   }
 
@@ -308,8 +337,11 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
   }
 
-  // Allow supervisor/admin to generate invoice once mechanic has submitted work completion as well.
-  const canGenerateInvoice = ['WORK_COMPLETED', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status);
+  const invoiceType = (invoice as any)?.invoice_type || 'TAX_INVOICE';
+  const showGst = (invoice as any)?.show_gst_breakup !== false && invoiceType === 'TAX_INVOICE';
+  const isOS = invoiceType === 'ORDER_SUMMARY';
+  const isCI = invoiceType === 'CUSTOMER_INVOICE';
+  const isTI = invoiceType === 'TAX_INVOICE';
 
   return (
     <div className="card">
@@ -324,20 +356,9 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
         <div className="text-center py-8">
           <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
           <p className="text-gray-500 mb-4">No invoice generated yet</p>
-          {canGenerateInvoice ? (
-            <button
-              onClick={generateInvoice}
-              disabled={generating}
-              className="btn btn-primary"
-            >
-              <FileText className="w-4 h-4" />
-              {generating ? 'Generating...' : 'Generate Invoice'}
-            </button>
-          ) : (
-            <p className="text-sm text-gray-500">
-              Invoice can only be generated when lead status is WORK_COMPLETED, QC_APPROVED, READY_FOR_BILLING, READY_FOR_DELIVERY, DELIVERED, or CLOSED
-            </p>
-          )}
+          <p className="text-sm text-gray-500">
+            In the new flow, Order Summary is generated automatically when Supervisor approves QC.
+          </p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -350,7 +371,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
             </div>
             <div className="text-right">
               <p className="text-sm opacity-90">Total Amount</p>
-              <p className="text-3xl font-bold">₹{invoice.total_amount.toFixed(2)}</p>
+              <p className="text-3xl font-bold">₹{((invoice.final_amount || invoice.total_amount) || 0).toFixed(2)}</p>
               <span
                 className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mt-2 ${
                   invoice.payment_status === 'PAID'
@@ -404,28 +425,28 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   </tr>
                 )}
                 <tr className="bg-gray-50">
-                  <td className="px-4 py-3 font-semibold">Net Taxable Value</td>
+                  <td className="px-4 py-3 font-semibold">{showGst ? 'Net Taxable Value' : 'Sub-Total (No GST)'}</td>
                   <td className="px-4 py-3 text-right font-semibold">₹{((invoice.subtotal || invoice.sub_total || 0) - (invoice.discount_amount || 0)).toFixed(2)}</td>
                 </tr>
-                {(invoice.cgst_amount || invoice.cgst || 0) > 0 && (
+                {showGst && (invoice.cgst_amount || invoice.cgst || 0) > 0 && (
                   <tr>
                     <td className="px-4 py-3">CGST @ 9%</td>
                     <td className="px-4 py-3 text-right">₹{((invoice.cgst_amount || invoice.cgst) || 0).toFixed(2)}</td>
                   </tr>
                 )}
-                {(invoice.sgst_amount || invoice.sgst || 0) > 0 && (
+                {showGst && (invoice.sgst_amount || invoice.sgst || 0) > 0 && (
                 <tr>
                   <td className="px-4 py-3">SGST @ 9%</td>
                     <td className="px-4 py-3 text-right">₹{((invoice.sgst_amount || invoice.sgst) || 0).toFixed(2)}</td>
                   </tr>
                 )}
-                {(invoice.igst_amount || invoice.igst || 0) > 0 && (
+                {showGst && (invoice.igst_amount || invoice.igst || 0) > 0 && (
                   <tr>
                     <td className="px-4 py-3">IGST @ 18%</td>
                     <td className="px-4 py-3 text-right">₹{((invoice.igst_amount || invoice.igst) || 0).toFixed(2)}</td>
                   </tr>
                 )}
-                {(invoice.total_tax || 0) > 0 && (
+                {showGst && (invoice.total_tax || 0) > 0 && (
                   <tr>
                     <td className="px-4 py-3 font-semibold">Total GST</td>
                     <td className="px-4 py-3 text-right font-semibold">₹{(invoice.total_tax || 0).toFixed(2)}</td>
@@ -438,7 +459,9 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                 </tr>
                 )}
                 <tr className="bg-brand-primary bg-opacity-10 font-bold text-lg">
-                  <td className="px-4 py-3">Amount Payable (INR)</td>
+                  <td className="px-4 py-3">
+                    {isOS ? 'Gross Total (No GST)' : isCI ? 'Total to Pay (No GST)' : 'Amount Payable (INR)'}
+                  </td>
                   <td className="px-4 py-3 text-right">₹{((invoice.final_amount || invoice.total_amount) || 0).toFixed(2)}</td>
                 </tr>
                 {invoice.amount_in_words && (
@@ -534,14 +557,26 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-3">
-            <button
-              onClick={regenerateInvoice}
-              disabled={regenerating}
-              className="btn btn-secondary flex-1"
-            >
-              <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
-              {regenerating ? 'Regenerating...' : 'Regenerate'}
-            </button>
+            {isOS && (
+              <button
+                onClick={finalizeBill}
+                disabled={finalizing}
+                className="btn btn-secondary flex-1"
+              >
+                <RefreshCw className={`w-4 h-4 ${finalizing ? 'animate-spin' : ''}`} />
+                {finalizing ? 'Finalizing...' : 'Finalize Bill (Create CI)'}
+              </button>
+            )}
+            {isCI && (
+              <button
+                onClick={finalizeBill}
+                disabled={finalizing}
+                className="btn btn-secondary flex-1"
+              >
+                <RefreshCw className={`w-4 h-4 ${finalizing ? 'animate-spin' : ''}`} />
+                {finalizing ? 'Recalculating...' : 'Recalculate Bill'}
+              </button>
+            )}
             <button
               onClick={printInvoice}
               className="btn btn-outline flex-1"
@@ -556,14 +591,106 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
               <Download className="w-4 h-4" />
               Download PDF
             </button>
-            <button
-              onClick={sendInvoice}
-              className="btn btn-primary flex-1"
-            >
-              <Send className="w-4 h-4" />
-              Send to Customer
-            </button>
+            {!isTI && (
+              <button
+                onClick={sendInvoice}
+                className="btn btn-primary flex-1"
+              >
+                <Send className="w-4 h-4" />
+                Send to Customer
+              </button>
+            )}
           </div>
+
+          {/* CI activation + payment collection (Supervisor-managed) */}
+          {isCI && (
+            <div className="p-4 border border-gray-200 rounded-lg">
+              <div className="flex flex-wrap gap-3 items-center justify-between">
+                <div>
+                  <p className="font-semibold">Customer Invoice</p>
+                  <p className="text-xs text-gray-600">
+                    Status: {(invoice.visible_to_customer ? 'VISIBLE' : 'NOT_VISIBLE')} • Payment: {invoice.payment_status}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {!invoice.visible_to_customer && (
+                    <button
+                      onClick={activateCustomerInvoice}
+                      disabled={activating}
+                      className="btn btn-outline"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      {activating ? 'Activating...' : 'Activate for Payment'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowPaymentForm((v) => !v)}
+                    className="btn btn-outline"
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    Record Offline Payment
+                  </button>
+                </div>
+              </div>
+
+              {showPaymentForm && (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-600">Payment Mode</label>
+                    <select
+                      className="w-full border rounded-md p-2"
+                      value={paymentMode}
+                      onChange={(e) => setPaymentMode(e.target.value as any)}
+                    >
+                      <option value="CASH">CASH</option>
+                      <option value="POS">POS</option>
+                      <option value="UPI">UPI</option>
+                      <option value="CARD">CARD</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">Reference (optional)</label>
+                    <input
+                      className="w-full border rounded-md p-2"
+                      value={paymentRef}
+                      onChange={(e) => setPaymentRef(e.target.value)}
+                      placeholder="UPI Ref / POS Slip / Txn ID"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">Staff Name</label>
+                    <input
+                      className="w-full border rounded-md p-2"
+                      value={staffName}
+                      onChange={(e) => setStaffName(e.target.value)}
+                      placeholder="e.g. Rahul (Supervisor)"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">Payment Remarks</label>
+                    <input
+                      className="w-full border rounded-md p-2"
+                      value={paymentRemarks}
+                      onChange={(e) => setPaymentRemarks(e.target.value)}
+                      placeholder="e.g. Cash received at counter"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <button
+                      onClick={recordOfflinePayment}
+                      disabled={paying}
+                      className="btn btn-primary w-full"
+                    >
+                      {paying ? 'Recording...' : 'Confirm Payment Received'}
+                    </button>
+                    <p className="text-[11px] text-gray-500 mt-2">
+                      Note: This records full remaining amount as paid and triggers Tax Invoice creation on full payment.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Invoice Footer */}
           <div className="text-xs text-gray-500 text-center pt-4 border-t border-gray-200">

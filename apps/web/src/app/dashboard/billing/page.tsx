@@ -53,13 +53,13 @@ export default function BillingDashboard() {
       let query = supabase
         .from('service_leads')
         .select('*')
-        .in('status', ['QC_APPROVED', 'INVOICE_GENERATED', 'INVOICE_SENT'])
+        .in('status', ['QC_APPROVED', 'PAYMENT_AWAITING', 'INVOICE_GENERATED', 'INVOICE_SENT', 'AWAITING_PAYMENT', 'PAID'])
         .order('qc_approved_at', { ascending: false });
 
       if (filter === 'pending') {
-        query = query.eq('status', 'QC_APPROVED');
+        query = query.in('status', ['QC_APPROVED', 'PAYMENT_AWAITING']);
       } else if (filter === 'invoiced') {
-        query = query.in('status', ['INVOICE_GENERATED', 'INVOICE_SENT']);
+        query = query.in('status', ['INVOICE_GENERATED', 'INVOICE_SENT', 'AWAITING_PAYMENT', 'PAID']);
       }
 
       const { data, error } = await query;
@@ -73,7 +73,7 @@ export default function BillingDashboard() {
       setLeads(data || []);
 
       // Calculate stats
-      const pending = data?.filter(l => l.status === 'QC_APPROVED') || [];
+      const pending = data?.filter(l => ['QC_APPROVED', 'PAYMENT_AWAITING'].includes(l.status)) || [];
       const invoiced = data?.filter(l => ['INVOICE_GENERATED', 'INVOICE_SENT'].includes(l.status)) || [];
 
       setStats({
@@ -94,8 +94,11 @@ export default function BillingDashboard() {
   const getStatusBadge = (status: string) => {
     const badges: Record<string, string> = {
       'QC_APPROVED': 'badge-yellow',
+      'PAYMENT_AWAITING': 'badge-yellow',
       'INVOICE_GENERATED': 'badge-blue',
-      'INVOICE_SENT': 'badge-green'
+      'INVOICE_SENT': 'badge-green',
+      'AWAITING_PAYMENT': 'badge-orange',
+      'PAID': 'badge-green',
     };
     return badges[status] || 'badge-gray';
   };
@@ -263,14 +266,14 @@ export default function BillingDashboard() {
 
                   {/* Action Buttons */}
                   <div className="flex flex-col sm:flex-row gap-2 pt-2 sm:pt-3 border-t">
-                    {lead.status === 'QC_APPROVED' && (
+                    {['QC_APPROVED', 'PAYMENT_AWAITING'].includes(lead.status) && (
                       <button
                         onClick={() => router.push(`/dashboard/billing/leads/${lead.id}/generate-invoice`)}
                         className="btn-primary flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                       >
                         <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        <span className="hidden sm:inline">Generate Invoice</span>
-                        <span className="sm:hidden">Generate</span>
+                        <span className="hidden sm:inline">Finalize Bill</span>
+                        <span className="sm:hidden">Finalize</span>
                       </button>
                     )}
                     {lead.status === 'INVOICE_GENERATED' && (

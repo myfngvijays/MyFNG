@@ -769,6 +769,7 @@ export default function LeadDetailPage() {
         {/* Section 12: Invoice (keep visible after invoice generation too) */}
         {[
           'READY_FOR_BILLING',
+          'PAYMENT_AWAITING',
           'INVOICE_GENERATED',
           'AWAITING_PAYMENT',
           'PARTIAL_PAYMENT',

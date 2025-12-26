@@ -94,6 +94,18 @@ export default function PaymentCollectionPage() {
       return;
     }
 
+    // Backend requires audit-friendly fields for offline payments
+    if (paymentMode !== 'online') {
+      if (!staffName || staffName.trim().length < 2) {
+        toast.error('Staff name is required for offline payments');
+        return;
+      }
+      if (!paymentRemarks || paymentRemarks.trim().length < 3) {
+        toast.error('Payment remarks are required for offline payments');
+        return;
+      }
+    }
+
     setRecordingPayment(true);
 
     try {

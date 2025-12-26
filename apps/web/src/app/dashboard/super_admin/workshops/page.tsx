@@ -86,7 +86,10 @@ export default function WorkshopManagementPage() {
           bank_account_number: editingWorkshop.bank_account_number,
           ifsc_code: editingWorkshop.ifsc_code,
           upi_id: editingWorkshop.upi_id,
-          commission_percentage: editingWorkshop.commission_percentage
+          commission_percentage:
+            editingWorkshop.commission_percentage === '' || editingWorkshop.commission_percentage == null
+              ? null
+              : Number(editingWorkshop.commission_percentage),
         })
         .eq('id', editingWorkshop.id);
 

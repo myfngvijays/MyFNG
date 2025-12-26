@@ -40,31 +40,53 @@ export default function CustomerInvoicesScreen() {
 
       if (!userProfile) return;
 
-      // Fetch leads with invoice information
-      let query = supabase
+      // NEW FLOW: Fetch visible customer documents from invoices (OS/CI/TI)
+      const { data: leadsData, error: leadsErr } = await supabase
         .from('service_leads')
-        .select('*, workshop:workshops(name)')
-        .or(`customer_email.eq.${userProfile.email},customer_phone.eq.${userProfile.phone}`)
-        .not('invoice_amount', 'is', null)
+        .select('id')
+        .or(`customer_email.eq.${userProfile.email},customer_phone.eq.${userProfile.phone}`);
+
+      if (leadsErr) throw leadsErr;
+      const leadIds = (leadsData || []).map((l: any) => l.id);
+      if (leadIds.length === 0) {
+        setInvoices([]);
+        return;
+      }
+
+      const { data: invData, error: invErr } = await supabase
+        .from('invoices')
+        .select(`
+          id,
+          invoice_number,
+          invoice_type,
+          final_amount,
+          paid_amount,
+          payment_status,
+          created_at,
+          lead:service_leads!lead_id(
+            id,
+            lead_number,
+            service_type,
+            vehicle_number,
+            workshop:workshops(name)
+          )
+        `)
+        .in('lead_id', leadIds)
+        .eq('visible_to_customer', true)
         .order('created_at', { ascending: false });
 
-      const { data, error } = await query;
+      if (invErr) throw invErr;
 
-      if (error) throw error;
-
-      // Filter based on payment status
-      let filteredData = data || [];
+      let filteredData = invData || [];
       if (filter === 'paid') {
         filteredData = filteredData.filter((inv: any) => inv.payment_status === 'PAID');
       } else if (filter === 'pending') {
-        filteredData = filteredData.filter((inv: any) => 
-          inv.payment_status === 'PENDING' || !inv.payment_status
-        );
+        filteredData = filteredData.filter((inv: any) => inv.payment_status !== 'PAID');
       } else if (filter === 'overdue') {
         filteredData = filteredData.filter((inv: any) => inv.payment_status === 'OVERDUE');
       }
 
-      setInvoices(filteredData);
+      setInvoices(filteredData as any[]);
     } catch (error) {
       console.error('Error fetching invoices:', error);
     } finally {
@@ -143,7 +165,7 @@ export default function CustomerInvoicesScreen() {
             <View key={invoice.id || index} style={styles.invoiceCard}>
               <View style={styles.invoiceHeader}>
                 <View style={styles.invoiceLeft}>
-                  <Text style={styles.invoiceNumber}>{invoice.lead_number}</Text>
+                  <Text style={styles.invoiceNumber}>{invoice.invoice_number}</Text>
                   <Text style={styles.invoiceDate}>
                     {formatDateDMY(invoice.created_at)}
                   </Text>
@@ -163,19 +185,23 @@ export default function CustomerInvoicesScreen() {
               <View style={styles.invoiceDetails}>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Service:</Text>
-                  <Text style={styles.detailValue}>{invoice.service_type || 'General Service'}</Text>
+                  <Text style={styles.detailValue}>{invoice.lead?.service_type || 'General Service'}</Text>
                 </View>
-                {invoice.workshop?.name && (
+                {invoice.lead?.workshop?.name && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Workshop:</Text>
-                    <Text style={styles.detailValue}>{invoice.workshop.name}</Text>
+                    <Text style={styles.detailValue}>{invoice.lead.workshop.name}</Text>
                   </View>
                 )}
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Amount:</Text>
                   <Text style={[styles.amountValue]}>
-                    ₹{invoice.invoice_amount || invoice.actual_amount || 0}
+                    ₹{invoice.final_amount || 0}
                   </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Type:</Text>
+                  <Text style={styles.detailValue}>{invoice.invoice_type || 'INVOICE'}</Text>
                 </View>
               </View>
               

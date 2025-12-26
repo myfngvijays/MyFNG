@@ -20,6 +20,8 @@ interface Invoice {
   paid_amount: number;
   payment_status: string;
   status: string;
+  invoice_type?: 'ORDER_SUMMARY' | 'CUSTOMER_INVOICE' | 'TAX_INVOICE' | string;
+  invoice_approved?: boolean;
   lead: {
     id: string;
     customer_name: string;
@@ -35,6 +37,7 @@ export default function InvoiceDetailPage() {
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
+  const [relatedInvoices, setRelatedInvoices] = useState<Array<{ id: string; invoice_number: string; invoice_type?: string; payment_status?: string; status?: string }>>([]);
 
   useEffect(() => {
     fetchInvoice();
@@ -72,6 +75,23 @@ export default function InvoiceDetailPage() {
       }
 
       setInvoice(invoiceData as Invoice);
+
+      // Fetch related OS/CI/TI for same lead (best-effort)
+      try {
+        const leadId = (invoiceData as any).lead_id;
+        if (leadId) {
+          const { data: rel } = await supabase
+            .from('invoices')
+            .select('id, invoice_number, invoice_type, payment_status, status, created_at')
+            .eq('lead_id', leadId)
+            .order('created_at', { ascending: true });
+          setRelatedInvoices((rel as any) || []);
+        } else {
+          setRelatedInvoices([]);
+        }
+      } catch {
+        setRelatedInvoices([]);
+      }
     } catch (error) {
       console.error('Error:', error);
       toast.error('Failed to load invoice');
@@ -139,6 +159,15 @@ export default function InvoiceDetailPage() {
   const canSend = ['APPROVED', 'GENERATED'].includes(invoice.status);
   const canCollectPayment = ['APPROVED', 'SENT', 'AWAITING_PAYMENT'].includes(invoice.status);
   const isPaid = invoice.payment_status === 'PAID';
+  const canInternalApproveTI = invoice.invoice_type === 'TAX_INVOICE' && !invoice.invoice_approved;
+  const docLabel =
+    invoice.invoice_type === 'ORDER_SUMMARY'
+      ? 'Order Summary (OS)'
+      : invoice.invoice_type === 'CUSTOMER_INVOICE'
+        ? 'Customer Invoice (CI)'
+        : invoice.invoice_type === 'TAX_INVOICE'
+          ? 'Tax Invoice (TI)'
+          : 'Invoice';
 
   return (
     <DashboardLayout role="billing">
@@ -169,7 +198,36 @@ export default function InvoiceDetailPage() {
               </p>
             </div>
           </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-2 py-1 text-xs font-semibold">
+              {docLabel}
+            </span>
+            {invoice.invoice_approved && invoice.invoice_type === 'TAX_INVOICE' && (
+              <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-1 text-xs font-semibold">
+                Internal Approved
+              </span>
+            )}
+          </div>
         </div>
+
+        {/* Related OS/CI/TI */}
+        {relatedInvoices.length > 0 && (
+          <div className="card">
+            <p className="text-xs sm:text-sm text-gray-600 mb-2">Documents for this lead</p>
+            <div className="flex flex-wrap gap-2">
+              {relatedInvoices.map((inv) => (
+                <button
+                  key={inv.id}
+                  onClick={() => router.push(`/dashboard/billing/invoices/${inv.id}`)}
+                  className={`btn-secondary text-xs px-3 py-1.5 ${inv.id === invoice.id ? 'bg-brand-primary text-white' : ''}`}
+                >
+                  {(inv.invoice_type === 'ORDER_SUMMARY' ? 'OS' : inv.invoice_type === 'CUSTOMER_INVOICE' ? 'CI' : inv.invoice_type === 'TAX_INVOICE' ? 'TI' : 'INV')}
+                  -{inv.invoice_number}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Status Badge */}
         <div className="card">
@@ -231,9 +289,35 @@ export default function InvoiceDetailPage() {
             className="btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5"
           >
             <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">View Customer Invoice</span>
+            <span className="hidden sm:inline">View Document</span>
             <span className="sm:hidden">View</span>
           </button>
+
+          {/* Internal Approve (Tax Invoice) */}
+          {canInternalApproveTI && (
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch(`/api/billing/invoices/${invoiceId}/internal-approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ checklist_data: { items: true, taxes: true, customer: true } }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || 'Failed to approve');
+                  toast.success('Tax invoice internally approved');
+                  fetchInvoice();
+                } catch (e: any) {
+                  toast.error(e?.message || 'Failed to approve tax invoice');
+                }
+              }}
+              className="btn-secondary bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5"
+            >
+              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Internal Approve (TI)</span>
+              <span className="sm:hidden">Approve TI</span>
+            </button>
+          )}
 
           {/* Download PDF */}
           <button

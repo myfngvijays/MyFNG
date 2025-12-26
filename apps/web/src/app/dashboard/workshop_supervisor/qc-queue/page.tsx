@@ -141,6 +141,7 @@ export default function QCQueuePage() {
         .not('status', 'eq', 'CLOSED')
         .not('status', 'eq', 'QC_APPROVED')
         .not('status', 'eq', 'READY_FOR_BILLING')
+        .not('status', 'eq', 'PAYMENT_AWAITING')
         .order('mechanic_completed_at', { ascending: true, nullsFirst: false });
 
       // Second: Get jobs from mechanic_jobs table where completed_at is set
@@ -182,7 +183,7 @@ export default function QCQueuePage() {
           qcJobsFromMechanicJobs = leadsFromJobs
             .filter(lead => {
               const qcOk = !lead.qc_status || lead.qc_status === 'PENDING';
-              const statusOk = !['REJECTED', 'CANCELLED', 'CLOSED', 'QC_APPROVED', 'READY_FOR_BILLING'].includes(lead.status);
+              const statusOk = !['REJECTED', 'CANCELLED', 'CLOSED', 'QC_APPROVED', 'READY_FOR_BILLING', 'PAYMENT_AWAITING'].includes(lead.status);
               // Include WORK_COMPLETED status for QC
               const isWorkCompleted = lead.status === 'WORK_COMPLETED';
               return qcOk && (statusOk || isWorkCompleted);

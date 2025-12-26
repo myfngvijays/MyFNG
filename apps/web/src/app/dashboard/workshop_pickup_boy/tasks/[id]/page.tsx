@@ -6,7 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY, formatTime12h } from '@/lib/utils';
 import {
   PlayCircle, CheckCircle, Camera, ArrowLeft, User, Car, 
-  MapPin, Phone, Clock, Shield, Navigation, AlertCircle
+  MapPin, Phone, Clock, Shield, Navigation, AlertCircle, FileText
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
@@ -25,11 +25,13 @@ export default function PickupTaskDetailPage() {
   const [showStartModal, setShowStartModal] = useState(false);
   const [showOTPModal, setShowOTPModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [showObservationModal, setShowObservationModal] = useState(false);
   
   // Form states
   const [otpInput, setOtpInput] = useState('');
   const [otpVerified, setOtpVerified] = useState(false);
   const [beforePhotos, setBeforePhotos] = useState<any[]>([]);
+  const [observationText, setObservationText] = useState('');
 
   useEffect(() => {
     fetchTaskDetails();
@@ -82,6 +84,7 @@ export default function PickupTaskDetailPage() {
       }
 
       setTask(finalOtpData);
+      setObservationText(String((finalOtpData as any)?.pickup_observation || ''));
 
       // Fetch photos
       const { data: photos } = await supabase
@@ -357,6 +360,32 @@ export default function PickupTaskDetailPage() {
   const isInProgress = task.status === 'IN_PROGRESS' || task.status === 'VEHICLE_IN_TRANSIT';
   const canMarkArrived = task.status === 'VEHICLE_IN_TRANSIT' && otpVerified;
   const canComplete = (task.status === 'VEHICLE_DROPPED_AT_WORKSHOP' || task.status === 'VEHICLE_IN_TRANSIT') && otpVerified;
+  const canWriteObservation = otpVerified && (task.status === 'VEHICLE_IN_TRANSIT' || task.status === 'VEHICLE_DROPPED_AT_WORKSHOP');
+
+  async function handleSaveObservation() {
+    const text = observationText.trim();
+    if (!text) {
+      toast.error('Please enter an observation');
+      return;
+    }
+    setProcessing(true);
+    try {
+      const res = await fetch(`/api/pickup/tasks/${taskId}/observation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ observation: text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || data?.details || 'Failed to save observation');
+      toast.success('✅ Observation saved');
+      setShowObservationModal(false);
+      fetchTaskDetails();
+    } catch (e: any) {
+      toast.error(`Failed to save observation: ${e?.message || 'Unknown error'}`);
+    } finally {
+      setProcessing(false);
+    }
+  }
 
   return (
     <DashboardLayout role="workshop_pickup_boy">
@@ -424,6 +453,18 @@ export default function PickupTaskDetailPage() {
                 <MapPin className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="hidden sm:inline">{processing ? 'Marking...' : 'Arrived at Workshop'}</span>
                 <span className="sm:hidden">{processing ? 'Marking...' : 'Arrived'}</span>
+              </button>
+            )}
+            {canWriteObservation && (
+              <button
+                type="button"
+                onClick={() => setShowObservationModal(true)}
+                disabled={processing}
+                className="btn-secondary bg-slate-700 hover:bg-slate-800 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex-1 sm:flex-initial"
+              >
+                <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Observation</span>
+                <span className="sm:hidden">Obs</span>
               </button>
             )}
             {canComplete && (
@@ -790,6 +831,42 @@ export default function PickupTaskDetailPage() {
                 </button>
                 <button
                   onClick={() => setShowCompleteModal(false)}
+                  disabled={processing}
+                  className="btn-secondary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Observation Modal */}
+        {showObservationModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-slate-700">Pickup Observation</h3>
+              <p className="text-xs sm:text-sm text-gray-600 mb-3">
+                Add notes/observations (e.g. scratches, dents, missing items, fuel level, etc.).
+              </p>
+              <textarea
+                value={observationText}
+                onChange={(e) => setObservationText(e.target.value)}
+                className="input w-full min-h-[120px] text-sm"
+                placeholder="Write observation..."
+              />
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={handleSaveObservation}
+                  disabled={processing || !observationText.trim()}
+                  className="btn-primary bg-slate-700 hover:bg-slate-800 flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                >
+                  {processing ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowObservationModal(false)}
                   disabled={processing}
                   className="btn-secondary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 >

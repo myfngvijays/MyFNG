@@ -125,6 +125,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
 
+    // NEW FLOW: payments should be based on Customer Invoice (CI), not Order Summary (OS)
+    if ((invoice as any).invoice_type === 'ORDER_SUMMARY') {
+      return NextResponse.json(
+        {
+          error: 'Payment cannot be initiated for Order Summary',
+          hint: 'Please confirm the Order Summary to generate/activate the Customer Invoice, then pay against CI.',
+        },
+        { status: 400 }
+      );
+    }
+
     if (invoice.payment_status === 'PAID') {
       return NextResponse.json({ 
         error: 'Invoice already paid',

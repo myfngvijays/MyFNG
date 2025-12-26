@@ -101,6 +101,30 @@ export async function POST(
       metadata: { photo_type: photoType, photo_url: photoUrl },
     });
 
+    // NEW: If this is delivery signature, attach URL to lead.attachments for invoice linking (best-effort)
+    if (String(photoType).toUpperCase() === 'DELIVERY_SIGNATURE') {
+      try {
+        const { data: leadRow } = await supabase
+          .from('service_leads')
+          .select('attachments')
+          .eq('id', leadId)
+          .maybeSingle();
+        const existing = (leadRow as any)?.attachments || {};
+        await supabase
+          .from('service_leads')
+          .update({
+            attachments: {
+              ...(typeof existing === 'object' && existing ? existing : {}),
+              delivery_signature_url: photoUrl,
+              delivery_signature_at: new Date().toISOString(),
+            },
+          })
+          .eq('id', leadId);
+      } catch {
+        // ignore
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: photoRecord,

@@ -25,21 +25,30 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, role, name, email')
-      .eq('email', user.email)
-      .single();
+    // Robust profile lookup (email/phone/id) + role_code (no dedicated billing role required)
+    const email = (user.email || '').trim();
+    const phone = (user.phone || '').trim();
+    const selectProfile = 'id, email, phone, workshop_id, full_name, roles!inner(role_code)';
 
-    if (profileError || !userProfile) {
+    const { data: byEmail } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+      : { data: null };
+    const { data: byPhone } = !byEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null };
+    const { data: byId } = !byEmail && !byPhone
+      ? await supabase.from('users_login').select(selectProfile).eq('id', user.id).maybeSingle()
+      : { data: null };
+
+    const userProfile: any = byEmail || byPhone || byId;
+    if (!userProfile) {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
-    // Verify user has billing permissions
-    const allowedRoles = ['super_admin', 'sub_admin', 'workshop_admin', 'billing'];
-    if (!allowedRoles.includes(userProfile.role)) {
-      return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
+    const roleCode = (userProfile.roles as any)?.role_code;
+    const allowedRoleCodes = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'];
+    if (!allowedRoleCodes.includes(roleCode)) {
+      return NextResponse.json({ error: 'Forbidden: Insufficient permissions', role: roleCode }, { status: 403 });
     }
 
     const invoiceId = params.id;
@@ -74,6 +83,17 @@ export async function POST(
 
     if (invoiceError || !invoice) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+    }
+
+    // NEW FLOW: Never send Tax Invoice publicly before/without explicit request
+    if ((invoice as any).invoice_type === 'TAX_INVOICE') {
+      return NextResponse.json(
+        {
+          error: 'Tax Invoice cannot be sent publicly from this endpoint',
+          hint: 'Tax Invoice is generated after payment and is only downloadable in customer app unless requested.',
+        },
+        { status: 400 }
+      );
     }
 
     // Prevent sending invoices after lead closure/archival

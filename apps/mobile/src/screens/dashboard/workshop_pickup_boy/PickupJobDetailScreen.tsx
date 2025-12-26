@@ -17,28 +17,19 @@ import type { PickupTracking, ServiceLead } from '../../../../../shared/types';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useNavigation } from '@react-navigation/native';
 
-interface Props {
-  leadId: string;
-  onBack: () => void;
-  onStartPickup: () => void;
-  onVerifyOTP: () => void;
-  onUploadPhotos: () => void;
-  onMarkPicked: () => void;
-  onNavigate: () => void;
-  onReportIncident: () => void;
-}
-
-export default function PickupJobDetailScreen({
-  leadId,
-  onBack,
-  onStartPickup,
-  onVerifyOTP,
-  onUploadPhotos,
-  onMarkPicked,
-  onNavigate,
-  onReportIncident,
-}: Props) {
+export default function PickupJobDetailScreen(props: any) {
   const navigation = useNavigation();
+  const route = (props as any)?.route;
+  const leadId: string = (props as any)?.leadId || route?.params?.taskId || route?.params?.leadId;
+  const onBack = (props as any)?.onBack || (() => (navigation as any).goBack?.());
+  const onStartPickup = (props as any)?.onStartPickup || (() => {});
+  const onVerifyOTP = (props as any)?.onVerifyOTP || (() => {});
+  const onUploadPhotos =
+    (props as any)?.onUploadPhotos ||
+    (() => (navigation as any).navigate?.('PickupPhotoUpload', { leadId, photoCategory: 'DROP' }));
+  const onMarkPicked = (props as any)?.onMarkPicked || (() => {});
+  const onNavigate = (props as any)?.onNavigate || (() => {});
+  const onReportIncident = (props as any)?.onReportIncident || (() => {});
   const [lead, setLead] = useState<ServiceLead | null>(null);
   const [tracking, setTracking] = useState<PickupTracking | null>(null);
   const [photoCount, setPhotoCount] = useState(0);
@@ -94,6 +85,7 @@ export default function PickupJobDetailScreen({
 
   const fetchLeadDetails = async () => {
     try {
+      if (!leadId) return;
       // Fetch lead
       const { data: leadData, error: leadError } = await supabase
         .from('service_leads')
@@ -119,6 +111,7 @@ export default function PickupJobDetailScreen({
   };
 
   const fetchPhotoCount = async () => {
+    if (!leadId) return;
     const { count } = await supabase
       .from('vehicle_condition_photos')
       .select('*', { count: 'exact', head: true })
@@ -232,7 +225,7 @@ export default function PickupJobDetailScreen({
     }
   };
 
-  if (!lead || !tracking) {
+  if (!leadId || !lead || !tracking) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>

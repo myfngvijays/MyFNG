@@ -678,13 +678,22 @@ function generateInvoiceHTML(invoice: any): string {
   // Use invoice line_items if available, otherwise use built line items
   const finalLineItems = lineItems.length > 0 ? lineItems : allLineItems;
 
+  const invoiceType = (invoice as any).invoice_type || 'TAX_INVOICE';
+  const showGstBreakup = (invoice as any).show_gst_breakup !== false && invoiceType === 'TAX_INVOICE';
+  const docTitle =
+    invoiceType === 'ORDER_SUMMARY'
+      ? 'ORDER SUMMARY'
+      : invoiceType === 'CUSTOMER_INVOICE'
+        ? 'CUSTOMER INVOICE'
+        : 'TAX INVOICE';
+
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Invoice ${invoice.invoice_number}</title>
+  <title>${docTitle} ${invoice.invoice_number}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -958,7 +967,7 @@ function generateInvoiceHTML(invoice: any): string {
         <img src="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/logo.png" alt="MyFNG Logo" style="max-width: 120px; height: auto;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'120\' height=\'60\'%3E%3Crect fill=\'%232563eb\' width=\'120\' height=\'60\'/%3E%3Ctext fill=\'white\' font-family=\'Arial\' font-size=\'20\' font-weight=\'bold\' x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dominant-baseline=\'middle\'%3EMyFNG%3C/text%3E%3C/svg%3E';" />
       </div>
       <div class="title-section">
-        <h1>TAX INVOICE</h1>
+        <h1>${docTitle}</h1>
         <p>Invoice #${invoice.invoice_number}</p>
       </div>
     </div>
@@ -1175,6 +1184,7 @@ function generateInvoiceHTML(invoice: any): string {
     </table>
     ` : ''}
 
+    ${showGstBreakup ? `
     <!-- GST Breakdown Table -->
     <table class="gst-table">
       <thead>
@@ -1216,6 +1226,7 @@ function generateInvoiceHTML(invoice: any): string {
         </tr>
       </tbody>
     </table>
+    ` : ''}
 
     <!-- Invoice Total Table -->
     <table class="total-table">
@@ -1235,6 +1246,7 @@ function generateInvoiceHTML(invoice: any): string {
           <td>-₹${invoice.discount_amount.toFixed(2)}</td>
         </tr>
         ` : ''}
+        ${showGstBreakup ? `
         <tr>
           <td>Net Taxable Value</td>
           <td>₹${netTaxableValue.toFixed(2)}</td>
@@ -1247,6 +1259,12 @@ function generateInvoiceHTML(invoice: any): string {
           <td>Grand Total</td>
           <td>₹${(netTaxableValue + (invoice.total_tax || (invoice.cgst_amount || 0) + (invoice.sgst_amount || 0) + (invoice.igst_amount || 0))).toFixed(2)}</td>
         </tr>
+        ` : `
+        <tr>
+          <td>Total</td>
+          <td>₹${netTaxableValue.toFixed(2)}</td>
+        </tr>
+        `}
         ${roundOffAmount !== 0 ? `
         <tr>
           <td>Round Off</td>
@@ -1254,7 +1272,7 @@ function generateInvoiceHTML(invoice: any): string {
         </tr>
         ` : ''}
         <tr class="grand-total-row">
-          <td>Amount Payable (INR)</td>
+          <td>${showGstBreakup ? 'Amount Payable (INR)' : 'Amount to Pay (INR)'}</td>
           <td>₹${finalAmount.toFixed(2)}</td>
         </tr>
       </tbody>

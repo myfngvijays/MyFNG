@@ -357,6 +357,7 @@ export async function GET(request: Request) {
         const postQcStatuses = [
           'QC_APPROVED',
           'READY_FOR_BILLING',
+          'PAYMENT_AWAITING',
           'INVOICE_GENERATED',
           'AWAITING_PAYMENT',
           'PARTIAL_PAYMENT',

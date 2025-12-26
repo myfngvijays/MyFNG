@@ -122,10 +122,7 @@ export default function GenerateInvoicePage() {
   };
 
   async function handleGenerateInvoice() {
-    if (baseAmount <= 0) {
-      toast.error('Base amount must be greater than 0');
-      return;
-    }
+    // NEW FLOW: This screen is used to finalize bill (create/update Customer Invoice).
 
     const incomplete = Object.entries(billingChecklist).filter(([, v]) => v !== true).map(([k]) => k);
     if (incomplete.length > 0) {
@@ -138,20 +135,11 @@ export default function GenerateInvoicePage() {
     try {
       const totals = calculateTotals();
 
-      const response = await fetch(`/api/billing/leads/${leadId}/generate-invoice`, {
+      const response = await fetch(`/api/billing/leads/${leadId}/finalize-bill`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          base_amount: baseAmount,
-          extra_charges: extraCharges,
-          discount_type: discountType,
-          discount_value: discountValue,
           discount_amount: totals.discount,
-          tax_rate: taxRate,
-          tax_amount: totals.tax,
-          total_amount: totals.total,
-          payment_terms: paymentTerms,
-          notes: notes,
           billing_notes: billingNotes,
           billing_checklist: billingChecklist,
         })
@@ -160,15 +148,19 @@ export default function GenerateInvoicePage() {
       const data = await response.json();
 
       if (!response.ok) {
-        toast.error(data.error || 'Failed to generate invoice');
+        toast.error(data.error || 'Failed to finalize bill');
         return;
       }
 
-      toast.success(`Invoice generated successfully! Invoice #${data.invoiceNumber}`);
-      router.push('/dashboard/billing');
+      toast.success(`Bill finalized! Customer Invoice: ${data?.invoice?.invoice_number || ''}`);
+      if (data?.invoice?.id) {
+        router.push(`/dashboard/billing/invoices/${data.invoice.id}`);
+      } else {
+        router.push('/dashboard/billing');
+      }
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Failed to generate invoice');
+      toast.error('Failed to finalize bill');
     } finally {
       setProcessing(false);
     }
@@ -210,17 +202,17 @@ export default function GenerateInvoicePage() {
           </button>
           <button
             onClick={handleGenerateInvoice}
-            disabled={processing || baseAmount <= 0}
+            disabled={processing}
             className="btn-primary flex items-center gap-2"
           >
             <FileText className="w-5 h-5" />
-            {processing ? 'Generating...' : 'Generate Invoice'}
+            {processing ? 'Finalizing...' : 'Finalize Bill (Create CI)'}
           </button>
         </div>
 
         {/* Lead Info Banner */}
         <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg">
-          <h1 className="text-2xl font-bold mb-2">Generate Invoice</h1>
+          <h1 className="text-2xl font-bold mb-2">Finalize Bill</h1>
           <p className="text-lg">Lead: {lead.lead_number}</p>
         </div>
 

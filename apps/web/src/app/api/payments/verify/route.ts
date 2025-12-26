@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import crypto from 'crypto';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
+import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
 
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 
@@ -82,6 +83,18 @@ export async function POST(request: Request) {
         .single();
 
       if (invoice) {
+        // NEW FLOW: payments should be captured against Customer Invoice
+        if ((invoice as any).invoice_type === 'ORDER_SUMMARY') {
+          return NextResponse.json(
+            {
+              verified: false,
+              error: 'Cannot verify payment for Order Summary',
+              hint: 'Payment must be made against Customer Invoice (CI).',
+            },
+            { status: 400 }
+          );
+        }
+
         const amount = parseFloat(paymentDetails.amount) / 100; // Convert paise to rupees
         const now = new Date().toISOString();
         const transactionId = paymentId;
@@ -177,6 +190,86 @@ export async function POST(request: Request) {
           })
           .eq('id', invoiceId);
 
+        // On full payment, generate Tax Invoice (TI) (GST visible) using same series suffix
+        if (isFullPayment) {
+          const year =
+            (invoice as any).series_year ||
+            (invoice.lead as any)?.invoice_series_year ||
+            new Date().getFullYear();
+          const month =
+            (invoice as any).series_month ||
+            (invoice.lead as any)?.invoice_series_month ||
+            (new Date().getMonth() + 1);
+          const seq =
+            (invoice as any).series_seq ||
+            (invoice.lead as any)?.invoice_series_seq ||
+            null;
+
+          if (seq) {
+            const tiNumber = generateSeriesDocumentNumber('TI', year, month, seq);
+            const { data: existingTI } = await supabase
+              .from('invoices')
+              .select('id')
+              .eq('lead_id', invoice.lead_id)
+              .eq('invoice_type', 'TAX_INVOICE')
+              .maybeSingle();
+
+            if (!existingTI?.id) {
+              const tiPayload: any = {
+                invoice_number: tiNumber,
+                lead_id: invoice.lead_id,
+                workshop_id: (invoice as any).workshop_id,
+                base_amount: (invoice as any).base_amount || 0,
+                parts_cost: (invoice as any).parts_cost || 0,
+                extra_charges: (invoice as any).extra_charges || 0,
+                labour_cost: (invoice as any).labour_cost || 0,
+                sub_total: (invoice as any).sub_total || (invoice as any).subtotal || 0,
+                discount_amount: (invoice as any).discount_amount || 0,
+                cgst_percentage: (invoice as any).cgst_percentage || 0,
+                cgst_amount: (invoice as any).cgst_amount || 0,
+                sgst_percentage: (invoice as any).sgst_percentage || 0,
+                sgst_amount: (invoice as any).sgst_amount || 0,
+                igst_percentage: (invoice as any).igst_percentage || 0,
+                igst_amount: (invoice as any).igst_amount || 0,
+                total_tax: (invoice as any).total_tax || 0,
+                round_off_amount: (invoice as any).round_off_amount || 0,
+                final_amount: invoiceAmount,
+                amount_in_words: (invoice as any).amount_in_words || null,
+                place_of_supply: (invoice as any).place_of_supply || null,
+                place_of_supply_state_code: (invoice as any).place_of_supply_state_code || null,
+                status: 'PAID',
+                payment_status: 'PAID',
+                paid_amount: invoiceAmount,
+                payment_mode: paymentDetails.method || 'ONLINE',
+                payment_txn_id: transactionId,
+                paid_at: now,
+                generated_by: user?.id || null,
+                invoice_type: 'TAX_INVOICE',
+                series_year: year,
+                series_month: month,
+                series_seq: seq,
+                visible_to_customer: true, // visible in customer app (public link gated elsewhere)
+                show_gst_breakup: true,
+                line_items: (invoice as any).line_items || [],
+              };
+
+              const { data: createdTI } = await supabase
+                .from('invoices')
+                .insert({ ...tiPayload, created_at: now, updated_at: now })
+                .select('id')
+                .single();
+
+              // Point lead.invoice_id to TI for latest invoice reference (best-effort)
+              if (createdTI?.id) {
+                await supabase
+                  .from('service_leads')
+                  .update({ invoice_id: createdTI.id, invoice_number: tiNumber, updated_at: now })
+                  .eq('id', invoice.lead_id);
+              }
+            }
+          }
+        }
+
         await createFinanceEvent({
           eventType: isFullPayment ? 'payment_received' : 'payment_partial',
           entityType: 'payment',
@@ -193,8 +286,8 @@ export async function POST(request: Request) {
 
         // Update lead status
         if (invoice.lead_id) {
-          // After full payment, mark vehicle as ready for delivery
-          const newLeadStatus = isFullPayment ? 'READY_FOR_DELIVERY' : 'PARTIAL_PAYMENT';
+          // NEW FLOW: Payment success marks lead PAID; delivery stage is separate.
+          const newLeadStatus = isFullPayment ? 'PAID' : 'PARTIAL_PAYMENT';
           await supabase
             .from('service_leads')
             .update({
@@ -203,9 +296,7 @@ export async function POST(request: Request) {
               payment_txn_id: transactionId,
               payment_collected_at: now,
               status: newLeadStatus,
-              ready_for_delivery_at: isFullPayment ? now : null,
               updated_at: now,
-              read_only: isFullPayment ? true : false,
             })
             .eq('id', invoice.lead_id);
 

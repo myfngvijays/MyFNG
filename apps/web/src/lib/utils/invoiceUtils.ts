@@ -89,6 +89,21 @@ export function generateInvoiceNumber(year?: number): string {
 }
 
 /**
+ * Generate doc number for OS/CI/TI using shared suffix per lead:
+ *   OS-YYYY-MM-#### / CI-YYYY-MM-#### / TI-YYYY-MM-####  (MM is 2-digit)
+ */
+export function generateSeriesDocumentNumber(
+  prefix: 'OS' | 'CI' | 'TI',
+  year: number,
+  month: number,
+  seq: number
+): string {
+  const mm = String(month).padStart(2, '0');
+  const s = String(seq).padStart(4, '0');
+  return `${prefix}-${year}-${mm}-${s}`;
+}
+
+/**
  * Get HSN/SAC code for service type
  */
 export function getHSNCode(serviceType: string, isService: boolean = true): string {
