@@ -18,6 +18,11 @@ interface MediaSectionProps {
   canUpload?: boolean;
   /** If true, only allow INSPECTION category upload (for visit leads). */
   restrictToInspection?: boolean;
+  /**
+   * Hide legacy slot categories like BEFORE_ENGINE_BAY, BEFORE_DASHBOARD, etc.
+   * These are typically rendered elsewhere (typed pickup/visit slots) and look noisy here.
+   */
+  hideLegacySlotCategories?: boolean;
 }
 
 interface MediaFile {
@@ -38,7 +43,13 @@ interface PreviewMedia {
   type: 'IMAGE' | 'VIDEO';
 }
 
-export default function MediaSection({ lead, onUpdate, canUpload = true, restrictToInspection = false }: MediaSectionProps) {
+export default function MediaSection({
+  lead,
+  onUpdate,
+  canUpload = true,
+  restrictToInspection = false,
+  hideLegacySlotCategories = false,
+}: MediaSectionProps) {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -187,8 +198,17 @@ export default function MediaSection({ lead, onUpdate, canUpload = true, restric
   }
 
   const groupedMedia = mediaFiles.reduce((acc, file) => {
-    if (!acc[file.category]) acc[file.category] = [];
-    acc[file.category].push(file);
+    const cat = String(file.category || '').trim();
+    if (!cat) return acc;
+
+    // Hide legacy slot categories (BEFORE_/AFTER_/DURING_) when requested.
+    // These are usually rendered via dedicated "Pickup/Visit Photos" / "After Work Photos" components.
+    if (hideLegacySlotCategories && /^(BEFORE_|AFTER_|DURING_)/i.test(cat)) {
+      return acc;
+    }
+
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(file);
     return acc;
   }, {} as Record<string, MediaFile[]>);
 

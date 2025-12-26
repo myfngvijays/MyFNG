@@ -1518,7 +1518,14 @@ export default function SupervisorJobDetailPage() {
 
         {/* Media Section (Adviser can upload; owner upload removed elsewhere) */}
         {activeTab === 'photos' && (
-          <MediaSection lead={lead} onUpdate={fetchJobDetails} canUpload={true} />
+          <MediaSection
+            lead={lead}
+            onUpdate={fetchJobDetails}
+            canUpload={true}
+            // Hide legacy slot categories like BEFORE_ENGINE_BAY/BEFORE_DASHBOARD which are
+            // already handled by the dedicated Pickup/Visit/After upload sections above.
+            hideLegacySlotCategories
+          />
         )}
 
         {/* Section 8: Status Management */}
