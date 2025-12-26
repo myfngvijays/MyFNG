@@ -7,7 +7,8 @@ import { formatDateDMY, formatDateTime } from "@/lib/utils";
  * Task: WA-702
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import React from 'react';
 import { FileText, Download, Printer, Send, CheckCircle, Clock, RefreshCw, CreditCard, DollarSign } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -66,10 +67,19 @@ interface Invoice {
   document_type?: string;
   created_at: string;
   status?: string;
+  line_items?: Array<{
+    description?: string;
+    qty?: number;
+    rate?: number;
+    amount?: number;
+    category?: string;
+  }>;
 }
 
 export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [invoiceList, setInvoiceList] = useState<Invoice[]>([]);
+  const [selectedInvoiceType, setSelectedInvoiceType] = useState<'ORDER_SUMMARY' | 'CUSTOMER_INVOICE' | 'TAX_INVOICE' | null>(null);
   const [loading, setLoading] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [activating, setActivating] = useState(false);
@@ -92,24 +102,20 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       
       if (response.ok) {
         const data = await response.json();
-        // Handle API response format
-        const invoiceData = data.invoice;
-        if (invoiceData) {
-          // Map fields to ensure compatibility
-          const mappedInvoice: Invoice = {
-            ...invoiceData,
-            parts_amount: invoiceData.parts_amount || invoiceData.parts_cost || 0,
-            extra_charges_amount: invoiceData.extra_charges_amount || invoiceData.extra_charges || 0,
-            subtotal: invoiceData.subtotal || invoiceData.sub_total || 0,
-            cgst: invoiceData.cgst || invoiceData.cgst_amount || 0,
-            sgst: invoiceData.sgst || invoiceData.sgst_amount || 0,
-            igst: invoiceData.igst || invoiceData.igst_amount || 0,
-            total_amount: invoiceData.total_amount || invoiceData.final_amount || 0,
-            invoice_date: invoiceData.invoice_date || invoiceData.created_at || new Date().toISOString(),
-            due_date: invoiceData.due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            payment_status: invoiceData.payment_status || 'PENDING',
-          };
-          setInvoice(mappedInvoice);
+        const invoiceData = data.invoice as Invoice | null;
+        const list = Array.isArray(data?.invoices) ? (data.invoices as Invoice[]) : [];
+        setInvoiceList(list);
+
+        // Keep current selected type if user chose; otherwise default to best invoice returned.
+        const desiredType = selectedInvoiceType || ((invoiceData as any)?.invoice_type as any) || null;
+        if (desiredType) {
+          const match = list.find((i: any) => String(i?.invoice_type || '').toUpperCase() === String(desiredType).toUpperCase());
+          setInvoice(match || invoiceData || null);
+          if (!selectedInvoiceType && (invoiceData as any)?.invoice_type) {
+            setSelectedInvoiceType((invoiceData as any).invoice_type);
+          }
+        } else {
+          setInvoice(invoiceData || null);
         }
       }
     } catch (error) {
@@ -128,7 +134,14 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
         body: JSON.stringify({}),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to finalize bill');
+      if (!res.ok) {
+        const parts = [
+          data?.error || 'Failed to finalize bill',
+          data?.details ? `Details: ${data.details}` : null,
+          data?.code ? `Code: ${data.code}` : null,
+        ].filter(Boolean);
+        throw new Error(parts.join(' | '));
+      }
       alert(`✅ Bill finalized. Customer Invoice: ${data?.invoice?.invoice_number || ''}`);
       await fetchInvoice();
       onUpdate?.();
@@ -191,11 +204,37 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       setPaymentRef('');
       setPaymentRemarks('');
       await fetchInvoice();
+      if (data?.tax_invoice?.invoice_number) {
+        // Best-effort: help supervisor jump to TI
+        alert(`✅ Tax Invoice generated: ${data.tax_invoice.invoice_number}`);
+      }
       onUpdate?.();
     } catch (e: any) {
       alert(`Failed to record payment: ${e?.message || 'Unknown error'}`);
     } finally {
       setPaying(false);
+    }
+  }
+
+  async function ensureTaxInvoice() {
+    try {
+      const res = await fetch(`/api/billing/leads/${lead.id}/ensure-tax-invoice`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        const parts = [
+          data?.error || 'Failed to generate Tax Invoice',
+          data?.details ? `Details: ${data.details}` : null,
+          data?.code ? `Code: ${data.code}` : null,
+        ].filter(Boolean);
+        throw new Error(parts.join(' | '));
+      }
+      const tiNo = data?.tax_invoice?.invoice_number;
+      await fetchInvoice(); // should switch view to TI automatically (API prioritizes TI)
+      if (tiNo) {
+        window.open(`/invoice/${tiNo}`, '_blank');
+      }
+    } catch (e: any) {
+      alert(`Failed to generate Tax Invoice: ${e?.message || 'Unknown error'}`);
     }
   }
 
@@ -343,6 +382,74 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const isCI = invoiceType === 'CUSTOMER_INVOICE';
   const isTI = invoiceType === 'TAX_INVOICE';
 
+  const lineItems = (Array.isArray((invoice as any)?.line_items) ? ((invoice as any).line_items as any[]) : []) as any[];
+  const hasLineItems = lineItems.length > 0;
+
+  const money = (n: any) => {
+    const v = typeof n === 'number' ? n : parseFloat(String(n || '0'));
+    return `₹${(Number.isFinite(v) ? v : 0).toFixed(2)}`;
+  };
+
+  const normalizeCategory = (c: any) => String(c || '').trim().toUpperCase();
+  const categoryLabel = (c: string) => {
+    if (c === 'SERVICE') return 'Service Items';
+    if (c === 'ADDON' || c === 'ADD-ON' || c === 'ADD_ON') return 'Add-ons';
+    if (c === 'PART' || c === 'PARTS') return 'Additional Parts';
+    if (c === 'LABOUR' || c === 'LABOR') return 'Labour';
+    if (c === 'EXTRA') return 'Additional Charges';
+    return c ? c : 'Items';
+  };
+
+  const categoryOrder = ['SERVICE', 'ADDON', 'PART', 'LABOUR', 'EXTRA'];
+  const grouped = (() => {
+    const map: Record<string, any[]> = {};
+    for (const it of lineItems) {
+      const cat = normalizeCategory(it?.category) || 'ITEMS';
+      if (!map[cat]) map[cat] = [];
+      map[cat].push(it);
+    }
+    // Stable ordering: known categories first, then the rest
+    const keys = Object.keys(map);
+    keys.sort((a, b) => {
+      const ia = categoryOrder.indexOf(a);
+      const ib = categoryOrder.indexOf(b);
+      if (ia === -1 && ib === -1) return a.localeCompare(b);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+    return keys.map((k) => ({ key: k, items: map[k] }));
+  })();
+
+  const byType = useMemo(() => {
+    const map: Record<string, Invoice> = {};
+    for (const inv of invoiceList || []) {
+      const t = String((inv as any)?.invoice_type || '').toUpperCase();
+      if (!t) continue;
+      if (!map[t]) map[t] = inv;
+    }
+    return map;
+  }, [invoiceList]);
+
+  const typeTabs: Array<{ key: 'ORDER_SUMMARY' | 'CUSTOMER_INVOICE' | 'TAX_INVOICE'; label: string }> = [
+    { key: 'ORDER_SUMMARY', label: 'Order Summary (OS)' },
+    { key: 'CUSTOMER_INVOICE', label: 'Customer Invoice (CI)' },
+    { key: 'TAX_INVOICE', label: 'Tax Invoice (TI)' },
+  ];
+
+  const activeTypeKey = (String(invoiceType || '') as any).toUpperCase() as 'ORDER_SUMMARY' | 'CUSTOMER_INVOICE' | 'TAX_INVOICE';
+
+  const invoiceTabBtn = (t: string) => {
+    const base = 'btn text-xs sm:text-sm px-3 py-2';
+    return activeTypeKey === t ? `${base} btn-primary` : `${base} btn-outline bg-white`;
+  };
+
+  const switchToType = (t: 'ORDER_SUMMARY' | 'CUSTOMER_INVOICE' | 'TAX_INVOICE') => {
+    setSelectedInvoiceType(t);
+    const match = byType[t];
+    if (match) setInvoice(match);
+  };
+
   return (
     <div className="card">
       <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -362,6 +469,26 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
         </div>
       ) : (
         <div className="space-y-6">
+          {/* Invoice Type Tabs (OS/CI/TI) */}
+          {invoiceList.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {typeTabs.map((t) => {
+                const exists = Boolean(byType[t.key]);
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    className={invoiceTabBtn(t.key)}
+                    onClick={() => exists && switchToType(t.key)}
+                    disabled={!exists}
+                    title={exists ? '' : 'Not generated yet'}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {/* Invoice Header */}
           <div className="flex justify-between items-start p-4 bg-gradient-to-r from-brand-primary to-brand-secondary rounded-lg text-white">
             <div>
@@ -391,29 +518,77 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
           {/* Invoice Breakdown */}
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold">Description</th>
-                  <th className="px-4 py-3 text-right font-semibold">Amount</th>
-                </tr>
-              </thead>
+              {hasLineItems ? (
+                <>
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold w-12">Sr</th>
+                      <th className="px-4 py-3 text-left font-semibold">Item</th>
+                      <th className="px-4 py-3 text-right font-semibold w-20">Qty</th>
+                      <th className="px-4 py-3 text-right font-semibold w-28">Rate</th>
+                      <th className="px-4 py-3 text-right font-semibold w-32">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {grouped.map((g) => (
+                      <React.Fragment key={g.key}>
+                        <tr className="bg-gray-50">
+                          <td className="px-4 py-2 text-xs font-bold text-gray-700" colSpan={5}>
+                            {categoryLabel(g.key)}
+                          </td>
+                        </tr>
+                        {g.items.map((it: any, idx: number) => {
+                          const qty = Number(it?.qty ?? 1) || 1;
+                          const rate = it?.rate != null ? Number(it.rate) : qty ? Number(it?.amount || 0) / qty : Number(it?.amount || 0);
+                          const amt = Number(it?.amount ?? 0) || 0;
+                          const sr = idx + 1;
+                          return (
+                            <tr key={`${g.key}-${idx}`}>
+                              <td className="px-4 py-3 text-gray-600">{sr}</td>
+                              <td className="px-4 py-3">{it?.description || '-'}</td>
+                              <td className="px-4 py-3 text-right">{qty}</td>
+                              <td className="px-4 py-3 text-right">{money(rate)}</td>
+                              <td className="px-4 py-3 text-right font-medium">{money(amt)}</td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </>
+              ) : (
+                <>
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold">Description</th>
+                      <th className="px-4 py-3 text-right font-semibold">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    <tr>
+                      <td className="px-4 py-3">Base Service Charges</td>
+                      <td className="px-4 py-3 text-right font-medium">₹{(invoice.base_amount || 0).toFixed(2)}</td>
+                    </tr>
+                    {(invoice.parts_amount || invoice.parts_cost || 0) > 0 && (
+                      <tr>
+                        <td className="px-4 py-3">Parts & Materials</td>
+                        <td className="px-4 py-3 text-right font-medium">₹{((invoice.parts_amount || invoice.parts_cost) || 0).toFixed(2)}</td>
+                      </tr>
+                    )}
+                    {(invoice.extra_charges_amount || invoice.extra_charges || 0) > 0 && (
+                      <tr>
+                        <td className="px-4 py-3">Additional Charges</td>
+                        <td className="px-4 py-3 text-right font-medium">₹{((invoice.extra_charges_amount || invoice.extra_charges) || 0).toFixed(2)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </>
+              )}
+            </table>
+
+            {/* Totals */}
+            <table className="w-full text-sm border-t border-gray-200">
               <tbody className="divide-y divide-gray-200">
-                <tr>
-                  <td className="px-4 py-3">Base Service Charges</td>
-                  <td className="px-4 py-3 text-right font-medium">₹{(invoice.base_amount || 0).toFixed(2)}</td>
-                </tr>
-                {(invoice.parts_amount || invoice.parts_cost || 0) > 0 && (
-                  <tr>
-                    <td className="px-4 py-3">Parts & Materials</td>
-                    <td className="px-4 py-3 text-right font-medium">₹{((invoice.parts_amount || invoice.parts_cost) || 0).toFixed(2)}</td>
-                  </tr>
-                )}
-                {(invoice.extra_charges_amount || invoice.extra_charges || 0) > 0 && (
-                  <tr>
-                    <td className="px-4 py-3">Additional Charges</td>
-                    <td className="px-4 py-3 text-right font-medium">₹{((invoice.extra_charges_amount || invoice.extra_charges) || 0).toFixed(2)}</td>
-                  </tr>
-                )}
                 <tr className="bg-gray-50">
                   <td className="px-4 py-3 font-semibold">Sub-Total (without taxes)</td>
                   <td className="px-4 py-3 text-right font-semibold">₹{((invoice.subtotal || invoice.sub_total) || 0).toFixed(2)}</td>
@@ -613,6 +788,11 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {String(invoice.payment_status).toUpperCase() === 'PAID' && (
+                    <button onClick={ensureTaxInvoice} className="btn btn-primary">
+                      View Tax Invoice
+                    </button>
+                  )}
                   {!invoice.visible_to_customer && (
                     <button
                       onClick={activateCustomerInvoice}

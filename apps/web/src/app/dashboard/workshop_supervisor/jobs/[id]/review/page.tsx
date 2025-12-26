@@ -260,14 +260,21 @@ export default function QCReviewPage() {
         duringCollected.push(...jobPhotosData.filter((p: any) => p.photo_category === 'during'));
       }
 
-      // Also try fetching from lead_media table as fallback
-      const { data: photosData, error: photosError } = await supabase
-        .from('lead_media')
-        .select('*')
-        .eq('lead_id', jobId)
-        .order('created_at', { ascending: false });
+      // Also try fetching from lead_media via server API (avoids client-side RLS issues)
+      let photosData: any[] | null = null;
+      try {
+        const res = await fetch(`/api/leads/${jobId}/media`, { method: 'GET' });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(json?.media)) {
+          photosData = json.media;
+        } else {
+          photosData = [];
+        }
+      } catch {
+        photosData = [];
+      }
 
-      if (!photosError && photosData) {
+      if (photosData) {
         const beforeFromLeadMedia = photosData
           .filter((p: any) => {
             const pc = String(p?.photo_category || '').toLowerCase();
@@ -329,6 +336,41 @@ export default function QCReviewPage() {
         beforeCollected.push(...beforeFromMechanic);
         afterCollected.push(...afterFromMechanic);
         duringCollected.push(...duringFromMechanic);
+      }
+
+      // Pickup boy mobile uploads are stored in vehicle_condition_photos (PICKUP_* / DROP_* / AFTER_WORK / DELIVERY_SIGNATURE)
+      const { data: vehiclePhotosData, error: vehiclePhotosError } = await supabase
+        .from('vehicle_condition_photos')
+        .select('*')
+        .eq('lead_id', jobId)
+        // vehicle_condition_photos uses `timestamp` column (not created_at) in many installs
+        .order('timestamp', { ascending: false });
+
+      if (!vehiclePhotosError && vehiclePhotosData) {
+        for (const p of vehiclePhotosData as any[]) {
+          const t = String(p?.photo_type || '').toUpperCase();
+          if (!t) continue;
+
+          // Map to the same shape expected by the UI renderer
+          const mapped = {
+            ...p,
+            photo_url: p.photo_url,
+            photo_type: p.photo_type,
+          };
+
+          if (t.startsWith('PICKUP_') || t.startsWith('BEFORE_') || t === 'BEFORE_PICKUP') {
+            beforeCollected.push(mapped);
+            continue;
+          }
+          if (t.startsWith('DROP_') || t.startsWith('AFTER_') || t === 'AFTER_WORK' || t === 'DELIVERY_SIGNATURE') {
+            afterCollected.push(mapped);
+            continue;
+          }
+          if (t.startsWith('DURING_') || t.startsWith('PROGRESS_')) {
+            duringCollected.push(mapped);
+            continue;
+          }
+        }
       }
 
       // Set final de-duped lists once

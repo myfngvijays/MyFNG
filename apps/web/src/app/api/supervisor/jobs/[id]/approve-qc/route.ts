@@ -264,17 +264,17 @@ export async function POST(
 
       if (!orderSummaryInvoiceId) {
         // Fetch pricing items + approved extra charges + job card parts (best-effort)
-        const [{ data: pricingItems }, { data: extraCharges }, { data: jobCard }] = await Promise.all([
+        const [{ data: pricingItems }, { data: extraChargesRaw }, { data: jobCard }] = await Promise.all([
+          // lead_pricing_items schema uses item_name + qty; keep fallback handling below.
           supabase
             .from('lead_pricing_items')
-            .select('name, final_price, quantity, category')
+            .select('id, item_name, base_price, final_price, qty, is_addon, status')
             .eq('lead_id', leadId)
             .eq('status', 'ACTIVE'),
           supabase
             .from('lead_extra_charges')
-            .select('description, amount, charge_type')
-            .eq('lead_id', leadId)
-            .eq('status', 'APPROVED'),
+            .select('*')
+            .eq('lead_id', leadId),
           supabase
             .from('job_cards')
             .select('id, jobcard_number, job_card_parts(part_name, part_number, quantity, unit_price, total_price)')
@@ -282,10 +282,33 @@ export async function POST(
             .maybeSingle(),
         ]);
 
+        const isApprovedExtra = (row: any) => {
+          const s = String(row?.status || '').trim().toUpperCase();
+          const customerApproved = row?.customer_approved === true;
+          return (
+            customerApproved ||
+            s === 'APPROVED' ||
+            s === 'CUSTOMER_APPROVED' ||
+            s === 'APPROVED_BY_CUSTOMER' ||
+            s === 'ACCEPTED'
+          );
+        };
+
+        const computeExtraAmount = (row: any) => {
+          const legacy = Number(row?.amount ?? 0) || 0;
+          if (legacy > 0) return legacy;
+          const partType = String(row?.part_price_type || 'OEM').toUpperCase();
+          const part = partType === 'OES' ? Number(row?.oes_price ?? 0) || 0 : Number(row?.oem_price ?? 0) || 0;
+          const labour = Number(row?.labour_price ?? 0) || 0;
+          return part + labour;
+        };
+
+        const extraCharges = (Array.isArray(extraChargesRaw) ? extraChargesRaw : []).filter(isApprovedExtra);
+
         const pricingTotal =
           (pricingItems || []).reduce((sum: number, it: any) => sum + parseFloat(it.final_price || '0'), 0) || 0;
         const extraTotal =
-          (extraCharges || []).reduce((sum: number, it: any) => sum + parseFloat(it.amount || '0'), 0) || 0;
+          (extraCharges || []).reduce((sum: number, it: any) => sum + computeExtraAmount(it), 0) || 0;
         const partsTotal =
           (jobCard?.job_card_parts || []).reduce((sum: number, p: any) => sum + parseFloat(p.total_price || '0'), 0) || 0;
         const discountAmount = parseFloat((lead as any).discount_amount || '0') || 0;
@@ -295,14 +318,15 @@ export async function POST(
 
         const lineItems: any[] = [];
         (pricingItems || []).forEach((it: any) => {
-          const qty = it.quantity ? parseFloat(String(it.quantity)) : 1;
+          const qtyRaw = it.quantity ?? it.qty ?? 1;
+          const qty = qtyRaw ? parseFloat(String(qtyRaw)) : 1;
           const amt = parseFloat(it.final_price || '0') || 0;
           lineItems.push({
-            description: it.name || 'Service',
+            description: it.name || it.item_name || 'Service',
             qty,
             rate: qty ? amt / qty : amt,
             amount: amt,
-            category: it.category || 'SERVICE',
+            category: it.is_addon ? 'ADDON' : 'SERVICE',
           });
         });
         (jobCard?.job_card_parts || []).forEach((p: any) => {
@@ -315,12 +339,13 @@ export async function POST(
           });
         });
         (extraCharges || []).forEach((c: any) => {
+          const amt = computeExtraAmount(c);
           lineItems.push({
-            description: c.description || 'Extra Charge',
+            description: c.description || c.reason || 'Additional Request',
             qty: 1,
-            rate: parseFloat(c.amount || '0') || 0,
-            amount: parseFloat(c.amount || '0') || 0,
-            category: c.charge_type || 'EXTRA',
+            rate: amt,
+            amount: amt,
+            category: 'EXTRA',
           });
         });
 
@@ -362,12 +387,68 @@ export async function POST(
           .single();
 
         if (createOsErr || !createdOS) {
-          return NextResponse.json(
-            { error: 'Failed to create order summary', details: createOsErr?.message },
-            { status: 500 }
-          );
+          // Some installs still have UNIQUE(lead_id) on invoices (legacy schema).
+          // In that case, upsert by updating the existing invoice to become ORDER_SUMMARY.
+          const isDuplicateLeadInvoice =
+            createOsErr?.code === '23505' ||
+            /duplicate key/i.test(String(createOsErr?.message || '')) ||
+            /invoices_lead_id_unique/i.test(String(createOsErr?.message || ''));
+
+          if (isDuplicateLeadInvoice) {
+            const { data: existingAnyInvoice } = await supabase
+              .from('invoices')
+              .select('id')
+              .eq('lead_id', leadId)
+              .maybeSingle();
+
+            if (existingAnyInvoice?.id) {
+              const { error: updateErr } = await supabase
+                .from('invoices')
+                .update({
+                  ...osInsert,
+                  updated_at: now,
+                })
+                .eq('id', existingAnyInvoice.id);
+
+              if (!updateErr) {
+                orderSummaryInvoiceId = existingAnyInvoice.id;
+              } else {
+                return NextResponse.json(
+                  {
+                    error: 'Failed to create order summary (existing invoice update failed)',
+                    details: updateErr.message,
+                    code: updateErr.code,
+                    hint: updateErr.hint,
+                  },
+                  { status: 500 }
+                );
+              }
+            } else {
+              return NextResponse.json(
+                {
+                  error: 'Failed to create order summary (duplicate lead invoice)',
+                  details: createOsErr?.message,
+                  code: createOsErr?.code,
+                  hint: createOsErr?.hint,
+                },
+                { status: 500 }
+              );
+            }
+          } else {
+            return NextResponse.json(
+              {
+                error: 'Failed to create order summary',
+                details: createOsErr?.message,
+                code: createOsErr?.code,
+                hint: createOsErr?.hint,
+              },
+              { status: 500 }
+            );
+          }
         }
-        orderSummaryInvoiceId = createdOS.id;
+        if (createdOS?.id) {
+          orderSummaryInvoiceId = createdOS.id;
+        }
       }
 
       // 3) Lock billing edits + move lead to PAYMENT_AWAITING and point lead.invoice_id to OS for quick access
@@ -383,7 +464,7 @@ export async function POST(
           updated_at: now,
         })
         .eq('id', leadId);
-
+      
       // Log status change
       await supabase
         .from('lead_status_history')

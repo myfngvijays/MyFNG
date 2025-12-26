@@ -125,18 +125,35 @@ export async function POST(
     const workshopStateCode = workshop?.state_code || '';
     const place = getPlaceOfSupply(customerState, customerStateCode, workshopState, workshopStateCode);
 
+    const parseIdList = (raw: any): string[] => {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
+      if (typeof raw === 'string') {
+        const txt = raw.trim();
+        if (!txt) return [];
+        try {
+          const parsed = JSON.parse(txt);
+          if (Array.isArray(parsed)) return parsed.map(String).map((s) => s.trim()).filter(Boolean);
+        } catch {
+          // ignore
+        }
+        return txt.split(',').map((s) => s.trim()).filter(Boolean);
+      }
+      return [];
+    };
+
     // Build billable items snapshot
-    const [{ data: pricingItems }, { data: extraCharges }, { data: jobCard }] = await Promise.all([
+    const [{ data: pricingItems }, { data: extraChargesRaw }, { data: jobCard }] = await Promise.all([
+      // NOTE: schema uses item_name + qty; keep fallback handling in mapping below.
       supabase
         .from('lead_pricing_items')
-        .select('name, final_price, quantity, category, item_type')
+        .select('id, item_name, item_description, base_price, final_price, qty, is_addon, status')
         .eq('lead_id', leadId)
         .eq('status', 'ACTIVE'),
       supabase
         .from('lead_extra_charges')
-        .select('description, amount, charge_type, category')
-        .eq('lead_id', leadId)
-        .eq('status', 'APPROVED'),
+        .select('*')
+        .eq('lead_id', leadId),
       supabase
         .from('job_cards')
         .select('id, jobcard_number, job_card_parts(part_name, part_number, quantity, unit_price, total_price)')
@@ -144,17 +161,137 @@ export async function POST(
         .maybeSingle(),
     ]);
 
+    // Extra work approvals: schema varies across installs (status values + customer_approved flag).
+    // We filter in JS to avoid schema-specific query operators.
+    const isApprovedExtra = (row: any) => {
+      const s = String(row?.status || '').trim().toUpperCase();
+      const customerApproved = row?.customer_approved === true;
+      return (
+        customerApproved ||
+        s === 'APPROVED' ||
+        s === 'CUSTOMER_APPROVED' ||
+        s === 'APPROVED_BY_CUSTOMER' ||
+        s === 'ACCEPTED'
+      );
+    };
+
+    const computeExtraAmount = (row: any) => {
+      const legacy = Number(row?.amount ?? 0) || 0;
+      if (legacy > 0) return legacy;
+      const partType = String(row?.part_price_type || 'OEM').toUpperCase();
+      const part = partType === 'OES' ? Number(row?.oes_price ?? 0) || 0 : Number(row?.oem_price ?? 0) || 0;
+      const labour = Number(row?.labour_price ?? 0) || 0;
+      return part + labour;
+    };
+
+    const extraCharges = (Array.isArray(extraChargesRaw) ? extraChargesRaw : []).filter(isApprovedExtra);
+
     const serviceLines = (pricingItems || []).map((it: any) => {
-      const qty = it.quantity ? parseFloat(String(it.quantity)) : 1;
+      const qtyRaw = it.quantity ?? it.qty ?? 1;
+      const qty = qtyRaw ? parseFloat(String(qtyRaw)) : 1;
       const amount = parseFloat(it.final_price || '0') || 0;
       return {
-        description: it.name || 'Service',
+        description: it.name || it.item_name || 'Service',
         qty,
         rate: qty ? amount / qty : amount,
         amount,
-        category: it.category || it.item_type || 'SERVICE',
+        category: it.item_type || (it.is_addon ? 'ADDON' : 'SERVICE'),
       };
     });
+
+    // Fallback: if lead_pricing_items is empty, derive pricing from service_types/service_addons + workshop pricing tables.
+    let fallbackServiceLines: any[] = [];
+    try {
+      if ((serviceLines?.length || 0) === 0 && lead?.workshop_id) {
+        const serviceTypeIds = parseIdList((lead as any).service_type_ids);
+        const addonIds = parseIdList((lead as any).subservice_ids);
+
+        if (serviceTypeIds.length > 0) {
+          // service_types base price (if column exists) + workshop override
+          let serviceTypes: any[] = [];
+          const { data: serviceTypesData, error: stErr } = await supabase
+            .from('service_types')
+            .select('id, name, base_price')
+            .in('id', serviceTypeIds);
+          if (!stErr && serviceTypesData) {
+            serviceTypes = serviceTypesData as any[];
+          } else {
+            const { data: stAlt } = await supabase
+              .from('service_types')
+              .select('id, name')
+              .in('id', serviceTypeIds);
+            serviceTypes = (stAlt || []) as any[];
+          }
+
+          const { data: wsp } = await supabase
+            .from('workshop_service_pricing')
+            .select('service_type_id, custom_price')
+            .eq('workshop_id', lead.workshop_id)
+            .in('service_type_id', serviceTypeIds)
+            .eq('is_active', true);
+
+          const priceByServiceType: Record<string, number> = {};
+          for (const row of wsp || []) {
+            const id = String((row as any).service_type_id || '');
+            const p = parseFloat(String((row as any).custom_price || '0')) || 0;
+            if (id) priceByServiceType[id] = p;
+          }
+
+          for (const st of serviceTypes) {
+            const id = String(st?.id || '');
+            const base = parseFloat(String((st as any).base_price || '0')) || 0;
+            const custom = priceByServiceType[id] || 0;
+            const amount = custom > 0 ? custom : base;
+            fallbackServiceLines.push({
+              description: st?.name || 'Service',
+              qty: 1,
+              rate: amount,
+              amount,
+              category: 'SERVICE',
+            });
+          }
+        }
+
+        if (addonIds.length > 0) {
+          const { data: addons } = await supabase
+            .from('service_addons')
+            .select('id, name, price')
+            .in('id', addonIds);
+
+          const { data: wap } = await supabase
+            .from('workshop_service_addons_pricing')
+            .select('service_addon_id, custom_price')
+            .eq('workshop_id', lead.workshop_id)
+            .in('service_addon_id', addonIds)
+            .eq('is_active', true);
+
+          const priceByAddon: Record<string, number> = {};
+          for (const row of wap || []) {
+            const id = String((row as any).service_addon_id || '');
+            const p = parseFloat(String((row as any).custom_price || '0')) || 0;
+            if (id) priceByAddon[id] = p;
+          }
+
+          for (const a of addons || []) {
+            const id = String((a as any).id || '');
+            const base = parseFloat(String((a as any).price || '0')) || 0;
+            const custom = priceByAddon[id] || 0;
+            const amount = custom > 0 ? custom : base;
+            fallbackServiceLines.push({
+              description: (a as any).name || 'Addon',
+              qty: 1,
+              rate: amount,
+              amount,
+              category: 'ADDON',
+            });
+          }
+        }
+      }
+    } catch {
+      // ignore fallback errors; keep 0 if no sources available
+    }
+
+    const effectiveServiceLines = (serviceLines?.length || 0) > 0 ? serviceLines : fallbackServiceLines;
 
     const partLines = (jobCard?.job_card_parts || []).map((p: any) => ({
       description: `${p.part_name || 'Part'}${p.part_number ? ` (${p.part_number})` : ''}`,
@@ -165,14 +302,14 @@ export async function POST(
     }));
 
     const extraLines = (extraCharges || []).map((c: any) => ({
-      description: c.description || 'Extra Charge',
+      description: c.description || c.reason || 'Additional Request',
       qty: 1,
-      rate: parseFloat(c.amount || '0') || 0,
-      amount: parseFloat(c.amount || '0') || 0,
-      category: c.charge_type || c.category || 'EXTRA',
+      rate: computeExtraAmount(c),
+      amount: computeExtraAmount(c),
+      category: 'EXTRA',
     }));
 
-    const baseAmount = serviceLines.reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
+    const baseAmount = effectiveServiceLines.reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
     const partsCost = partLines.reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
     const extraChargesAmount = extraLines.reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
     const subTotal = Math.max(0, baseAmount + partsCost + extraChargesAmount);
@@ -240,7 +377,7 @@ export async function POST(
       series_seq: seriesSeq,
       visible_to_customer: false, // becomes true after customer confirms
       show_gst_breakup: false, // never show GST on customer invoice
-      line_items: [...serviceLines, ...partLines, ...extraLines],
+      line_items: [...effectiveServiceLines, ...partLines, ...extraLines],
     };
 
     let ciInvoice: any = null;
@@ -264,7 +401,34 @@ export async function POST(
         .single();
 
       if (insErr) {
-        return NextResponse.json({ error: 'Failed to create customer invoice', details: insErr.message }, { status: 500 });
+        const msg = String(insErr.message || '');
+        const isDuplicate =
+          insErr.code === '23505' ||
+          /duplicate key/i.test(msg) ||
+          /invoices_lead_id_unique/i.test(msg);
+
+        if (isDuplicate) {
+          // Legacy schema: UNIQUE(lead_id) on invoices prevents OS+CI+TI multi-document flow.
+          return NextResponse.json(
+            {
+              error: 'Failed to create customer invoice',
+              details:
+                'Legacy schema blocks multiple invoices per lead. Run migration: database/102_drop_any_invoices_lead_unique.sql (or database/101_drop_invoices_lead_unique.sql if applicable).',
+              code: insErr.code,
+              hint: insErr.hint,
+              action: {
+                migration_file: 'database/102_drop_any_invoices_lead_unique.sql',
+                reason: 'Remove UNIQUE(lead_id) from invoices so OS/CI/TI can coexist for a single lead.',
+              },
+            },
+            { status: 409 }
+          );
+        }
+
+        return NextResponse.json(
+          { error: 'Failed to create customer invoice', details: insErr.message, code: insErr.code, hint: insErr.hint },
+          { status: 500 }
+        );
       }
       ciInvoice = created;
     }

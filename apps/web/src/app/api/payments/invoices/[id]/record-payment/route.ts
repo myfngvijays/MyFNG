@@ -4,10 +4,22 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { createNotification, notifyWorkshopAdmin, notifyCSETeam } from '@/lib/notifications';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
+import type { Database } from '@/types/database';
+
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  if (!supabaseUrl || !serviceRoleKey) return { supabaseAdmin: null as any, error: 'SUPABASE_SERVICE_ROLE_KEY not set' };
+  const supabaseAdmin = createSupabaseAdminClient<Database>(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return { supabaseAdmin, error: null as any };
+}
 
 export async function POST(
   request: NextRequest,
@@ -15,6 +27,10 @@ export async function POST(
 ) {
   try {
     const supabase = await createClient();
+    const { supabaseAdmin, error: adminError } = getAdminClient();
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: adminError }, { status: 500 });
+    }
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -143,15 +159,17 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Check for duplicate transaction
+    // Check for duplicate transaction (use admin client to bypass RLS)
     if (payment_txn_id || payment_reference) {
       const txnRef = payment_txn_id || payment_reference;
-      const { data: existingTxn } = await supabase
+      const { data: existingTxn } = await supabaseAdmin
         .from('payment_transactions')
         .select('id, transaction_id, amount')
         .or(`transaction_id.eq.${txnRef},gateway_payment_id.eq.${txnRef}`)
         .eq('status', 'SUCCESS')
-        .single();
+        .order('initiated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
       if (existingTxn) {
         return NextResponse.json({
@@ -170,7 +188,7 @@ export async function POST(
     const isFullPayment = newPaidAmount >= invoiceAmount;
 
     // Create payment transaction record
-    const { data: paymentTransaction, error: transactionError } = await supabase
+    const { data: paymentTransaction, error: transactionError } = await supabaseAdmin
       .from('payment_transactions')
       .insert({
         transaction_id: transactionId,
@@ -197,7 +215,10 @@ export async function POST(
 
     if (transactionError) {
       console.error('Error creating payment transaction:', transactionError);
-      return NextResponse.json({ error: 'Failed to record payment' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to record payment', details: transactionError.message, code: transactionError.code, hint: transactionError.hint },
+        { status: 500 }
+      );
     }
 
     // Update invoice
@@ -222,7 +243,7 @@ export async function POST(
       updateData.cod_due_date = cod_due_date;
     }
 
-    const { data: updatedInvoice, error: updateError } = await supabase
+    const { data: updatedInvoice, error: updateError } = await supabaseAdmin
       .from('invoices')
       .update(updateData)
       .eq('id', invoiceId)
@@ -234,28 +255,33 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to update invoice' }, { status: 500 });
     }
 
-    // Create finance event
-    await createFinanceEvent({
-      eventType: is_cod ? 'payment_received' : (isFullPayment ? 'payment_received' : 'payment_partial'),
-      entityType: 'payment',
-      entityId: paymentTransaction.id,
-      actorId: userProfile.id,
-      actorRole: roleCode,
-      actorName: userProfile.full_name,
-      eventData: {
-        invoice_id: invoiceId,
-        invoice_number: invoice.invoice_number,
-        payment_mode: payment_mode,
-        amount: paidAmount,
-        is_cod: is_cod,
-        is_partial: !isFullPayment,
-        transaction_id: transactionId,
-      },
-      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
-      userAgent: request.headers.get('user-agent') || undefined,
-    });
+    // Create finance event (best-effort; never fail payment recording)
+    try {
+      await createFinanceEvent({
+        eventType: is_cod ? 'payment_received' : (isFullPayment ? 'payment_received' : 'payment_partial'),
+        entityType: 'payment',
+        entityId: paymentTransaction.id,
+        actorId: userProfile.id,
+        actorRole: roleCode,
+        actorName: userProfile.full_name,
+        eventData: {
+          invoice_id: invoiceId,
+          invoice_number: invoice.invoice_number,
+          payment_mode: payment_mode,
+          amount: paidAmount,
+          is_cod: is_cod,
+          is_partial: !isFullPayment,
+          transaction_id: transactionId,
+        },
+        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+        userAgent: request.headers.get('user-agent') || undefined,
+      });
+    } catch (e) {
+      console.warn('createFinanceEvent failed (non-blocking):', e);
+    }
 
     // Update lead status
+    let taxInvoice: any = null;
     if (invoice.lead_id) {
       // NEW FLOW: After full payment, mark lead PAID (delivery is a separate step). COD remains COD_PENDING.
       const newLeadStatus = is_cod 
@@ -264,7 +290,7 @@ export async function POST(
         ? 'PAID' 
         : 'PARTIAL_PAYMENT';
       
-      await supabase
+      await supabaseAdmin
         .from('service_leads')
         .update({
           payment_status: is_cod ? 'COD_PENDING' : (isFullPayment ? 'PAID' : 'PARTIAL'),
@@ -278,45 +304,81 @@ export async function POST(
 
       // On full payment (non-COD), generate Tax Invoice (TI) using same series suffix
       if (isFullPayment && !is_cod) {
-        const year = (invoice as any).series_year || (invoice.lead as any)?.invoice_series_year || new Date().getFullYear();
-        const month = (invoice as any).series_month || (invoice.lead as any)?.invoice_series_month || (new Date().getMonth() + 1);
-        const seq = (invoice as any).series_seq || (invoice.lead as any)?.invoice_series_seq || null;
+        // Determine shared series (prefer invoice/lead columns, then parse CI/OS invoice_number)
+        const parseSeriesFromNumber = (num: any) => {
+          const s = String(num || '').trim().toUpperCase();
+          const m = s.match(/^(OS|CI|TI)-(\d{4})-(\d{2})-(\d{1,})$/);
+          if (!m) return null;
+          return { year: parseInt(m[2], 10), month: parseInt(m[3], 10), seq: parseInt(m[4], 10) };
+        };
 
-        if (seq) {
+        let year =
+          (updatedInvoice as any)?.series_year ||
+          (invoice as any).series_year ||
+          (invoice.lead as any)?.invoice_series_year ||
+          null;
+        let month =
+          (updatedInvoice as any)?.series_month ||
+          (invoice as any).series_month ||
+          (invoice.lead as any)?.invoice_series_month ||
+          null;
+        let seq =
+          (updatedInvoice as any)?.series_seq ||
+          (invoice as any).series_seq ||
+          (invoice.lead as any)?.invoice_series_seq ||
+          null;
+
+        if (!year || !month || !seq) {
+          const parsed = parseSeriesFromNumber((invoice as any).invoice_number);
+          if (parsed) {
+            year = year || parsed.year;
+            month = month || parsed.month;
+            seq = seq || parsed.seq;
+          }
+        }
+
+        if (year && month && seq) {
           const tiNumber = generateSeriesDocumentNumber('TI', year, month, seq);
-          const { data: existingTI } = await supabase
+
+          const { data: existingTI } = await supabaseAdmin
             .from('invoices')
-            .select('id')
+            .select('*')
             .eq('lead_id', invoice.lead_id)
             .eq('invoice_type', 'TAX_INVOICE')
+            .order('created_at', { ascending: false })
+            .limit(1)
             .maybeSingle();
 
-          if (!existingTI?.id) {
+          if (existingTI?.id) {
+            taxInvoice = existingTI;
+          } else {
+            const amount = parseFloat(String((updatedInvoice as any)?.final_amount || invoiceAmount || '0')) || 0;
             const tiPayload: any = {
               invoice_number: tiNumber,
               lead_id: invoice.lead_id,
-              workshop_id: (invoice as any).workshop_id,
-              base_amount: (invoice as any).base_amount || 0,
-              parts_cost: (invoice as any).parts_cost || 0,
-              extra_charges: (invoice as any).extra_charges || 0,
-              labour_cost: (invoice as any).labour_cost || 0,
-              sub_total: (invoice as any).sub_total || (invoice as any).subtotal || 0,
-              discount_amount: (invoice as any).discount_amount || 0,
-              cgst_percentage: (invoice as any).cgst_percentage || 0,
-              cgst_amount: (invoice as any).cgst_amount || 0,
-              sgst_percentage: (invoice as any).sgst_percentage || 0,
-              sgst_amount: (invoice as any).sgst_amount || 0,
-              igst_percentage: (invoice as any).igst_percentage || 0,
-              igst_amount: (invoice as any).igst_amount || 0,
-              total_tax: (invoice as any).total_tax || 0,
-              round_off_amount: (invoice as any).round_off_amount || 0,
-              final_amount: invoiceAmount,
-              amount_in_words: (invoice as any).amount_in_words || null,
-              place_of_supply: (invoice as any).place_of_supply || null,
-              place_of_supply_state_code: (invoice as any).place_of_supply_state_code || null,
+              workshop_id: (updatedInvoice as any).workshop_id || (invoice as any).workshop_id,
+              base_amount: (updatedInvoice as any).base_amount || (invoice as any).base_amount || 0,
+              parts_cost: (updatedInvoice as any).parts_cost || (invoice as any).parts_cost || 0,
+              extra_charges: (updatedInvoice as any).extra_charges || (invoice as any).extra_charges || 0,
+              labour_cost: (updatedInvoice as any).labour_cost || (invoice as any).labour_cost || 0,
+              sub_total: (updatedInvoice as any).sub_total || (updatedInvoice as any).subtotal || (invoice as any).sub_total || 0,
+              discount_amount: (updatedInvoice as any).discount_amount || (invoice as any).discount_amount || 0,
+              cgst_percentage: (updatedInvoice as any).cgst_percentage || (invoice as any).cgst_percentage || 0,
+              cgst_amount: (updatedInvoice as any).cgst_amount || (invoice as any).cgst_amount || 0,
+              sgst_percentage: (updatedInvoice as any).sgst_percentage || (invoice as any).sgst_percentage || 0,
+              sgst_amount: (updatedInvoice as any).sgst_amount || (invoice as any).sgst_amount || 0,
+              igst_percentage: (updatedInvoice as any).igst_percentage || (invoice as any).igst_percentage || 0,
+              igst_amount: (updatedInvoice as any).igst_amount || (invoice as any).igst_amount || 0,
+              total_tax: (updatedInvoice as any).total_tax || (invoice as any).total_tax || 0,
+              round_off_amount: (updatedInvoice as any).round_off_amount || (invoice as any).round_off_amount || 0,
+              final_amount: amount,
+              amount_in_words: (updatedInvoice as any).amount_in_words || (invoice as any).amount_in_words || null,
+              place_of_supply: (updatedInvoice as any).place_of_supply || (invoice as any).place_of_supply || null,
+              place_of_supply_state_code:
+                (updatedInvoice as any).place_of_supply_state_code || (invoice as any).place_of_supply_state_code || null,
               status: 'PAID',
               payment_status: 'PAID',
-              paid_amount: invoiceAmount,
+              paid_amount: amount,
               payment_mode: payment_mode,
               payment_txn_id: transactionId,
               paid_at: now,
@@ -327,28 +389,42 @@ export async function POST(
               series_seq: seq,
               visible_to_customer: true,
               show_gst_breakup: true,
-              line_items: (invoice as any).line_items || [],
+              line_items: (updatedInvoice as any).line_items || (invoice as any).line_items || [],
               created_at: now,
               updated_at: now,
             };
-            const { data: createdTI } = await supabase
+
+            const { data: createdTI, error: tiErr } = await supabaseAdmin
               .from('invoices')
               .insert(tiPayload)
-              .select('id')
+              .select('*')
               .single();
 
-            if (createdTI?.id) {
-              await supabase
-                .from('service_leads')
-                .update({ invoice_id: createdTI.id, invoice_number: tiNumber, updated_at: now })
-                .eq('id', invoice.lead_id);
+            if (tiErr) {
+              console.error('TI creation failed (non-blocking):', tiErr);
+            } else {
+              taxInvoice = createdTI;
             }
           }
+
+          if (taxInvoice?.id) {
+            await supabaseAdmin
+              .from('service_leads')
+              .update({ invoice_id: taxInvoice.id, invoice_number: taxInvoice.invoice_number, updated_at: now })
+              .eq('id', invoice.lead_id);
+          }
+        } else {
+          console.warn('TI not generated: missing series (year/month/seq).', {
+            year,
+            month,
+            seq,
+            invoice_number: (invoice as any).invoice_number,
+          });
         }
       }
 
       // Log status change
-      await supabase
+      await supabaseAdmin
         .from('lead_status_history')
         .insert({
           lead_id: invoice.lead_id,
@@ -361,7 +437,7 @@ export async function POST(
         });
 
       // Create activity log
-      await supabase
+      await supabaseAdmin
         .from('lead_activities')
         .insert({
           lead_id: invoice.lead_id,
@@ -420,7 +496,7 @@ export async function POST(
       }
 
       // Create lead event for payment (Step 13: Notifications & Audit Trail)
-      await supabase
+      await supabaseAdmin
         .from('lead_events')
         .insert({
           lead_id: invoice.lead_id,
@@ -471,6 +547,7 @@ export async function POST(
         : 'Partial payment recorded',
       payment: paymentTransaction,
       invoice: updatedInvoice,
+      tax_invoice: taxInvoice,
       balance_due: newBalanceDue,
       is_full_payment: isFullPayment,
       is_cod: is_cod,
@@ -484,7 +561,7 @@ export async function POST(
   } catch (error) {
     console.error('Error in record payment API:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: (error as any)?.message },
       { status: 500 }
     );
   }

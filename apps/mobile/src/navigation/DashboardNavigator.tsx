@@ -661,7 +661,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={require('../screens/dashboard/workshop_pickup_boy/PickupJobDetailScreen').default}
           options={{ title: 'Task Details' }}
         />
-        <Stack.Screen
+        <Stack.Screen 
           name="PickupPhotoUpload"
           component={require('../screens/dashboard/workshop_pickup_boy/PickupPhotoUploadWrapperScreen').default}
           options={{ title: 'Upload Photos' }}

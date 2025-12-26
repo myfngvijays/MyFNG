@@ -415,17 +415,29 @@ export async function GET(
       }, { status: 403 });
     }
 
-    // Fetch invoice
-    const { data: invoice, error } = await supabase
+    // NEW FLOW: a lead can have multiple invoices (OS/CI/TI). Fetch a small window and pick the best.
+    const { data: invoices, error } = await supabase
       .from('invoices')
       .select('*')
       .eq('lead_id', leadId)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(25);
 
     if (error) {
-      console.error('Error fetching invoice:', error);
+      console.error('Error fetching invoice list:', error);
       throw error;
     }
+
+    const list = Array.isArray(invoices) ? invoices : [];
+    const pickLatestOfType = (t: string) => list.find((i: any) => String(i?.invoice_type || '').toUpperCase() === t);
+
+    // Priority: TI > CI > OS. Fallback to first by created_at desc.
+    const invoice =
+      pickLatestOfType('TAX_INVOICE') ||
+      pickLatestOfType('CUSTOMER_INVOICE') ||
+      pickLatestOfType('ORDER_SUMMARY') ||
+      list[0] ||
+      null;
 
     // If invoice exists, verify workshop access for workshop staff
     if (invoice && ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode)) {
@@ -441,8 +453,39 @@ export async function GET(
       }
     }
 
+    const mapInvoice = (inv: any) => {
+      if (!inv) return null;
+      return {
+        ...inv,
+        parts_amount: (inv as any).parts_cost || 0,
+        extra_charges_amount: (inv as any).extra_charges || 0,
+        subtotal:
+          (inv as any).sub_total ||
+          ((inv as any).base_amount || 0) + ((inv as any).extra_charges || 0) - ((inv as any).discount_amount || (inv as any).discount || 0),
+        sub_total: (inv as any).sub_total,
+        cgst: (inv as any).cgst_amount || 0,
+        cgst_amount: (inv as any).cgst_amount || 0,
+        sgst: (inv as any).sgst_amount || 0,
+        sgst_amount: (inv as any).sgst_amount || 0,
+        igst: (inv as any).igst_amount || 0,
+        igst_amount: (inv as any).igst_amount || 0,
+        total_tax: (inv as any).total_tax || 0,
+        round_off_amount: (inv as any).round_off_amount || 0,
+        discount_amount: (inv as any).discount_amount || (inv as any).discount || 0,
+        total_amount: (inv as any).final_amount || (inv as any).total_amount || 0,
+        final_amount: (inv as any).final_amount || (inv as any).total_amount || 0,
+        amount_in_words: (inv as any).amount_in_words,
+        invoice_date: (inv as any).invoice_date || (inv as any).created_at || new Date().toISOString(),
+        due_date: (inv as any).due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        payment_status: (inv as any).payment_status || 'PENDING',
+        payment_mode: (inv as any).payment_mode,
+        payment_txn_id: (inv as any).payment_txn_id,
+        payment_remarks: (inv as any).payment_remarks,
+      };
+    };
+
     if (!invoice) {
-      return NextResponse.json({ invoice: null });
+      return NextResponse.json({ invoice: null, invoices: [] });
     }
 
     // Fetch creator name if generated_by exists
@@ -458,45 +501,15 @@ export async function GET(
       }
     }
 
-    // Map database fields to component expected fields - include ALL new fields
-    const mappedInvoice = {
-      ...invoice,
-      // Map field names to match InvoiceSection component expectations
-      parts_amount: (invoice as any).parts_cost || 0,
-      extra_charges_amount: invoice.extra_charges || 0,
-      subtotal: (invoice as any).sub_total || ((invoice.base_amount || 0) + (invoice.extra_charges || 0) - (invoice.discount_amount || invoice.discount || 0)),
-      sub_total: (invoice as any).sub_total,
-      cgst: (invoice as any).cgst_amount || 0,
-      cgst_amount: (invoice as any).cgst_amount || 0,
-      sgst: (invoice as any).sgst_amount || 0,
-      sgst_amount: (invoice as any).sgst_amount || 0,
-      igst: (invoice as any).igst_amount || 0,
-      igst_amount: (invoice as any).igst_amount || 0,
-      total_tax: (invoice as any).total_tax || 0,
-      round_off_amount: (invoice as any).round_off_amount || 0,
-      discount_amount: (invoice as any).discount_amount || invoice.discount || 0,
-      total_amount: (invoice as any).final_amount || invoice.total_amount || 0,
-      final_amount: (invoice as any).final_amount || invoice.total_amount || 0,
-      amount_in_words: (invoice as any).amount_in_words,
-      invoice_date: (invoice as any).invoice_date || invoice.created_at || new Date().toISOString(),
-      due_date: (invoice as any).due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      payment_status: invoice.payment_status || 'PENDING',
-      payment_mode: (invoice as any).payment_mode,
-      payment_txn_id: (invoice as any).payment_txn_id,
-      payment_remarks: (invoice as any).payment_remarks,
-      old_parts_handed_over: (invoice as any).old_parts_handed_over,
-      old_parts_handed_over_notes: (invoice as any).old_parts_handed_over_notes,
-      warranty_info: (invoice as any).warranty_info,
-      recommended_future_work: (invoice as any).recommended_future_work,
-      invoice_notes: (invoice as any).invoice_notes,
-      bank_name: (invoice as any).bank_name,
-      bank_account_name: (invoice as any).bank_account_name,
-      bank_account_number: (invoice as any).bank_account_number,
-      bank_ifsc: (invoice as any).bank_ifsc,
-      bank_branch: (invoice as any).bank_branch,
-    };
+    const mappedInvoice = mapInvoice(invoice);
+    const mappedInvoices = list.map(mapInvoice).filter(Boolean);
 
-    return NextResponse.json({ invoice: mappedInvoice });
+    // Preserve any creator field we attached above on the selected invoice
+    if ((invoice as any).creator && mappedInvoice) {
+      (mappedInvoice as any).creator = (invoice as any).creator;
+    }
+
+    return NextResponse.json({ invoice: mappedInvoice, invoices: mappedInvoices });
   } catch (error: any) {
     console.error('Error fetching invoice:', error);
     return NextResponse.json(

@@ -36,12 +36,14 @@ export default function SupervisorJobDetailPage() {
   const jobId = params.id as string;
 
   type MainTab = 'overview' | 'service' | 'photos' | 'billing' | 'workflow' | 'timeline';
+  type BillingSubTab = 'billing' | 'parts';
 
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showQC, setShowQC] = useState(false);
   const [activeTab, setActiveTab] = useState<MainTab>('overview');
+  const [billingSubTab, setBillingSubTab] = useState<BillingSubTab>('billing');
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [selectedExtraCharge, setSelectedExtraCharge] = useState<any>(null);
@@ -270,6 +272,13 @@ export default function SupervisorJobDetailPage() {
       supabase.removeChannel(channel);
     };
   }, [jobId]);
+
+  useEffect(() => {
+    // When switching back to Billing main tab, default to Billing sub-tab
+    if (activeTab === 'billing') {
+      setBillingSubTab('billing');
+    }
+  }, [activeTab]);
 
   // Autocomplete for Part Name -> master_products (type=PART)
   useEffect(() => {
@@ -1419,8 +1428,30 @@ export default function SupervisorJobDetailPage() {
 
         {/* Job Card section hidden as requested */}
 
+        {/* Billing sub-tabs (separate Parts from Billing) */}
+        {activeTab === 'billing' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              className={billingSubTab === 'billing' ? 'btn btn-primary' : 'btn btn-outline bg-white'}
+              onClick={() => setBillingSubTab('billing')}
+            >
+              Billing
+              {(pendingExtraCharges.length > 0) && <span className="ml-1">({pendingExtraCharges.length})</span>}
+            </button>
+            <button
+              type="button"
+              className={billingSubTab === 'parts' ? 'btn btn-primary' : 'btn btn-outline bg-white'}
+              onClick={() => setBillingSubTab('parts')}
+            >
+              Parts
+              {(parts.length > 0) && <span className="ml-1">({parts.length})</span>}
+            </button>
+          </div>
+        )}
+
         {/* Section 6: Extra Charges */}
-        {activeTab === 'billing' && pendingExtraCharges.length > 0 && (
+        {activeTab === 'billing' && billingSubTab === 'billing' && pendingExtraCharges.length > 0 && (
           <div className="card bg-orange-50 border-orange-200">
             <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
               <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
@@ -1480,7 +1511,7 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Section 7: Mechanic Parts Assignment */}
-        {activeTab === 'billing' && lead.mechanic && (
+        {activeTab === 'billing' && billingSubTab === 'parts' && lead.mechanic && (
           <div className="card">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
               <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
@@ -1593,7 +1624,7 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Invoice Section - should stay visible through billing/payment/delivery */}
-        {activeTab === 'billing' && [
+        {activeTab === 'billing' && billingSubTab === 'billing' && [
           'WORK_COMPLETED',
           'COMPLETED',
           'QC_APPROVED',

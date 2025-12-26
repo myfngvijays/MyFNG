@@ -156,7 +156,7 @@ export default function GenerateInvoicePage() {
       if (data?.invoice?.id) {
         router.push(`/dashboard/billing/invoices/${data.invoice.id}`);
       } else {
-        router.push('/dashboard/billing');
+      router.push('/dashboard/billing');
       }
     } catch (error) {
       console.error('Error:', error);

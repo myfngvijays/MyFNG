@@ -304,33 +304,33 @@ export default function CustomerInvoicePage() {
         ) : (
           <>
             {invoice.invoice_type === 'CUSTOMER_INVOICE' ? (
-              <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-                <h2 className="text-xl font-bold mb-4">Payment</h2>
-                {isPartial && (
-                  <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="text-yellow-800">
-                      Partial payment received: ₹{invoice.paid_amount.toFixed(2)}
-                    </p>
-                    <p className="text-yellow-800 font-semibold">
-                      Remaining amount: ₹{remainingAmount.toFixed(2)}
-                    </p>
-                  </div>
-                )}
-                {invoice.lead && (
-                  <RazorpayPaymentButton
-                    invoiceId={invoice.id}
-                    amount={remainingAmount}
-                    customerName={invoice.lead.customer_name}
-                    customerEmail={invoice.lead.customer_email || ''}
-                    customerPhone={invoice.lead.customer_phone || ''}
-                    invoiceNumber={invoice.invoice_number}
-                    onPaymentSuccess={() => {
-                      fetchInvoice();
-                    }}
-                    className="w-full"
-                  />
-                )}
+          <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
+            <h2 className="text-xl font-bold mb-4">Payment</h2>
+            {isPartial && (
+              <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-yellow-800">
+                  Partial payment received: ₹{invoice.paid_amount.toFixed(2)}
+                </p>
+                <p className="text-yellow-800 font-semibold">
+                  Remaining amount: ₹{remainingAmount.toFixed(2)}
+                </p>
               </div>
+            )}
+            {invoice.lead && (
+              <RazorpayPaymentButton
+                invoiceId={invoice.id}
+                amount={remainingAmount}
+                customerName={invoice.lead.customer_name}
+                customerEmail={invoice.lead.customer_email || ''}
+                customerPhone={invoice.lead.customer_phone || ''}
+                invoiceNumber={invoice.invoice_number}
+                onPaymentSuccess={() => {
+                  fetchInvoice();
+                }}
+                className="w-full"
+              />
+            )}
+          </div>
             ) : invoice.invoice_type === 'ORDER_SUMMARY' ? (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
                 <div className="flex items-center gap-2 text-blue-700 mb-2">
