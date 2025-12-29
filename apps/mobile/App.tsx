@@ -8,6 +8,7 @@ import PublicHomeScreen from './src/screens/PublicHomeScreen';
 import AIBookingScreen from './src/screens/AIBookingScreen';
 import PublicServicePackagesScreen from './src/screens/PublicServicePackagesScreen';
 import PublicWorkshopLocatorScreen from './src/screens/PublicWorkshopLocatorScreen';
+import CustomerRegistrationScreen from './src/screens/dashboard/customer/CustomerRegistrationScreen';
 import DashboardNavigator from './src/navigation/DashboardNavigator';
 import { AuthProvider } from './src/context/AuthContext';
 import { NotificationProvider } from './src/context/NotificationContext';
@@ -118,6 +119,7 @@ function AppContent() {
           <Stack.Screen name="Login">
               {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
           </Stack.Screen>
+            <Stack.Screen name="CustomerSignup" component={CustomerRegistrationScreen} />
           </>
         ) : (
           <Stack.Screen name="Dashboard">

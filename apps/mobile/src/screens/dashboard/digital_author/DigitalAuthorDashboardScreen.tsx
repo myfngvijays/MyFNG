@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
 
 export default function DigitalAuthorDashboardScreen() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

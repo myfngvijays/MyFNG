@@ -29,26 +29,45 @@ export default function CustomerRegistrationScreen({ navigation }: any) {
 
       // Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
+        email: formData.email.trim(),
         password: formData.password,
       });
 
       if (authError) throw authError;
 
-      // Create customer profile
-      const { error: profileError } = await supabase.from('users_login').insert({
-        email: formData.email,
-        full_name: formData.full_name,
-        phone: formData.phone,
-        role_id: '(SELECT id FROM roles WHERE role_code = \'CUSTOMER\')',
-        is_active: true,
-      });
+      const userId = authData.user?.id;
+      if (!userId) {
+        throw new Error('Signup created no user. Please try again or contact support.');
+      }
+
+      // Resolve CUSTOMER role id
+      const { data: roleRow, error: roleErr } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('role_code', 'CUSTOMER')
+        .single();
+
+      if (roleErr) throw roleErr;
+      if (!roleRow?.id) throw new Error('Customer role not found. Please contact support.');
+
+      // Create customer profile (users_login.id must match auth user id for login to work)
+      const { error: profileError } = await supabase.from('users_login').upsert(
+        {
+          id: userId,
+          email: formData.email.trim(),
+          full_name: formData.full_name,
+          phone: formData.phone,
+          role_id: roleRow.id,
+          is_active: true,
+        },
+        { onConflict: 'id' }
+      );
 
       if (profileError) throw profileError;
 
       // Add vehicle
       const { error: vehicleError } = await supabase.from('customer_vehicles').insert({
-        customer_id: authData.user?.id,
+        customer_id: userId,
         vehicle_number: formData.vehicle_number,
         vehicle_make: formData.vehicle_make,
         vehicle_model: formData.vehicle_model,
@@ -60,6 +79,7 @@ export default function CustomerRegistrationScreen({ navigation }: any) {
       Alert.alert('Success', 'Registration successful! Please login.');
       // ✅ FIX: Use signOut to trigger auth state change (handles navigation automatically)
       await supabase.auth.signOut();
+      navigation?.goBack?.();
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {

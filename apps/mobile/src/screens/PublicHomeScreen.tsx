@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppState,
   View,
   Text,
   StyleSheet,
@@ -12,6 +13,8 @@ import {
   Platform,
   Pressable,
   Dimensions,
+  PixelRatio,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +26,15 @@ import PublicPillNav, { type PublicPillNavTab } from '../components/PublicPillNa
 
 type Props = {
   navigation: any;
+};
+
+type HomeCarouselBanner = {
+  id: string;
+  title: string | null;
+  image_url: string;
+  route_name: string;
+  route_params: any;
+  display_order: number;
 };
 
 function openTel(phoneE164: string) {
@@ -40,7 +52,11 @@ function openMail(email: string) {
 
 export default function PublicHomeScreen({ navigation }: Props) {
   const [city, setCity] = useState<string>('Mumbai');
+  const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [cityModalOpen, setCityModalOpen] = useState(false);
+  const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
+  const [aiPreviewPrefill, setAiPreviewPrefill] = useState<string>('');
+  const [aiPreviewInput, setAiPreviewInput] = useState<string>('');
   const [isDetectingCity, setIsDetectingCity] = useState(false);
   const [cityDetectError, setCityDetectError] = useState<string | null>(null);
   const [citiesFromDb, setCitiesFromDb] = useState<string[]>([]);
@@ -49,24 +65,85 @@ export default function PublicHomeScreen({ navigation }: Props) {
     carsServiced: number | null;
     verifiedWorkshops: number | null;
   }>({ ratingText: '4.8/5', carsServiced: null, verifiedWorkshops: null });
+  const [homeCarouselBanners, setHomeCarouselBanners] = useState<HomeCarouselBanner[]>([]);
   const [featuredWorkshops, setFeaturedWorkshops] = useState<
     Array<{ id: string; name: string; city?: string | null; map_link?: string | null; latitude?: number | null; longitude?: number | null }>
   >([]);
   const [publicLoading, setPublicLoading] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [howItWorksActive, setHowItWorksActive] = useState<number>(2);
   const [heroLayoutWidth, setHeroLayoutWidth] = useState<number | null>(null);
   const heroCarouselRef = useRef<ScrollView>(null);
   const heroIndexRef = useRef(0);
   const heroTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const howCarouselRef = useRef<ScrollView>(null);
+  const howIndexRef = useRef(0);
+  const howTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const howResumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locationWatchRef = useRef<{ remove: () => void } | null>(null);
+  const lastCityUpdateRef = useRef<{ ts: number; lat: number; lng: number } | null>(null);
+  const aiPopupShownThisSessionRef = useRef(false);
+  const lastAiAutoShowTsRef = useRef(0);
 
   const supportPhone = '+919167779696';
   const supportEmail = 'support@myfng.in';
 
-  const onPressAIBooking = (prefill?: string) =>
-    navigation.navigate('AIBooking', { city, prefill: prefill || '' });
+  const AI_POPUP_DISMISSED_TS_KEY = 'myfng_ai_popup_dismissed_ts_v1';
+
+  const goToAIBooking = (prefill?: string) => navigation.navigate('AIBooking', { city, prefill: (prefill || '').trim() });
+
+  const ALLOWED_PUBLIC_ROUTES = useMemo(
+    () =>
+      new Set([
+        'PublicHome',
+        'AIBooking',
+        'PublicWorkshopLocator',
+        'PublicServicePackages',
+        'PublicBookServiceNow',
+        'Login',
+      ]),
+    []
+  );
+
+  function replacePlaceholdersDeep(value: any): any {
+    if (value === '__CITY__') return city;
+    if (Array.isArray(value)) return value.map(replacePlaceholdersDeep);
+    if (value && typeof value === 'object') {
+      const out: any = {};
+      for (const [k, v] of Object.entries(value)) out[k] = replacePlaceholdersDeep(v);
+      return out;
+    }
+    return value;
+  }
+
+  const onPressCarouselBanner = (b: HomeCarouselBanner) => {
+    try {
+      const routeName = String(b.route_name || '');
+      if (!ALLOWED_PUBLIC_ROUTES.has(routeName)) {
+        Alert.alert('Not supported', 'This banner route is not supported in the app.');
+        return;
+      }
+      const params = replacePlaceholdersDeep(b.route_params || {});
+      navigation.navigate(routeName as any, params);
+    } catch {
+      Alert.alert('Something went wrong', 'Unable to open this banner.');
+    }
+  };
+
+  const openAiPreview = (prefill?: string) => {
+    const next = prefill || '';
+    setAiPreviewPrefill(next);
+    setAiPreviewInput(next);
+    setAiPreviewOpen(true);
+  };
+  const continueToAIBooking = () => {
+    const prefill = (aiPreviewInput || aiPreviewPrefill || '').trim();
+    setAiPreviewOpen(false);
+    navigation.navigate('AIBooking', { city, prefill });
+  };
   const onPressPackages = () => navigation.navigate('PublicServicePackages', { city });
-  const onPressLocator = () => navigation.navigate('PublicWorkshopLocator', { city });
+  const onPressLocator = () => navigation.navigate('PublicWorkshopLocator', { city, userLoc });
   const onPressBookServiceNow = () => navigation.navigate('PublicBookServiceNow');
 
   const formatCount = (n: number | null) => {
@@ -79,10 +156,22 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
   const trustCards = useMemo(() => {
     return [
-      { icon: 'star', title: trustStats.ratingText, subtitle: 'MY FNG rating' },
-      { icon: 'trophy', title: formatCount(trustStats.carsServiced), subtitle: 'cars serviced' },
-      { icon: 'construct', title: formatCount(trustStats.verifiedWorkshops), subtitle: 'verified workshops' },
-      { icon: 'shield-checkmark', title: 'Warranty', subtitle: 'on service & parts' },
+      { icon: 'star', title: trustStats.ratingText, subtitle: 'MY FNG\nRATING' },
+      {
+        icon: 'trophy',
+        title: trustStats.carsServiced != null && trustStats.carsServiced >= 10000 ? `${trustStats.carsServiced}+` : '10000+',
+        subtitle: 'CARS\nSERVICED',
+      },
+      {
+        icon: 'construct',
+        title:
+          trustStats.verifiedWorkshops != null && trustStats.verifiedWorkshops >= 100
+            ? `${trustStats.verifiedWorkshops}+`
+            : '100+',
+        subtitle: 'VERIFIED\nWORKSHOPS',
+      },
+      { icon: 'shield-checkmark', title: 'Warranty', subtitle: 'ON SERVICE &\nPARTS' },
+      { icon: 'eye', title: 'Transparency', subtitle: 'LIVE\nUPDATES' },
     ];
   }, [trustStats]);
 
@@ -108,6 +197,92 @@ export default function PublicHomeScreen({ navigation }: Props) {
     []
   );
 
+  const howItWorksSteps = useMemo(
+    () => [
+      { icon: 'chatbubble-ellipses', title: 'Book with AI', sub: '60 seconds booking' },
+      { icon: 'car', title: 'Pickup at Home', sub: 'Scheduled pickup' },
+      { icon: 'radio', title: 'Track Live', sub: 'Updates in app' },
+      { icon: 'checkbox', title: 'QC Approved', sub: 'Verified checks' },
+      { icon: 'shield-checkmark', title: 'Delivered + Warranty', sub: 'Peace of mind' },
+    ],
+    []
+  );
+
+  // How-it-works horizontal carousel sizing (H3)
+  const howSectionWidth = Math.round(Dimensions.get('window').width - SPACING.sm * 2);
+  const howCardGap = 12;
+
+  // Keep height stable (no wrapping): card width should expand based on its own text (no cut).
+  // RN doesn't support "fit-content" width, so we approximate per-card widths and snap using offsets.
+  const howCardWidths = useMemo(() => {
+    const fontScale = PixelRatio.getFontScale();
+    const avgCharW = (fontSize: number) => fontSize * 0.62 * fontScale;
+    const titleFont = 14;
+    const subFont = 11;
+    const horizPadding = 12 * 2; // matches styles.howCard paddingHorizontal
+    const iconBlock = 40; // styles.howIconWrap width
+    const rowGap = 10; // styles.howCard gap
+    const safety = 28; // extra buffer so text never truncates
+    const minW = Math.max(220, Math.min(260, Math.round(howSectionWidth * 0.62)));
+
+    return howItWorksSteps.map((s) => {
+      const titleW = String(s.title || '').length * avgCharW(titleFont);
+      const subW = String(s.sub || '').length * avgCharW(subFont);
+      const textW = Math.max(titleW, subW);
+      return Math.max(minW, Math.ceil(horizPadding + iconBlock + rowGap + textW + safety));
+    });
+  }, [howItWorksSteps, howSectionWidth]);
+
+  const howSnapOffsets = useMemo(() => {
+    let x = 0;
+    return howCardWidths.map((w) => {
+      const offset = x;
+      x += w + howCardGap;
+      return offset;
+    });
+  }, [howCardWidths]);
+
+  const stopHowAutoplay = () => {
+    if (howTimerRef.current) {
+      clearInterval(howTimerRef.current);
+      howTimerRef.current = null;
+    }
+    if (howResumeTimeoutRef.current) {
+      clearTimeout(howResumeTimeoutRef.current);
+      howResumeTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleHowAutoplayResume = () => {
+    if (howResumeTimeoutRef.current) clearTimeout(howResumeTimeoutRef.current);
+    howResumeTimeoutRef.current = setTimeout(() => {
+      startHowAutoplay();
+    }, 2000);
+  };
+
+  const startHowAutoplay = () => {
+    stopHowAutoplay();
+    if (howItWorksSteps.length <= 1) return;
+    howTimerRef.current = setInterval(() => {
+      const nextIdx = (howIndexRef.current + 1) % howItWorksSteps.length;
+      howIndexRef.current = nextIdx;
+      setHowItWorksActive(nextIdx + 1);
+      howCarouselRef.current?.scrollTo({ x: howSnapOffsets[nextIdx] || 0, y: 0, animated: true });
+    }, 3800);
+  };
+
+  // Keep ref in sync so autoplay doesn't depend on stale state
+  useEffect(() => {
+    howIndexRef.current = Math.max(0, (howItWorksActive || 1) - 1);
+  }, [howItWorksActive]);
+
+  // How-it-works autoplay lifecycle
+  useEffect(() => {
+    startHowAutoplay();
+    return () => stopHowAutoplay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [howSnapOffsets, howItWorksSteps.length]);
+
   const heroCards = useMemo(
     () => [
       {
@@ -117,7 +292,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
         desc: 'No forms. Get instant recommendation + booking in minutes.',
         primaryText: 'Start AI Booking',
         primaryIcon: 'chatbubbles',
-        onPrimary: () => onPressAIBooking(),
+        onPrimary: () => goToAIBooking(),
         secondaryText: 'View Packages',
         secondaryIcon: 'chevron-forward',
         onSecondary: onPressPackages,
@@ -134,7 +309,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
         onPrimary: () => openTel(supportPhone),
         secondaryText: 'Chat with AI',
         secondaryIcon: 'chevron-forward',
-        onSecondary: () => onPressAIBooking('I need roadside assistance.'),
+        onSecondary: () => goToAIBooking('I need roadside assistance.'),
         bg: '#FFF7ED',
         accent: COLORS.orange,
       },
@@ -148,12 +323,12 @@ export default function PublicHomeScreen({ navigation }: Props) {
         onPrimary: onPressBookServiceNow,
         secondaryText: 'Get AI Recommendation',
         secondaryIcon: 'chevron-forward',
-        onSecondary: () => onPressAIBooking('Recommend the right package for my car.'),
+        onSecondary: () => goToAIBooking('Recommend the right package for my car.'),
         bg: '#F5F3FF',
         accent: COLORS.purple,
       },
     ],
-    [onPressPackages, supportPhone]
+    [onPressPackages, supportPhone, onPressBookServiceNow, goToAIBooking]
   );
 
   // Compute carousel slide width from the actual hero container width (prevents right-side clipping).
@@ -240,6 +415,49 @@ export default function PublicHomeScreen({ navigation }: Props) {
     }
   }
 
+  function distKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+    const toRad = (x: number) => (x * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const s =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+  }
+
+  async function resolveCityFromCoords(lat: number, lng: number): Promise<string | null> {
+    try {
+      const expoLocationNative = requireOptionalNativeModule('ExpoLocation');
+      if (!expoLocationNative) return null;
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const Location = require('expo-location') as typeof import('expo-location');
+      const [place] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      const candidate = pickCityName(place);
+      const country = place?.country ? String(place.country).toLowerCase() : '';
+      const looksWrong =
+        !candidate ||
+        candidate.toLowerCase().includes('mountain view') ||
+        (country && !country.includes('india'));
+      if (!looksWrong) return candidate;
+    } catch {
+      // ignore and fallback below
+    }
+    // Fallback: network reverse geocode (more reliable on emulators)
+    return await reverseGeocodeNominatim(lat, lng);
+  }
+
+  async function updateCityFromCoords(lat: number, lng: number) {
+    const candidate = await resolveCityFromCoords(lat, lng);
+    if (!candidate) return;
+    setCity(candidate);
+    AsyncStorage.setItem(CITY_CACHE_KEY, candidate).catch(() => undefined);
+    AsyncStorage.setItem(CITY_CACHE_TS_KEY, String(Date.now())).catch(() => undefined);
+    setCityDetectError(null);
+  }
+
   async function detectAndSetCity(source: 'auto' | 'manual') {
     try {
       setIsDetectingCity(true);
@@ -320,58 +538,29 @@ export default function PublicHomeScreen({ navigation }: Props) {
         return;
       }
 
-      // Emulator often has a stale last-known location (e.g. Mountain View) even after you set a new mock.
-      // Rules:
-      // - Manual detection: always force a fresh current GPS fix.
-      // - Auto detection: use last-known only if it's recent; otherwise fetch current.
-      const last =
-        source === 'manual'
-          ? null
-          : await Location.getLastKnownPositionAsync({
-              // only accept last-known that is <= 2 minutes old
-              maxAge: 2 * 60 * 1000,
-            });
-
+      // Always prefer a fresh GPS fix on launch; last-known is often stale on emulators.
       const pos =
-        last ||
         (await Promise.race([
           Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
+            accuracy: Location.Accuracy.Highest,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
-        ]));
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), source === 'manual' ? 20000 : 15000)),
+        ])) || (await Location.getLastKnownPositionAsync());
 
       if (!pos) {
         setCityDetectError('No GPS fix');
         if (source === 'manual') {
           Alert.alert(
             'Couldn’t get your location',
-            'Please turn on Location (GPS) and try again.\n\nYou can also select a city manually.'
+            'Please turn on Location (GPS) and try again.\n\nIf you are using an emulator, set a mock location (Extended controls → Location).\n\nYou can also select a city manually.'
           );
         }
         return;
       }
 
-      const [place] = await Location.reverseGeocodeAsync({
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-      });
-
-      let candidate = pickCityName(place);
-
-      // Emulator sometimes returns stale "Mountain View" even after setting mock location.
-      // If we see that, fallback to network reverse geocode (Nominatim) using the coordinates.
-      const looksWrong =
-        !candidate ||
-        candidate.toLowerCase().includes('mountain view') ||
-        (place?.country && String(place.country).toLowerCase() !== 'india');
-      if (looksWrong) {
-        const nom = await reverseGeocodeNominatim(pos.coords.latitude, pos.coords.longitude);
-        if (nom) {
-          candidate = nom;
-        }
-      }
-
+      // Keep last known user location for "near me" experiences
+      setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      const candidate = await resolveCityFromCoords(pos.coords.latitude, pos.coords.longitude);
       if (candidate) {
         setCity(candidate);
         await AsyncStorage.setItem(CITY_CACHE_KEY, candidate);
@@ -393,23 +582,119 @@ export default function PublicHomeScreen({ navigation }: Props) {
   }
 
   useEffect(() => {
-    (async () => {
+    let mounted = true;
+
+    async function startRealtimeLocationWatch() {
       try {
-        const cached = await AsyncStorage.getItem(CITY_CACHE_KEY);
-        const tsRaw = await AsyncStorage.getItem(CITY_CACHE_TS_KEY);
-        const ts = tsRaw ? Number(tsRaw) : 0;
-        if (cached && Date.now() - ts < CITY_CACHE_MAX_AGE_MS) {
-          // Use cached city immediately for snappy UI, but still attempt a background refresh.
-          setCity(cached);
+        const expoLocationNative = requireOptionalNativeModule('ExpoLocation');
+        if (!expoLocationNative) return;
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const Location = require('expo-location') as typeof import('expo-location');
+
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const servicesEnabled = await Location.hasServicesEnabledAsync();
+        if (!servicesEnabled) return;
+
+        // Clean up any existing watcher (hot reload safety)
+        locationWatchRef.current?.remove?.();
+        locationWatchRef.current = null;
+
+        // Seed with last-known location (fast) so "near me" works even before a fresh GPS fix.
+        const last = await Location.getLastKnownPositionAsync();
+        if (mounted && last?.coords) {
+          setUserLoc({ lat: last.coords.latitude, lng: last.coords.longitude });
         }
+
+        const sub = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: 7000,
+            distanceInterval: 30,
+          },
+          (pos) => {
+            if (!mounted || !pos?.coords) return;
+            const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            setUserLoc(next);
+
+            // Debounced city update from live location:
+            // only if moved significantly or enough time passed.
+            const now = Date.now();
+            const prev = lastCityUpdateRef.current;
+            const movedKm = prev ? distKm({ lat: prev.lat, lng: prev.lng }, next) : Number.POSITIVE_INFINITY;
+            const timeOk = !prev || now - prev.ts > 2 * 60 * 1000;
+            if (timeOk && movedKm >= 1.5) {
+              lastCityUpdateRef.current = { ts: now, lat: next.lat, lng: next.lng };
+              updateCityFromCoords(next.lat, next.lng).catch(() => undefined);
+            }
+          }
+        );
+        locationWatchRef.current = sub as any;
       } catch {
-        // ignore cache issues
+        // best-effort only; no UI impact
       }
-      // Always attempt auto-detect (best-effort) to override stale emulator cache.
+    }
+
+    startRealtimeLocationWatch();
+    return () => {
+      mounted = false;
+      locationWatchRef.current?.remove?.();
+      locationWatchRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      // Always auto-detect on app open (best-effort) to reflect the device's current city.
       await detectAndSetCity('auto');
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const maybeAutoShowAiPopup = useCallback(async () => {
+    try {
+      // Avoid double-trigger (mount + AppState active, etc.)
+      const now = Date.now();
+      if (now - lastAiAutoShowTsRef.current < 1200) return;
+      lastAiAutoShowTsRef.current = now;
+
+      if (aiPreviewOpen) return;
+
+      // Show on app open/resume (per user request). Keep dismissed timestamp for tracking,
+      // but do NOT block showing based on it (was causing "popup not showing" confusion).
+      if (aiPopupShownThisSessionRef.current) return;
+
+      await new Promise((r) => setTimeout(r, 650));
+      aiPopupShownThisSessionRef.current = true;
+      setAiPreviewPrefill('');
+      setAiPreviewInput('');
+      setAiPreviewOpen(true);
+    } catch {
+      // ignore
+    }
+  }, [aiPreviewOpen]);
+
+  // Auto-show AI popup when app opens / resumes.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (cancelled) return;
+      await maybeAutoShowAiPopup();
+    })();
+
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') {
+        // reset per-session gate on resume so it appears each time the user re-opens the app
+        aiPopupShownThisSessionRef.current = false;
+        maybeAutoShowAiPopup();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, [maybeAutoShowAiPopup]);
 
   useEffect(() => {
     let cancelled = false;
@@ -437,7 +722,20 @@ export default function PublicHomeScreen({ navigation }: Props) {
           .select('id', { count: 'exact', head: true })
           .in('status', ['COMPLETED', 'QC_APPROVED', 'WORK_COMPLETED', 'DELIVERED']);
 
-        const [citiesRes, verifiedRes, servicedRes] = await Promise.all([citiesReq, verifiedCountReq, servicedReq]);
+        const bannersReq = supabase
+          .from('home_carousel_banners')
+          .select('id,title,image_url,route_name,route_params,display_order,is_active')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true })
+          .order('created_at', { ascending: false })
+          .limit(3);
+
+        const [citiesRes, verifiedRes, servicedRes, bannersRes] = await Promise.all([
+          citiesReq,
+          verifiedCountReq,
+          servicedReq,
+          bannersReq,
+        ]);
 
         if (!cancelled) {
           const names =
@@ -451,6 +749,15 @@ export default function PublicHomeScreen({ navigation }: Props) {
             verifiedWorkshops: verifiedRes.count ?? prev.verifiedWorkshops,
             carsServiced: servicedRes.count ?? prev.carsServiced,
           }));
+
+          setHomeCarouselBanners(((bannersRes.data as any[]) || []).map((r) => ({
+            id: String(r.id),
+            title: r.title ? String(r.title) : null,
+            image_url: String(r.image_url || ''),
+            route_name: String(r.route_name || ''),
+            route_params: r.route_params || {},
+            display_order: Number(r.display_order || 0),
+          })));
         }
 
         // 4) Featured workshops for selected city (best-effort)
@@ -546,13 +853,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
               Free pickup & drop • Transparent pricing • Verified workshops
             </Text>
 
-            {/* Primary CTA (Website-style booking) */}
-            <TouchableOpacity style={styles.bookNowCta} onPress={onPressBookServiceNow} activeOpacity={0.92}>
-              <Ionicons name="calendar" size={18} color="#fff" />
-              <Text style={styles.bookNowCtaText}>Book Service Now</Text>
-              <Ionicons name="arrow-forward" size={18} color="#fff" />
-            </TouchableOpacity>
-
             <ScrollView
               ref={heroCarouselRef}
               horizontal
@@ -569,53 +869,70 @@ export default function PublicHomeScreen({ navigation }: Props) {
               onMomentumScrollEnd={(e) => {
                 const x = e.nativeEvent.contentOffset.x;
                 const idx = Math.round(x / heroSnap);
-                const clamped = Math.max(0, Math.min(heroCards.length - 1, idx));
+                const listLen = homeCarouselBanners.length ? homeCarouselBanners.length : heroCards.length;
+                const clamped = Math.max(0, Math.min(listLen - 1, idx));
                 setHeroIndex(clamped);
                 heroIndexRef.current = clamped;
               }}
             >
-              {heroCards.map((c, idx) => (
-                <View
-                  key={c.key}
-                  style={[
-                    styles.heroSlide,
-                    { width: heroPageWidth, backgroundColor: c.bg, marginRight: idx === heroCards.length - 1 ? 0 : SPACING.sm },
-                  ]}
-                >
-                  <View style={styles.heroSlideTop}>
-                    <View style={[styles.heroKickerPill, { borderColor: `${c.accent}33` }]}>
-                      <Text style={[styles.heroKickerText, { color: c.accent }]}>{c.kicker}</Text>
+              {homeCarouselBanners.length
+                ? homeCarouselBanners.map((b, idx) => (
+                    <TouchableOpacity
+                      key={b.id}
+                      style={[
+                        styles.heroSlide,
+                        { width: heroPageWidth, backgroundColor: '#fff', marginRight: idx === homeCarouselBanners.length - 1 ? 0 : SPACING.sm },
+                      ]}
+                      activeOpacity={0.92}
+                      onPress={() => onPressCarouselBanner(b)}
+                    >
+                      <Image source={{ uri: b.image_url }} style={styles.heroBannerImg} resizeMode="cover" />
+                      <View style={styles.heroBannerOverlay} />
+                      {b.title ? <Text style={styles.heroBannerTitle} numberOfLines={2}>{b.title}</Text> : null}
+                      <View style={styles.heroBannerCta}>
+                        <Text style={styles.heroBannerCtaText}>Open</Text>
+                        <Ionicons name="arrow-forward" size={16} color="#fff" />
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                : heroCards.map((c, idx) => (
+                    <View
+                      key={c.key}
+                      style={[
+                        styles.heroSlide,
+                        { width: heroPageWidth, backgroundColor: c.bg, marginRight: idx === heroCards.length - 1 ? 0 : SPACING.sm },
+                      ]}
+                    >
+                      <View style={styles.heroSlideTop}>
+                        <View style={[styles.heroKickerPill, { borderColor: `${c.accent}33` }]}>
+                          <Text style={[styles.heroKickerText, { color: c.accent }]}>{c.kicker}</Text>
+                        </View>
+                        <View style={[styles.heroAccentDot, { backgroundColor: c.accent }]} />
+                      </View>
+
+                      <Text style={styles.heroSlideTitle}>{c.title}</Text>
+                      <Text style={styles.heroSlideDesc}>{c.desc}</Text>
+
+                      <TouchableOpacity
+                        style={[styles.heroSlidePrimary, { backgroundColor: c.accent }]}
+                        onPress={c.onPrimary}
+                        activeOpacity={0.92}
+                      >
+                        <Ionicons name={c.primaryIcon as any} size={18} color="#fff" />
+                        <Text style={styles.heroSlidePrimaryText}>{c.primaryText}</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.heroSlideSecondary} onPress={c.onSecondary} activeOpacity={0.9}>
+                        <Text style={styles.heroSlideSecondaryText}>{c.secondaryText}</Text>
+                        <Ionicons name={c.secondaryIcon as any} size={16} color={COLORS.primary} />
+                      </TouchableOpacity>
                     </View>
-                    <View style={[styles.heroAccentDot, { backgroundColor: c.accent }]} />
-                  </View>
-
-                  <Text style={styles.heroSlideTitle}>{c.title}</Text>
-                  <Text style={styles.heroSlideDesc}>{c.desc}</Text>
-
-                  <TouchableOpacity
-                    style={[styles.heroSlidePrimary, { backgroundColor: c.accent }]}
-                    onPress={c.onPrimary}
-                    activeOpacity={0.92}
-                  >
-                    <Ionicons name={c.primaryIcon as any} size={18} color="#fff" />
-                    <Text style={styles.heroSlidePrimaryText}>{c.primaryText}</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.heroSlideSecondary}
-                    onPress={c.onSecondary}
-                    activeOpacity={0.9}
-                  >
-                    <Text style={styles.heroSlideSecondaryText}>{c.secondaryText}</Text>
-                    <Ionicons name={c.secondaryIcon as any} size={16} color={COLORS.primary} />
-                  </TouchableOpacity>
-                </View>
-              ))}
+                  ))}
             </ScrollView>
 
             <View style={styles.dotsRow}>
-              {heroCards.map((c, i) => (
-                <View key={c.key} style={[styles.dot, i === heroIndex ? styles.dotActive : null]} />
+              {(homeCarouselBanners.length ? homeCarouselBanners : heroCards).map((c: any, i: number) => (
+                <View key={String(c.id || c.key || i)} style={[styles.dot, i === heroIndex ? styles.dotActive : null]} />
               ))}
             </View>
 
@@ -628,7 +945,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 <TouchableOpacity
                   key={c.label}
                   style={styles.starterChip}
-                  onPress={() => onPressAIBooking(c.prefill)}
+                  onPress={() => goToAIBooking(c.prefill)}
                   activeOpacity={0.85}
                 >
                   <Text style={styles.starterChipText}>{c.label}</Text>
@@ -637,160 +954,181 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </ScrollView>
           </View>
 
-          {/* Option E: Trust strip (show early) */}
+          {/* Services */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Trust & Proof</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-              {trustCards.map((c) => (
-                <View key={c.title} style={styles.proofCard}>
-                  <View style={styles.proofIcon}>
-                    <Ionicons name={c.icon as any} size={18} color="#fff" />
+            <View style={styles.servicesBox}>
+              <Text style={styles.servicesBoxTitle}>Our Services</Text>
+              <View style={styles.quickActionsRow}>
+                {quickActions.slice(0, 4).map((a) => (
+                  <TouchableOpacity
+                    key={a.label}
+                    style={styles.quickActionTile}
+                    activeOpacity={0.9}
+                    onPress={() => goToAIBooking(a.prefill)}
+                  >
+                    <View style={styles.quickActionIconBox}>
+                      <Ionicons name={a.icon as any} size={22} color={COLORS.primaryDark} />
+                    </View>
+                    <Text style={styles.quickActionLabel} numberOfLines={2}>
+                      {a.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+
+                <TouchableOpacity
+                  key="__quick_actions_all__"
+                  style={styles.quickActionTile}
+                  activeOpacity={0.9}
+                  onPress={onPressPackages}
+                >
+                  <View style={[styles.quickActionIconBox, styles.quickActionAllBox]}>
+                    <Text style={styles.quickActionAllText}>ALL</Text>
                   </View>
-                  <Text style={styles.proofTitle}>{c.title}</Text>
-                  <Text style={styles.proofSub}>{c.subtitle}</Text>
-                </View>
-              ))}
-            </ScrollView>
+                  <Text style={styles.quickActionLabel} numberOfLines={2}>
+                    All services
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
 
-          {/* Workshop Locator (public) */}
+          {/* Near By Workshop */}
           <View style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Workshop Locator</Text>
-              <TouchableOpacity onPress={onPressLocator} style={styles.smallLink}>
-                <Text style={styles.smallLinkText}>View all</Text>
-                <Ionicons name="chevron-forward" size={14} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.locatorCard}>
-              <View style={styles.locatorTop}>
-                <Ionicons name="location" size={18} color={COLORS.primary} />
-                <Text style={styles.locatorTitle}>Find verified workshops near you</Text>
+            <TouchableOpacity style={styles.locatorBanner} onPress={onPressLocator} activeOpacity={0.9}>
+              <View style={styles.locatorBannerIcon}>
+                <Ionicons name="location" size={20} color={COLORS.primary} />
               </View>
-              <Text style={styles.locatorSub}>
-                {publicLoading ? 'Loading workshops…' : 'See verified partner workshops and open directions in Maps.'}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.locatorBannerTitle}>Near By Workshops</Text>
+                <Text style={styles.locatorBannerSub} numberOfLines={1}>
+                  {publicLoading ? 'Loading verified workshops…' : 'See verified partner workshops near you'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.gray[500]} />
+            </TouchableOpacity>
+          </View>
 
-              {featuredWorkshops.length ? (
-                <View style={styles.locatorList}>
-                  {featuredWorkshops.slice(0, 3).map((w) => (
-                    <TouchableOpacity
-                      key={w.id}
-                      style={styles.locatorRow}
-                      activeOpacity={0.85}
-                      onPress={onPressLocator}
+          {/* How it works */}
+          <View style={styles.section}>
+            <View style={styles.howItWorksBox}>
+              <View style={styles.howItWorksBoxHeader}>
+                <Text style={styles.howItWorksBoxTitle}>How It Works</Text>
+                <Text style={styles.howStepText}>
+                  Step {howItWorksActive}/{howItWorksSteps.length}
+                </Text>
+              </View>
+
+              <View style={styles.howProgressTrack}>
+                <View
+                  style={[
+                    styles.howProgressFill,
+                    { width: `${Math.round((howItWorksActive / howItWorksSteps.length) * 100)}%` },
+                  ]}
+                />
+              </View>
+
+              <ScrollView
+                ref={howCarouselRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                snapToOffsets={howSnapOffsets}
+                snapToAlignment="start"
+                decelerationRate="fast"
+                contentContainerStyle={styles.howHScroll}
+                onScrollBeginDrag={() => stopHowAutoplay()}
+                onScrollEndDrag={() => scheduleHowAutoplayResume()}
+                onMomentumScrollEnd={() => scheduleHowAutoplayResume()}
+                onScroll={(e) => {
+                  const x = e.nativeEvent.contentOffset.x || 0;
+                  // Find nearest snap index (small N, so linear is fine and avoids binary-search bugs)
+                  let bestIdx = 0;
+                  let bestDist = Number.POSITIVE_INFINITY;
+                  for (let i = 0; i < howSnapOffsets.length; i += 1) {
+                    const d = Math.abs(x - howSnapOffsets[i]);
+                    if (d < bestDist) {
+                      bestDist = d;
+                      bestIdx = i;
+                    }
+                  }
+                  const idx = Math.max(0, Math.min(howItWorksSteps.length - 1, bestIdx));
+                  const step = idx + 1;
+                  if (step !== howItWorksActive) setHowItWorksActive(step);
+                }}
+                scrollEventThrottle={16}
+              >
+                {howItWorksSteps.map((s, idx) => {
+                  const n = idx + 1;
+                  const active = howItWorksActive === n;
+                  return (
+                    <Pressable
+                      key={s.title}
+                      onPress={() => {
+                        stopHowAutoplay();
+                        howIndexRef.current = n - 1;
+                        setHowItWorksActive(n);
+                        howCarouselRef.current?.scrollTo({ x: howSnapOffsets[n - 1] || 0, y: 0, animated: true });
+                        scheduleHowAutoplayResume();
+                      }}
+                      style={[
+                        styles.howCard,
+                        {
+                          width: howCardWidths[idx],
+                          marginRight: idx === howItWorksSteps.length - 1 ? 0 : howCardGap,
+                        },
+                        active ? styles.howCardActive : null,
+                      ]}
                     >
-                      <View style={styles.locatorDot} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.locatorName} numberOfLines={1}>
-                          {w.name}
+                      <View style={[styles.howIconWrap, active ? styles.howIconWrapActive : null]}>
+                        <Ionicons name={s.icon as any} size={20} color={active ? '#fff' : COLORS.gray[700]} />
+                        <View style={[styles.howNumBadge, active ? styles.howNumBadgeActive : null]}>
+                          <Text style={[styles.howNumBadgeText, active ? styles.howNumBadgeTextActive : null]}>{n}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.howTextWrap}>
+                        <Text style={[styles.howTitle, active ? styles.howTitleActive : null]} numberOfLines={1}>
+                          {s.title}
                         </Text>
-                        <Text style={styles.locatorMeta} numberOfLines={1}>
-                          {w.city || city}
+                        <Text style={[styles.howSub, active ? styles.howSubActive : null]} numberOfLines={1}>
+                          {s.sub}
                         </Text>
                       </View>
-                      <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ) : (
-                <View style={styles.locatorEmpty}>
-                  <Text style={styles.locatorEmptyText}>
-                    {publicLoading ? 'Loading…' : 'No workshops found for this city yet.'}
-                  </Text>
-                </View>
-              )}
-
-              <TouchableOpacity style={styles.locatorCta} onPress={onPressLocator} activeOpacity={0.9}>
-                <Ionicons name="search" size={18} color="#fff" />
-                <Text style={styles.locatorCtaText}>Open Workshop Locator</Text>
-              </TouchableOpacity>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
           </View>
 
-          {/* AI Smart Booking (Core Differentiator) */}
+          {/* Trust & Proofs */}
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Smart Booking — No Forms, No Confusion</Text>
-            </View>
-
-            <View style={styles.aiCard}>
-              <View style={styles.aiCardTop}>
-                <View style={styles.aiChip}>
-                  <Ionicons name="sparkles" size={14} color="#fff" />
-                  <Text style={styles.aiChipText}>AI-first booking</Text>
-                </View>
-                <Text style={styles.aiCardTitle}>Start by chatting</Text>
-              </View>
-
-              <View style={styles.chatPreview}>
-                <View style={[styles.bubble, styles.bubbleBot]}>
-                  <Text style={styles.bubbleText}>Which car do you drive?</Text>
-                </View>
-                <View style={[styles.bubble, styles.bubbleBot]}>
-                  <Text style={styles.bubbleText}>What issue are you facing?</Text>
-                </View>
-                <View style={[styles.bubble, styles.bubbleBot]}>
-                  <Text style={styles.bubbleText}>When do you want service?</Text>
-                </View>
-              </View>
-
-              <Text style={styles.aiMicro}>
-                Our AI understands your car and recommends the right service.
-              </Text>
-
-              <TouchableOpacity style={styles.aiCta} onPress={() => onPressAIBooking()}>
-                <Text style={styles.aiCtaText}>Start AI Booking</Text>
-                <Ionicons name="arrow-forward" size={18} color="#fff" />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Quick Actions (below Trust & Smart Booking) */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Quick Actions</Text>
-              <TouchableOpacity onPress={onPressPackages} style={styles.smallLink}>
-                <Text style={styles.smallLinkText}>See all</Text>
-                <Ionicons name="chevron-forward" size={14} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.quickGrid}>
-              {quickActions.map((a) => (
-                <TouchableOpacity
-                  key={a.label}
-                  style={styles.quickCard}
-                  activeOpacity={0.9}
-                  onPress={() => onPressAIBooking(a.prefill)}
-                >
-                  <View style={styles.quickIconWrap}>
-                    <Ionicons name={a.icon as any} size={18} color={COLORS.primaryDark} />
+            <View style={styles.whyChooseBox}>
+              <Text style={styles.whyChooseBoxTitle}>Why MyFNG</Text>
+              <View style={styles.quickActionsRow}>
+                {trustCards.map((c) => (
+                  <View key={c.subtitle} style={styles.quickActionTile}>
+                    <View style={styles.quickActionIconBox}>
+                      <Ionicons name={c.icon as any} size={22} color={COLORS.primaryDark} />
+                    </View>
+                    <Text
+                      style={styles.trustMetricText}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
+                    >
+                      {c.title}
+                    </Text>
+                    <Text
+                      style={styles.trustLabelText}
+                      numberOfLines={2}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}
+                    >
+                      {c.subtitle}
+                    </Text>
                   </View>
-                  <Text style={styles.quickLabel}>{a.label}</Text>
-                </TouchableOpacity>
-              ))}
+                ))}
+              </View>
             </View>
-          </View>
-
-          {/* How MY FNG Works */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>How MY FNG Works</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-              {[
-                { icon: 'chatbubbles', title: 'Book via AI or App' },
-                { icon: 'car', title: 'Free Pickup & Inspection' },
-                { icon: 'checkbox', title: 'Live Updates + Warranty' },
-              ].map((s) => (
-                <View key={s.title} style={styles.stepCard}>
-                  <View style={styles.stepIconWrap}>
-                    <Ionicons name={s.icon as any} size={18} color="#fff" />
-                  </View>
-                  <Text style={styles.stepCardText}>{s.title}</Text>
-                </View>
-              ))}
-            </ScrollView>
           </View>
 
           {/* Transparency */}
@@ -815,43 +1153,45 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           {/* Workshop Quality Highlight */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Verified MY FNG Partner Workshops</Text>
-            <Text style={styles.sectionSub}>
-              Every workshop is quality-audited and MY FNG certified.
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
-              {[
-                {
-                  name: 'MY FNG Certified Workshop',
-                  rating: '4.6',
-                  img: 'https://images.unsplash.com/photo-1613214149922-f1809c99b414?auto=format&fit=crop&w=900&q=80',
-                },
-                {
-                  name: 'Premium Service Bay',
-                  rating: '4.7',
-                  img: 'https://images.unsplash.com/photo-1599256872237-5dcc0fbe9668?auto=format&fit=crop&w=900&q=80',
-                },
-                {
-                  name: 'Clean Facility',
-                  rating: '4.8',
-                  img: 'https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&fit=crop&w=900&q=80',
-                },
-              ].map((w) => (
-                <View key={w.img} style={styles.workshopCard}>
-                  <Image source={{ uri: w.img }} style={styles.workshopImg} />
-                  <View style={styles.workshopMeta}>
-                    <Text style={styles.workshopName} numberOfLines={1}>
-                      {w.name}
-                    </Text>
-                    <View style={styles.ratingPill}>
-                      <Ionicons name="star" size={14} color="#F59E0B" />
-                      <Text style={styles.ratingText}>{w.rating}</Text>
-                      <Text style={styles.ratingSub}>Google</Text>
+            <View style={styles.verifiedWorkshopsBox}>
+              <Text style={styles.verifiedWorkshopsBoxTitle}>Verified Workshops</Text>
+              <Text style={styles.verifiedWorkshopsBoxSub}>
+                Every workshop is quality-audited and MY FNG certified.
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hScroll}>
+                {[
+                  {
+                    name: 'MY FNG Certified Workshop',
+                    rating: '4.6',
+                    img: 'https://images.unsplash.com/photo-1613214149922-f1809c99b414?auto=format&fit=crop&w=900&q=80',
+                  },
+                  {
+                    name: 'Premium Service Bay',
+                    rating: '4.7',
+                    img: 'https://images.unsplash.com/photo-1599256872237-5dcc0fbe9668?auto=format&fit=crop&w=900&q=80',
+                  },
+                  {
+                    name: 'Clean Facility',
+                    rating: '4.8',
+                    img: 'https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&fit=crop&w=900&q=80',
+                  },
+                ].map((w) => (
+                  <View key={w.img} style={styles.workshopCard}>
+                    <Image source={{ uri: w.img }} style={styles.workshopImg} />
+                    <View style={styles.workshopMeta}>
+                      <Text style={styles.workshopName} numberOfLines={1}>
+                        {w.name}
+                      </Text>
+                      <View style={styles.ratingPill}>
+                        <Ionicons name="star" size={14} color="#F59E0B" />
+                        <Text style={styles.ratingText}>{w.rating}</Text>
+                        <Text style={styles.ratingSub}>Google</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              ))}
-            </ScrollView>
+                ))}
+              </ScrollView>
+            </View>
           </View>
 
           {/* Footer / Contact */}
@@ -889,12 +1229,78 @@ export default function PublicHomeScreen({ navigation }: Props) {
         <PublicPillNav
           activeTab="ai"
           onPressTab={(tab: PublicPillNavTab) => {
-            if (tab === 'ai') onPressAIBooking();
+            if (tab === 'ai') goToAIBooking();
             if (tab === 'search') onPressLocator();
             if (tab === 'profile') navigation.navigate('Login');
             if (tab === 'settings') setSupportOpen(true);
           }}
         />
+
+        {/* AI Preview Popup (2–3 message preview) */}
+        <Modal visible={aiPreviewOpen} transparent animationType="fade" onRequestClose={() => setAiPreviewOpen(false)}>
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => {
+              setAiPreviewOpen(false);
+              AsyncStorage.setItem(AI_POPUP_DISMISSED_TS_KEY, String(Date.now())).catch(() => undefined);
+            }}
+          >
+            <Pressable style={styles.aiPreviewCard} onPress={() => undefined}>
+              <View style={styles.aiPreviewHandle} />
+              <View style={styles.aiPreviewBackdrop} />
+              <View style={styles.aiPreviewHeader}>
+                <View style={styles.aiPreviewTitleRow}>
+                  <Ionicons name="sparkles" size={18} color={COLORS.primary} />
+                  <Text style={styles.aiPreviewTitle}>AI Booking</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.aiPreviewClose}
+                  onPress={() => {
+                    setAiPreviewOpen(false);
+                    AsyncStorage.setItem(AI_POPUP_DISMISSED_TS_KEY, String(Date.now())).catch(() => undefined);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="close" size={18} color={COLORS.gray[700]} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.aiPreviewHero}>
+                <View style={styles.aiPreviewBot}>
+                  <Ionicons name="chatbubble-ellipses" size={28} color="#fff" />
+                </View>
+                <View style={styles.aiPreviewBubbles}>
+                  <View style={styles.aiPreviewBubble}>
+                    <Text style={styles.aiPreviewBubbleText}>Show me a periodic service for my car</Text>
+                  </View>
+                  <View style={styles.aiPreviewBubble}>
+                    <Text style={styles.aiPreviewBubbleText}>AC not cooling — what should I do?</Text>
+                  </View>
+                  <View style={styles.aiPreviewBubble}>
+                    <Text style={styles.aiPreviewBubbleText}>Which workshop is near me?</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.aiPreviewInputWrap}>
+                <TextInput
+                  value={aiPreviewInput}
+                  onChangeText={setAiPreviewInput}
+                  placeholder="Ask me anything about your car service…"
+                  placeholderTextColor={COLORS.gray[500]}
+                  style={styles.aiPreviewInput}
+                  returnKeyType="done"
+                  onSubmitEditing={continueToAIBooking}
+                />
+              </View>
+
+              <TouchableOpacity style={styles.aiPreviewContinue} onPress={continueToAIBooking} activeOpacity={0.92}>
+                <Text style={styles.aiPreviewContinueText}>Ask</Text>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         {/* City Selector Modal */}
         <Modal visible={cityModalOpen} transparent animationType="fade" onRequestClose={() => setCityModalOpen(false)}>
@@ -988,13 +1394,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray[50],
   },
   container: {
-    paddingBottom: 140,
+    paddingBottom: 96,
     backgroundColor: COLORS.gray[50],
   },
   header: {
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingTop: 8,
+    paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1010,9 +1416,9 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.06)',
@@ -1020,81 +1426,126 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logo: {
-    width: 110,
-    height: 34,
+    width: 86,
+    height: 26,
   },
   citySelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: 'rgba(0,136,232,0.18)',
   },
   citySelectorText: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '800',
     color: COLORS.primaryDark,
   },
   heroCard: {
     marginHorizontal: SPACING.md,
     marginTop: SPACING.sm,
-    padding: SPACING.lg,
-    borderRadius: 24,
+    padding: SPACING.md,
+    borderRadius: 18,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: 'rgba(0,136,232,0.14)',
     shadowColor: '#0B1F44',
     shadowOpacity: 0.08,
-    shadowRadius: 18,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 10 },
     elevation: 3,
   },
   heroHeadline: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '900',
     color: COLORS.primaryDark,
-    lineHeight: 28,
-    letterSpacing: -0.2,
+    lineHeight: 30,
+    letterSpacing: -0.1,
   },
   heroHeadlineAccent: {
     color: COLORS.primary,
   },
   heroSub: {
     marginTop: SPACING.sm,
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '700',
     color: COLORS.gray[600],
-    lineHeight: 19,
+    lineHeight: 16,
   },
   bookNowCta: {
     marginTop: SPACING.md,
     backgroundColor: COLORS.primary,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 11,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
   },
   bookNowCtaText: {
     color: '#fff',
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '900',
   },
   heroCarousel: {
-    marginTop: SPACING.md,
-    paddingRight: SPACING.md,
+    marginTop: SPACING.sm,
+    paddingRight: SPACING.sm,
   },
   heroSlide: {
-    borderRadius: 20,
-    padding: SPACING.lg,
+    borderRadius: 14,
+    padding: SPACING.md,
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.08)',
+  },
+  heroBannerImg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 14,
+  },
+  heroBannerOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 88,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  heroBannerTitle: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 44,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
+    lineHeight: 18,
+  },
+  heroBannerCta: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,136,232,0.92)',
+  },
+  heroBannerCtaText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '900',
   },
   heroSlideTop: {
     flexDirection: 'row',
@@ -1103,8 +1554,8 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   heroKickerPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
     borderRadius: BORDER_RADIUS.full,
     borderWidth: 1,
     backgroundColor: '#fff',
@@ -1115,68 +1566,68 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   heroAccentDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   heroSlideTitle: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '900',
     color: COLORS.primaryDark,
   },
   heroSlideDesc: {
-    marginTop: 8,
-    fontSize: FONT_SIZES.sm,
+    marginTop: 6,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '700',
     color: COLORS.gray[700],
-    lineHeight: 18,
+    lineHeight: 16,
   },
   heroSlidePrimary: {
-    marginTop: SPACING.md,
-    height: 46,
-    borderRadius: 16,
+    marginTop: SPACING.sm,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   heroSlidePrimaryText: {
     color: '#fff',
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '900',
   },
   heroSlideSecondary: {
     marginTop: SPACING.sm,
-    height: 44,
-    borderRadius: 16,
+    height: 36,
+    borderRadius: 12,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: 'rgba(0,136,232,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   heroSlideSecondaryText: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '900',
     color: COLORS.primaryDark,
   },
   dotsRow: {
     marginTop: SPACING.sm,
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: 'rgba(2,61,149,0.18)',
   },
   dotActive: {
-    width: 22,
+    width: 16,
     backgroundColor: COLORS.primary,
   },
   heroPrimaryBtn: {
@@ -1184,14 +1635,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 14,
-    borderRadius: 18,
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 14,
     backgroundColor: COLORS.primary,
   },
   heroPrimaryBtnText: {
     color: '#fff',
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: '900',
   },
   heroSecondaryBtn: {
@@ -1199,47 +1650,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 18,
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 14,
     backgroundColor: '#F3F8FF',
     borderWidth: 1,
     borderColor: 'rgba(0,136,232,0.18)',
   },
   heroSecondaryBtnText: {
     color: COLORS.primaryDark,
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '900',
   },
   section: {
-    marginTop: SPACING.lg,
-    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.md,
+    paddingHorizontal: SPACING.sm,
   },
-  sectionHeader: { marginBottom: SPACING.md },
+  sectionHeader: { marginBottom: SPACING.sm },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  sectionHeaderLeft: {
+    flex: 1,
+    paddingRight: SPACING.sm,
   },
   sectionTitle: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.lg,
     fontWeight: '900',
     color: COLORS.primaryDark,
   },
   sectionSub: {
-    marginTop: 8,
-    fontSize: FONT_SIZES.sm,
+    marginTop: 6,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '700',
     color: COLORS.gray[600],
-    lineHeight: 18,
+    lineHeight: 16,
   },
   smallLink: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: '#EEF6FF',
     borderWidth: 1,
@@ -1256,6 +1711,39 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     borderWidth: 1,
     borderColor: COLORS.gray[200],
+  },
+  locatorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+  },
+  locatorBannerIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(0,136,232,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locatorBannerTitle: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '900',
+    color: COLORS.primaryDark,
+    letterSpacing: 0.2,
+  },
+  locatorBannerSub: {
+    marginTop: 2,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
+    color: COLORS.gray[600],
   },
   locatorTop: {
     flexDirection: 'row',
@@ -1385,12 +1873,12 @@ const styles = StyleSheet.create({
   },
   starterScroll: {
     paddingTop: SPACING.sm,
-    gap: 8,
-    paddingRight: SPACING.md,
+    gap: 6,
+    paddingRight: SPACING.sm,
   },
   starterChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 6,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: '#EEF6FF',
     borderWidth: 1,
@@ -1410,17 +1898,17 @@ const styles = StyleSheet.create({
   },
   microText: {
     flex: 1,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
     color: COLORS.gray[600],
-    lineHeight: 15,
+    lineHeight: 13,
   },
   smallLinkInline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: '#fff',
     borderWidth: 1,
@@ -1442,14 +1930,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 14,
-    borderRadius: 18,
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 14,
     backgroundColor: COLORS.primary,
   },
   aiCtaText: {
     color: '#fff',
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: '900',
   },
   quickGrid: {
@@ -1458,18 +1946,118 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     rowGap: SPACING.sm,
   },
-  quickCard: {
-    width: '48%',
+  servicesBox: {
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: SPACING.md,
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.06)',
   },
-  quickIconWrap: {
-    width: 36,
-    height: 36,
+  servicesBoxTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.primaryDark,
+    marginBottom: 10,
+  },
+  whyChooseBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+  },
+  whyChooseBoxTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.primaryDark,
+    marginBottom: 10,
+  },
+  howItWorksBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+  },
+  howItWorksBoxHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  howItWorksBoxTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.primaryDark,
+  },
+  verifiedWorkshopsBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+  },
+  verifiedWorkshopsBoxTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.primaryDark,
+  },
+  verifiedWorkshopsBoxSub: {
+    marginTop: 6,
+    marginBottom: 10,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: COLORS.gray[600],
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  quickActionTile: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  quickActionIconBox: {
+    width: 50,
+    height: 50,
+    borderRadius: 15,
+    backgroundColor: '#EEF6FF',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionLabel: {
+    marginTop: 6,
+    fontSize: 9,
+    fontWeight: '800',
+    color: COLORS.gray[800],
+    textAlign: 'center',
+    lineHeight: 11,
+  },
+  quickActionAllBox: {
+    backgroundColor: '#7C3AED',
+    borderColor: 'rgba(124,58,237,0.25)',
+  },
+  quickActionAllText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  quickCard: {
+    width: '48%',
+    backgroundColor: '#fff',
     borderRadius: 12,
+    padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+  },
+  quickIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
     backgroundColor: '#EEF6FF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1481,28 +2069,44 @@ const styles = StyleSheet.create({
     color: COLORS.black,
   },
   hScroll: {
-    paddingRight: SPACING.md,
+    paddingRight: SPACING.sm,
     gap: SPACING.sm,
   },
+  trustMetricText: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.primaryDark,
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  trustLabelText: {
+    marginTop: 2,
+    fontSize: 9,
+    fontWeight: '800',
+    color: COLORS.gray[800],
+    textAlign: 'center',
+    lineHeight: 11,
+  },
   proofCard: {
-    width: 160,
+    width: 120,
     backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: SPACING.md,
+    borderRadius: 14,
+    padding: SPACING.sm,
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.06)',
   },
   proofIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 10,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.sm,
   },
   proofTitle: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '900',
     color: COLORS.primaryDark,
   },
@@ -1514,52 +2118,182 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
-  stepCard: {
-    width: 220,
-    backgroundColor: '#fff',
+  howList: {
+    marginTop: SPACING.sm,
+    gap: 12,
+  },
+  howHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  howStepText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.gray[600],
+  },
+  howProgressTrack: {
+    marginTop: 10,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: COLORS.gray[200],
+    overflow: 'hidden',
+  },
+  howProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: COLORS.primary,
+  },
+  howHScroll: {
+    paddingTop: 12,
+    paddingRight: 0,
+  },
+  howCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 18,
-    padding: SPACING.md,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+  },
+  howCardActive: {
+    backgroundColor: '#EEF6FF',
+    borderColor: 'rgba(0,136,232,0.55)',
+    shadowColor: '#0088E8',
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  howRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+  },
+  howRowActive: {
+    backgroundColor: '#EEF6FF',
+    borderColor: 'rgba(0,136,232,0.55)',
+    shadowColor: '#0088E8',
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  howIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+  },
+  howIconWrapActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: 'rgba(0,136,232,0.65)',
+  },
+  howNumBadge: {
+    position: 'absolute',
+    top: -6,
+    left: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: COLORS.gray[100],
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  howNumBadgeActive: {
+    backgroundColor: COLORS.primaryDark,
+    borderColor: 'rgba(17,24,39,0.10)',
+  },
+  howNumBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.gray[700],
+  },
+  howNumBadgeTextActive: {
+    color: '#fff',
+  },
+  howTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  howTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.gray[900],
+  },
+  howTitleActive: {
+    color: COLORS.primaryDark,
+  },
+  howSub: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.gray[600],
+  },
+  howSubActive: {
+    color: COLORS.primary,
+  },
+  stepCard: {
+    width: 160,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: SPACING.sm,
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.06)',
   },
   stepIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 11,
     backgroundColor: COLORS.primaryDark,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.sm,
   },
   stepCardText: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '900',
     color: COLORS.primaryDark,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   transparencyCard: {
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: SPACING.lg,
+    borderRadius: 14,
+    padding: SPACING.md,
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.06)',
   },
   transparencyTitle: {
-    fontSize: FONT_SIZES.lg,
+    fontSize: FONT_SIZES.md,
     fontWeight: '900',
     color: COLORS.primaryDark,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   bulletRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
+    gap: 8,
+    paddingVertical: 5,
   },
   bulletIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 8,
     backgroundColor: '#EEF6FF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1569,11 +2303,11 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     fontWeight: '900',
     color: COLORS.gray[700],
-    lineHeight: 18,
+    lineHeight: 16,
   },
   workshopCard: {
-    width: 260,
-    borderRadius: 18,
+    width: 200,
+    borderRadius: 14,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.06)',
@@ -1581,11 +2315,11 @@ const styles = StyleSheet.create({
   },
   workshopImg: {
     width: '100%',
-    height: 140,
+    height: 104,
     backgroundColor: COLORS.gray[200],
   },
   workshopMeta: {
-    padding: SPACING.md,
+    padding: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1593,16 +2327,16 @@ const styles = StyleSheet.create({
   },
   workshopName: {
     flex: 1,
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '900',
     color: COLORS.primaryDark,
   },
   ratingPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: '#FFF7ED',
     borderWidth: 1,
@@ -1679,6 +2413,130 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'flex-end',
     padding: SPACING.md,
+  },
+  aiPreviewCard: {
+    backgroundColor: '#fff',
+    borderRadius: 22,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+    overflow: 'hidden',
+  },
+  aiPreviewHandle: {
+    position: 'absolute',
+    top: 10,
+    alignSelf: 'center',
+    width: 46,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(17,24,39,0.18)',
+    zIndex: 3,
+  },
+  aiPreviewBackdrop: {
+    position: 'absolute',
+    left: -40,
+    right: -40,
+    top: -60,
+    height: 260,
+    borderBottomLeftRadius: 220,
+    borderBottomRightRadius: 220,
+    backgroundColor: '#FCE7F3',
+    opacity: 1,
+  },
+  aiPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+    zIndex: 4,
+  },
+  aiPreviewTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  aiPreviewTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '900',
+    color: COLORS.primaryDark,
+  },
+  aiPreviewClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiPreviewBody: {
+    gap: SPACING.sm,
+  },
+  aiPreviewHero: {
+    marginTop: 6,
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+    zIndex: 4,
+  },
+  aiPreviewBot: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: COLORS.purple,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  aiPreviewBubbles: {
+    gap: 10,
+  },
+  aiPreviewBubble: {
+    alignSelf: 'flex-start',
+    maxWidth: '92%',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(0,136,232,0.14)',
+  },
+  aiPreviewBubbleText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '800',
+    color: COLORS.primaryDark,
+  },
+  aiPreviewInputWrap: {
+    marginTop: SPACING.md,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    zIndex: 4,
+  },
+  aiPreviewInput: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: COLORS.primaryDark,
+  },
+  aiPreviewContinue: {
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    zIndex: 4,
+  },
+  aiPreviewContinueText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '900',
   },
   modalCard: {
     backgroundColor: '#fff',

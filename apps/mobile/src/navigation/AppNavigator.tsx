@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from '../screens/LoginScreen';
+import CustomerRegistrationScreen from '../screens/dashboard/customer/CustomerRegistrationScreen';
 import SuperAdminDashboard from '../screens/dashboard/SuperAdminDashboard';
 import WorkshopAdminDashboard from '../screens/dashboard/WorkshopAdminDashboard';
 import WorkshopSupervisorDashboard from '../screens/dashboard/WorkshopSupervisorDashboard';
@@ -72,7 +73,10 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
-          <Stack.Screen name="Login" component={LoginScreen} />
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="CustomerSignup" component={CustomerRegistrationScreen} />
+          </>
         ) : (
           <Stack.Screen
             name="Dashboard"

@@ -15,10 +15,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // Required so subprojects can apply `com.android.library` / `com.android.application`
-        // Expo SDK 50 / RN 0.73 is compatible with AGP 8.1.x + Gradle 8.3.
-        classpath('com.android.tools.build:gradle:8.1.1')
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+        classpath('com.android.tools.build:gradle')
         classpath('com.facebook.react:react-native-gradle-plugin')
     }
 }

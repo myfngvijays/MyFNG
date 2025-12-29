@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
-export default function LoginScreen({ onLoginSuccess }: any) {
+export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -52,8 +52,10 @@ export default function LoginScreen({ onLoginSuccess }: any) {
 
       if (profileError) throw profileError;
 
-      // Success
-      onLoginSuccess(authData.user, profile);
+      // Success: AuthContext will react to the new session. If a callback is provided, call it.
+      if (typeof onLoginSuccess === 'function') {
+        onLoginSuccess(authData.user, profile);
+      }
     } catch (error: any) {
       console.error('Login error:', error);
       Alert.alert(
@@ -143,6 +145,18 @@ export default function LoginScreen({ onLoginSuccess }: any) {
             <Text style={styles.infoText}>
               Use your registered credentials to login
             </Text>
+          </View>
+
+          {/* Customer Signup */}
+          <View style={styles.signupRow}>
+            <Text style={styles.signupText}>New customer?</Text>
+            <TouchableOpacity
+              onPress={() => navigation?.navigate?.('CustomerSignup')}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.signupLink}>Sign Up</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -255,6 +269,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#1E40AF',
     lineHeight: 18,
+  },
+  signupRow: {
+    marginTop: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  signupText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  signupLink: {
+    fontSize: 13,
+    color: '#0088E8',
+    fontWeight: '800',
   },
   footer: {
     alignItems: 'center',

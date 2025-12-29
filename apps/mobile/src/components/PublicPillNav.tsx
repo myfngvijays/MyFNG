@@ -16,11 +16,11 @@ export default function PublicPillNav({ activeTab, onPressTab }: Props) {
   const w = Dimensions.get('window').width;
   const pillWidth = Math.min(MAX_WIDTH, Math.round(w - SPACING.md * 2));
 
+  // Market-style: AI in the center, Profile at the end (right).
   const tabs: Array<{ id: PublicPillNavTab; icon: string; iconActive: string }> = [
-    { id: 'ai', icon: 'flash-outline', iconActive: 'flash' },
     { id: 'search', icon: 'search-outline', iconActive: 'search' },
+    { id: 'ai', icon: 'flash-outline', iconActive: 'flash' },
     { id: 'profile', icon: 'person-outline', iconActive: 'person' },
-    { id: 'settings', icon: 'settings-outline', iconActive: 'settings' },
   ];
 
   return (
@@ -28,17 +28,22 @@ export default function PublicPillNav({ activeTab, onPressTab }: Props) {
       <View style={[styles.pill, { width: pillWidth }]}>
         {tabs.map((t) => {
           const isActive = activeTab === t.id;
+          const isAi = t.id === 'ai';
           return (
             <TouchableOpacity
               key={t.id}
-              style={[styles.iconBtn, isActive && styles.iconBtnActive]}
+              style={[
+                styles.iconBtn,
+                isAi ? styles.aiBtn : null,
+                isActive && !isAi ? styles.iconBtnActive : null,
+              ]}
               onPress={() => onPressTab(t.id)}
               activeOpacity={0.85}
             >
               <Ionicons
                 name={(isActive ? t.iconActive : t.icon) as any}
                 size={22}
-                color={isActive ? COLORS.purple : 'rgba(255,255,255,0.72)'}
+                color={isAi ? '#fff' : isActive ? COLORS.purple : 'rgba(255,255,255,0.72)'}
               />
             </TouchableOpacity>
           );
@@ -81,6 +86,18 @@ const styles = StyleSheet.create({
   },
   iconBtnActive: {
     backgroundColor: 'rgba(139,92,246,0.14)',
+  },
+  aiBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.purple,
+    marginTop: -12,
+    shadowColor: '#000',
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
   },
 });
 
