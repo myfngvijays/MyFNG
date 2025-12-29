@@ -4,6 +4,8 @@ This function builds your Supabase Vector Knowledge Base from:
 - Supabase **tables** (FAQ/policy/scripts)
 - Website **URLs** (HTML pages)
 
+It can also ingest **manual documents/FAQs** via a POST JSON payload (useful for Excel uploads).
+
 ### 1) SQL setup (run once)
 Run:
 - `database/kb_vector_setup.sql`
@@ -64,6 +66,8 @@ supabase functions deploy kb-ingest
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `OPENAI_API_KEY`
 - optional: `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
+- optional (disable auto-chunking/ingest): `KB_INGEST_DISABLED=true`
+- optional (manual override when disabled): `KB_INGEST_SECRET=<random>`
 
 ### 5) Schedule it (Supabase dashboard → Edge Functions → Schedules)
 Example cron:
@@ -71,7 +75,52 @@ Example cron:
 
 ### 6) Trigger manually
 ```bash
-curl -X POST '<your-supabase-edge-function-url>/kb-ingest' -H 'Authorization: Bearer <service_role_or_anon_if allowed>'
+curl -X POST '<your-supabase-edge-function-url>/kb-ingest' \
+  -H 'Authorization: Bearer <service_role_or_anon_if allowed>' \
+  -H 'x-kb-ingest-secret: <KB_INGEST_SECRET_if_set>'
 ```
+
+---
+
+## Manual ingest (Excel/text → chunks → embeddings)
+
+### A) Upload FAQs (rows) → one KB document
+Requires `KB_INGEST_SECRET` and header `x-kb-ingest-secret`.
+
+```bash
+curl -X POST '<your-supabase-edge-function-url>/kb-ingest' \
+  -H 'Content-Type: application/json' \
+  -H 'x-kb-ingest-secret: <KB_INGEST_SECRET>' \
+  -d '{
+    "mode": "manual_faqs",
+    "title": "Excel FAQs (Dec 2025)",
+    "source": "manual:excel_faqs_dec_2025",
+    "docType": "faq",
+    "language": "mixed",
+    "upsertIntoManualFaqs": true,
+    "faqs": [
+      { "question": "Q1?", "answer": "A1" },
+      { "question": "Q2?", "answer": "A2" }
+    ]
+  }'
+```
+
+### B) Upload a free-form document
+
+```bash
+curl -X POST '<your-supabase-edge-function-url>/kb-ingest' \
+  -H 'Content-Type: application/json' \
+  -H 'x-kb-ingest-secret: <KB_INGEST_SECRET>' \
+  -d '{
+    "mode": "manual_text",
+    "title": "Policy / Script",
+    "source": "manual:policy_v1",
+    "docType": "general",
+    "language": "en",
+    "text": ".... large text ...."
+  }'
+```
+
+
 
 

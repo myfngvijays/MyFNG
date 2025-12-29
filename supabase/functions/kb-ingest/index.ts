@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Supabase Edge Function: kb-ingest
 // - Reads KB sources from public.kb_sources (table + url)
 // - Upserts into public.kb_documents
@@ -307,12 +308,142 @@ async function ingestOne(db: any, openAiKey: string, embedModel: string, src: Kb
   return { status: 'ok', source: src.source_key, chunks: embedded.length };
 }
 
+type ManualTextDoc = {
+  title: string;
+  text: string;
+  source?: string;
+  docType?: string;
+  language?: string;
+  metadata?: any;
+};
+
+type ManualFaqRow = {
+  category?: string;
+  question: string;
+  answer: string;
+  is_active?: boolean;
+};
+
+function requireSharedSecret(req: Request) {
+  const required = String(Deno.env.get('KB_INGEST_SECRET') || '');
+  if (!required) throw new Error('KB_INGEST_SECRET not configured');
+  const provided = req.headers.get('x-kb-ingest-secret') || '';
+  if (provided !== required) throw new Error('Unauthorized (bad x-kb-ingest-secret)');
+}
+
+function normalizeFaqRows(rows: ManualFaqRow[]) {
+  const clean: Array<{ question: string; answer: string; category?: string }> = [];
+  for (const r of rows || []) {
+    if ((r as any)?.is_active === false) continue;
+    const categoryRaw = normalizeText(String((r as any)?.category || ''));
+    const q = normalizeText(String((r as any)?.question || ''));
+    const a = normalizeText(String((r as any)?.answer || ''));
+    if (!q || !a) continue;
+    // Keep category context in the question prefix (works well for both kb_manual_faqs and vector text).
+    const category = categoryRaw || undefined;
+    const prefixed = category && !q.toLowerCase().startsWith(`${category.toLowerCase()}:`)
+      ? `${category}: ${q}`
+      : q;
+    clean.push({ question: prefixed, answer: a, category });
+  }
+  return clean;
+}
+
+function faqsToText(rows: Array<{ question: string; answer: string; category?: string }>) {
+  return rows.map((r) => `### ${r.question}\n${r.answer}`).join('\n\n');
+}
+
+async function ingestManualText(db: any, openAiKey: string, embedModel: string, doc: ManualTextDoc) {
+  const title = normalizeText(String(doc?.title || 'Manual KB Document')) || 'Manual KB Document';
+  const text = normalizeText(String(doc?.text || ''));
+  if (!text) throw new Error('Manual document text is empty');
+  const language = normalizeText(String(doc?.language || 'mixed')) || 'mixed';
+  const docType = normalizeText(String(doc?.docType || 'general')) || 'general';
+  const hash = await sha256Hex(text);
+  const source =
+    normalizeText(String(doc?.source || '')) ||
+    `manual:${(await sha256Hex(`${title}\n${text}`)).slice(0, 24)}`;
+
+  const docRow = await upsertDocument(db, {
+    title,
+    docType,
+    source,
+    language,
+    hash,
+  });
+
+  const chunks = chunkText(text);
+  if (chunks.length === 0) throw new Error('Manual document produced 0 chunks');
+
+  const embedded: Array<{ text: string; embedding: number[]; metadata: any }> = [];
+  const batchSize = 64;
+  for (let i = 0; i < chunks.length; i += batchSize) {
+    const slice = chunks.slice(i, i + batchSize);
+    const vectors = await openAiEmbed(openAiKey, slice, embedModel);
+    for (let j = 0; j < slice.length; j++) {
+      embedded.push({
+        text: slice[j],
+        embedding: vectors[j],
+        metadata: {
+          ...(doc?.metadata && typeof doc.metadata === 'object' ? doc.metadata : {}),
+          source_type: 'manual',
+          doc_type: docType,
+          language,
+          title,
+          source,
+          chunk: i + j,
+        },
+      });
+    }
+  }
+
+  await replaceChunks(db, { documentId: docRow.id, chunks: embedded });
+  return { status: 'ok', source, documentId: docRow.id, chunks: embedded.length };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'POST only' }), { status: 405 });
   }
 
   try {
+    // Parse body early so we can distinguish "scheduled ingest" from "manual ingest".
+    let body: any = null;
+    try {
+      body = await req.json();
+    } catch {
+      body = null;
+    }
+
+    const isManualRequest =
+      Boolean(body && typeof body === 'object' && (body.mode === 'manual' || body.mode === 'manual_faqs' || body.mode === 'manual_text')) ||
+      Array.isArray(body?.documents) ||
+      Array.isArray(body?.faqs);
+
+    // Manual ingest always requires shared secret (prevents accidental/public use).
+    if (isManualRequest) {
+      requireSharedSecret(req);
+    } else {
+      // Safety switch: prevent scheduled/automatic KB ingestion & chunking.
+      // Set Edge Function secret: KB_INGEST_DISABLED=true
+      //
+      // Optional override:
+      // - Set secret KB_INGEST_SECRET=<random>
+      // - Invoke with header: x-kb-ingest-secret: <same>
+      const disabled = String(Deno.env.get('KB_INGEST_DISABLED') || '').toLowerCase();
+      if (disabled === 'true' || disabled === '1' || disabled === 'yes') {
+        const required = String(Deno.env.get('KB_INGEST_SECRET') || '');
+        const provided = req.headers.get('x-kb-ingest-secret') || '';
+        const allowOverride = Boolean(required) && provided === required;
+        if (!allowOverride) {
+          return new Response(JSON.stringify({ ok: true, skipped: true, reason: 'KB_INGEST_DISABLED' }), {
+            headers: { 'Content-Type': 'application/json' },
+            status: 200,
+          });
+        }
+      }
+    }
+
     const supabaseUrl = mustEnv('SUPABASE_URL');
     const serviceKey = mustEnv('SUPABASE_SERVICE_ROLE_KEY');
     const openAiKey = mustEnv('OPENAI_API_KEY');
@@ -322,6 +453,72 @@ Deno.serve(async (req) => {
       auth: { persistSession: false },
     });
 
+    // Manual ingest path (Excel text / ad-hoc docs)
+    if (isManualRequest) {
+      const mode = String(body?.mode || 'manual').toLowerCase();
+      const results: any[] = [];
+
+      // Mode: manual_faqs -> rows -> one document in vector store (and optional upsert into kb_manual_faqs).
+      if (mode === 'manual_faqs' || Array.isArray(body?.faqs)) {
+        const rows = normalizeFaqRows(Array.isArray(body?.faqs) ? body.faqs : []);
+        if (rows.length === 0) throw new Error('No valid FAQ rows provided');
+
+        // Optional: also store rows into kb_manual_faqs so admin UI can manage them later.
+        if (body?.upsertIntoManualFaqs === true) {
+          const upserts = rows.map((r) => ({
+            question: r.question,
+            answer: r.answer,
+            is_active: true,
+            updated_at: nowIso(),
+          }));
+          const { error: upErr } = await db
+            .from('kb_manual_faqs')
+            .upsert(upserts, { onConflict: 'question' });
+          if (upErr) throw new Error(`Upsert kb_manual_faqs failed: ${upErr.message}`);
+        }
+
+        const title = normalizeText(String(body?.title || 'Manual FAQs (Uploaded)')) || 'Manual FAQs (Uploaded)';
+        const source = normalizeText(String(body?.source || 'manual:kb_manual_faqs_upload')) || 'manual:kb_manual_faqs_upload';
+        const text = faqsToText(rows);
+        const r = await ingestManualText(db, openAiKey, embedModel, {
+          title,
+          source,
+          text,
+          docType: String(body?.docType || 'faq'),
+          language: String(body?.language || 'mixed'),
+          metadata: { kind: 'faq_rows', rows: rows.length },
+        });
+        results.push(r);
+      }
+
+      // Mode: manual_text / manual_documents -> arbitrary docs
+      const docs: ManualTextDoc[] = Array.isArray(body?.documents) ? body.documents : [];
+      if (mode === 'manual_text' || mode === 'manual' || docs.length > 0) {
+        if (docs.length === 0 && (body?.text || body?.title)) {
+          docs.push({
+            title: String(body?.title || 'Manual KB Document'),
+            text: String(body?.text || ''),
+            source: body?.source ? String(body.source) : undefined,
+            docType: body?.docType ? String(body.docType) : undefined,
+            language: body?.language ? String(body.language) : undefined,
+            metadata: body?.metadata,
+          });
+        }
+        for (const d of docs) {
+          const r = await ingestManualText(db, openAiKey, embedModel, d);
+          results.push(r);
+        }
+      }
+
+      if (results.length === 0) throw new Error('Manual ingest request did not contain documents/faqs');
+
+      return new Response(JSON.stringify({ ok: true, mode: 'manual', results }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
+    // Default path: ingest active kb_sources (scheduled/manual maintenance)
     const { data: sources, error } = await db
       .from('kb_sources')
       .select('id, source_type, source_key, title, config, is_active')
@@ -340,7 +537,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, results }), {
+    return new Response(JSON.stringify({ ok: true, mode: 'sources', results }), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,
     });

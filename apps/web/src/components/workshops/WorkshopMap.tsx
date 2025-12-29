@@ -1,13 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
-
-declare global {
-  interface Window {
-    __maplibreLoader?: Promise<void>;
-    maplibregl?: any;
-  }
-}
+import { useMemo } from 'react';
 
 export type WorkshopMapMarker = {
   id: string;
@@ -26,221 +19,55 @@ type Props = {
   activeId?: string | null;
 };
 
-function loadMapLibre() {
-  if (typeof window === 'undefined') return Promise.resolve();
-  if (window.maplibregl) return Promise.resolve();
-  if (window.__maplibreLoader) return window.__maplibreLoader;
-
-  window.__maplibreLoader = new Promise<void>((resolve, reject) => {
-    // CSS
-    const cssId = 'maplibre-css';
-    if (!document.getElementById(cssId)) {
-      const link = document.createElement('link');
-      link.id = cssId;
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
-      document.head.appendChild(link);
-    }
-
-    // JS
-    const scriptId = 'maplibre-js';
-    const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
-    if (existing) {
-      existing.addEventListener('load', () => resolve());
-      existing.addEventListener('error', () => reject(new Error('Failed to load maplibre-gl')));
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.id = scriptId;
-    script.src = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load maplibre-gl'));
-    document.head.appendChild(script);
-  });
-
-  return window.__maplibreLoader;
-}
-
 export default function WorkshopMap({ className, center, zoom, markers, onSelect, activeId }: Props) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<any>(null);
-  const markerRefs = useRef<Map<string, any>>(new Map());
+  // To keep cost low, we use Google Maps "q=lat,lng&output=embed" iframe (no API key).
+  // We center on active marker (if present), otherwise fallback to provided center.
+  const activeMarker = useMemo(() => {
+    if (!activeId) return null;
+    return markers.find((m) => m.id === activeId) || null;
+  }, [activeId, markers]);
 
-  const normalizedMarkers = useMemo(() => {
-    // ensure stable ordering
-    return markers.slice().sort((a, b) => a.id.localeCompare(b.id));
-  }, [markers]);
-
-  useEffect(() => {
-    let destroyed = false;
-
-    async function init() {
-      try {
-        await loadMapLibre();
-        if (destroyed) return;
-
-        const maplibregl = window.maplibregl;
-        if (!containerRef.current || !maplibregl) return;
-
-        // Create map once
-        if (!mapRef.current) {
-          // Google-ish look (Airbnb-like): light road map tiles
-          const style = {
-            version: 8,
-            sources: {
-              'carto-tiles': {
-                type: 'raster',
-                tiles: [
-                  'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                  'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                  'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                  'https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                ],
-                tileSize: 256,
-                attribution:
-                  '© OpenStreetMap contributors © CARTO',
-              },
-            },
-            layers: [
-              {
-                id: 'carto-base',
-                type: 'raster',
-                source: 'carto-tiles',
-                minzoom: 0,
-                maxzoom: 20,
-              },
-            ],
-          };
-
-          const map = new maplibregl.Map({
-            container: containerRef.current,
-            style,
-            center: [center.lng, center.lat],
-            zoom,
-            attributionControl: false,
-          });
-
-          map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-          map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
-          mapRef.current = map;
-        } else {
-          // Keep the map in sync if parent passes new center/zoom (e.g. after parsing map_link).
-          const map = mapRef.current;
-          map.easeTo({ center: [center.lng, center.lat], zoom, duration: 450 });
-        }
-      } catch (e) {
-        console.error('WorkshopMap init error:', e);
-      }
-    }
-
-    init();
-    return () => {
-      destroyed = true;
-    };
-  }, [center.lat, center.lng, zoom]);
-
-  // Also sync center/zoom on updates (init() may not run if map already created quickly).
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.easeTo({ center: [center.lng, center.lat], zoom, duration: 450 });
-  }, [center.lat, center.lng, zoom]);
-
-  // Sync markers
-  useEffect(() => {
-    const map = mapRef.current;
-    const maplibregl = typeof window !== 'undefined' ? window.maplibregl : null;
-    if (!map || !maplibregl) return;
-
-    const existing = markerRefs.current;
-    const keep = new Set<string>();
-
-    for (const m of normalizedMarkers) {
-      keep.add(m.id);
-      const current = existing.get(m.id);
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.className = [
-        'wfng-pin',
-        m.selected || m.id === activeId ? 'wfng-pin--active' : 'wfng-pin--idle',
-      ].join(' ');
-      el.textContent = m.label;
-      el.onclick = () => onSelect(m.id);
-
-      if (!current) {
-        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-          .setLngLat([m.lng, m.lat])
-          .addTo(map);
-        existing.set(m.id, marker);
-      } else {
-        // Update element + position
-        const dom = current.getElement?.() as HTMLElement | undefined;
-        if (dom) {
-          dom.className = el.className;
-          dom.textContent = m.label;
-          (dom as any).onclick = el.onclick;
-        }
-        current.setLngLat([m.lng, m.lat]);
-      }
-    }
-
-    // Remove stale markers
-    for (const [id, marker] of existing.entries()) {
-      if (!keep.has(id)) {
-        marker.remove?.();
-        existing.delete(id);
-      }
-    }
-  }, [activeId, normalizedMarkers, onSelect]);
-
-  // Fly to active
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !activeId) return;
-    const marker = markerRefs.current.get(activeId);
-    if (!marker) return;
-    const ll = marker.getLngLat?.();
-    if (!ll) return;
-    map.easeTo({ center: [ll.lng, ll.lat], duration: 550, zoom: Math.max(map.getZoom?.() ?? 12, 12) });
-  }, [activeId]);
+  const target = activeMarker ? { lat: activeMarker.lat, lng: activeMarker.lng } : center;
+  const safeZoom = Math.max(2, Math.min(18, Math.floor(zoom || 12)));
+  const src = `https://www.google.com/maps?q=${encodeURIComponent(`${target.lat},${target.lng}`)}&z=${safeZoom}&output=embed`;
 
   return (
     <div className={className}>
-      <div ref={containerRef} className="w-full h-full" />
-      <style jsx global>{`
-        .wfng-pin {
-          border-radius: 9999px;
-          padding: 8px 12px;
-          font-size: 12px;
-          font-weight: 800;
-          line-height: 1;
-          box-shadow: 0 10px 20px rgba(17, 24, 39, 0.12);
-          border: 1px solid rgba(229, 231, 235, 1);
-          cursor: pointer;
-          transform: translateY(0);
-          transition: transform 120ms ease, background 120ms ease, color 120ms ease, border-color 120ms ease;
-          user-select: none;
-          white-space: nowrap;
-        }
-        .wfng-pin--idle {
-          background: rgba(255, 255, 255, 0.96);
-          color: #111827;
-        }
-        .wfng-pin--idle:hover {
-          background: #111827;
-          color: white;
-          border-color: #111827;
-          transform: translateY(-1px);
-        }
-        .wfng-pin--active {
-          background: #111827;
-          color: white;
-          border-color: #111827;
-          transform: translateY(-1px) scale(1.03);
-        }
-      `}</style>
+      <iframe
+        title="Workshops map"
+        src={src}
+        className="w-full h-full"
+        loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade"
+        style={{ border: 0 }}
+        allowFullScreen
+      />
+
+      {/* Low-cost UX: quick jump buttons (still no paid Maps API calls) */}
+      {markers.length > 0 ? (
+        <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 pointer-events-none">
+          <div className="pointer-events-auto rounded-2xl border border-gray-200 bg-white/95 backdrop-blur shadow-lg overflow-hidden">
+            <div className="px-3 py-2 text-[11px] font-extrabold text-gray-900 border-b border-gray-100">
+              Quick jump
+            </div>
+            <div className="max-h-44 overflow-y-auto">
+              {markers.slice(0, 6).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => onSelect(m.id)}
+                  className={[
+                    'w-full text-left px-3 py-2 text-xs font-semibold hover:bg-gray-50',
+                    m.id === activeId ? 'text-blue-700' : 'text-gray-800',
+                  ].join(' ')}
+                >
+                  {m.label} {m.id === activeId ? '•' : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

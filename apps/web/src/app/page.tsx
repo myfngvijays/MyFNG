@@ -97,10 +97,24 @@ export default function HomePage() {
   const [chatDraft, setChatDraft] = useState('');
 
   type ChatRole = 'user' | 'assistant';
+  type UiSuggestion = {
+    optionNumber?: number;
+    kind: 'SERVICE_TYPE' | 'PACKAGE' | 'RSA';
+    id: string;
+    name: string;
+    exactPrice?: number | null;
+    checklistItems?: string[];
+    checklistNote?: string | null;
+  };
+  type UiPayload =
+    | { kind: 'CATEGORY_CAROUSEL'; title?: string; items: Array<{ id: string; label: string; subtitle?: string }> }
+    | { kind: 'DUAL_CAROUSEL'; title?: string; category: string; packages: UiSuggestion[]; services: UiSuggestion[] };
   type ChatMsg = {
     id: string;
     role: ChatRole;
     text: string;
+    suggestions?: UiSuggestion[];
+    ui?: UiPayload;
   };
 
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
@@ -114,6 +128,8 @@ export default function HomePage() {
   const [chatConnected, setChatConnected] = useState(false);
   const [chatContext, setChatContext] = useState<any>({}); // keep flexible (matches /api/chatbot context)
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const lastAppliedSyncAtRef = useRef<number>(0);
+  const [suggestionModal, setSuggestionModal] = useState<UiSuggestion | null>(null);
 
   const CHAT_STORAGE_KEY = 'myfng_ai_chat_state_v1';
   const CHAT_CHANNEL_NAME = 'myfng_ai_chat_channel_v1';
@@ -140,6 +156,8 @@ export default function HomePage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const saved = safeParseJson<any>(window.localStorage.getItem(CHAT_STORAGE_KEY));
+    const incomingAt = typeof saved?.updatedAt === 'number' ? saved.updatedAt : 0;
+    if (incomingAt) lastAppliedSyncAtRef.current = incomingAt;
     if (saved?.chatMessages?.length) setChatMessages(saved.chatMessages);
     if (saved?.chatContext) setChatContext(saved.chatContext);
   }, []);
@@ -148,6 +166,7 @@ export default function HomePage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const payload = { chatMessages, chatContext, updatedAt: Date.now() };
+    lastAppliedSyncAtRef.current = payload.updatedAt;
     window.localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(payload));
     chatChannel?.postMessage({ type: 'SYNC', payload });
   }, [chatMessages, chatContext, chatChannel]);
@@ -159,6 +178,10 @@ export default function HomePage() {
       const msg = ev.data;
       if (msg?.type !== 'SYNC') return;
       const payload = msg.payload;
+      const incomingAt = typeof payload?.updatedAt === 'number' ? payload.updatedAt : 0;
+      if (!incomingAt) return;
+      if (incomingAt <= lastAppliedSyncAtRef.current) return;
+      lastAppliedSyncAtRef.current = incomingAt;
       if (payload?.chatMessages?.length) setChatMessages(payload.chatMessages);
       if (payload?.chatContext) setChatContext(payload.chatContext);
     };
@@ -172,6 +195,10 @@ export default function HomePage() {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== CHAT_STORAGE_KEY) return;
       const payload = safeParseJson<any>(e.newValue);
+      const incomingAt = typeof payload?.updatedAt === 'number' ? payload.updatedAt : 0;
+      if (!incomingAt) return;
+      if (incomingAt <= lastAppliedSyncAtRef.current) return;
+      lastAppliedSyncAtRef.current = incomingAt;
       if (payload?.chatMessages?.length) setChatMessages(payload.chatMessages);
       if (payload?.chatContext) setChatContext(payload.chatContext);
     };
@@ -362,19 +389,20 @@ export default function HomePage() {
     return m[1].replace(/\s+/g, '');
   }
 
-  async function sendChatMessage(rawText: string) {
+  async function sendChatMessage(rawText: string, displayText?: string) {
     const text = (rawText || '').trim();
+    const shown = (displayText || rawText || '').trim();
     if (!text) return;
     if (chatLoading) return;
 
     const userId = `u_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    setChatMessages((prev) => [...prev, { id: userId, role: 'user', text }]);
+    setChatMessages((prev) => [...prev, { id: userId, role: 'user', text: shown }]);
     setChatDraft('');
     setChatLoading(true);
 
     // Update context from user's message (best-effort)
-    const phone = extractPhoneFromText(text);
-    const vehicle = extractVehicleNumberFromText(text);
+    const phone = extractPhoneFromText(shown);
+    const vehicle = extractVehicleNumberFromText(shown);
     const nextContext = {
       ...(chatContext || {}),
       ...(phone ? { customerPhone: phone } : {}),
@@ -393,10 +421,83 @@ export default function HomePage() {
 
       const data: any = await res.json().catch(() => null);
       if (res.ok && data?.conversationId) setChatConnected(true);
-      const assistantText = data?.assistantMessage || 'Sorry, kuch issue aa gaya. Please try again.';
+      const assistantText =
+        (typeof data?.assistantMessage === 'string' && data.assistantMessage.trim()) ||
+        (typeof data?.error === 'string' && data.error.trim()) ||
+        'Sorry, kuch issue aa gaya. Please try again.';
+
+      const uiSuggestions: UiSuggestion[] | undefined = Array.isArray(data?.suggestions)
+        ? data.suggestions
+            .map((s: any, idx: number) => ({
+              optionNumber: idx + 1,
+              kind: String(s?.suggestion?.kind || 'SERVICE_TYPE').toUpperCase(),
+              id: String(s?.suggestion?.id || ''),
+              name: String(s?.suggestion?.name || '').trim(),
+              exactPrice:
+                typeof s?.exactPrice?.amount === 'number'
+                  ? s.exactPrice.amount
+                  : typeof s?.exactPrice === 'number'
+                    ? s.exactPrice
+                    : null,
+              checklistItems: Array.isArray(s?.checklistItems) ? s.checklistItems.map((x: any) => String(x)) : undefined,
+              checklistNote: typeof s?.checklistNote === 'string' ? s.checklistNote : null,
+            }))
+            .filter((x: UiSuggestion) => Boolean(x.name) && Boolean(x.id))
+        : undefined;
+
+      const uiPayload: UiPayload | undefined = (() => {
+        const ui = data?.ui;
+        if (!ui || typeof ui !== 'object') return undefined;
+        if (ui.kind === 'CATEGORY_CAROUSEL' && Array.isArray(ui.items)) {
+          return {
+            kind: 'CATEGORY_CAROUSEL',
+            title: typeof ui.title === 'string' ? ui.title : undefined,
+            items: ui.items
+              .map((it: any) => ({
+                id: String(it?.id || ''),
+                label: String(it?.label || '').trim(),
+                subtitle: typeof it?.subtitle === 'string' ? it.subtitle : undefined,
+              }))
+              .filter((it: any) => it.id && it.label),
+          };
+        }
+        if (ui.kind === 'DUAL_CAROUSEL' && Array.isArray(ui.packages) && Array.isArray(ui.services)) {
+          const mapOpt = (o: any, optionNumber?: number): UiSuggestion | null => {
+            const s = o?.suggestion;
+            const kind = String(s?.kind || '').toUpperCase();
+            const id = String(s?.id || '');
+            const name = String(s?.name || '').trim();
+            if (!id || !name || !kind) return null;
+            return {
+              optionNumber,
+              kind: kind as any,
+              id,
+              name,
+              exactPrice: typeof o?.exactPrice?.amount === 'number' ? o.exactPrice.amount : null,
+              checklistItems: Array.isArray(o?.checklistItems) ? o.checklistItems.map((x: any) => String(x)) : undefined,
+              checklistNote: typeof o?.checklistNote === 'string' ? o.checklistNote : null,
+            };
+          };
+          const pkg = ui.packages.map((o: any, i: number) => mapOpt(o, i + 1)).filter(Boolean) as UiSuggestion[];
+          const svc = ui.services
+            .map((o: any, i: number) => mapOpt(o, pkg.length + i + 1))
+            .filter(Boolean) as UiSuggestion[];
+          return {
+            kind: 'DUAL_CAROUSEL',
+            title: typeof ui.title === 'string' ? ui.title : undefined,
+            category: String(ui.category || '').trim(),
+            packages: pkg,
+            services: svc,
+          };
+        }
+        return undefined;
+      })();
 
       const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: assistantText }]);
+      setChatMessages((prev) => [
+        ...prev,
+        { id: botId, role: 'assistant', text: assistantText, suggestions: uiSuggestions, ui: uiPayload },
+      ]);
 
       // Merge context patch from server
       if (data?.contextPatch) {
@@ -1616,7 +1717,11 @@ export default function HomePage() {
       {/* Floating Chatbot (Always Visible) */}
       <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50">
         <button 
-          onClick={() => setIsChatOpen(!isChatOpen)}
+          onClick={() => {
+            const next = !isChatOpen;
+            if (!next) setSuggestionModal(null);
+            setIsChatOpen(next);
+          }}
           className="bg-brand-primary hover:bg-brand-primary-hover text-white px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2 sm:gap-3 group border-2 sm:border-4 border-white/20 animate-bounce-slow"
         >
           <Bot className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 group-hover:rotate-12 transition-transform flex-shrink-0" />
@@ -1628,6 +1733,67 @@ export default function HomePage() {
       {/* Chatbot Modal */}
       {isChatOpen && (
         <div className="fixed bottom-40 sm:bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-fade-in-up">
+          {suggestionModal && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+              <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+                <div className="p-4 border-b flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    {typeof suggestionModal.optionNumber === 'number' && (
+                      <div className="text-xs text-gray-500">Option {suggestionModal.optionNumber}</div>
+                    )}
+                    <div className="font-bold text-gray-900 truncate">{suggestionModal.name}</div>
+                    {typeof suggestionModal.exactPrice === 'number' && suggestionModal.exactPrice > 0 && (
+                      <div className="text-sm text-green-700 mt-1">
+                        ₹{Math.round(suggestionModal.exactPrice).toLocaleString('en-IN')}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSuggestionModal(null)}
+                    className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="p-4 max-h-[55vh] overflow-y-auto">
+                  {Array.isArray(suggestionModal.checklistItems) && suggestionModal.checklistItems.length > 0 ? (
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900 mb-2">Checkpoints</div>
+                      <ul className="list-disc pl-5 text-sm text-gray-800 space-y-1">
+                        {suggestionModal.checklistItems.map((it, idx) => (
+                          <li key={idx}>{it}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-700">No detailed checklist available for this service.</div>
+                  )}
+                </div>
+                <div className="p-4 border-t flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const raw = `__select__ ${suggestionModal.kind} ${suggestionModal.id}`;
+                      const shown = suggestionModal.name;
+                      setSuggestionModal(null);
+                      sendChatMessage(raw, shown);
+                    }}
+                    className="flex-1 px-4 py-2 rounded-lg bg-brand-primary text-white hover:bg-brand-primary-hover text-sm font-semibold"
+                  >
+                    Choose this
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSuggestionModal(null)}
+                    className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="bg-brand-primary p-3 sm:p-4 flex justify-between items-center gap-2">
             <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
               <div className="bg-white/20 p-1 sm:p-1.5 rounded-lg flex-shrink-0">
@@ -1646,7 +1812,13 @@ export default function HomePage() {
             >
               Open full page
             </Link>
-            <button onClick={() => setIsChatOpen(false)} className="text-white/80 hover:text-white text-xl sm:text-2xl flex-shrink-0">
+            <button
+              onClick={() => {
+                setSuggestionModal(null);
+                setIsChatOpen(false);
+              }}
+              className="text-white/80 hover:text-white text-xl sm:text-2xl flex-shrink-0"
+            >
               ×
             </button>
           </div>
@@ -1668,13 +1840,142 @@ export default function HomePage() {
                           : 'bg-white p-2.5 sm:p-3 rounded-xl sm:rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-xs sm:text-sm text-gray-700'
                       }
                     >
-                      {m.text.split('\\n').map((line, idx) => (
-                        <span key={idx}>
-                          {line}
-                          <br />
-                        </span>
-                      ))}
+                      {m.text.split('\n').map((line, idx) => {
+                        const urlMatch = line.match(/(https?:\/\/[^\s]+)/i);
+                        if (urlMatch?.[1]) {
+                          const url = urlMatch[1];
+                          const before = line.slice(0, urlMatch.index || 0);
+                          const after = line.slice((urlMatch.index || 0) + url.length);
+                          return (
+                            <span key={idx}>
+                              {before}
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={isUser ? 'underline text-white' : 'underline text-brand-primary'}
+                              >
+                                {url}
+                              </a>
+                              {after}
+                              <br />
+                            </span>
+                          );
+                        }
+                        return (
+                          <span key={idx}>
+                            {line}
+                            <br />
+                          </span>
+                        );
+                      })}
                     </div>
+
+                    {!isUser && m.ui?.kind === 'CATEGORY_CAROUSEL' && (
+                      <div className="mt-2">
+                        <div className="flex gap-2 overflow-x-auto pb-2">
+                          {m.ui.items.map((it) => (
+                            <button
+                              key={it.id}
+                              type="button"
+                              onClick={() => sendChatMessage(it.id, it.label)}
+                              className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                            >
+                              <div className="font-semibold text-sm text-gray-900">{it.label}</div>
+                              {it.subtitle && <div className="text-xs text-gray-500 mt-1">{it.subtitle}</div>}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!isUser && m.ui?.kind === 'DUAL_CAROUSEL' && (
+                      <div className="mt-2 space-y-3">
+                        {m.ui.packages.length > 0 && (
+                          <div>
+                            <div className="text-xs font-semibold text-gray-600 mb-1">Packages</div>
+                            <div className="flex gap-2 overflow-x-auto pb-2">
+                              {m.ui.packages.map((s) => (
+                                <button
+                                  key={`${s.kind}:${s.id}`}
+                                  type="button"
+                                  onClick={() => setSuggestionModal(s)}
+                                  className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                                >
+                                  {typeof s.optionNumber === 'number' && (
+                                    <div className="text-xs text-gray-500">Option {s.optionNumber}</div>
+                                  )}
+                                  <div className="font-semibold text-sm text-gray-900">{s.name}</div>
+                                  {typeof s.exactPrice === 'number' && s.exactPrice > 0 && (
+                                    <div className="text-sm text-green-700 mt-1">
+                                      ₹{Math.round(s.exactPrice).toLocaleString('en-IN')}
+                                    </div>
+                                  )}
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {Array.isArray(s.checklistItems) && s.checklistItems.length > 0 ? 'View details' : 'Tap to select'}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {m.ui.services.length > 0 && (
+                          <div>
+                            <div className="text-xs font-semibold text-gray-600 mb-1">Services</div>
+                            <div className="flex gap-2 overflow-x-auto pb-2">
+                              {m.ui.services.map((s) => (
+                                <button
+                                  key={`${s.kind}:${s.id}`}
+                                  type="button"
+                                  onClick={() => setSuggestionModal(s)}
+                                  className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                                >
+                                  {typeof s.optionNumber === 'number' && (
+                                    <div className="text-xs text-gray-500">Option {s.optionNumber}</div>
+                                  )}
+                                  <div className="font-semibold text-sm text-gray-900">{s.name}</div>
+                                  {typeof s.exactPrice === 'number' && s.exactPrice > 0 && (
+                                    <div className="text-sm text-green-700 mt-1">
+                                      ₹{Math.round(s.exactPrice).toLocaleString('en-IN')}
+                                    </div>
+                                  )}
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {Array.isArray(s.checklistItems) && s.checklistItems.length > 0 ? 'View checkpoints' : 'Tap to select'}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!isUser && !m.ui && Array.isArray(m.suggestions) && m.suggestions.length > 0 && (
+                      <div className="mt-2">
+                        <div className="flex gap-2 overflow-x-auto pb-2">
+                          {m.suggestions.map((s) => (
+                            <button
+                              key={`${s.kind}:${s.id}:${s.optionNumber || 0}`}
+                              type="button"
+                              onClick={() => setSuggestionModal(s)}
+                              className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                            >
+                              {typeof s.optionNumber === 'number' && <div className="text-xs text-gray-500">Option {s.optionNumber}</div>}
+                              <div className="font-semibold text-sm text-gray-900">{s.name}</div>
+                              {typeof s.exactPrice === 'number' && s.exactPrice > 0 && (
+                                <div className="text-sm text-green-700 mt-1">
+                                  ₹{Math.round(s.exactPrice).toLocaleString('en-IN')}
+                                </div>
+                              )}
+                              <div className="text-xs text-gray-500 mt-1">
+                                {Array.isArray(s.checklistItems) && s.checklistItems.length > 0 ? 'View checkpoints' : 'Tap to select'}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

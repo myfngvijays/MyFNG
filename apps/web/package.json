@@ -6,11 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "node .next/standalone/server.js",
-    "lint": "next lint"
+    "lint": "next lint",
+    "kb:ingest-faqs": "node scripts/ingestFaqTxtToKb.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.0",
     "@fontsource/poppins": "^5.2.6",
+    "@langchain/openai": "^0.6.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.1.0",
     "@supabase/supabase-js": "^2.78.0",
@@ -20,6 +22,7 @@
     "clsx": "^2.1.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.344.0",
+    "langchain": "^0.3.0",
     "next": "^14.2.0",
     "qrcode": "^1.5.4",
     "razorpay": "^2.9.6",

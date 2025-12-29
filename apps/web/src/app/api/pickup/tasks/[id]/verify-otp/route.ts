@@ -35,7 +35,8 @@ export async function POST(
 
     // Get request body
     const body = await request.json();
-    const { otp } = body;
+    const { otp, otp_type } = body;
+    const otpType = String(otp_type || 'PICKUP').toUpperCase(); // PICKUP | DROP
 
     if (!otp) {
       return NextResponse.json({ error: 'OTP is required' }, { status: 400 });
@@ -59,14 +60,39 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
-    // Prevent overwriting COMPLETED or later statuses
-    const protectedStatuses = ['COMPLETED', 'WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
-    if (protectedStatuses.includes(lead.status)) {
-      return NextResponse.json({ 
-        error: 'Cannot update status - work already completed',
-        current_status: lead.status,
-        message: 'Mechanic has already completed the work. Status cannot be changed.'
-      }, { status: 400 });
+    // For PICKUP OTP we should not modify leads once work progressed too far.
+    // For DROP OTP we must allow READY_FOR_DELIVERY / COD_PENDING.
+    if (otpType === 'PICKUP') {
+      const protectedStatuses = [
+        'COMPLETED',
+        'WORK_COMPLETED',
+        'QC_PENDING',
+        'QC_APPROVED',
+        'READY_FOR_BILLING',
+        'READY_FOR_DELIVERY',
+        'DELIVERED',
+        'CLOSED',
+      ];
+      if (protectedStatuses.includes(lead.status)) {
+        return NextResponse.json(
+          {
+            error: 'Cannot update status - work already completed',
+            current_status: lead.status,
+            message: 'Mechanic has already completed the work. Status cannot be changed.',
+          },
+          { status: 400 }
+        );
+      }
+    } else if (otpType === 'DROP') {
+      const allowedLeadStatuses = ['READY_FOR_DELIVERY', 'COD_PENDING'];
+      if (!allowedLeadStatuses.includes(lead.status)) {
+        return NextResponse.json(
+          { error: 'Lead is not ready for delivery OTP verification', current_status: lead.status, allowed_statuses: allowedLeadStatuses },
+          { status: 400 }
+        );
+      }
+    } else {
+      return NextResponse.json({ error: 'Invalid otp_type', valid: ['PICKUP', 'DROP'] }, { status: 400 });
     }
 
     // Check OTP from pickup_otps table first
@@ -75,7 +101,7 @@ export async function POST(
       .from('pickup_otps')
       .select('*')
       .eq('lead_id', leadId)
-      .eq('otp_type', 'PICKUP')
+      .eq('otp_type', otpType)
       .eq('is_verified', false)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -97,12 +123,12 @@ export async function POST(
       }
       validOTP = otpRecord.otp_code;
     } else if (lead.pickup_otp) {
-      // Use OTP from service_leads table (testing mode or direct storage)
-      validOTP = lead.pickup_otp;
+      // Legacy fallback only for PICKUP
+      validOTP = otpType === 'PICKUP' ? lead.pickup_otp : null;
     } else {
       return NextResponse.json({ 
         error: 'No valid OTP found',
-        hint: 'Please start pickup first to generate OTP'
+        hint: otpType === 'DROP' ? 'Please start delivery first to generate DROP OTP' : 'Please start pickup first to generate OTP'
       }, { status: 404 });
     }
 
@@ -133,7 +159,7 @@ export async function POST(
         .from('pickup_otps')
         .insert({
           lead_id: leadId,
-          otp_type: 'PICKUP',
+          otp_type: otpType,
           otp_code: otp,
           is_verified: true,
           verified_at: now,
@@ -143,76 +169,87 @@ export async function POST(
         });
     }
 
-    // Update service_leads status to VEHICLE_IN_TRANSIT (vehicle picked up, driving to workshop)
-    const { error: updateLeadError } = await supabase
-      .from('service_leads')
-      .update({
-        pickup_otp_verified_at: now,
-        pickup_status: 'VEHICLE_IN_TRANSIT',
-        status: 'VEHICLE_IN_TRANSIT',
-        updated_at: now
-      })
-      .eq('id', leadId);
+    if (otpType === 'PICKUP') {
+      // Update service_leads status to VEHICLE_IN_TRANSIT (vehicle picked up, driving to workshop)
+      const { error: updateLeadError } = await supabase
+        .from('service_leads')
+        .update({
+          pickup_otp_verified_at: now,
+          pickup_status: 'VEHICLE_IN_TRANSIT',
+          status: 'VEHICLE_IN_TRANSIT',
+          updated_at: now,
+        })
+        .eq('id', leadId);
 
-    if (updateLeadError) {
-      console.error('Error updating lead status:', updateLeadError);
-      return NextResponse.json({ 
-        error: 'Failed to update lead status', 
-        details: updateLeadError.message 
-      }, { status: 500 });
+      if (updateLeadError) {
+        console.error('Error updating lead status:', updateLeadError);
+        return NextResponse.json({ error: 'Failed to update lead status', details: updateLeadError.message }, { status: 500 });
+      }
+
+      // Update pickup tracking
+      await supabase
+        .from('pickup_tracking')
+        .update({
+          pickup_status: 'VEHICLE_IN_TRANSIT',
+          pickup_otp_verified_at: now,
+          pickup_in_transit_at: now,
+          updated_at: now,
+        })
+        .eq('lead_id', leadId);
+    } else {
+      // DROP OTP verification: record on tracking but do NOT change lead.status (it stays READY_FOR_DELIVERY / COD_PENDING)
+      await supabase
+        .from('pickup_tracking')
+        .upsert(
+          {
+            lead_id: leadId,
+            drop_required: true,
+            drop_assigned_to: userProfile.id,
+            drop_status: 'ARRIVED_AT_CUSTOMER',
+            drop_otp_verified_at: now,
+            updated_at: now,
+          } as any,
+          { onConflict: 'lead_id' }
+        );
     }
 
-    // Update pickup tracking
-    await supabase
-      .from('pickup_tracking')
-      .update({
-        pickup_status: 'VEHICLE_IN_TRANSIT',
-        pickup_otp_verified_at: now,
-        pickup_in_transit_at: now,
-        updated_at: now
-      })
-      .eq('lead_id', leadId);
-
-    // Log status change
-    await supabase
-      .from('lead_status_history')
-      .insert({
-        lead_id: leadId,
-        old_status: lead.status,
-        new_status: 'VEHICLE_IN_TRANSIT',
-        changed_by: userProfile.id,
-        changed_at: now,
-        reason: 'OTP verified - Vehicle picked up, driving to workshop',
-        notes: 'Customer OTP verified successfully'
-      });
+    if (otpType === 'PICKUP') {
+      // Log status change
+      await supabase
+        .from('lead_status_history')
+        .insert({
+          lead_id: leadId,
+          old_status: lead.status,
+          new_status: 'VEHICLE_IN_TRANSIT',
+          changed_by: userProfile.id,
+          changed_at: now,
+          reason: 'OTP verified - Vehicle picked up, driving to workshop',
+          notes: 'Customer OTP verified successfully',
+        });
+    }
 
     // Create activity log
-    await supabase
-      .from('lead_activities')
-      .insert({
-        lead_id: leadId,
-        user_id: userProfile.id,
-        activity_type: 'OTP_VERIFIED',
-        description: 'Customer OTP verified - Vehicle picked up, driving to workshop',
-        old_status: lead.status,
-        new_status: 'VEHICLE_IN_TRANSIT',
-        metadata: {
-          pickup_boy_id: userProfile.id,
-          verified_at: now,
-          otp_type: 'PICKUP'
-        }
-      });
+    await supabase.from('lead_activities').insert({
+      lead_id: leadId,
+      user_id: userProfile.id,
+      activity_type: `${otpType}_OTP_VERIFIED`,
+      description: otpType === 'DROP' ? 'Delivery OTP verified' : 'Customer OTP verified - Vehicle picked up, driving to workshop',
+      metadata: { pickup_boy_id: userProfile.id, verified_at: now, otp_type: otpType },
+    } as any);
 
     return NextResponse.json({
       success: true,
       message: 'OTP verified successfully',
-      next_step: 'Upload before images of the vehicle',
-      instructions: [
-        'Take clear photos of all 4 sides of vehicle',
-        'Include close-ups of any existing damage',
-        'Check vehicle interior condition',
-        'Note down fuel level and odometer reading'
-      ]
+      next_step: otpType === 'DROP' ? 'Complete delivery to customer' : 'Upload before images of the vehicle',
+      instructions:
+        otpType === 'DROP'
+          ? ['Confirm handover with customer', 'Complete delivery']
+          : [
+              'Take clear photos of all 4 sides of vehicle',
+              'Include close-ups of any existing damage',
+              'Check vehicle interior condition',
+              'Note down fuel level and odometer reading',
+            ],
     }, { status: 200 });
 
   } catch (error) {

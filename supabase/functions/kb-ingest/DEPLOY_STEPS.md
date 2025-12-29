@@ -14,6 +14,8 @@
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `OPENAI_API_KEY`
    - optional: `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
+   - optional (disable scheduled/auto ingest): `KB_INGEST_DISABLED=true`
+   - optional (manual override when disabled): `KB_INGEST_SECRET=<random>`
 5) Deploy
 
 ### Schedule
@@ -25,6 +27,7 @@ Use the “Invoke” button in dashboard, or curl:
 ```bash
 curl -X POST '<your-edge-function-url>/kb-ingest' \
   -H 'Authorization: Bearer <service_role_key_or_jwt>'
+  -H 'x-kb-ingest-secret: <KB_INGEST_SECRET_if_set>'
 ```
 
 ### Verify

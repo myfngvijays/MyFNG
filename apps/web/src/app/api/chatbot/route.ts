@@ -63,7 +63,8 @@ function isPricingQuery(text: string) {
 }
 
 function isWorkshopAddressQuery(text: string) {
-  return /(address|location|where is|kaha hai|kahan hai|workshop address|map|google maps|near me|nearest workshop)/i.test(text || '');
+  // Address-only intent (NOT "nearest/nearby"). Nearest is handled separately by isWorkshopQuery().
+  return /(workshop\s*address|address|map|google\s*maps|where\s+is|kaha\s+hai|kahan\s+hai)/i.test(text || '');
 }
 
 function isSelfDropQuery(text: string) {
@@ -234,6 +235,107 @@ function getRagDbClient(supabase: any) {
     }),
     isAdmin: true,
   };
+}
+
+function normalizeForFaqMatch(text: string) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[\u2019']/g, '') // apostrophes
+    .replace(/[^a-z0-9\u0900-\u097F\u0A80-\u0AFF]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const FAQ_STOPWORDS = new Set([
+  // English
+  'what',
+  'why',
+  'how',
+  'which',
+  'where',
+  'when',
+  'is',
+  'are',
+  'do',
+  'does',
+  'can',
+  'you',
+  'we',
+  'i',
+  'my',
+  'the',
+  'a',
+  'an',
+  'to',
+  'of',
+  'in',
+  'on',
+  'for',
+  'with',
+  'please',
+  'tell',
+  'me',
+  // Hinglish common
+  'hai',
+  'kya',
+  'ka',
+  'ki',
+  'ke',
+  'mein',
+  'me',
+  'available',
+  'service',
+]);
+
+async function manualFaqAnswer(supabase: any, userText: string): Promise<string | null> {
+  const qNorm = normalizeForFaqMatch(userText);
+  if (!qNorm) return null;
+  const { db } = getRagDbClient(supabase);
+
+  // 1) Quick exact-ish match (substring)
+  const directProbe = qNorm.slice(0, 80);
+  if (directProbe.length >= 8) {
+    const { data } = await db
+      .from('kb_manual_faqs_active')
+      .select('question, answer')
+      .ilike('question', `%${directProbe}%`)
+      .limit(5);
+    const rows = (data as any[]) || [];
+    if (rows.length === 1 && rows[0]?.answer) return String(rows[0].answer);
+  }
+
+  // 2) Token overlap scoring (fast, DB-only)
+  const tokens = Array.from(
+    new Set(
+      qNorm
+        .split(' ')
+        .map((t) => t.trim())
+        .filter((t) => t.length >= 3 && !FAQ_STOPWORDS.has(t))
+        .slice(0, 8)
+    )
+  );
+  if (tokens.length === 0) return null;
+
+  const or = tokens.map((t) => `question.ilike.%${t}%`).join(',');
+  const { data } = await db.from('kb_manual_faqs_active').select('question, answer').or(or).limit(30);
+  const rows = (data as any[]) || [];
+  if (rows.length === 0) return null;
+
+  let best: { score: number; answer: string } | null = null;
+  for (const r of rows) {
+    const qq = normalizeForFaqMatch(String(r?.question || ''));
+    const ans = String(r?.answer || '');
+    if (!qq || !ans) continue;
+    let score = 0;
+    for (const t of tokens) if (qq.includes(t)) score += 1;
+    // Prefer very close matches
+    if (qq.includes(qNorm)) score += 3;
+    if (!best || score > best.score) best = { score, answer: ans };
+  }
+
+  // Require at least 2 token hits (or a strong direct match)
+  if (best && (best.score >= 2 || qNorm.length <= 12)) return best.answer;
+  return null;
 }
 
 async function openAiEmbedding(text: string): Promise<number[] | null> {
@@ -754,7 +856,12 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-async function getNearestWorkshops(supabase: any, lat: number, lng: number) {
+async function getNearestWorkshops(
+  supabase: any,
+  lat: number,
+  lng: number,
+  opts?: { limit?: number; maxKm?: number }
+) {
   const { data } = await supabase
     .from('workshops')
     .select('id,name,latitude,longitude,map_link,is_verified')
@@ -772,7 +879,7 @@ async function getNearestWorkshops(supabase: any, lat: number, lng: number) {
   const rows = (data as unknown as Row[]) ?? [];
   const user = { lat, lng };
 
-  const scored: Array<{ id: string; name: string; km: number }> = [];
+  const scored: Array<{ id: string; name: string; km: number; mapLink?: string | null }> = [];
   for (const w of rows) {
     let wLat = w.latitude;
     let wLng = w.longitude;
@@ -786,11 +893,30 @@ async function getNearestWorkshops(supabase: any, lat: number, lng: number) {
     if (typeof wLat !== 'number' || typeof wLng !== 'number' || !Number.isFinite(wLat) || !Number.isFinite(wLng)) continue;
     const km = haversineKm(user, { lat: wLat, lng: wLng });
     if (!Number.isFinite(km)) continue;
-    scored.push({ id: w.id, name: w.name, km: Math.max(0, km) });
+    scored.push({ id: w.id, name: w.name, km: Math.max(0, km), mapLink: w.map_link || null });
   }
 
   scored.sort((a, b) => a.km - b.km);
-  return scored.slice(0, 3);
+  const maxKm = typeof opts?.maxKm === 'number' && Number.isFinite(opts.maxKm) ? Math.max(0, opts.maxKm) : null;
+  const limit = typeof opts?.limit === 'number' && Number.isFinite(opts.limit) ? Math.max(1, Math.floor(opts.limit)) : 3;
+  const filtered = maxKm != null ? scored.filter((s) => s.km <= maxKm + 1e-6) : scored;
+  return filtered.slice(0, limit);
+}
+
+async function getNearestWorkshopsWithRadiusFallback(
+  supabase: any,
+  lat: number,
+  lng: number,
+  opts?: { limit?: number; radiiKm?: number[] }
+) {
+  const limit = typeof opts?.limit === 'number' && Number.isFinite(opts.limit) ? Math.max(1, Math.floor(opts.limit)) : 5;
+  const radii = Array.isArray(opts?.radiiKm) && opts!.radiiKm.length > 0 ? opts!.radiiKm : [15, 50, 100, 200];
+  for (const r of radii) {
+    const res = await getNearestWorkshops(supabase, lat, lng, { maxKm: r, limit });
+    if (res.length > 0) return { radiusKm: r, workshops: res };
+  }
+  // If nothing matched even within last radius, return empty with last radius for messaging.
+  return { radiusKm: radii[radii.length - 1], workshops: [] as Awaited<ReturnType<typeof getNearestWorkshops>> };
 }
 
 async function inferCityZoneFromAddress(supabase: any, addressText?: string | null) {
@@ -1614,6 +1740,61 @@ export async function POST(req: Request) {
       return NextResponse.json(resp);
     }
 
+    // Nearest workshop query (doc-mode): show up to 5 verified workshops within 15 km when coords are available.
+    // This is useful for "nearby workshop" questions and doesn't require phone/booking.
+    if (isWorkshopQuery(body.message)) {
+      const hasCoords =
+        Number.isFinite((context as any)?.locationLat as number) && Number.isFinite((context as any)?.locationLng as number);
+      if (!hasCoords) {
+        const assistantMessage = docLine(
+          lang,
+          'Nearest workshop list ke liye please location allow karein ya apna area/city+pincode share karein.',
+          'Nearest workshop list ke liye please location allow karein ya apna area/city+pincode share karein.',
+          'Nearest workshop list ke liye please location allow karein ya apna area/city+pincode share karein.'
+        );
+        const resp: ChatbotResponse = {
+          conversationId,
+          intent,
+          assistantMessage,
+          contextPatch: ctxPatch,
+        };
+        await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent, mode: 'doc', step: 'nearest_workshops_need_location' } });
+        return NextResponse.json(resp);
+      }
+
+      const { radiusKm, workshops: nearest } = await getNearestWorkshopsWithRadiusFallback(
+        supabase,
+        (context as any).locationLat,
+        (context as any).locationLng,
+        { radiiKm: [15, 50, 100, 200], limit: 5 }
+      );
+      const listText =
+        nearest.length > 0
+          ? [
+              `Nearest workshops (within ${radiusKm} km):`,
+              ...nearest.map((w, i) => {
+                const base = `• Workshop ${i + 1}: ${w.name} (${w.km.toFixed(1)} km)`;
+                return w.mapLink ? `${base}\n  Map: ${w.mapLink}` : base;
+              }),
+            ].join('\n')
+          : docLine(
+              lang,
+              '200 km ke andar verified workshops nahi mil rahe. Aap location allow karke dubara try karein, ya pickup & drop choose karein.',
+              '200 km ke andar verified workshops nahi mil rahe. Aap location allow karke dubara try karein, ya pickup & drop choose karein.',
+              '200 km ke andar verified workshops nahi mil rahe. Aap location allow karke dubara try karein, ya pickup & drop choose karein.'
+            );
+
+      // Deterministic response (avoid LLM refusing to share workshop list).
+      const cta =
+        nearest.length > 0
+          ? '\n\nAapko pickup & drop chahiye ya aap khud workshop jaayenge?\n1. Pickup & drop\n2. Self visit'
+          : '';
+      const assistantMessage = `${listText}${cta}`.trim();
+      const resp: ChatbotResponse = { conversationId, intent, assistantMessage, contextPatch: ctxPatch };
+      await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent, mode: 'doc', step: 'nearest_workshops_ok' } });
+      return NextResponse.json(resp);
+    }
+
     if (isWorkshopAddressQuery(body.message)) {
       const kb = docLine(
         lang,
@@ -1821,13 +2002,7 @@ export async function POST(req: Request) {
     const hasCoords = Number.isFinite(context.locationLat as number) && Number.isFinite(context.locationLng as number);
     if (!hasCoords) {
       const fallback = 'Nearest workshop batane ke liye aap apna area/city share kar dijiye (ya location allow kar dijiye).';
-      const assistantMessage = await composeReply({
-        userMessage: body.message,
-        context,
-        stage: 'READONLY_WORKSHOP_QUERY',
-        deterministicFacts: { need: 'location', note: 'cannot compute nearest without coords' },
-        fallback,
-      });
+      const assistantMessage = fallback;
       const resp: ChatbotResponse = {
         conversationId,
         intent,
@@ -1838,7 +2013,12 @@ export async function POST(req: Request) {
       return NextResponse.json(resp);
     }
 
-    const nearest = await getNearestWorkshops(supabase, context.locationLat as number, context.locationLng as number);
+    const { radiusKm, workshops: nearest } = await getNearestWorkshopsWithRadiusFallback(
+      supabase,
+      context.locationLat as number,
+      context.locationLng as number,
+      { radiiKm: [15, 50, 100, 200], limit: 5 }
+    );
     // If computed nearest is unrealistically far, treat location as missing/incorrect and ask again.
     if (nearest[0] && nearest[0].km > 200) {
       const fallback =
@@ -1859,19 +2039,28 @@ export async function POST(req: Request) {
       await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent } });
       return NextResponse.json(resp);
     }
-    const list = nearest.map((w, i) => ({ index: i + 1, name: w.name, km: Number(w.km.toFixed(1)) }));
-    const fallback =
+    const list = nearest.map((w, i) => ({
+      index: i + 1,
+      name: w.name,
+      km: Number(w.km.toFixed(1)),
+      map: w.mapLink || null,
+    }));
+    const listText =
       nearest.length > 0
-        ? ['Nearest workshops:', ...nearest.map((w, i) => `• Workshop ${i + 1}: ${w.name} (${w.km.toFixed(1)} km)`)].join('\n')
-        : 'Is location ke aas-paas verified workshops nahi mil rahe.';
+        ? [
+            `Nearest workshops (within ${radiusKm} km):`,
+            ...nearest.map((w, i) => {
+              const base = `• Workshop ${i + 1}: ${w.name} (${w.km.toFixed(1)} km)`;
+              return w.mapLink ? `${base}\n  Map: ${w.mapLink}` : base;
+            }),
+          ].join('\n')
+        : '200 km ke andar verified workshops nahi mil rahe. Aap location allow karke dubara try karein, ya pickup & drop choose karein.';
 
-    const assistantMessage = await composeReply({
-      userMessage: body.message,
-      context,
-      stage: 'READONLY_WORKSHOP_QUERY',
-      deterministicFacts: { nearest: list },
-      fallback,
-    });
+    const cta =
+      nearest.length > 0
+        ? '\n\nAapko pickup & drop chahiye ya aap khud workshop jaayenge?\n1. Pickup & drop\n2. Self visit'
+        : '';
+    const assistantMessage = `${listText}${cta}`.trim();
 
     const resp: ChatbotResponse = {
       conversationId,
@@ -1896,7 +2085,9 @@ export async function POST(req: Request) {
     const looksLikeKbTopic = /(warranty|gst|tax|amc|subscription|dent|paint|denting|painting|cng|genuine|oem|oes|proof|video|invoice|include|included|inclusion|checklist|points)/i.test(q);
     if ((looksLikeQuestion || looksLikeKbTopic) && !isPricingQuery(q) && !isWorkshopAddressQuery(q)) {
       const lang = pickDocLang(context, q);
-      const kb = await vectorKbAnswer(supabase, lang, q).catch(() => null);
+      // First try DB-only manual FAQs (works even if OpenAI quota is exhausted).
+      const kbManual = await manualFaqAnswer(supabase, q).catch(() => null);
+      const kb = kbManual || (await vectorKbAnswer(supabase, lang, q).catch(() => null));
       if (kb) {
         let nextQ: string | null = null;
         // Continue the funnel with the minimum next question.

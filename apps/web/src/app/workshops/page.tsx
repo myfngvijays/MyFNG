@@ -48,6 +48,19 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const s =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
 const CITY_CENTERS: Record<string, { lat: number; lng: number }> = {
   mumbai: { lat: 19.076, lng: 72.8777 },
   delhi: { lat: 28.6139, lng: 77.209 },
@@ -109,6 +122,7 @@ export default function WorkshopsPage() {
   const [city, setCity] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
+  const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
 
   const cardRefs = useRef(new Map<string, HTMLDivElement | null>());
 
@@ -153,6 +167,27 @@ export default function WorkshopsPage() {
     };
   }, []);
 
+  // Capture current location (best-effort). This enables nearest-first sorting.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!('geolocation' in navigator)) return;
+    let cancelled = false;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        setUserPos({ lat, lng });
+      },
+      () => {},
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 5 * 60 * 1000 }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const cities = useMemo(() => {
     const set = new Set<string>();
     for (const r of rows) {
@@ -162,7 +197,7 @@ export default function WorkshopsPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
-  const filtered = useMemo(() => {
+  const filteredRaw = useMemo(() => {
     const query = q.trim().toLowerCase();
     const cityQuery = city.trim().toLowerCase();
     return rows.filter((r) => {
@@ -173,6 +208,30 @@ export default function WorkshopsPage() {
       return true;
     });
   }, [rows, q, city]);
+
+  const getRowLatLng = (r: WorkshopPublicPageRow): { lat: number; lng: number } | null => {
+    const hasCoords =
+      typeof r.workshop?.latitude === 'number' &&
+      typeof r.workshop?.longitude === 'number' &&
+      Number.isFinite(r.workshop.latitude) &&
+      Number.isFinite(r.workshop.longitude);
+    if (hasCoords) return { lat: r.workshop!.latitude as number, lng: r.workshop!.longitude as number };
+    const fromLink = extractLatLngFromMapLink(r.workshop?.map_link);
+    if (fromLink && Number.isFinite(fromLink.lat) && Number.isFinite(fromLink.lng)) return fromLink;
+    return null;
+  };
+
+  // Sort nearest-first when user location is available.
+  const filtered = useMemo(() => {
+    if (!userPos) return filteredRaw;
+    const withDist = filteredRaw.map((r) => {
+      const ll = getRowLatLng(r);
+      const km = ll ? haversineKm(userPos, ll) : Number.POSITIVE_INFINITY;
+      return { r, km };
+    });
+    withDist.sort((a, b) => a.km - b.km);
+    return withDist.map((x) => x.r);
+  }, [filteredRaw, userPos]);
 
   const markerLayout = useMemo(() => {
     // Airbnb-like: cluster pins by city with deterministic placement.
@@ -215,54 +274,37 @@ export default function WorkshopsPage() {
 
   const mapMarkers = useMemo<WorkshopMapMarker[]>(() => {
     return filtered.map((r) => {
-      const c = r.workshop?.city ? cityKey(r.workshop.city) : '';
-      const base = CITY_CENTERS[c] ?? (city ? CITY_CENTERS[cityKey(city)] : null) ?? { lat: 20.5937, lng: 78.9629 };
-
-      // Prefer real coordinates if present
-      const hasCoords =
-        typeof r.workshop?.latitude === 'number' &&
-        typeof r.workshop?.longitude === 'number' &&
-        Number.isFinite(r.workshop.latitude) &&
-        Number.isFinite(r.workshop.longitude);
-
-      const fromLink = extractLatLngFromMapLink(r.workshop?.map_link);
-      const hasLinkCoords = !!fromLink && Number.isFinite(fromLink.lat) && Number.isFinite(fromLink.lng);
-
-      // fallback jitter ~ within a few km so it looks like real clusters
-      const h = hashString(r.slug);
-      const dx = (((h % 2000) / 2000) - 0.5) * 0.12; // -0.06..0.06
-      const dy = ((((h >>> 11) % 2000) / 2000) - 0.5) * 0.10; // -0.05..0.05
-
-      const lat = hasCoords ? (r.workshop!.latitude as number) : hasLinkCoords ? (fromLink!.lat as number) : base.lat + dy;
-      const lng = hasCoords ? (r.workshop!.longitude as number) : hasLinkCoords ? (fromLink!.lng as number) : base.lng + dx;
+      const ll = getRowLatLng(r);
+      if (!ll) return null as any;
+      const title = r.workshop?.name ?? 'Workshop';
       return {
         id: r.id,
-        lat,
-        lng,
-        label: '★ 4.8',
+        lat: ll.lat,
+        lng: ll.lng,
+        label: title,
         selected: r.id === activeId,
       };
     });
-  }, [activeId, city, filtered]);
+  }, [activeId, city, filtered]).filter(Boolean) as any;
+
+  // Default select nearest workshop (first in sorted list) so map auto-zooms to it.
+  useEffect(() => {
+    if (activeId) return;
+    if (!filtered.length) return;
+    setActiveId(filtered[0].id);
+  }, [activeId, filtered]);
 
   const mapCenter = useMemo(() => {
-    if (mapMarkers.length) {
-      // Center on average of visible markers (works well for 1 marker too)
-      const sum = mapMarkers.reduce(
-        (acc, m) => ({ lat: acc.lat + m.lat, lng: acc.lng + m.lng }),
-        { lat: 0, lng: 0 }
-      );
-      return { lat: sum.lat / mapMarkers.length, lng: sum.lng / mapMarkers.length };
-    }
+    // Prefer user position; otherwise fall back to city/India.
+    if (userPos) return userPos;
     if (city) return CITY_CENTERS[cityKey(city)] ?? { lat: 20.5937, lng: 78.9629 };
     return { lat: 20.5937, lng: 78.9629 };
-  }, [city, mapMarkers]);
+  }, [city, userPos]);
 
   const mapZoom = useMemo(() => {
-    if (!mapMarkers.length) return 4;
-    if (mapMarkers.length === 1) return 13;
-    if (city) return 11;
-    return 5;
+    // Because map centers to active marker in WorkshopMap, keep zoom fairly close when we have any marker.
+    if (!mapMarkers.length) return city ? 6 : 4;
+    return 13;
   }, [city, mapMarkers.length]);
 
   const activeRow = useMemo(() => {
@@ -372,6 +414,10 @@ export default function WorkshopsPage() {
                       const location = [w?.city, w?.state].filter(Boolean).join(', ');
                       const cover = r.cover_image || r.profile_image;
                       const selected = activeId === r.id;
+                      const kmAway =
+                        userPos && getRowLatLng(r)
+                          ? Math.max(0, haversineKm(userPos, getRowLatLng(r)!))
+                          : null;
 
                       return (
                         <div
@@ -414,6 +460,11 @@ export default function WorkshopsPage() {
                                 <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
                                 <span className="truncate">{location || '—'}</span>
                               </div>
+                              {typeof kmAway === 'number' && Number.isFinite(kmAway) && kmAway < 9999 ? (
+                                <div className="mt-1 text-xs text-gray-500 font-semibold">
+                                  {kmAway.toFixed(1)} km away
+                                </div>
+                              ) : null}
                             </div>
 
                             {r.short_description ? (

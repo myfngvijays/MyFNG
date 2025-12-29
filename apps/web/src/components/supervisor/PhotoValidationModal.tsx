@@ -18,7 +18,7 @@ type NormalizedPhoto = {
   category: 'before' | 'during' | 'after' | 'other';
   type?: string | null;
   created_at?: string | null;
-  source: 'mechanic_job_photos';
+  source: 'mechanic_job_photos' | 'lead_media';
 };
 
 interface PhotoGroup {
@@ -50,6 +50,28 @@ const REQUIRED_AFTER_TYPES = [
 
 const MIN_DURING_COUNT = 1;
 
+function inferSlotKey(row: any): string | null {
+  const t = String(row?.photo_type || row?.category || '').trim().toUpperCase();
+  if (t) return t;
+  const fn = String(row?.file_name || '').trim();
+  const m = fn.match(/^(BEFORE_[A-Z0-9_]+|DURING_[A-Z0-9_]+|AFTER_[A-Z0-9_]+)__+/);
+  return m?.[1] ? m[1] : null;
+}
+
+function inferCategory(row: any, slotKey?: string | null): NormalizedPhoto['category'] {
+  const pc = String(row?.photo_category || '').trim().toLowerCase();
+  if (pc === 'before' || pc === 'during' || pc === 'after') return pc as any;
+  const sk = String(slotKey || '').toUpperCase();
+  if (sk.startsWith('BEFORE_')) return 'before';
+  if (sk.startsWith('DURING_')) return 'during';
+  if (sk.startsWith('AFTER_')) return 'after';
+  // Fallback: parse description like "PhotoCategory: before | ..."
+  const desc = String(row?.description || '').toLowerCase();
+  const m = desc.match(/photocategory:\s*(before|during|after)\b/);
+  if (m?.[1] === 'before' || m?.[1] === 'during' || m?.[1] === 'after') return m[1] as any;
+  return 'other';
+}
+
 export default function PhotoValidationModal({
   isOpen,
   onClose,
@@ -80,16 +102,55 @@ export default function PhotoValidationModal({
 
       if (error) throw error;
 
-      const normalized: NormalizedPhoto[] = (jobPhotos || []).map((p: any) => ({
+      // Pickup/visit "BEFORE_*" photos are stored in lead_media (schema varies across installs).
+      // NOTE: we fetch lead_media via server API to avoid RLS issues for supervisor roles.
+      let leadMedia: any[] = [];
+      try {
+        const res = await fetch(`/api/leads/${leadId}/media`, { method: 'GET' });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray((json as any)?.media)) {
+          leadMedia = (json as any).media;
+        } else if (!res.ok) {
+          console.warn('PhotoValidationModal: /api/leads/[id]/media failed:', (json as any)?.error || res.statusText);
+        }
+      } catch (e) {
+        console.warn('PhotoValidationModal: lead media fetch error:', e);
+      }
+
+      const normalizedJobPhotos: NormalizedPhoto[] = (jobPhotos || []).map((p: any) => ({
         id: String(p.id),
         url: p.photo_url,
-        category: (p.photo_category === 'before' || p.photo_category === 'during' || p.photo_category === 'after')
-          ? p.photo_category
-          : 'other',
+        category:
+          p.photo_category === 'before' || p.photo_category === 'during' || p.photo_category === 'after'
+            ? p.photo_category
+            : 'other',
         type: p.photo_type,
         created_at: p.created_at,
         source: 'mechanic_job_photos',
       }));
+
+      const normalizedLeadMedia: NormalizedPhoto[] = (leadMedia || [])
+        .map((m: any) => {
+          const slotKey = inferSlotKey(m);
+          const url = m.file_url || m.photo_url;
+          if (!url) return null;
+          return {
+            id: String(m.id),
+            url,
+            category: inferCategory(m, slotKey),
+            type: slotKey,
+            created_at: m.created_at,
+            source: 'lead_media',
+          } as NormalizedPhoto;
+        })
+        .filter(Boolean) as any;
+
+      // Merge + stable sort
+      const normalized: NormalizedPhoto[] = [...normalizedJobPhotos, ...normalizedLeadMedia].sort((a, b) => {
+        const at = a.created_at ? Date.parse(a.created_at) : 0;
+        const bt = b.created_at ? Date.parse(b.created_at) : 0;
+        return at - bt;
+      });
 
       setPhotos(normalized);
 
@@ -192,7 +253,9 @@ export default function PhotoValidationModal({
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-semibold">
-                        {group.type} Photos ({group.photos.length}/{group.required.length})
+                        {group.type === 'BEFORE'
+                          ? `Pickup/Visit Photos (${group.photos.length}/${group.required.length})`
+                          : `${group.type} Photos (${group.photos.length}/${group.required.length})`}
                       </h3>
                       <p className="text-sm text-gray-600">Required: {group.required.join(', ')}</p>
                     </div>
@@ -236,7 +299,9 @@ export default function PhotoValidationModal({
                   ) : (
                     <div className="text-center py-8 bg-gray-50 rounded-lg">
                       <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600">No {group.type.toLowerCase()} photos uploaded yet</p>
+                      <p className="text-sm text-gray-600">
+                        {group.type === 'BEFORE' ? 'No pickup/visit photos uploaded yet' : `No ${group.type.toLowerCase()} photos uploaded yet`}
+                      </p>
                     </div>
                   )}
                 </div>

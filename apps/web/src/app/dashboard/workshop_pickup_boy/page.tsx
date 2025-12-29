@@ -68,7 +68,11 @@ export default function WorkshopPickupBoyDashboard() {
           'ON_THE_WAY',
           'VEHICLE_IN_TRANSIT',
           'VEHICLE_DROPPED_AT_WORKSHOP',
-          'IN_PROGRESS'
+          'IN_PROGRESS',
+          // Delivery-ready states (after billing/payment)
+          'READY_FOR_DELIVERY',
+          'COD_PENDING',
+          'DELIVERED_TO_CUSTOMER'
         ])
         .order('created_at', { ascending: false })
         .limit(5);
@@ -214,7 +218,8 @@ export default function WorkshopPickupBoyDashboard() {
                         // Update lead status to ON_THE_WAY
                         try {
                           console.log('Calling navigate API for task:', task.id);
-                          const response = await fetch(`/api/pickup/${task.id}/navigate`, {
+                          const isDeliveryReady = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';
+                          const response = await fetch(isDeliveryReady ? `/api/pickup/tasks/${task.id}/drop/start` : `/api/pickup/${task.id}/navigate`, {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
@@ -230,7 +235,7 @@ export default function WorkshopPickupBoyDashboard() {
                           if (response.ok) {
                             const data = await response.json();
                             console.log('Navigate API success:', data);
-                            toast.success(data.message || 'Status updated to ON_THE_WAY');
+                            toast.success(data.message || (isDeliveryReady ? 'Delivery started' : 'Status updated to ON_THE_WAY'));
                             fetchPickupData(); // Refresh tasks
                           } else {
                             const data = await response.json();

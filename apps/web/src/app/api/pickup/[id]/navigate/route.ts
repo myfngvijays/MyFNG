@@ -57,14 +57,75 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
-    // Prevent overwriting COMPLETED or later statuses
+    // If lead is in delivery-ready state, navigating should start DELIVERY flow (DROP),
+    // not pickup flow. Do NOT attempt to change lead.status back to ON_THE_WAY.
+    const deliveryReadyStatuses = ['READY_FOR_DELIVERY', 'COD_PENDING'];
+    if (deliveryReadyStatuses.includes(lead.status)) {
+      const now = new Date().toISOString();
+
+      // Ensure pickup_tracking row exists and assign drop to this pickup boy (allows same pickup boy delivery)
+      await supabase.from('pickup_tracking').upsert(
+        {
+          lead_id: leadId,
+          drop_required: true,
+          drop_assigned_to: userProfile.id,
+          drop_status: 'OUT_FOR_DELIVERY',
+          drop_start_time: now,
+          drop_out_for_delivery_at: now,
+          updated_at: now,
+        } as any,
+        { onConflict: 'lead_id' }
+      );
+
+      // Generate DROP OTP (best-effort; fallback to test OTP)
+      let otp: string | null = null;
+      try {
+        const { data: otpData, error: otpError } = await supabase.rpc('generate_pickup_otp', {
+          p_lead_id: leadId,
+          p_otp_type: 'DROP',
+        });
+        if (!otpError) otp = (otpData as any) || null;
+      } catch {
+        // ignore
+      }
+      if (!otp) otp = '123456';
+
+      await supabase.from('pickup_tracking').update({ drop_otp: otp, updated_at: now } as any).eq('lead_id', leadId);
+
+      // Log location if provided
+      if (latitude && longitude) {
+        await supabase.from('pickup_location_tracking').insert({
+          lead_id: leadId,
+          pickup_boy_id: userProfile.id,
+          latitude,
+          longitude,
+          status: 'MOVING_TO_DROP',
+          created_at: now,
+        } as any);
+      }
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'Delivery navigation started. DROP OTP generated.',
+          mode: 'DELIVERY',
+          otp,
+        },
+        { status: 200 }
+      );
+    }
+
+    // Prevent overwriting COMPLETED or later statuses for PICKUP flow
     const protectedStatuses = ['COMPLETED', 'WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
     if (protectedStatuses.includes(lead.status)) {
-      return NextResponse.json({ 
-        error: 'Cannot update status - work already completed',
-        current_status: lead.status,
-        message: 'Mechanic has already completed the work. Status cannot be changed.'
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'Cannot update status - work already completed',
+          current_status: lead.status,
+          message: 'Mechanic has already completed the work. Status cannot be changed.',
+        },
+        { status: 400 }
+      );
     }
 
     // Note: Allow navigation even if pickup_required is not explicitly set

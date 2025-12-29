@@ -32,11 +32,12 @@ export default function PickupTasksPage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<PickupTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'scheduled' | 'in_transit' | 'completed'>('all');
+  const [filter, setFilter] = useState<'all' | 'scheduled' | 'in_transit' | 'delivery_ready' | 'completed'>('all');
   const [filterCounts, setFilterCounts] = useState({
     all: 0,
     scheduled: 0,
     in_transit: 0,
+    delivery_ready: 0,
     completed: 0
   });
 
@@ -100,6 +101,9 @@ export default function PickupTasksPage() {
         query = query.in('status', ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP']);
       } else if (filter === 'in_transit') {
         query = query.in('status', ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS']);
+      } else if (filter === 'delivery_ready') {
+        // After billing/payment: ready to return vehicle to customer
+        query = query.in('status', ['READY_FOR_DELIVERY', 'COD_PENDING']);
       } else if (filter === 'completed') {
         query = query.in('status', ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'CLOSED']);
       } else {
@@ -110,7 +114,9 @@ export default function PickupTasksPage() {
           'ON_THE_WAY',
           'VEHICLE_IN_TRANSIT',
           'VEHICLE_DROPPED_AT_WORKSHOP',
-          'IN_PROGRESS'
+          'IN_PROGRESS',
+          'READY_FOR_DELIVERY',
+          'COD_PENDING'
         ]);
       }
 
@@ -141,13 +147,16 @@ export default function PickupTasksPage() {
       if (allTasksData) {
         const counts = {
           all: allTasksData.filter(t => 
-            ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP', 'ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS'].includes(t.status)
+            ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP', 'ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS', 'READY_FOR_DELIVERY', 'COD_PENDING'].includes(t.status)
           ).length,
           scheduled: allTasksData.filter(t => 
             ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP'].includes(t.status)
           ).length,
           in_transit: allTasksData.filter(t => 
             ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS'].includes(t.status)
+          ).length,
+          delivery_ready: allTasksData.filter(t =>
+            ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(t.status)
           ).length,
           completed: allTasksData.filter(t => 
             ['COMPLETED', 'DELIVERED', 'CLOSED'].includes(t.status)
@@ -173,6 +182,8 @@ export default function PickupTasksPage() {
     if (status === 'VEHICLE_IN_TRANSIT') return { class: 'badge-purple', text: 'In Transit' };
     if (status === 'VEHICLE_DROPPED_AT_WORKSHOP') return { class: 'badge-green', text: 'At Workshop' };
     if (status === 'IN_PROGRESS') return { class: 'badge-blue', text: 'In Progress' };
+    if (status === 'READY_FOR_DELIVERY') return { class: 'badge-green', text: 'Delivery Ready' };
+    if (status === 'COD_PENDING') return { class: 'badge-orange', text: 'COD Delivery' };
     if (status === 'COMPLETED' || status === 'DELIVERED' || status === 'CLOSED') return { class: 'badge-green', text: 'Completed' };
     return { class: 'badge-gray', text: status.replace(/_/g, ' ') };
   };
@@ -194,10 +205,14 @@ export default function PickupTasksPage() {
     
     // Open Google Maps
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
-    
-    // Update lead status to ON_THE_WAY
+
+    // For delivery-ready leads, "Navigate" should start delivery (drop) flow (generate DROP OTP),
+    // not pickup flow.
+    const isDeliveryReady = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';
+
+    // Update status / tracking via API
     try {
-      const response = await fetch(`/api/pickup/${task.id}/navigate`, {
+      const response = await fetch(isDeliveryReady ? `/api/pickup/tasks/${task.id}/drop/start` : `/api/pickup/${task.id}/navigate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -210,7 +225,7 @@ export default function PickupTasksPage() {
       
       if (response.ok) {
         const data = await response.json();
-        toast.success(data.message || 'Status updated to ON_THE_WAY');
+        toast.success(data.message || (isDeliveryReady ? 'Delivery started' : 'Status updated to ON_THE_WAY'));
         fetchTasks(); // Refresh tasks
       } else {
         const data = await response.json();
@@ -274,6 +289,16 @@ export default function PickupTasksPage() {
               }`}
             >
               In Transit ({filterCounts.in_transit})
+            </button>
+            <button
+              onClick={() => setFilter('delivery_ready')}
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
+                filter === 'delivery_ready'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Delivery Ready ({filterCounts.delivery_ready})
             </button>
             <button
               onClick={() => setFilter('completed')}

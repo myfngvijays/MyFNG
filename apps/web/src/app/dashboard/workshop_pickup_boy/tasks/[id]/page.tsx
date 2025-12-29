@@ -54,28 +54,47 @@ export default function PickupTaskDetailPage() {
         return;
       }
 
-      // Check if OTP is already verified
-      let isOtpVerified = false;
-      if (leadData.pickup_otp_verified_at) {
-        isOtpVerified = true;
-        setOtpVerified(true);
-      }
+      const isDelivery = leadData.status === 'READY_FOR_DELIVERY' || leadData.status === 'COD_PENDING';
+      const desiredOtpType = isDelivery ? 'DROP' : 'PICKUP';
 
-      // Always check pickup_otps table for OTP (this is the primary source)
+      // Determine OTP verified status from the correct source:
+      // - For PICKUP: service_leads.pickup_otp_verified_at OR pickup_otps(PICKUP).is_verified
+      // - For DROP: pickup_tracking.drop_otp_verified_at OR pickup_otps(DROP).is_verified
+      let isOtpVerified = false;
+
+      // Always check pickup_otps table for OTP (primary source)
       const { data: pickupOtpData } = await supabase
         .from('pickup_otps')
         .select('otp_code, is_verified, created_at')
         .eq('lead_id', taskId)
-        .eq('otp_type', 'PICKUP')
+        .eq('otp_type', desiredOtpType)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
+      // Fetch pickup tracking for time slot + delivery state
+      const { data: pickupTracking } = await supabase
+        .from('pickup_tracking')
+        .select('pickup_time_slot, drop_time_slot, drop_status, drop_otp, drop_otp_verified_at')
+        .eq('lead_id', taskId)
+        .maybeSingle();
+
+      if (isDelivery) {
+        isOtpVerified = !!pickupTracking?.drop_otp_verified_at || !!pickupOtpData?.is_verified;
+      } else {
+        isOtpVerified = !!leadData.pickup_otp_verified_at || !!pickupOtpData?.is_verified;
+      }
+      setOtpVerified(isOtpVerified);
+
       // Merge OTP data from pickup_otps table (prefer this over service_leads.pickup_otp)
       const finalOtpData = {
         ...leadData,
+        // Reuse pickup_otp field for display in UI; for delivery it will contain DROP OTP.
         pickup_otp: pickupOtpData?.otp_code || leadData.pickup_otp,
-        pickup_otp_verified_at: pickupOtpData?.is_verified ? (leadData.pickup_otp_verified_at || new Date().toISOString()) : leadData.pickup_otp_verified_at
+        pickup_otp_verified_at: pickupOtpData?.is_verified
+          ? leadData.pickup_otp_verified_at || new Date().toISOString()
+          : leadData.pickup_otp_verified_at,
+        otp_type: desiredOtpType,
       };
 
       if (pickupOtpData?.is_verified) {
@@ -103,19 +122,17 @@ export default function PickupTaskDetailPage() {
         })
       );
 
-      // Fetch pickup tracking for time slot
-      const { data: pickupTracking } = await supabase
-        .from('pickup_tracking')
-        .select('pickup_time_slot, drop_time_slot')
-        .eq('lead_id', taskId)
-        .single();
-
       // Merge pickup tracking data if available
       if (pickupTracking) {
         setTask((prev: any) => ({
           ...prev,
           pickup_time_slot: pickupTracking.pickup_time_slot,
           drop_time_slot: pickupTracking.drop_time_slot,
+          drop_status: pickupTracking.drop_status,
+          drop_otp: pickupTracking.drop_otp,
+          drop_otp_verified_at: pickupTracking.drop_otp_verified_at,
+          // Ensure we display DROP OTP even if pickup_otps table isn't readable
+          ...(isDelivery && pickupTracking.drop_otp ? { pickup_otp: pickupTracking.drop_otp } : null),
         }));
       }
 
@@ -191,14 +208,16 @@ export default function PickupTaskDetailPage() {
     setProcessing(true);
 
     try {
-      // Use API endpoint to verify OTP (this will update status to VEHICLE_IN_TRANSIT)
+      const otpType = (task?.status === 'READY_FOR_DELIVERY' || task?.status === 'COD_PENDING') ? 'DROP' : 'PICKUP';
+      // Use API endpoint to verify OTP
       const response = await fetch(`/api/pickup/tasks/${taskId}/verify-otp`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          otp: otpInput
+          otp: otpInput,
+          otp_type: otpType
         })
       });
 
@@ -208,7 +227,7 @@ export default function PickupTaskDetailPage() {
         throw new Error(data.error || 'Failed to verify OTP');
       }
 
-      toast.success('✅ OTP verified successfully! Status updated to VEHICLE_IN_TRANSIT');
+      toast.success(otpType === 'DROP' ? '✅ Delivery OTP verified!' : '✅ OTP verified successfully! Status updated to VEHICLE_IN_TRANSIT');
       setShowOTPModal(false);
       setOtpVerified(true);
       fetchTaskDetails();
@@ -234,32 +253,21 @@ export default function PickupTaskDetailPage() {
     setProcessing(true);
 
     try {
-      // If status is not VEHICLE_DROPPED_AT_WORKSHOP, mark as arrived first
-      if (task?.status !== 'VEHICLE_DROPPED_AT_WORKSHOP' && task?.pickup_status !== 'VEHICLE_DROPPED_AT_WORKSHOP') {
-        const arrivedResponse = await fetch(`/api/pickup/tasks/${taskId}/arrived`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        });
+      const isDelivery = task?.status === 'READY_FOR_DELIVERY' || task?.status === 'COD_PENDING';
 
-        if (!arrivedResponse.ok) {
-          const arrivedData = await arrivedResponse.json();
-          throw new Error(arrivedData.error || 'Failed to mark as arrived');
-        }
-      }
-
-      // Use the proper API endpoint to complete pickup task
-      const response = await fetch(`/api/pickup/tasks/${taskId}/complete`, {
+      // Delivery completion uses drop API; pickup completion uses pickup API.
+      const response = await fetch(isDelivery ? `/api/pickup/tasks/${taskId}/drop/complete` : `/api/pickup/tasks/${taskId}/complete`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          notes: 'Vehicle delivered to workshop',
-          odometer_reading: null, // Can be added if needed
-          fuel_level: null, // Can be added if needed
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          isDelivery
+            ? { notes: 'Vehicle delivered to customer' }
+            : {
+                notes: 'Vehicle delivered to workshop',
+                odometer_reading: null,
+                fuel_level: null,
+              }
+        ),
       });
 
       const data = await response.json();
@@ -268,7 +276,7 @@ export default function PickupTaskDetailPage() {
         throw new Error(data.error || 'Failed to complete pickup');
       }
 
-      toast.success('✅ Vehicle delivered to workshop successfully!');
+      toast.success(isDelivery ? '✅ Vehicle delivered to customer successfully!' : '✅ Vehicle delivered to workshop successfully!');
       setShowCompleteModal(false);
       router.push('/dashboard/workshop_pickup_boy/tasks');
     } catch (error: any) {
@@ -284,9 +292,10 @@ export default function PickupTaskDetailPage() {
   const openGoogleMaps = async () => {
     if (!task) return;
     
-    // Call navigate API to update status to ON_THE_WAY and auto-generate OTP
+    // For delivery-ready leads, start delivery (DROP) OTP; for pickup leads, start pickup navigation.
     try {
-      const response = await fetch(`/api/pickup/${taskId}/navigate`, {
+      const isDelivery = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';
+      const response = await fetch(isDelivery ? `/api/pickup/tasks/${taskId}/drop/start` : `/api/pickup/${taskId}/navigate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -311,7 +320,7 @@ export default function PickupTaskDetailPage() {
       // Refresh task details to get the updated OTP
       fetchTaskDetails();
       
-      toast.success('✅ Navigation started! OTP generated. You can now verify OTP.');
+      toast.success(isDelivery ? '✅ Delivery started! DROP OTP generated. You can now verify OTP.' : '✅ Navigation started! OTP generated. You can now verify OTP.');
     } catch (error: any) {
       console.error('Error starting navigation:', error);
       toast.error(`Failed to start navigation: ${error.message}`);
@@ -339,6 +348,8 @@ export default function PickupTaskDetailPage() {
     );
   }
 
+  const isDeliveryTask = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';
+
   // Show Start Pickup button only if status is ACCEPTED or ASSIGNED_TO_WORKSHOP and OTP not generated
   // Don't show if status is ON_THE_WAY (OTP will be auto-generated on navigate)
   const canStart = (
@@ -357,9 +368,13 @@ export default function PickupTaskDetailPage() {
     task.status === 'ASSIGNED_TO_WORKSHOP' ||
     task.status === 'VEHICLE_IN_TRANSIT'
   ) && hasOTP && !otpVerified;
+  const canVerifyDeliveryOtp = isDeliveryTask && hasOTP && !otpVerified;
   const isInProgress = task.status === 'IN_PROGRESS' || task.status === 'VEHICLE_IN_TRANSIT';
   const canMarkArrived = task.status === 'VEHICLE_IN_TRANSIT' && otpVerified;
-  const canComplete = (task.status === 'VEHICLE_DROPPED_AT_WORKSHOP' || task.status === 'VEHICLE_IN_TRANSIT') && otpVerified;
+  // For delivery, require DELIVERY OTP verified (drop_otp_verified_at is the source of truth; we sync otpVerified from it).
+  const canComplete = isDeliveryTask
+    ? otpVerified
+    : (task.status === 'VEHICLE_DROPPED_AT_WORKSHOP' || task.status === 'VEHICLE_IN_TRANSIT') && otpVerified;
   const canWriteObservation = otpVerified && (task.status === 'VEHICLE_IN_TRANSIT' || task.status === 'VEHICLE_DROPPED_AT_WORKSHOP');
 
   async function handleSaveObservation() {
@@ -420,6 +435,16 @@ export default function PickupTaskDetailPage() {
                 <span className="sm:hidden">Verify</span>
               </button>
             )}
+            {canVerifyDeliveryOtp && (
+              <button
+                onClick={() => setShowOTPModal(true)}
+                className="btn-secondary bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex-1 sm:flex-initial"
+              >
+                <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Verify Delivery OTP</span>
+                <span className="sm:hidden">Verify</span>
+              </button>
+            )}
             {canMarkArrived && (
               <button
                 onClick={async () => {
@@ -473,7 +498,7 @@ export default function PickupTaskDetailPage() {
                 className="btn-primary bg-green-600 hover:bg-green-700 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex-1 sm:flex-initial"
               >
                 <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden sm:inline">Complete Delivery</span>
+                <span className="hidden sm:inline">{isDeliveryTask ? 'Complete Delivery to Customer' : 'Complete Delivery'}</span>
                 <span className="sm:hidden">Complete</span>
               </button>
             )}
@@ -494,10 +519,14 @@ export default function PickupTaskDetailPage() {
               <p className="text-xs sm:text-sm text-gray-600">Lead Status</p>
               <p className="text-lg sm:text-xl font-bold">{task.status.replace(/_/g, ' ')}</p>
               {otpVerified && (
-                <p className="text-xs sm:text-sm text-green-600 font-semibold mt-0.5 sm:mt-1">✓ OTP Verified</p>
+                <p className="text-xs sm:text-sm text-green-600 font-semibold mt-0.5 sm:mt-1">
+                  ✓ {isDeliveryTask ? 'Delivery OTP Verified' : 'OTP Verified'}
+                </p>
               )}
               {task.pickup_otp && !otpVerified && (
-                <p className="text-xs sm:text-sm text-orange-600 font-semibold mt-0.5 sm:mt-1">⚠️ OTP Not Verified</p>
+                <p className="text-xs sm:text-sm text-orange-600 font-semibold mt-0.5 sm:mt-1">
+                  ⚠️ {isDeliveryTask ? 'Delivery OTP Not Verified' : 'OTP Not Verified'}
+                </p>
               )}
             </div>
             <div className="text-left sm:text-right flex-shrink-0">
@@ -749,15 +778,28 @@ export default function PickupTaskDetailPage() {
               
               {task?.pickup_otp && (
                 <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-xs sm:text-sm text-green-800 text-center font-semibold mb-1.5 sm:mb-2">
-                    ✅ Testing Mode - OTP Bypass Active
-                  </p>
-                  <p className="text-[10px] sm:text-xs text-green-700 text-center">
-                    Enter <strong className="text-base sm:text-lg">123456</strong> to verify
-                  </p>
-                  <p className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1 text-center">
-                    (Production: Customer receives OTP via SMS)
-                  </p>
+                  {task.pickup_otp === '123456' ? (
+                    <>
+                      <p className="text-xs sm:text-sm text-green-800 text-center font-semibold mb-1.5 sm:mb-2">
+                        ✅ Testing Mode - OTP Bypass Active
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-green-700 text-center">
+                        Enter <strong className="text-base sm:text-lg">123456</strong> to verify
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1 text-center">
+                        (Production: Customer receives OTP via SMS)
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs sm:text-sm text-green-800 text-center font-semibold mb-1.5 sm:mb-2">
+                        OTP generated
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1 text-center">
+                        Ask customer for OTP (do not share OTP in production UI)
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -801,9 +843,13 @@ export default function PickupTaskDetailPage() {
         {showCompleteModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
             <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
-              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-green-600">Deliver Vehicle to Workshop</h3>
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-green-600">
+                {isDeliveryTask ? 'Deliver Vehicle to Customer' : 'Deliver Vehicle to Workshop'}
+              </h3>
               <p className="text-sm sm:text-base text-gray-700 mb-3 sm:mb-4">
-                Confirm that you have successfully delivered the vehicle to the workshop.
+                {isDeliveryTask
+                  ? 'Confirm that you have successfully delivered the vehicle to the customer.'
+                  : 'Confirm that you have successfully delivered the vehicle to the workshop.'}
               </p>
 
               {!beforePhotos.some((p: any) => {
@@ -817,8 +863,10 @@ export default function PickupTaskDetailPage() {
               )}
 
               <div className="bg-blue-50 border border-blue-200 rounded p-2.5 sm:p-3 mb-3 sm:mb-4">
-                <p className="text-xs sm:text-sm text-blue-700">✓ Vehicle will be marked as delivered to workshop</p>
-                <p className="text-xs sm:text-sm text-blue-700">✓ Workshop team will be notified</p>
+                <p className="text-xs sm:text-sm text-blue-700">
+                  ✓ Vehicle will be marked as {isDeliveryTask ? 'delivered to customer' : 'delivered to workshop'}
+                </p>
+                <p className="text-xs sm:text-sm text-blue-700">✓ Team will be notified</p>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">

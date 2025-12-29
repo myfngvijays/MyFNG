@@ -24,10 +24,19 @@ import {
   FileCheck,
   ClipboardCheck,
   Car,
-  MessageSquare
+  MessageSquare,
+  Image as ImageIcon
 } from 'lucide-react';
 
-const navigationItems = [
+type NavItem = {
+  name: string;
+  href?: string;
+  icon: any;
+  description: string;
+  children?: Array<{ name: string; href: string; icon: any; description: string }>;
+};
+
+const navigationItems: NavItem[] = [
   {
     name: 'Dashboard',
     href: '/dashboard/super_admin',
@@ -77,10 +86,24 @@ const navigationItems = [
     description: 'Manage Zones'
   },
   {
-    name: 'Car Brands',
-    href: '/dashboard/super_admin/brands',
+    name: 'Website Images',
     icon: Car,
-    description: 'Manage Car Brand Logos'
+    description: 'Manage website & app images'
+    ,
+    children: [
+      {
+        name: 'Car Brand Images',
+        href: '/dashboard/super_admin/brands',
+        icon: Car,
+        description: 'Manage Car Brand Logos',
+      },
+      {
+        name: 'Home Carousel Images',
+        href: '/dashboard/super_admin/website-images/home-carousel',
+        icon: ImageIcon,
+        description: 'Manage top 3 app hero carousel banners',
+      },
+    ],
   },
   {
     name: 'Users',
@@ -148,6 +171,7 @@ export default function SuperAdminLayout({
   const supabase = createClientComponentClient();
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start expanded by default
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [websiteImagesOpen, setWebsiteImagesOpen] = useState(true);
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to logout?')) {
@@ -161,6 +185,11 @@ export default function SuperAdminLayout({
       return pathname === href;
     }
     return pathname?.startsWith(href);
+  };
+
+  const isGroupActive = (item: NavItem) => {
+    if (!item.children?.length) return false;
+    return item.children.some((c) => isActive(c.href));
   };
 
   return (
@@ -215,12 +244,95 @@ export default function SuperAdminLayout({
           <div className="space-y-2">
             {navigationItems.map((item) => {
               const Icon = item.icon;
-              const active = isActive(item.href);
+              const active = item.href ? isActive(item.href) : isGroupActive(item);
+
+              // Dropdown group: Website Images
+              if (item.children?.length) {
+                return (
+                  <div key={item.name} className="space-y-2">
+                    <button
+                      onClick={() => {
+                        if (!sidebarOpen) {
+                          // If collapsed, go to first child for faster access.
+                          router.push(item.children![0].href);
+                          return;
+                        }
+                        setWebsiteImagesOpen((v) => !v);
+                      }}
+                      className={`
+                        w-full flex items-center gap-3 px-4 py-3 rounded-lg
+                        transition-all duration-200
+                        ${
+                          active
+                            ? 'bg-white text-blue-700 shadow-lg font-semibold'
+                            : 'text-white hover:bg-blue-500/30'
+                        }
+                      `}
+                    >
+                      <Icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
+                      {sidebarOpen && (
+                        <div className="flex-1 text-left">
+                          <div className={`font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>
+                            {item.name}
+                          </div>
+                          <div className={`text-xs mt-0.5 ${active ? 'text-blue-600' : 'text-blue-100'}`}>
+                            {item.description}
+                          </div>
+                        </div>
+                      )}
+                      {sidebarOpen ? (
+                        <ChevronRight
+                          className={`w-5 h-5 transition-transform ${websiteImagesOpen ? 'rotate-90' : ''} ${
+                            active ? 'text-blue-700' : 'text-white'
+                          }`}
+                        />
+                      ) : null}
+                    </button>
+
+                    {sidebarOpen && websiteImagesOpen ? (
+                      <div className="ml-2 space-y-2">
+                        {item.children.map((c) => {
+                          const ChildIcon = c.icon;
+                          const childActive = isActive(c.href);
+                          return (
+                            <button
+                              key={c.href}
+                              onClick={() => router.push(c.href)}
+                              className={`
+                                w-full flex items-center gap-3 px-4 py-2.5 rounded-lg
+                                transition-all duration-200
+                                ${
+                                  childActive
+                                    ? 'bg-white text-blue-700 shadow font-semibold'
+                                    : 'text-white hover:bg-blue-500/20'
+                                }
+                              `}
+                            >
+                              <ChildIcon className={`w-4 h-4 flex-shrink-0 ${childActive ? 'text-blue-700' : 'text-white'}`} />
+                              <div className="flex-1 text-left">
+                                <div className={`text-sm font-semibold ${childActive ? 'text-blue-700' : 'text-white'}`}>
+                                  {c.name}
+                                </div>
+                                <div className={`text-xs mt-0.5 ${childActive ? 'text-blue-600' : 'text-blue-100'}`}>
+                                  {c.description}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
 
               return (
                 <button
-                  key={item.href}
-                  onClick={() => router.push(item.href)}
+                  key={item.href ?? item.name}
+                  onClick={() => {
+                    if (!item.href) return;
+                    router.push(item.href);
+                  }}
                   className={`
                     w-full flex items-center gap-3 px-4 py-3 rounded-lg
                     transition-all duration-200
@@ -295,12 +407,80 @@ export default function SuperAdminLayout({
               <div className="space-y-2">
                 {navigationItems.map((item) => {
                   const Icon = item.icon;
-                  const active = isActive(item.href);
+              const active = item.href ? isActive(item.href) : isGroupActive(item);
+
+              if (item.children?.length) {
+                return (
+                  <div key={item.name} className="space-y-2">
+                    <button
+                      onClick={() => setWebsiteImagesOpen((v) => !v)}
+                      className={`
+                        w-full flex items-center gap-3 px-4 py-3 rounded-lg
+                        transition-all duration-200
+                        ${
+                          active
+                            ? 'bg-white text-blue-700 shadow-lg font-semibold'
+                            : 'text-white hover:bg-blue-500/30'
+                        }
+                      `}
+                    >
+                      <Icon className={`w-5 h-5 ${active ? 'text-blue-700' : 'text-white'}`} />
+                      <div className="flex-1 text-left">
+                        <div className={`font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>
+                          {item.name}
+                        </div>
+                        <div className={`text-xs mt-0.5 ${active ? 'text-blue-600' : 'text-blue-100'}`}>
+                          {item.description}
+                        </div>
+                      </div>
+                      <ChevronRight className={`w-5 h-5 transition-transform ${websiteImagesOpen ? 'rotate-90' : ''}`} />
+                    </button>
+
+                    {websiteImagesOpen ? (
+                      <div className="ml-2 space-y-2">
+                        {item.children.map((c) => {
+                          const ChildIcon = c.icon;
+                          const childActive = isActive(c.href);
+                          return (
+                            <button
+                              key={c.href}
+                              onClick={() => {
+                                router.push(c.href);
+                                setMobileMenuOpen(false);
+                              }}
+                              className={`
+                                w-full flex items-center gap-3 px-4 py-2.5 rounded-lg
+                                transition-all duration-200
+                                ${
+                                  childActive
+                                    ? 'bg-white text-blue-700 shadow font-semibold'
+                                    : 'text-white hover:bg-blue-500/20'
+                                }
+                              `}
+                            >
+                              <ChildIcon className={`w-4 h-4 ${childActive ? 'text-blue-700' : 'text-white'}`} />
+                              <div className="flex-1 text-left">
+                                <div className={`text-sm font-semibold ${childActive ? 'text-blue-700' : 'text-white'}`}>
+                                  {c.name}
+                                </div>
+                                <div className={`text-xs mt-0.5 ${childActive ? 'text-blue-600' : 'text-blue-100'}`}>
+                                  {c.description}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
 
                   return (
                     <button
-                      key={item.href}
+                      key={item.href ?? item.name}
                       onClick={() => {
+                        if (!item.href) return;
                         router.push(item.href);
                         setMobileMenuOpen(false);
                       }}

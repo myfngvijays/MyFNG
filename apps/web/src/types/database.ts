@@ -6,6 +6,21 @@
 export type Database = {
   public: {
     Tables: {
+      home_carousel_banners: {
+        Row: {
+          id: string;
+          title: string | null;
+          image_url: string;
+          route_name: string;
+          route_params: Record<string, any>;
+          display_order: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['home_carousel_banners']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['home_carousel_banners']['Insert']>;
+      };
       users_login: {
         Row: {
           id: string;
