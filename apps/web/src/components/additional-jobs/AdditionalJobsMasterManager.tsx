@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Edit2, Trash2, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, ToggleLeft, ToggleRight, Loader2, Download, Upload, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 type WorkshopOption = { id: string; name: string; city?: string | null };
@@ -37,6 +37,19 @@ export default function AdditionalJobsMasterManager({
   const [includeInactive, setIncludeInactive] = useState(false);
   const [includeGlobal, setIncludeGlobal] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>(''); // '' = all
+
+  // CSV Import/Export
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvError, setCsvError] = useState<string>('');
+  const [csvInfo, setCsvInfo] = useState<string>('');
+  const [csvImportSummary, setCsvImportSummary] = useState<{
+    total: number;
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+  } | null>(null);
 
   // Workshop users: bulk-add selection for global catalog
   const [selectedGlobalIds, setSelectedGlobalIds] = useState<Record<string, boolean>>({});
@@ -173,6 +186,294 @@ export default function AdditionalJobsMasterManager({
       setLoading(false);
     }
   }
+
+  const escapeCsv = (value: any) => {
+    const s = value === null || value === undefined ? '' : String(value);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const buildCsv = (headers: string[], rows: any[][]) => {
+    const headerLine = headers.map(escapeCsv).join(',');
+    const body = rows.map((r) => r.map(escapeCsv).join(',')).join('\n');
+    return `${headerLine}\n${body}\n`;
+  };
+
+  const downloadTextFile = (content: string, filename: string, mime = 'text/csv') => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // Minimal CSV parser (supports quoted fields + escaped quotes)
+  const parseCsv = (text: string): string[][] => {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = '';
+    let inQuotes = false;
+
+    const pushField = () => {
+      row.push(field);
+      field = '';
+    };
+    const pushRow = () => {
+      if (row.length === 1 && row[0].trim() === '') {
+        row = [];
+        return;
+      }
+      rows.push(row);
+      row = [];
+    };
+
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      const next = text[i + 1];
+
+      if (inQuotes) {
+        if (c === '"' && next === '"') {
+          field += '"';
+          i++;
+        } else if (c === '"') {
+          inQuotes = false;
+        } else {
+          field += c;
+        }
+        continue;
+      }
+
+      if (c === '"') inQuotes = true;
+      else if (c === ',') pushField();
+      else if (c === '\n') {
+        pushField();
+        pushRow();
+      } else if (c === '\r') {
+        // ignore
+      } else field += c;
+    }
+    pushField();
+    if (row.length) pushRow();
+    return rows;
+  };
+
+  const exportAdditionalJobsCsv = () => {
+    setCsvError('');
+    setCsvInfo('');
+    setCsvImportSummary(null);
+
+    const headers = [
+      'id',
+      'workshop_id',
+      'name',
+      'description',
+      'category',
+      'hsn_sac_code',
+      'unit',
+      'oem_price',
+      'oes_price',
+      'labour_price',
+      'tax_rate',
+      'is_active',
+    ];
+
+    const rows = (displayedItems || []).map((it) => [
+      it.id,
+      it.workshop_id || '',
+      it.name || '',
+      it.description || '',
+      it.category || '',
+      it.hsn_sac_code || '',
+      it.unit || 'job',
+      it.oem_price ?? 0,
+      it.oes_price ?? 0,
+      it.labour_price ?? 0,
+      it.tax_rate ?? 18,
+      it.is_active !== false ? 'true' : 'false',
+    ]);
+
+    const csv = buildCsv(headers, rows);
+    const date = new Date().toISOString().slice(0, 10);
+    const scope =
+      isSuperAdmin && selectedWorkshopId
+        ? `workshop-${selectedWorkshopId}`
+        : isSuperAdmin
+          ? 'all'
+          : viewerWorkshopId
+            ? `workshop-${viewerWorkshopId}`
+            : 'workshop';
+    const filename = `additional-jobs-master-${scope}-${date}.csv`.replace(/[^a-zA-Z0-9._-]/g, '');
+    downloadTextFile(csv, filename);
+    setCsvInfo(`Downloaded ${rows.length} rows.`);
+  };
+
+  const runWithConcurrency = async <T,>(tasks: Array<() => Promise<T>>, concurrency = 5): Promise<T[]> => {
+    const results: T[] = [];
+    let idx = 0;
+    const workers = Array.from({ length: Math.max(1, concurrency) }).map(async () => {
+      while (idx < tasks.length) {
+        const current = idx++;
+        results[current] = await tasks[current]();
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  };
+
+  const applyImportedAdditionalJobsCsv = async (file: File) => {
+    setCsvBusy(true);
+    setCsvError('');
+    setCsvInfo('');
+    setCsvImportSummary(null);
+    try {
+      const text = await file.text();
+      const grid = parseCsv(text);
+      if (!grid.length) throw new Error('CSV is empty.');
+
+      const header = grid[0].map((h) => (h || '').trim().toLowerCase());
+      const col = (name: string) => header.indexOf(name);
+
+      const idxName = col('name');
+      if (idxName === -1) throw new Error('CSV must contain header: name');
+
+      const idxId = col('id');
+      const idxWorkshopId = col('workshop_id');
+      const idxDescription = col('description');
+      const idxCategory = col('category');
+      const idxHsn = col('hsn_sac_code');
+      const idxUnit = col('unit');
+      const idxOem = col('oem_price');
+      const idxOes = col('oes_price');
+      const idxLabour = col('labour_price');
+      const idxTax = col('tax_rate');
+      const idxActive = col('is_active');
+
+      const errors: string[] = [];
+      const rows = grid.slice(1).filter((r) => r.some((x) => (x || '').trim() !== ''));
+      if (!rows.length) throw new Error('CSV has no data rows.');
+
+      const tasks: Array<() => Promise<{ ok: boolean; kind: 'created' | 'updated' | 'skipped' | 'failed'; error?: string }>> = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const rowNum = i + 2;
+        const name = (r[idxName] || '').trim();
+        if (!name) {
+          errors.push(`Row ${rowNum}: name is required`);
+          continue;
+        }
+
+        const id = idxId !== -1 ? (r[idxId] || '').trim() : '';
+        const workshopIdRaw = idxWorkshopId !== -1 ? (r[idxWorkshopId] || '').trim() : '';
+        const workshopIdForCreate = isSuperAdmin
+          ? (idxWorkshopId !== -1 ? (workshopIdRaw || null) : (selectedWorkshopId ? selectedWorkshopId : null))
+          : null; // workshop users: API will force to viewer workshop
+
+        const payload: any = {
+          name,
+        };
+        if (idxDescription !== -1) payload.description = (r[idxDescription] || '').trim() || null;
+        if (idxCategory !== -1) payload.category = (r[idxCategory] || '').trim() || null;
+        if (idxHsn !== -1) payload.hsn_sac_code = (r[idxHsn] || '').trim() || null;
+        if (idxUnit !== -1) payload.unit = (r[idxUnit] || '').trim() || 'job';
+        if (idxOem !== -1 && (r[idxOem] || '').trim() !== '') payload.oem_price = Number((r[idxOem] || '').trim() || 0);
+        if (idxOes !== -1 && (r[idxOes] || '').trim() !== '') payload.oes_price = Number((r[idxOes] || '').trim() || 0);
+        if (idxLabour !== -1 && (r[idxLabour] || '').trim() !== '') payload.labour_price = Number((r[idxLabour] || '').trim() || 0);
+        if (idxTax !== -1 && (r[idxTax] || '').trim() !== '') payload.tax_rate = Number((r[idxTax] || '').trim() || 18);
+        if (idxActive !== -1 && (r[idxActive] || '').trim() !== '') {
+          const v = (r[idxActive] || '').trim().toLowerCase();
+          payload.is_active = v === 'true' || v === '1' || v === 'yes';
+        }
+
+        // basic numeric validation
+        const numericFields: Array<[string, any]> = [
+          ['oem_price', payload.oem_price],
+          ['oes_price', payload.oes_price],
+          ['labour_price', payload.labour_price],
+          ['tax_rate', payload.tax_rate],
+        ];
+        for (const [k, v] of numericFields) {
+          if (v === undefined) continue;
+          if (!Number.isFinite(Number(v)) || Number(v) < 0) {
+            errors.push(`Row ${rowNum}: invalid ${k} "${v}"`);
+          }
+        }
+
+        if (id) {
+          // update existing
+          if (isSuperAdmin && idxWorkshopId !== -1) {
+            payload.workshop_id = workshopIdRaw ? workshopIdRaw : null;
+          }
+          tasks.push(async () => {
+            try {
+              const res = await fetch(`/api/additional-jobs-master/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              });
+              const body = await res.json().catch(() => ({}));
+              if (!res.ok) return { ok: false, kind: 'failed', error: body?.error || `Row ${rowNum}: failed to update` };
+              return { ok: true, kind: 'updated' };
+            } catch (e: any) {
+              return { ok: false, kind: 'failed', error: e?.message || `Row ${rowNum}: failed to update` };
+            }
+          });
+        } else {
+          // create new
+          if (isSuperAdmin) payload.workshop_id = workshopIdForCreate;
+          tasks.push(async () => {
+            try {
+              const res = await fetch('/api/additional-jobs-master', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              });
+              const body = await res.json().catch(() => ({}));
+              if (!res.ok) return { ok: false, kind: 'failed', error: body?.error || `Row ${rowNum}: failed to create` };
+              if (body?.existed) return { ok: true, kind: 'skipped' };
+              return { ok: true, kind: 'created' };
+            } catch (e: any) {
+              return { ok: false, kind: 'failed', error: e?.message || `Row ${rowNum}: failed to create` };
+            }
+          });
+        }
+      }
+
+      if (errors.length) {
+        throw new Error(errors.slice(0, 8).join('\n') + (errors.length > 8 ? `\n...and ${errors.length - 8} more` : ''));
+      }
+
+      const results = await runWithConcurrency(tasks, 6);
+      const summary = { total: tasks.length, created: 0, updated: 0, skipped: 0, failed: 0 };
+      const failedMessages: string[] = [];
+      for (const r of results) {
+        if (!r.ok) {
+          summary.failed++;
+          if (r.error) failedMessages.push(r.error);
+          continue;
+        }
+        if (r.kind === 'created') summary.created++;
+        else if (r.kind === 'updated') summary.updated++;
+        else if (r.kind === 'skipped') summary.skipped++;
+      }
+      setCsvImportSummary(summary);
+      if (failedMessages.length) {
+        setCsvError(failedMessages.slice(0, 6).join('\n') + (failedMessages.length > 6 ? `\n...and ${failedMessages.length - 6} more` : ''));
+      } else {
+        setCsvInfo('Import completed successfully.');
+      }
+
+      await fetchItems();
+    } catch (e: any) {
+      setCsvError(e?.message || 'Failed to import CSV.');
+    } finally {
+      setCsvBusy(false);
+    }
+  };
 
   function canManage(it: Item) {
     if (isSuperAdmin) return true;
@@ -422,11 +723,122 @@ export default function AdditionalJobsMasterManager({
             Create reusable additional jobs list (workshop-wise) for faster approvals & billing.
           </p>
         </div>
-        <button onClick={openAdd} className="btn btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" />
-          Add Additional Job
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setCsvError('');
+              setCsvInfo('');
+              setCsvImportSummary(null);
+              setShowCsvModal(true);
+            }}
+            className="btn btn-outline bg-white flex items-center gap-2"
+            title="Export or Import additional jobs via CSV"
+          >
+            <Download className="w-4 h-4" />
+            Import/Export CSV
+          </button>
+          <button onClick={openAdd} className="btn btn-primary flex items-center gap-2">
+            <Plus className="w-4 h-4" />
+            Add Additional Job
+          </button>
+        </div>
       </div>
+
+      {/* CSV Import/Export Modal */}
+      {showCsvModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-2xl rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-lg font-semibold text-gray-900">Import / Export Additional Jobs (CSV)</div>
+                <div className="text-sm text-gray-500 mt-1">
+                  Export will download the <span className="font-medium">currently visible list</span> (filters applied).
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCsvModal(false)}
+                className="p-2 rounded-lg hover:bg-gray-50 text-gray-500"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="text-sm text-gray-600">
+                  Rows: <span className="font-medium text-gray-800">{displayedItems.length}</span>
+                  {isSuperAdmin && selectedWorkshopId ? (
+                    <span className="ml-2 text-xs text-gray-500">(Filtered by selected workshop)</span>
+                  ) : null}
+                </div>
+                <button
+                  onClick={exportAdditionalJobsCsv}
+                  disabled={csvBusy}
+                  className="btn btn-secondary flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Download className="w-4 h-4" />
+                  Download CSV
+                </button>
+              </div>
+
+              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4">
+                <div className="text-sm font-medium text-gray-800 mb-1">Upload CSV to create/update</div>
+                <div className="text-xs text-gray-500 mb-2">
+                  Required header: <span className="font-mono">name</span>. If <span className="font-mono">id</span> is provided, the row updates that record; otherwise it creates new.
+                  {isSuperAdmin ? (
+                    <span> For scope, include <span className="font-mono">workshop_id</span> (blank = Global). If omitted, import uses selected workshop (if any) else Global.</span>
+                  ) : (
+                    <span> Workshop users can only create/update their own workshop items.</span>
+                  )}
+                </div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    disabled={csvBusy}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) applyImportedAdditionalJobsCsv(f);
+                      e.currentTarget.value = '';
+                    }}
+                    className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-white file:text-gray-700 hover:file:bg-gray-100"
+                  />
+                  <div className="text-xs text-gray-500 flex items-center gap-2">
+                    <Upload className="w-4 h-4" />
+                    {csvBusy ? 'Importing…' : 'Select CSV file'}
+                  </div>
+                </div>
+              </div>
+
+              {csvImportSummary && (
+                <div className="text-sm text-gray-700 bg-white border border-gray-200 rounded-lg p-3">
+                  <div className="font-medium text-gray-900 mb-1">Import Summary</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                    <div><span className="text-gray-500">Total</span>: {csvImportSummary.total}</div>
+                    <div><span className="text-gray-500">Created</span>: {csvImportSummary.created}</div>
+                    <div><span className="text-gray-500">Updated</span>: {csvImportSummary.updated}</div>
+                    <div><span className="text-gray-500">Skipped</span>: {csvImportSummary.skipped}</div>
+                    <div><span className="text-gray-500">Failed</span>: {csvImportSummary.failed}</div>
+                  </div>
+                </div>
+              )}
+
+              {csvError && (
+                <div className="text-sm whitespace-pre-line text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                  {csvError}
+                </div>
+              )}
+              {csvInfo && (
+                <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+                  {csvInfo}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col lg:flex-row gap-3 mb-5 bg-white p-4 rounded-xl shadow-sm border border-gray-100">

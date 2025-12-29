@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Save, Search, Store, Loader2, Car, MapPin, Copy } from 'lucide-react';
+import { Save, Search, Store, Loader2, Car, MapPin, Copy, Download, Upload, X } from 'lucide-react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 export default function WorkshopPricingPage() {
@@ -22,7 +22,92 @@ export default function WorkshopPricingPage() {
   const [bulkSaving, setBulkSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // CSV Import/Export Modal
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [csvOnlyOverrides, setCsvOnlyOverrides] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvError, setCsvError] = useState<string>('');
+  const [csvInfo, setCsvInfo] = useState<string>('');
+
   const supabase = createClientComponentClient();
+
+  const escapeCsv = (value: any) => {
+    const s = value === null || value === undefined ? '' : String(value);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const buildCsv = (headers: string[], rows: any[][]) => {
+    const headerLine = headers.map(escapeCsv).join(',');
+    const body = rows.map(r => r.map(escapeCsv).join(',')).join('\n');
+    return `${headerLine}\n${body}\n`;
+  };
+
+  const downloadTextFile = (content: string, filename: string, mime = 'text/csv') => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // Minimal CSV parser (supports quoted fields + escaped quotes)
+  const parseCsv = (text: string): string[][] => {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = '';
+    let inQuotes = false;
+
+    const pushField = () => {
+      row.push(field);
+      field = '';
+    };
+    const pushRow = () => {
+      if (row.length === 1 && row[0].trim() === '') {
+        row = [];
+        return;
+      }
+      rows.push(row);
+      row = [];
+    };
+
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      const next = text[i + 1];
+
+      if (inQuotes) {
+        if (c === '"' && next === '"') {
+          field += '"';
+          i++;
+        } else if (c === '"') {
+          inQuotes = false;
+        } else {
+          field += c;
+        }
+        continue;
+      }
+
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        pushField();
+      } else if (c === '\n') {
+        pushField();
+        pushRow();
+      } else if (c === '\r') {
+        // ignore
+      } else {
+        field += c;
+      }
+    }
+    pushField();
+    if (row.length) pushRow();
+    return rows;
+  };
 
   useEffect(() => {
     fetchWorkshops();
@@ -168,54 +253,105 @@ export default function WorkshopPricingPage() {
   };
 
   const handlePriceChange = (productId: string, price: string) => {
-    setPrices(prev => ({
-      ...prev,
-      [productId]: parseFloat(price)
-    }));
+    setPrices(prev => {
+      const next = { ...prev };
+      const trimmed = (price ?? '').toString().trim();
+      if (trimmed === '') {
+        delete next[productId];
+        return next;
+      }
+      const n = Number(trimmed);
+      if (!Number.isFinite(n) || n < 0) {
+        delete next[productId];
+        return next;
+      }
+      next[productId] = n;
+      return next;
+    });
+  };
+
+  const saveProductPricingForWorkshops = async (args: {
+    workshopIds: string[];
+    priceMap: Record<string, number>;
+    overwriteAllProducts: boolean;
+  }) => {
+    const { workshopIds, priceMap, overwriteAllProducts } = args;
+    if (!selectedZone) throw new Error('Please select Zone first.');
+    if (!workshopIds.length) throw new Error('No workshops selected.');
+
+    const productIdsToAffect = overwriteAllProducts
+      ? (products || []).map((p: any) => p.id).filter(Boolean)
+      : Object.keys(priceMap);
+
+    if (!productIdsToAffect.length) {
+      throw new Error('No products found to update for this selection.');
+    }
+
+    // Delete existing for this scope (for these products)
+    for (const workshopId of workshopIds) {
+      let delQuery = supabase
+        .from('workshop_product_pricing')
+        .delete()
+        .eq('workshop_id', workshopId)
+        .in('product_id', productIdsToAffect);
+
+      if (selectedClass === 'DEFAULT') {
+        delQuery = delQuery.is('class', null);
+      } else {
+        delQuery = delQuery.eq('class', selectedClass);
+      }
+
+      if (selectedZone) {
+        delQuery = delQuery.eq('zone_id', selectedZone);
+      } else {
+        delQuery = delQuery.is('zone_id', null);
+      }
+
+      const { error: delError } = await delQuery;
+      if (delError) throw delError;
+    }
+
+    // Insert new
+    const toInsert: any[] = [];
+    for (const workshopId of workshopIds) {
+      for (const [productId, price] of Object.entries(priceMap)) {
+        if (!Number.isFinite(price) || price < 0) continue;
+        toInsert.push({
+          workshop_id: workshopId,
+          product_id: productId,
+          selling_price: price,
+          class: selectedClass === 'DEFAULT' ? null : selectedClass,
+          zone_id: selectedZone || null,
+        });
+      }
+    }
+
+    if (!toInsert.length) {
+      // User may have cleared everything; deletes above already applied
+      return;
+    }
+
+    const batchSize = 100;
+    for (let i = 0; i < toInsert.length; i += batchSize) {
+      const batch = toInsert.slice(i, i + batchSize);
+      const { error } = await supabase.from('workshop_product_pricing').insert(batch);
+      if (error) throw error;
+    }
   };
 
   const handleSave = async () => {
     if (!selectedWorkshop || selectedWorkshop === 'ALL') return;
     setSaving(true);
     try {
-      const upsertData = Object.entries(prices).map(([productId, price]) => ({
-        workshop_id: selectedWorkshop,
-        product_id: productId,
-        selling_price: price,
-        class: selectedClass === 'DEFAULT' ? null : selectedClass,
-        zone_id: selectedZone || null
-      }));
-
-      if (upsertData.length === 0) {
+      if (Object.keys(prices).length === 0) {
         alert("No prices to save.");
-        setSaving(false);
         return;
       }
-
-      // Delete existing for this scope
-      const productIds = upsertData.map(d => d.product_id);
-      let delQuery = supabase.from('workshop_product_pricing')
-        .delete()
-        .eq('workshop_id', selectedWorkshop)
-        .in('product_id', productIds);
-      
-      if (selectedClass === 'DEFAULT') {
-        delQuery = delQuery.is('class', null);
-      } else {
-        delQuery = delQuery.eq('class', selectedClass);
-      }
-      
-      if (selectedZone) {
-        delQuery = delQuery.eq('zone_id', selectedZone);
-      } else {
-        delQuery = delQuery.is('zone_id', null);
-      }
-      
-      await delQuery;
-      
-      // Insert new
-      const { error: insertError } = await supabase.from('workshop_product_pricing').insert(upsertData);
-      if (insertError) throw insertError;
+      await saveProductPricingForWorkshops({
+        workshopIds: [selectedWorkshop],
+        priceMap: prices,
+        overwriteAllProducts: false,
+      });
 
       alert('Pricing updated successfully!');
     } catch (error: any) {
@@ -240,46 +376,11 @@ export default function WorkshopPricingPage() {
     setBulkSaving(true);
     try {
       const workshopIds = filteredWorkshops.map(w => w.id);
-      const productIds = Object.keys(prices);
-
-      // Prepare bulk upsert data for all workshops
-      const bulkData: any[] = [];
-      workshopIds.forEach(workshopId => {
-        productIds.forEach(productId => {
-          bulkData.push({
-            workshop_id: workshopId,
-            product_id: productId,
-            selling_price: prices[productId],
-            class: selectedClass === 'DEFAULT' ? null : selectedClass,
-            zone_id: selectedZone
-          });
-        });
+      await saveProductPricingForWorkshops({
+        workshopIds,
+        priceMap: prices,
+        overwriteAllProducts: false,
       });
-
-      // Delete existing entries for all workshops in this zone
-      for (const workshopId of workshopIds) {
-        let delQuery = supabase.from('workshop_product_pricing')
-          .delete()
-          .eq('workshop_id', workshopId)
-          .in('product_id', productIds);
-        
-        if (selectedClass === 'DEFAULT') {
-          delQuery = delQuery.is('class', null);
-        } else {
-          delQuery = delQuery.eq('class', selectedClass);
-        }
-        
-        delQuery = delQuery.eq('zone_id', selectedZone);
-        await delQuery;
-      }
-
-      // Insert new prices in batches (Supabase has limits)
-      const batchSize = 100;
-      for (let i = 0; i < bulkData.length; i += batchSize) {
-        const batch = bulkData.slice(i, i + batchSize);
-        const { error } = await supabase.from('workshop_product_pricing').insert(batch);
-        if (error) throw error;
-      }
 
       alert(`Pricing applied successfully to ${workshopIds.length} workshops!`);
       // Reset to show first workshop
@@ -299,6 +400,180 @@ export default function WorkshopPricingPage() {
 
   const isBulkMode = selectedWorkshop === 'ALL' && selectedZone;
 
+  const exportWorkshopPricingCsv = () => {
+    setCsvError('');
+    setCsvInfo('');
+    if (!selectedZone || !selectedWorkshop) {
+      setCsvError('Please select Zone and Workshop first.');
+      return;
+    }
+    if (!products?.length) {
+      setCsvError('No products loaded yet.');
+      return;
+    }
+
+    const zoneName = zones.find(z => z.id === selectedZone)?.name || 'zone';
+    const className = selectedClass === 'DEFAULT' ? 'default' : selectedClass;
+    const workshopName = selectedWorkshop === 'ALL'
+      ? `all-workshops`
+      : (workshops.find(w => w.id === selectedWorkshop)?.name || 'workshop');
+
+    const headers = [
+      'zone_id',
+      'class',
+      'workshop_id',
+      'product_id',
+      'product_name',
+      'type',
+      'default_price',
+      'selling_price',
+    ];
+
+    const sorted = [...products].sort((a: any, b: any) => (a?.name || '').localeCompare(b?.name || ''));
+    const selectedRows = csvOnlyOverrides
+      ? sorted.filter((p: any) => prices[p.id] !== undefined)
+      : sorted;
+
+    const rows = selectedRows.map((p: any) => [
+      selectedZone || '',
+      selectedClass === 'DEFAULT' ? '' : selectedClass,
+      selectedWorkshop,
+      p.id,
+      p.name,
+      p.type || '',
+      p.default_price ?? '',
+      prices[p.id] !== undefined ? prices[p.id] : '',
+    ]);
+
+    const csv = buildCsv(headers, rows);
+    const date = new Date().toISOString().slice(0, 10);
+    const filename = `workshop-pricing-${zoneName}-${className}-${workshopName}-${date}.csv`
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9._-]/g, '');
+    downloadTextFile(csv, filename);
+    setCsvInfo(`Downloaded ${rows.length} rows.`);
+  };
+
+  const applyImportedWorkshopPricingCsv = async (file: File) => {
+    setCsvBusy(true);
+    setCsvError('');
+    setCsvInfo('');
+    try {
+      if (!selectedZone || !selectedWorkshop) {
+        throw new Error('Please select Zone and Workshop first.');
+      }
+      if (!products?.length) {
+        throw new Error('No products loaded yet.');
+      }
+
+      const text = await file.text();
+      const grid = parseCsv(text);
+      if (!grid.length) throw new Error('CSV is empty.');
+
+      const header = grid[0].map(h => (h || '').trim().toLowerCase());
+      const col = (name: string) => header.indexOf(name);
+      const idxProductId = col('product_id');
+      const idxSellingPrice = col('selling_price');
+
+      if (idxProductId === -1 || idxSellingPrice === -1) {
+        throw new Error('CSV must contain headers: product_id, selling_price');
+      }
+
+      const idxZone = col('zone_id');
+      const idxClass = col('class');
+      const idxWorkshop = col('workshop_id');
+
+      const allowedIds = new Set((products || []).map((p: any) => p.id));
+      const importedPriceMap: Record<string, number> = {};
+      const errors: string[] = [];
+
+      const expectedClass = selectedClass === 'DEFAULT' ? '' : selectedClass;
+      const expectedZone = selectedZone || '';
+      const expectedWorkshop = selectedWorkshop;
+
+      for (let r = 1; r < grid.length; r++) {
+        const row = grid[r];
+        const pId = (row[idxProductId] || '').trim();
+        if (!pId) continue;
+
+        if (!allowedIds.has(pId)) {
+          errors.push(`Row ${r + 1}: Unknown product_id "${pId}"`);
+          continue;
+        }
+
+        if (idxWorkshop !== -1) {
+          const w = (row[idxWorkshop] || '').trim();
+          if (w && w !== expectedWorkshop) {
+            errors.push(`Row ${r + 1}: workshop_id mismatch (file "${w}" vs selected "${expectedWorkshop}")`);
+          }
+        }
+        if (idxZone !== -1) {
+          const z = (row[idxZone] || '').trim();
+          if (z && z !== expectedZone) {
+            errors.push(`Row ${r + 1}: zone_id mismatch (file "${z}" vs selected "${expectedZone}")`);
+          }
+        }
+        if (idxClass !== -1) {
+          const cl = (row[idxClass] || '').trim();
+          if ((cl || '') !== (expectedClass || '')) {
+            errors.push(`Row ${r + 1}: class mismatch (file "${cl}" vs selected "${expectedClass}")`);
+          }
+        }
+
+        const priceRaw = (row[idxSellingPrice] || '').trim();
+        if (priceRaw === '') {
+          continue; // blank means clear; handled by overwrite mode deletes
+        }
+        const n = Number(priceRaw);
+        if (!Number.isFinite(n) || n < 0) {
+          errors.push(`Row ${r + 1}: invalid selling_price "${priceRaw}" for product_id "${pId}"`);
+          continue;
+        }
+        importedPriceMap[pId] = n;
+      }
+
+      if (errors.length) {
+        throw new Error(errors.slice(0, 8).join('\n') + (errors.length > 8 ? `\n...and ${errors.length - 8} more` : ''));
+      }
+
+      // Update UI state immediately
+      setPrices(importedPriceMap);
+
+      // Persist to DB (overwrite for full scope so clears work)
+      if (selectedWorkshop === 'ALL') {
+        if (!filteredWorkshops.length) throw new Error('No workshops found for this zone selection.');
+        const confirmed = confirm(
+          `Apply imported product prices to ALL ${filteredWorkshops.length} workshops in this zone?`
+        );
+        if (!confirmed) {
+          setCsvInfo('Imported prices loaded into the screen. Click “Apply to All” when ready.');
+          return;
+        }
+        await saveProductPricingForWorkshops({
+          workshopIds: filteredWorkshops.map(w => w.id),
+          priceMap: importedPriceMap,
+          overwriteAllProducts: true,
+        });
+        alert(`Imported pricing applied successfully to ${filteredWorkshops.length} workshops!`);
+        if (filteredWorkshops.length > 0) setSelectedWorkshop(filteredWorkshops[0].id);
+      } else {
+        await saveProductPricingForWorkshops({
+          workshopIds: [selectedWorkshop],
+          priceMap: importedPriceMap,
+          overwriteAllProducts: true,
+        });
+        alert('Imported pricing saved successfully!');
+        await fetchPricingData(selectedWorkshop, selectedClass, selectedZone);
+      }
+
+      setShowCsvModal(false);
+    } catch (e: any) {
+      setCsvError(e?.message || 'Failed to import CSV.');
+    } finally {
+      setCsvBusy(false);
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
@@ -317,6 +592,19 @@ export default function WorkshopPricingPage() {
               Apply to All ({filteredWorkshops.length}) Workshops
             </button>
           )}
+          <button
+            onClick={() => {
+              setCsvError('');
+              setCsvInfo('');
+              setShowCsvModal(true);
+            }}
+            disabled={!selectedZone || !selectedWorkshop}
+            className="btn btn-outline bg-white flex items-center gap-2 disabled:opacity-50"
+            title="Export or Import pricing via CSV"
+          >
+            <Download className="w-4 h-4" />
+            Import/Export CSV
+          </button>
           <button 
             onClick={handleSave}
             disabled={saving || !selectedWorkshop || selectedWorkshop === 'ALL'}
@@ -327,6 +615,94 @@ export default function WorkshopPricingPage() {
           </button>
         </div>
       </div>
+
+      {/* CSV Import/Export Modal */}
+      {showCsvModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-xl rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-lg font-semibold text-gray-900">Import / Export Workshop Pricing (CSV)</div>
+                <div className="text-sm text-gray-500 mt-1">
+                  Scope: <span className="font-medium text-gray-700">
+                    {zones.find(z => z.id === selectedZone)?.name || 'Zone'}
+                    {' / '}
+                    {selectedClass === 'DEFAULT' ? 'Default' : selectedClass}
+                    {' / '}
+                    {selectedWorkshop === 'ALL'
+                      ? `All Workshops (${filteredWorkshops.length})`
+                      : (workshops.find(w => w.id === selectedWorkshop)?.name || 'Workshop')}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCsvModal(false)}
+                className="p-2 rounded-lg hover:bg-gray-50 text-gray-500"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={csvOnlyOverrides}
+                    onChange={(e) => setCsvOnlyOverrides(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  Export only overridden prices
+                </label>
+                <button
+                  onClick={exportWorkshopPricingCsv}
+                  disabled={csvBusy || !products?.length}
+                  className="btn btn-secondary flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Download className="w-4 h-4" />
+                  Download CSV
+                </button>
+              </div>
+
+              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4">
+                <div className="text-sm font-medium text-gray-800 mb-1">Upload CSV to update prices</div>
+                <div className="text-xs text-gray-500 mb-2">
+                  CSV must include headers: <span className="font-mono">product_id, selling_price</span>. Blank price will clear the override.
+                </div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    disabled={csvBusy}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) applyImportedWorkshopPricingCsv(f);
+                      e.currentTarget.value = '';
+                    }}
+                    className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-white file:text-gray-700 hover:file:bg-gray-100"
+                  />
+                  <div className="text-xs text-gray-500 flex items-center gap-2">
+                    <Upload className="w-4 h-4" />
+                    {csvBusy ? 'Importing & saving…' : 'Select CSV file'}
+                  </div>
+                </div>
+              </div>
+
+              {csvError && (
+                <div className="text-sm whitespace-pre-line text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                  {csvError}
+                </div>
+              )}
+              {csvInfo && (
+                <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+                  {csvInfo}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Controls: Zone First, then Workshop & Class */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
