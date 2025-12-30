@@ -27,10 +27,17 @@ export type ChatbotV2Context = {
 
   // captured info
   vehicleModel?: string; // free text, e.g. "Hyundai i20"
+  carModelId?: string; // DB car_models.id (when confidently matched)
+  vehicleClass?: string; // e.g. SEDANS/SUV
   vehicleNumber?: string; // e.g. "MH12AB1234" (required for booking in DB schema)
   customerPhone?: string; // 10-digit (India)
   pickupPreference?: 'PICKUP' | 'SELF_VISIT';
   locationConfirmed?: boolean;
+  selectedServiceTypeId?: string;
+  selectedServiceTypeName?: string;
+  selectedCategoryUuid?: string;
+  selectedCategoryName?: string;
+  lastServiceDoneAt?: string; // month/year free text, required before pricing
 
   // Conversation memory (lightweight)
   flow?: 'BOOKING' | 'PRICING' | 'WORKSHOP';
@@ -46,6 +53,12 @@ export type ChatbotV2Context = {
   invoiceId?: string;
   invoiceNumber?: string;
   paymentLink?: string;
+
+  // UI step memory (short-lived)
+  awaitingPaymentLinkConsent?: boolean;
+  awaitingCarModelSelection?: boolean;
+  awaitingSlotText?: boolean;
+  preferredSlotText?: string; // free text like "tomorrow 11am"
 };
 
 export type ChatbotV2Request = {
@@ -77,6 +90,10 @@ export type WorkshopHit = {
   mapLink?: string | null;
   imageUrl?: string | null;
   km: number | null;
+  auditScore?: number | null;
+  workshopArea?: string | null;
+  nearFamousArea?: string | null;
+  category?: string | null;
 };
 
 export type PricingHit = {

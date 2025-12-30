@@ -21,7 +21,16 @@ type UiPayload =
   | {
       kind: 'WORKSHOP_CAROUSEL';
       title?: string;
-      items: Array<{ id: string; name: string; subtitle?: string; km?: number | null; imageUrl?: string | null; mapLink?: string | null }>;
+      items: Array<{
+        id: string;
+        name: string;
+        subtitle?: string;
+        km?: number | null;
+        imageUrl?: string | null;
+        mapLink?: string | null;
+        rating?: number | null;
+        usp?: string | null;
+      }>;
     };
 type ChatMsg = {
   id: string;
@@ -35,6 +44,8 @@ const STORAGE_KEY = 'myfng_ai_chat_state_v2';
 const CHANNEL_NAME = 'myfng_ai_chat_channel_v2';
 const REQUEST_TIMEOUT_MS = 45000;
 const LOCATION_TTL_MS = 15 * 60 * 1000; // refresh location every 15 min to keep "near workshop" accurate
+const DETECTED_CITY_KEY = 'detected_city';
+const DETECTED_CITY_TS_KEY = 'detected_city_timestamp';
 
 function safeParseJson<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -106,9 +117,39 @@ function AIBookingPageInner() {
       delete (ctx as any).locationLabel;
       delete (ctx as any).addressText;
       delete (ctx as any).locationCapturedAt;
+
+      // IMPORTANT: avoid leaking previous user's sensitive fields into a fresh chat.
+      // This also prevents "price without asking mobile" if customerPhone was stored from an older session.
+      const isFreshChat = !Array.isArray(saved?.chatMessages) || saved.chatMessages.length <= 1;
+      if (isFreshChat) {
+        delete (ctx as any).customerPhone;
+        delete (ctx as any).vehicleNumber;
+        delete (ctx as any).leadId;
+        delete (ctx as any).invoiceId;
+        delete (ctx as any).invoiceNumber;
+        delete (ctx as any).paymentLink;
+        delete (ctx as any).awaitingPaymentLinkConsent;
+      }
       setChatContext(ctx);
     }
   }, []);
+
+  // Fallback: use selected city from the main navbar (stored in localStorage).
+  // This keeps pricing stable on /ai-booking even if GPS/reverse-geocode isn't available.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const existing = String(chatContext?.locationLabel || '').trim();
+    if (existing) return;
+    const storedCity = String(window.localStorage.getItem(DETECTED_CITY_KEY) || '').trim();
+    if (!storedCity) return;
+    const ts = Number(window.localStorage.getItem(DETECTED_CITY_TS_KEY) || 0);
+    const isFresh = !Number.isFinite(ts) || ts <= 0 ? true : Date.now() - ts < 30 * 24 * 60 * 60 * 1000;
+    if (!isFresh) return;
+    setChatContext((prev: any) => ({
+      ...(prev || {}),
+      locationLabel: prev?.locationLabel || storedCity,
+    }));
+  }, [chatContext?.locationLabel]);
 
   // Load Razorpay checkout script
   useEffect(() => {
@@ -254,6 +295,11 @@ function AIBookingPageInner() {
     setChatLoading(true);
 
     const nextContext = { ...(chatContext || {}) };
+    // Ensure city is available even before GPS reverse-geocode finishes.
+    if (!String(nextContext?.locationLabel || '').trim() && typeof window !== 'undefined') {
+      const storedCity = String(window.localStorage.getItem(DETECTED_CITY_KEY) || '').trim();
+      if (storedCity) nextContext.locationLabel = storedCity;
+    }
 
     try {
       const controller = new AbortController();
@@ -355,6 +401,8 @@ function AIBookingPageInner() {
                 km: typeof it?.km === 'number' ? it.km : null,
                 imageUrl: typeof it?.imageUrl === 'string' ? it.imageUrl : null,
                 mapLink: typeof it?.mapLink === 'string' ? it.mapLink : null,
+                rating: typeof it?.rating === 'number' ? it.rating : null,
+                usp: typeof it?.usp === 'string' ? it.usp : null,
               }))
               .filter((it: any) => it.id && it.name),
           };
@@ -527,6 +575,9 @@ function AIBookingPageInner() {
               <div className="text-xs text-gray-500 truncate">
                 {chatConnected ? `API: ${CHAT_API} • Connected` : `API: ${CHAT_API} • Connecting...`}
               </div>
+              {String(chatContext?.locationLabel || '').trim() ? (
+                <div className="text-[11px] text-gray-600 truncate">City: {String(chatContext.locationLabel)}</div>
+              ) : null}
             </div>
           </div>
           <Link href="/" className="text-sm font-semibold text-brand-primary hover:underline">
@@ -736,6 +787,10 @@ function AIBookingPageInner() {
                               <div className="p-3">
                                 <div className="font-semibold text-sm text-gray-900">{w.name}</div>
                                 {w.subtitle && <div className="text-xs text-gray-500 mt-1">{w.subtitle}</div>}
+                                {w.usp && <div className="text-[11px] text-gray-700 mt-1">• {w.usp}</div>}
+                                {typeof w.rating === 'number' && (
+                                  <div className="text-[11px] text-gray-700 mt-1">⭐ {Math.round(w.rating)}/100</div>
+                                )}
                                 <div className="text-xs text-gray-600 mt-2">
                                   {typeof w.km === 'number' ? `${w.km.toFixed(1)} km away` : 'Distance unavailable'}
                                 </div>

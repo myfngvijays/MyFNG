@@ -16,18 +16,33 @@ export function normalizeContext(ctx: ChatbotV2Context): ChatbotV2Context {
   return {
     ...ctx,
     conversationId: ctx.conversationId ? String(ctx.conversationId) : undefined,
+    preferredLanguage:
+      ctx.preferredLanguage === 'auto' || ctx.preferredLanguage === 'en' || ctx.preferredLanguage === 'hi' || ctx.preferredLanguage === 'hinglish'
+        ? ctx.preferredLanguage
+        : undefined,
     locationLabel: ctx.locationLabel ? normalize(ctx.locationLabel).slice(0, 80) : undefined,
     addressText: ctx.addressText ? normalize(ctx.addressText).slice(0, 160) : undefined,
     vehicleModel: ctx.vehicleModel ? normalize(ctx.vehicleModel).slice(0, 40) : undefined,
+    carModelId: ctx.carModelId ? String(ctx.carModelId).slice(0, 64) : undefined,
+    vehicleClass: ctx.vehicleClass ? String(ctx.vehicleClass).slice(0, 24) : undefined,
     vehicleNumber: ctx.vehicleNumber ? String(ctx.vehicleNumber).toUpperCase().replace(/\s+/g, '').slice(0, 16) : undefined,
     customerPhone: ctx.customerPhone ? String(ctx.customerPhone).replace(/\D/g, '').slice(-10) : undefined,
     locationConfirmed: typeof ctx.locationConfirmed === 'boolean' ? ctx.locationConfirmed : undefined,
     pickupPreference: ctx.pickupPreference === 'PICKUP' || ctx.pickupPreference === 'SELF_VISIT' ? ctx.pickupPreference : undefined,
+    selectedServiceTypeId: ctx.selectedServiceTypeId ? String(ctx.selectedServiceTypeId).slice(0, 64) : undefined,
+    selectedServiceTypeName: ctx.selectedServiceTypeName ? normalize(ctx.selectedServiceTypeName).slice(0, 80) : undefined,
+    selectedCategoryUuid: ctx.selectedCategoryUuid ? String(ctx.selectedCategoryUuid).slice(0, 64) : undefined,
+    selectedCategoryName: ctx.selectedCategoryName ? normalize(ctx.selectedCategoryName).slice(0, 80) : undefined,
+    lastServiceDoneAt: ctx.lastServiceDoneAt ? normalize(ctx.lastServiceDoneAt).slice(0, 40) : undefined,
     flow: ctx.flow === 'BOOKING' || ctx.flow === 'PRICING' || ctx.flow === 'WORKSHOP' ? ctx.flow : undefined,
     greeted: typeof ctx.greeted === 'boolean' ? ctx.greeted : undefined,
     lastKbQuery: ctx.lastKbQuery ? normalize(ctx.lastKbQuery).slice(0, 200) : undefined,
     lastKbAnswerFacts: ctx.lastKbAnswerFacts ? normalize(ctx.lastKbAnswerFacts).slice(0, 1200) : undefined,
     lastKbAt: Number.isFinite(ctx.lastKbAt as number) ? Number(ctx.lastKbAt) : undefined,
+    awaitingPaymentLinkConsent: typeof ctx.awaitingPaymentLinkConsent === 'boolean' ? ctx.awaitingPaymentLinkConsent : undefined,
+    awaitingCarModelSelection: typeof ctx.awaitingCarModelSelection === 'boolean' ? ctx.awaitingCarModelSelection : undefined,
+    awaitingSlotText: typeof ctx.awaitingSlotText === 'boolean' ? ctx.awaitingSlotText : undefined,
+    preferredSlotText: ctx.preferredSlotText ? normalize(ctx.preferredSlotText).slice(0, 60) : undefined,
   };
 }
 
@@ -62,6 +77,50 @@ export function extractContextPatchFromUserText(userText: string): Partial<Chatb
   const patch: Partial<ChatbotV2Context> = {};
   const text = String(userText || '');
   const low = text.toLowerCase();
+
+  // language preference commands
+  if (/(hindi|हिंदी).*(baat|बात).*(karo|करो)|mujhse\s+hindi|hindi\s+me\s+baat/i.test(text)) patch.preferredLanguage = 'hi';
+  if (/(english).*(baat).*(karo)|mujhse\s+english|english\s+me\s+baat/i.test(text)) patch.preferredLanguage = 'en';
+  if (/(hinglish).*(baat).*(karo)|hinglish\s+me/i.test(text)) patch.preferredLanguage = 'hinglish';
+
+  // selected service type from UI (category carousel / buttons)
+  // Format: "__select__ SERVICE_TYPE <id>"
+  if (/^__select__\s+SERVICE_TYPE\s+/i.test(text.trim())) {
+    const parts = text.trim().split(/\s+/);
+    const id = parts[2] || parts[3]; // tolerate extra spacing
+    if (id) patch.selectedServiceTypeId = String(id).trim();
+  }
+
+  // selected category from UI
+  // Format: "__select__ CATEGORY <uuid>"
+  if (/^__select__\s+CATEGORY\s+/i.test(text.trim())) {
+    const parts = text.trim().split(/\s+/);
+    const id = parts[2] || parts[3];
+    if (id) patch.selectedCategoryUuid = String(id).trim();
+  }
+
+  // selected car model from UI
+  // Format: "__select__ CAR_MODEL <id>"
+  if (/^__select__\s+CAR_MODEL\s+/i.test(text.trim())) {
+    const parts = text.trim().split(/\s+/);
+    const id = parts[2] || parts[3];
+    if (id) patch.carModelId = String(id).trim();
+  }
+
+  // last service done (month/year or relative)
+  {
+    const t = text.trim();
+    const isMonthYear =
+      /^(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\s*\d{4}$/i.test(
+        t
+      ) ||
+      /^(0?[1-9]|1[0-2])[\s\/-]\d{4}$/i.test(t) ||
+      /^\d{4}$/.test(t) ||
+      /^(\d+)\s*(months?|years?)\s*ago$/i.test(t) ||
+      /^(\d+)\s*(mahine|saal)\s*(pehle)?$/i.test(t);
+    const isPromptedOrExplicit = /(last\s+service|pichli\s+service|last\s+car\s+service|last\s+servicing)/i.test(text) || /(month|year|महिना|साल|months|years)/i.test(text);
+    if ((isMonthYear || isPromptedOrExplicit) && t.length >= 3 && t.length <= 40) patch.lastServiceDoneAt = t;
+  }
 
   // phone (India)
   const digits = text.replace(/\D/g, '');

@@ -167,34 +167,34 @@ export default function BlogPage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
                 {filteredPosts.map((blog) => (
-                  <Link
+                  <article
                     key={blog.id}
-                    href={`/blogs/${blog.slug}`}
                     className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all group"
                   >
-                    <div className="h-40 sm:h-44 md:h-48 relative overflow-hidden bg-gray-200">
-                      {blog.featured_image ? (
-                        <Image
-                          src={blog.featured_image}
-                          alt={blog.title}
-                          fill
-                          className="object-cover group-hover:scale-105 transition duration-500"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-brand-primary to-blue-600">
-                          <span className="text-white text-4xl font-bold">
-                            {blog.title.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                      {blog.category && (
-                        <div className="absolute top-3 sm:top-4 left-3 sm:left-4">
-                          <span className="bg-brand-primary text-white px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold">
-                            {blog.category.name}
-                          </span>
-                        </div>
-                      )}
-                    </div>
+                    <Link href={`/blogs/${blog.slug}`} className="block">
+                      <div className="h-40 sm:h-44 md:h-48 relative overflow-hidden bg-gray-200">
+                        {blog.featured_image ? (
+                          <Image
+                            src={blog.featured_image}
+                            alt={blog.title}
+                            fill
+                            className="object-cover group-hover:scale-105 transition duration-500"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-brand-primary to-blue-600">
+                            <span className="text-white text-4xl font-bold">{blog.title.charAt(0).toUpperCase()}</span>
+                          </div>
+                        )}
+                        {blog.category && (
+                          <div className="absolute top-3 sm:top-4 left-3 sm:left-4">
+                            <span className="bg-brand-primary text-white px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold">
+                              {blog.category.name}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+
                     <div className="p-4 sm:p-5 md:p-6">
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:gap-4 text-[10px] sm:text-xs text-gray-500 mb-2 sm:mb-3">
                         {blog.published_at && (
@@ -208,9 +208,11 @@ export default function BlogPage() {
                           {blog.read_time || 3} min read
                         </div>
                       </div>
-                      <h3 className="text-base sm:text-lg md:text-xl font-bold text-brand-secondary mb-2 sm:mb-3 group-hover:text-brand-primary transition line-clamp-2">
-                        {blog.title}
-                      </h3>
+                      <Link href={`/blogs/${blog.slug}`} className="block">
+                        <h3 className="text-base sm:text-lg md:text-xl font-bold text-brand-secondary mb-2 sm:mb-3 group-hover:text-brand-primary transition line-clamp-2">
+                          {blog.title}
+                        </h3>
+                      </Link>
                       {blog.excerpt && (
                         <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4 line-clamp-3">
                           {blog.excerpt}
@@ -228,11 +230,14 @@ export default function BlogPage() {
                           ))}
                         </div>
                       )}
-                      <div className="flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold">
+                      <Link
+                        href={`/blogs/${blog.slug}`}
+                        className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary text-xs sm:text-sm font-semibold"
+                      >
                         Read More <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 group-hover:translate-x-1 transition" />
-                      </div>
+                      </Link>
                     </div>
-                  </Link>
+                  </article>
                 ))}
               </div>
             )}

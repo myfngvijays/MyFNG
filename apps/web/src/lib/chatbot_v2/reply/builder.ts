@@ -94,10 +94,12 @@ export function buildWorkshopReply(params: { lang: UserLang; radiusKm: number; w
         items: workshops.map((w: any) => ({
           id: String(w.id),
           name: String(w.name),
-          subtitle: w.address ? String(w.address) : undefined,
+          subtitle: w.workshopArea ? String(w.workshopArea) : w.address ? String(w.address) : undefined,
           km: typeof w.km === 'number' ? w.km : null,
           imageUrl: w.imageUrl ? String(w.imageUrl) : null,
           mapLink: w.mapLink ? String(w.mapLink) : null,
+          rating: typeof w.auditScore === 'number' ? w.auditScore : null,
+          usp: w.category ? String(w.category) : w.nearFamousArea ? `Near ${String(w.nearFamousArea)}` : 'Verified workshop',
         })),
       },
     },
@@ -131,7 +133,11 @@ export function buildPricingReply(params: { lang: UserLang; items: PricingHit[] 
         : 'Periodic service pricing (starting):';
 
   const lines = top.map((p) => {
-    const price = p.price != null && Number.isFinite(p.price) ? `₹${Math.round(p.price)}` : 'On inspection';
+    const price =
+      p.price != null && Number.isFinite(p.price)
+        ? `₹${Math.round(p.price)}`
+        : // If price is intentionally hidden, show placeholder.
+          'Price on request';
     return `${p.name}: ${price}`;
   });
 

@@ -23,10 +23,37 @@ type Props = {
 };
 
 type ChatRole = 'assistant' | 'user';
+type UiSuggestion = {
+  optionNumber?: number;
+  kind: 'SERVICE_TYPE' | 'PACKAGE' | 'RSA';
+  id: string;
+  name: string;
+  exactPrice?: number | null;
+  checklistItems?: string[];
+  checklistNote?: string | null;
+};
+type UiPayload =
+  | { kind: 'CATEGORY_CAROUSEL'; title?: string; items: Array<{ id: string; label: string; subtitle?: string }> }
+  | { kind: 'DUAL_CAROUSEL'; title?: string; category: string; packages: UiSuggestion[]; services: UiSuggestion[] }
+  | {
+      kind: 'WORKSHOP_CAROUSEL';
+      title?: string;
+      items: Array<{
+        id: string;
+        name: string;
+        subtitle?: string;
+        km?: number | null;
+        imageUrl?: string | null;
+        mapLink?: string | null;
+        rating?: number | null;
+        usp?: string | null;
+      }>;
+    };
 type ChatMsg = {
   id: string;
   role: ChatRole;
   text: string;
+  ui?: UiPayload;
 };
 
 function uid() {
@@ -46,7 +73,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
       {
         id: uid(),
         role: 'assistant',
-        text: `Hi! I’m MY FNG AI Assistant.${city ? `\nCity: ${city}` : ''}\nAap regular service / repair / cleaning me se kya chahte ho?`,
+        text: `Hi! I'm MY FNG AI Assistant.\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?`,
       },
       ...(prefill ? [{ id: uid(), role: 'user' as const, text: prefill }] : []),
     ],
@@ -58,7 +85,9 @@ export default function AIBookingScreen({ navigation, route }: Props) {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatContext, setChatContext] = useState<any>({
     preferredLanguage: 'auto',
-    cityName: city || undefined,
+    // On mobile, city is usually selected explicitly; use it as locationLabel so pricing works like web.
+    locationLabel: city || undefined,
+    locationConfirmed: Boolean(city),
   });
 
   // Payments are supported via chat commands (e.g., “pay now”, “pay invoice”, “pay advance 2000”).
@@ -77,31 +106,123 @@ export default function AIBookingScreen({ navigation, route }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function sendChatMessage(text: string) {
+  async function sendChatMessage(rawText: string, displayText?: string) {
     if (chatLoading) return;
+    const text = (rawText || '').trim();
+    const shown = (displayText || rawText || '').trim();
+    if (!text) return;
 
     setChatLoading(true);
     try {
-      const res = await fetch(`${apiBase()}/api/chatbot`, {
+      const url = `${apiBase()}/api/chatbot/v2`;
+      const payload = {
+        message: text,
+        context: {
+          ...(chatContext || {}),
+          locationLabel: chatContext?.locationLabel || city || undefined,
+        },
+      };
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          context: {
-            ...(chatContext || {}),
-            cityName: chatContext?.cityName || city || undefined,
-          },
-        }),
+        body: JSON.stringify(payload),
       });
 
-      const data: any = await res.json().catch(() => null);
-      const assistantText = data?.assistantMessage || 'Sorry, kuch issue aa gaya. Please try again.';
-      push({ id: uid(), role: 'assistant', text: assistantText });
+      const raw = await res.text().catch(() => '');
+      const data: any = (() => {
+        try {
+          return raw ? JSON.parse(raw) : null;
+        } catch {
+          return null;
+        }
+      })();
 
-      if (data?.contextPatch) {
-        setChatContext((prev: any) => ({ ...(prev || {}), ...(data.contextPatch || {}) }));
+      if (!res.ok) {
+        console.log('Chatbot API error', { url, status: res.status, body: raw?.slice(0, 400) });
+        push({
+          id: uid(),
+          role: 'assistant',
+          text: `Sorry, kuch issue aa gaya.\nAPI error: ${res.status}\nPlease try again.`,
+        });
+        return;
       }
-    } catch {
+
+      const msg = typeof data?.message === 'string' ? data.message.trim() : '';
+      const cta = typeof data?.cta === 'string' ? data.cta.trim() : '';
+      const assistantText =
+        (typeof data?.assistantMessage === 'string' && data.assistantMessage.trim()) ||
+        ([msg, cta].filter(Boolean).join('\n') || 'Sorry, kuch issue aa gaya. Please try again.');
+
+      const ui: UiPayload | undefined = (() => {
+        const u = data?.ui || data?.data?.ui;
+        if (!u || typeof u !== 'object') return undefined;
+        if (u.kind === 'CATEGORY_CAROUSEL' && Array.isArray(u.items)) {
+          return {
+            kind: 'CATEGORY_CAROUSEL',
+            title: typeof u.title === 'string' ? u.title : undefined,
+            items: u.items
+              .map((it: any) => ({
+                id: String(it?.id || ''),
+                label: String(it?.label || '').trim(),
+                subtitle: typeof it?.subtitle === 'string' ? it.subtitle : undefined,
+              }))
+              .filter((it: any) => it.id && it.label),
+          };
+        }
+        if (u.kind === 'DUAL_CAROUSEL' && Array.isArray(u.packages) && Array.isArray(u.services)) {
+          const mapOpt = (o: any, optionNumber?: number): UiSuggestion | null => {
+            const s = o?.suggestion;
+            const kind = String(s?.kind || '').toUpperCase();
+            const id = String(s?.id || '');
+            const name = String(s?.name || '').trim();
+            if (!id || !name || !kind) return null;
+            return {
+              optionNumber,
+              kind: kind as any,
+              id,
+              name,
+              exactPrice: typeof o?.exactPrice === 'number' ? o.exactPrice : typeof o?.exactPrice?.amount === 'number' ? o.exactPrice.amount : null,
+              checklistItems: Array.isArray(o?.checklistItems) ? o.checklistItems.map((x: any) => String(x)) : undefined,
+              checklistNote: typeof o?.checklistNote === 'string' ? o.checklistNote : null,
+            };
+          };
+          return {
+            kind: 'DUAL_CAROUSEL',
+            title: typeof u.title === 'string' ? u.title : undefined,
+            category: String(u.category || ''),
+            packages: (u.packages || []).map((x: any, idx: number) => mapOpt(x, idx + 1)).filter(Boolean) as UiSuggestion[],
+            services: (u.services || []).map((x: any, idx: number) => mapOpt(x, idx + 1)).filter(Boolean) as UiSuggestion[],
+          };
+        }
+        if (u.kind === 'WORKSHOP_CAROUSEL' && Array.isArray(u.items)) {
+          return {
+            kind: 'WORKSHOP_CAROUSEL',
+            title: typeof u.title === 'string' ? u.title : undefined,
+            items: u.items
+              .map((it: any) => ({
+                id: String(it?.id || ''),
+                name: String(it?.name || '').trim(),
+                subtitle: typeof it?.subtitle === 'string' ? it.subtitle : undefined,
+                km: typeof it?.km === 'number' ? it.km : null,
+                imageUrl: typeof it?.imageUrl === 'string' ? it.imageUrl : null,
+                mapLink: typeof it?.mapLink === 'string' ? it.mapLink : null,
+                rating: typeof it?.rating === 'number' ? it.rating : null,
+                usp: typeof it?.usp === 'string' ? it.usp : null,
+              }))
+              .filter((it: any) => it.id && it.name),
+          };
+        }
+        return undefined;
+      })();
+
+      push({ id: uid(), role: 'assistant', text: assistantText, ui });
+
+      const ctxPatch = data?.data?.contextPatch || data?.contextPatch || null;
+      if (ctxPatch && typeof ctxPatch === 'object') {
+        setChatContext((prev: any) => ({ ...(prev || {}), ...(ctxPatch || {}) }));
+      }
+    } catch (e: any) {
+      console.log('Chatbot API network error', { err: String(e?.message || e), apiBase: apiBase() });
       push({ id: uid(), role: 'assistant', text: 'Network issue. Please try again.' });
     } finally {
       setChatLoading(false);
@@ -131,7 +252,9 @@ export default function AIBookingScreen({ navigation, route }: Props) {
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Chat & Book with AI</Text>
-            <Text style={styles.headerSub}>Booking in minutes. No forms.</Text>
+            <Text style={styles.headerSub}>
+              {city ? `City: ${city} • ` : ''}Booking in minutes. No forms.
+            </Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginBtn}>
             <Text style={styles.loginBtnText}>Login</Text>
@@ -140,10 +263,106 @@ export default function AIBookingScreen({ navigation, route }: Props) {
 
         <ScrollView ref={scrollRef} contentContainerStyle={styles.chat} showsVerticalScrollIndicator={false}>
           {messages.map((m) => (
-            <View key={m.id} style={[styles.msgRow, m.role === 'user' ? styles.msgRowUser : null]}>
-              <View style={[styles.bubble, m.role === 'user' ? styles.bubbleUser : styles.bubbleBot]}>
-                <Text style={[styles.bubbleText, m.role === 'user' ? styles.bubbleTextUser : null]}>{m.text}</Text>
+            <View key={m.id}>
+              <View style={[styles.msgRow, m.role === 'user' ? styles.msgRowUser : null]}>
+                <View style={[styles.bubble, m.role === 'user' ? styles.bubbleUser : styles.bubbleBot]}>
+                  <Text style={[styles.bubbleText, m.role === 'user' ? styles.bubbleTextUser : null]}>{m.text}</Text>
+                </View>
               </View>
+
+              {m.role === 'assistant' && m.ui?.kind === 'CATEGORY_CAROUSEL' ? (
+                <View style={{ marginTop: 8 }}>
+                  {m.ui.title ? <Text style={styles.uiTitle}>{m.ui.title}</Text> : null}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6, gap: 10 }}>
+                    {m.ui.items.map((it) => (
+                      <TouchableOpacity
+                        key={it.id}
+                        style={styles.chipCard}
+                        onPress={() => {
+                          push({ id: uid(), role: 'user', text: it.label });
+                          void sendChatMessage(it.id, it.label);
+                        }}
+                        activeOpacity={0.9}
+                      >
+                        <Text style={styles.chipTitle}>{it.label}</Text>
+                        {it.subtitle ? <Text style={styles.chipSub}>{it.subtitle}</Text> : null}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+
+              {m.role === 'assistant' && m.ui?.kind === 'WORKSHOP_CAROUSEL' ? (
+                <View style={{ marginTop: 8 }}>
+                  {m.ui.title ? <Text style={styles.uiTitle}>{m.ui.title}</Text> : null}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6, gap: 12 }}>
+                    {m.ui.items.map((w) => (
+                      <View key={w.id} style={styles.workshopCard}>
+                        <Text style={styles.workshopName}>{w.name}</Text>
+                        {w.subtitle ? <Text style={styles.workshopSub}>{w.subtitle}</Text> : null}
+                        {w.usp ? <Text style={styles.workshopMeta}>• {w.usp}</Text> : null}
+                        {typeof w.rating === 'number' ? <Text style={styles.workshopMeta}>⭐ {Math.round(w.rating)}/100</Text> : null}
+                        <Text style={styles.workshopMeta}>{typeof w.km === 'number' ? `${w.km.toFixed(1)} km away` : 'Distance unavailable'}</Text>
+                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                          {w.mapLink ? (
+                            <TouchableOpacity
+                              style={styles.primaryBtn}
+                              onPress={() => Linking.openURL(w.mapLink as string).catch(() => null)}
+                              activeOpacity={0.9}
+                            >
+                              <Text style={styles.primaryBtnText}>Directions</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          <TouchableOpacity
+                            style={styles.ghostBtn}
+                            onPress={() => {
+                              push({ id: uid(), role: 'user', text: 'Pickup' });
+                              void sendChatMessage('pickup', 'Pickup');
+                            }}
+                            activeOpacity={0.9}
+                          >
+                            <Text style={styles.ghostBtnText}>Pickup?</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+
+              {m.role === 'assistant' && m.ui?.kind === 'DUAL_CAROUSEL' ? (
+                <View style={{ marginTop: 8 }}>
+                  {m.ui.title ? <Text style={styles.uiTitle}>{m.ui.title}</Text> : null}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6, gap: 12 }}>
+                    {[...(m.ui.packages || []), ...(m.ui.services || [])].slice(0, 8).map((s) => (
+                      <TouchableOpacity
+                        key={`${s.kind}:${s.id}`}
+                        style={styles.chipCard}
+                        activeOpacity={0.9}
+                        onPress={() => {
+                          const lines: string[] = [];
+                          lines.push(s.name);
+                          if (typeof s.exactPrice === 'number' && s.exactPrice > 0) lines.push(`₹${Math.round(s.exactPrice)}`);
+                          if (Array.isArray(s.checklistItems) && s.checklistItems.length > 0) {
+                            lines.push('');
+                            lines.push('Checkpoints:');
+                            s.checklistItems.slice(0, 12).forEach((x) => lines.push(`- ${x}`));
+                            if (s.checklistItems.length > 12) lines.push(`+${s.checklistItems.length - 12} more`);
+                          }
+                          // Use a lightweight native modal via Alert
+                          Alert.alert('Details', lines.join('\n'), [{ text: 'OK' }]);
+                        }}
+                      >
+                        <Text style={styles.chipTitle}>{s.name}</Text>
+                        {typeof s.exactPrice === 'number' && s.exactPrice > 0 ? (
+                          <Text style={[styles.chipSub, { color: '#0E7A2D', fontWeight: '900' }]}>₹{Math.round(s.exactPrice)}</Text>
+                        ) : null}
+                        <Text style={styles.chipSub}>{Array.isArray(s.checklistItems) && s.checklistItems.length > 0 ? 'View details' : 'Details'}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
             </View>
           ))}
 
@@ -226,6 +445,60 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
   },
+  uiTitle: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '900',
+    color: COLORS.gray[600],
+    marginLeft: 4,
+  },
+  chipCard: {
+    minWidth: 220,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+  },
+  chipTitle: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '900',
+    color: COLORS.primaryDark,
+  },
+  chipSub: {
+    marginTop: 4,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
+    color: COLORS.gray[600],
+  },
+  workshopCard: {
+    minWidth: 260,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+  },
+  workshopName: { fontSize: FONT_SIZES.sm, fontWeight: '900', color: COLORS.primaryDark },
+  workshopSub: { marginTop: 4, fontSize: FONT_SIZES.xs, fontWeight: '700', color: COLORS.gray[600] },
+  workshopMeta: { marginTop: 6, fontSize: 12, fontWeight: '700', color: COLORS.gray[700] },
+  primaryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+  },
+  primaryBtnText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  ghostBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.12)',
+  },
+  ghostBtnText: { color: COLORS.primaryDark, fontWeight: '900', fontSize: 12 },
   msgRow: {
     marginTop: SPACING.sm,
     alignItems: 'flex-start',

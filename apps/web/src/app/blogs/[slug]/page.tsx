@@ -4,9 +4,10 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
-import { ArrowLeft, Calendar, Clock, Eye, Facebook, Linkedin, Link2, MessageCircle, Tag } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Eye, Facebook, Linkedin, MessageCircle, Tag } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
 import ViewCounter from '@/components/blog/ViewCounter';
+import CopyLinkButton from '@/components/blog/CopyLinkButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -340,20 +341,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     <Linkedin className="w-4 h-4" />
                     LinkedIn
                   </a>
-                  <a
-                    href={shareUrl}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-full transition text-gray-700 text-xs sm:text-sm font-semibold"
-                    title="Copy link"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (typeof navigator !== 'undefined' && navigator.clipboard) {
-                        navigator.clipboard.writeText(shareUrl).catch(() => null);
-                      }
-                    }}
-                  >
-                    <Link2 className="w-4 h-4" />
-                    Copy Link
-                  </a>
+                  <CopyLinkButton url={shareUrl} />
                 </div>
               </div>
             </article>

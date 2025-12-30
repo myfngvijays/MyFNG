@@ -1,6 +1,4 @@
-'use client';
-
-import { useEffect, useState } from 'react';
+import { notFound } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { 
@@ -19,7 +17,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useParams } from 'next/navigation';
 
 const services = [
   {
@@ -268,28 +265,13 @@ const services = [
   }
 ];
 
-export default function ServiceDetailPage() {
-  const params = useParams();
-  const slug = params?.slug as string;
+export default function ServiceDetailPage({ params }: { params: { slug: string } }) {
+  const slug = params?.slug;
   const service = services.find(s => s.slug === slug);
   const IconComponent = service?.icon;
 
   if (!service) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">Service Not Found</h1>
-            <p className="text-gray-600 mb-6">The service you're looking for doesn't exist.</p>
-            <Link href="/services" className="btn btn-primary">
-              View All Services
-            </Link>
-          </div>
-        </div>
-        <Footer />
-      </div>
-    );
+    notFound();
   }
 
   return (
@@ -313,7 +295,7 @@ export default function ServiceDetailPage() {
                   <IconComponent className="w-8 h-8 sm:w-10 sm:h-10" />
                 </div>
               )}
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold">{service.title}</h1>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white">{service.title}</h1>
             </div>
             <p className="text-base sm:text-lg md:text-xl text-gray-200 max-w-2xl">
               {service.longDescription}
@@ -398,7 +380,7 @@ export default function ServiceDetailPage() {
       {/* CTA Section */}
       <section className="py-12 sm:py-16 md:py-20 bg-gradient-to-br from-brand-primary to-brand-secondary text-white">
         <div className="container mx-auto px-3 sm:px-4 md:px-6 text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">Ready to Book {service.title}?</h2>
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-3 sm:mb-4">Ready to Book {service.title}?</h2>
           <p className="text-base sm:text-lg md:text-xl text-blue-100 mb-6 sm:mb-7 md:mb-8 max-w-2xl mx-auto px-4">
             Get transparent pricing, expert service, and AI-powered booking. Book now and experience the MyFNG difference.
           </p>

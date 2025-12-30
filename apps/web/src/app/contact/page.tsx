@@ -124,6 +124,23 @@ export default function ContactPage() {
                 </div>
 
                 <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                    Mobile Number <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    name="mobile"
+                    required
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    pattern="^\\+?[0-9]{10,15}$"
+                    title="Please enter a valid mobile number (10-15 digits)."
+                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none"
+                    placeholder="9167779696"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Subject</label>
                   <select className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none bg-white">
                     <option>General Inquiry</option>

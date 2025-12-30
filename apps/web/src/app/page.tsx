@@ -95,6 +95,7 @@ export default function HomePage() {
   const [whyIntent, setWhyIntent] = useState<WhyIntent>('instant');
   const [headerAiQuery, setHeaderAiQuery] = useState('');
   const [chatDraft, setChatDraft] = useState('');
+  const [latestBlogs, setLatestBlogs] = useState<Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string }>>([]);
 
   type ChatRole = 'user' | 'assistant';
   type UiSuggestion = {
@@ -124,6 +125,37 @@ export default function HomePage() {
       text: `Hi! I'm MY FNG AI Assistant. Aap apni car problem simple words me batao — main service/RSA suggest kar dunga aur approx price range dikhा dunga.\n\nAapko kis type ka issue aa raha hai?`,
     },
   ]);
+
+  // Homepage "From Our Blogs" should link to full blog pages.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/blogs/public?limit=3');
+        if (!res.ok) return;
+        const data = (await res.json()) as any;
+        const blogs = Array.isArray(data?.blogs) ? data.blogs : [];
+        const mapped = blogs
+          .map((b: any, idx: number) => {
+            const title = String(b?.title || '').trim();
+            const slug = String(b?.slug || '').trim();
+            const excerpt = String(b?.excerpt || '').trim();
+            if (!title || !slug) return null;
+            const readTime = `${Number(b?.read_time || 3)} min read`;
+            const tag = String(b?.category?.name || b?.category?.[0]?.name || 'Blog').trim() || 'Blog';
+            return { title, slug, excerpt, readTime, tag };
+          })
+          .filter(Boolean) as Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string }>;
+
+        if (!cancelled) setLatestBlogs(mapped);
+      } catch {
+        // ignore: keep fallback static cards
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatConnected, setChatConnected] = useState(false);
   const [chatContext, setChatContext] = useState<any>({}); // keep flexible (matches /api/chatbot context)
@@ -1512,30 +1544,59 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <BlogCard 
-              title="How AI is Revolutionizing Car Maintenance"
-              excerpt="Discover how artificial intelligence is transforming the way we maintain and service our vehicles, making car care smarter and more efficient."
-              readTime="5 min read"
-              tag="AI Technology"
-              color="bg-blue-600"
-              icon={<Sparkles className="w-10 h-10" />}
-            />
-            <BlogCard 
-              title="10 Ways to Save Money on Car Service"
-              excerpt="Learn practical tips and tricks to reduce your car maintenance costs without compromising on quality or safety."
-              readTime="4 min read"
-              tag="Cost Saving"
-              color="bg-green-500"
-              icon={<TrendingUp className="w-10 h-10" />}
-            />
-            <BlogCard 
-              title="Understanding Your Car's Service Schedule"
-              excerpt="A comprehensive guide to knowing when and why your car needs regular servicing to ensure longevity and performance."
-              readTime="6 min read"
-              tag="Maintenance"
-              color="bg-purple-600"
-              icon={<Calendar className="w-10 h-10" />}
-            />
+            {(latestBlogs.length
+              ? latestBlogs.map((b, idx) => {
+                  const palette = [
+                    { color: 'bg-blue-600', icon: <Sparkles className="w-10 h-10" /> },
+                    { color: 'bg-green-500', icon: <TrendingUp className="w-10 h-10" /> },
+                    { color: 'bg-purple-600', icon: <Calendar className="w-10 h-10" /> },
+                  ];
+                  const p = palette[idx % palette.length]!;
+                  return (
+                    <BlogCard
+                      key={b.slug}
+                      title={b.title}
+                      excerpt={b.excerpt || 'Read the full article on MyFNG blog.'}
+                      readTime={b.readTime}
+                      tag={b.tag}
+                      color={p.color}
+                      icon={p.icon}
+                      href={`/blogs/${b.slug}`}
+                    />
+                  );
+                })
+              : [
+                  <BlogCard
+                    key="fallback-1"
+                    title="How AI is Revolutionizing Car Maintenance"
+                    excerpt="Discover how artificial intelligence is transforming the way we maintain and service our vehicles, making car care smarter and more efficient."
+                    readTime="5 min read"
+                    tag="AI Technology"
+                    color="bg-blue-600"
+                    icon={<Sparkles className="w-10 h-10" />}
+                    href="/blogs"
+                  />,
+                  <BlogCard
+                    key="fallback-2"
+                    title="10 Ways to Save Money on Car Service"
+                    excerpt="Learn practical tips and tricks to reduce your car maintenance costs without compromising on quality or safety."
+                    readTime="4 min read"
+                    tag="Cost Saving"
+                    color="bg-green-500"
+                    icon={<TrendingUp className="w-10 h-10" />}
+                    href="/blogs"
+                  />,
+                  <BlogCard
+                    key="fallback-3"
+                    title="Understanding Your Car's Service Schedule"
+                    excerpt="A comprehensive guide to knowing when and why your car needs regular servicing to ensure longevity and performance."
+                    readTime="6 min read"
+                    tag="Maintenance"
+                    color="bg-purple-600"
+                    icon={<Calendar className="w-10 h-10" />}
+                    href="/blogs"
+                  />,
+                ]) as any}
           </div>
 
           <div className="text-center mt-8 sm:mt-10 md:mt-12">
@@ -2394,7 +2455,8 @@ function BlogCard({
   readTime, 
   tag, 
   color, 
-  icon 
+  icon,
+  href,
 }: { 
   title: string; 
   excerpt: string; 
@@ -2402,9 +2464,10 @@ function BlogCard({
   tag: string; 
   color: string; 
   icon: React.ReactNode;
+  href: string;
 }) {
   return (
-    <Link href="/blogs" className="bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 group flex flex-col h-full border border-gray-100">
+    <Link href={href} className="bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 group flex flex-col h-full border border-gray-100">
       {/* Header Area */}
       <div className={`h-48 ${color} flex items-center justify-center relative overflow-hidden`}>
         {/* Decorative Circles */}

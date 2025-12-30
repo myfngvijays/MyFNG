@@ -19,13 +19,18 @@ function firstMatchIntent(text: string): IntentCategory {
   // Booking intent: do NOT trigger on informational pickup/drop questions like "pickup ke baad kya hoga".
   // Require booking/scheduling language, or explicit "pickup chahiye".
   if (
-    /(book|booking|schedule|appointment|confirm booking|service karna hai|book karna|kal|today|tomorrow|pickup\s*(chahiye|chahie|chaiye|needed))/i.test(
+    /(book|booking|schedule|appointment|confirm booking|book\s*karna|kal|today|tomorrow|pickup\s*(chahiye|chahie|chaiye|needed))/i.test(
       text
     )
   )
     return 'BookingRequest';
   if (/(price|cost|charges|rate|kitna|kitne|fees|estimate|budget|quotation|quote)/i.test(text)) return 'PriceEnquiry';
-  if (/(periodic|regular|service due|maintenance|engine oil|oil change|general service|servicing)/i.test(text)) return 'PeriodicService';
+  if (
+    /(periodic|regular|service due|maintenance|engine oil|oil change|general service|servicing|\bcar\s*service\b|\bgadi\s*ki\s*service\b|service\s*karana\s*hai|service\s*karwana\s*hai)/i.test(
+      text
+    )
+  )
+    return 'PeriodicService';
   // NOTE: keep word boundaries for short tokens like AC to avoid matching words like "exactly".
   if (
     /(repair|issue|problem|noise|vibration|\bac\b|\ba\/c\b|cooling|\bbrake\b|\bbattery\b|\bclutch\b|\bengine\b|\bscan\b|starting|not starting|kharab|awaaz|awaj)/i.test(
@@ -63,7 +68,7 @@ export async function classifyIntent(params: { message: string; context: Chatbot
     Boolean(apiKey) &&
     intent === 'GeneralInfo' &&
     msg.length >= 10 &&
-    (/\?/.test(msg) || /(price|cost|workshop|book|booking|warranty|complaint|repair|clean)/i.test(msg));
+    (/\?/.test(msg) || /(price|cost|workshop|book|booking|service|warranty|complaint|repair|clean)/i.test(msg));
 
   if (needsLlm) {
     try {

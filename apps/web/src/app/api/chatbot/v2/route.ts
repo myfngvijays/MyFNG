@@ -41,8 +41,62 @@ export async function POST(req: Request) {
   const lang = pickUserLang(context, userText);
   let intent = await classifyIntent({ message: userText, context });
 
+  // Flow override: if user is already in booking/pricing flow, keep routing consistent.
+  // Only override when current message is ambiguous (GeneralInfo). If user explicitly asks booking/pricing,
+  // respect the classifier result so the user can switch flows.
+  const looksLikeYesNo = /^(yes|haan|ha|sahi|correct|ok|okay|bilkul|no|nahi|nahin|change|galat|wrong)\b/i.test(userText.trim());
+  const looksLikeBookingStep =
+    looksLikeYesNo ||
+    /([6-9]\d{9})/.test(userText.replace(/\D/g, '')) || // phone
+    /\b([A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,3}\s?\d{3,4})\b/i.test(userText) || // vehicle number
+    /(pickup|self\s*visit|self\s*drop|walk\s*in)/i.test(userText) ||
+    /\b(tata|maruti|suzuki|hyundai|mahindra|honda|toyota|kia|mg|renault|nissan|ford|skoda|volkswagen|vw|bmw|audi|mercedes)\b/i.test(
+      userText
+    ); // model line
+  const looksLikePricingStep =
+    looksLikeBookingStep || /(price|cost|charges|rate|kitna|fees|estimate|quotation|quote|periodic|service)/i.test(userText);
+
+  // IMPORTANT: do NOT hijack informational KB questions into booking/pricing.
+  if (context.flow === 'BOOKING' && intent.intent === 'GeneralInfo' && looksLikeBookingStep) {
+    intent = { ...intent, intent: 'BookingRequest', confidence: Math.max(intent.confidence, 0.75) };
+  }
+  // Payment-link consent step: if we asked "payment link chahiye?" and user replies yes/no,
+  // route it to booking (NOT KB).
+  const looksLikePaymentConsent =
+    looksLikeYesNo || /(i\s*want|chahiye|haan\s*chahiye|send\s*(link)?|link\s*send)/i.test(userText.trim());
+  if (context.awaitingPaymentLinkConsent && intent.intent === 'GeneralInfo' && looksLikePaymentConsent) {
+    intent = { ...intent, intent: 'BookingRequest', confidence: Math.max(intent.confidence, 0.75) };
+  }
+  const looksLikeLastServiceReply = Boolean(extractedPatch.lastServiceDoneAt) || /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s*\d{4}$/i.test(userText.trim()) || /^\d{4}$/.test(userText.trim());
+  const looksLikeCarModelReply =
+    /^[a-zA-Z0-9][a-zA-Z0-9\s\-]{1,30}$/.test(userText.trim()) &&
+    /[a-zA-Z]/.test(userText.trim()) &&
+    !looksLikeYesNo &&
+    !/\b(price|cost|charges|rate|fees|workshop|address|booking|book|pickup|service)\b/i.test(userText);
+  const looksLikePickupChoice = /(pickup|self\s*visit|self-visit|self\s*drop|walk\s*in)/i.test(userText.trim());
+  if (
+    context.flow === 'PRICING' &&
+    intent.intent === 'GeneralInfo' &&
+    (looksLikePricingStep || looksLikeLastServiceReply || (context.awaitingCarModelSelection && looksLikeCarModelReply))
+  ) {
+    intent = { ...intent, intent: 'PriceEnquiry', confidence: Math.max(intent.confidence, 0.75) };
+  }
+  // If user chooses pickup/self-visit after pricing, switch to booking.
+  if (context.flow === 'PRICING' && intent.intent === 'GeneralInfo' && looksLikePickupChoice) {
+    intent = { ...intent, intent: 'BookingRequest', confidence: Math.max(intent.confidence, 0.75) };
+  }
+  // Workshop flow: if we just asked for area/city/pincode, treat the next location-like message as WorkshopLocation.
+  const looksLikeLocationReply =
+    /^\d{6}$/.test(userText.replace(/\D/g, '')) ||
+    (/^[a-zA-Z\u0900-\u097F\s]{3,40}$/.test(userText.trim()) && !/\b(price|cost|book|booking|repair|clean|service)\b/i.test(userText));
+  if (context.flow === 'WORKSHOP' && intent.intent === 'GeneralInfo' && looksLikeLocationReply) {
+    intent = { ...intent, intent: 'WorkshopLocation', confidence: Math.max(intent.confidence, 0.75) };
+  }
+  const missing = detectMissingInfo(context);
+
   // KB-first fast path for informational questions (stable + avoids agent/tool costs).
-  // IMPORTANT: if KB returns an answer, return it directly with empty CTA.
+  // IMPORTANT: run AFTER flow override so step replies like "self visit/ok/yes" don't get hijacked by KB.
+  // If KB returns an answer, return it directly with empty CTA.
   const kbEligible =
     intent.intent === 'GeneralInfo' ||
     intent.intent === 'WarrantySupport' ||
@@ -74,37 +128,6 @@ export async function POST(req: Request) {
     }
   }
 
-  // Flow override: if user is already in booking/pricing flow, keep routing consistent.
-  // Only override when current message is ambiguous (GeneralInfo). If user explicitly asks booking/pricing,
-  // respect the classifier result so the user can switch flows.
-  const looksLikeYesNo = /^(yes|haan|ha|sahi|correct|ok|okay|bilkul|no|nahi|nahin|change|galat|wrong)\b/i.test(userText.trim());
-  const looksLikeBookingStep =
-    looksLikeYesNo ||
-    /([6-9]\d{9})/.test(userText.replace(/\D/g, '')) || // phone
-    /\b([A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,3}\s?\d{3,4})\b/i.test(userText) || // vehicle number
-    /(pickup|self\s*visit|self\s*drop|walk\s*in)/i.test(userText) ||
-    /\b(tata|maruti|suzuki|hyundai|mahindra|honda|toyota|kia|mg|renault|nissan|ford|skoda|volkswagen|vw|bmw|audi|mercedes)\b/i.test(
-      userText
-    ); // model line
-  const looksLikePricingStep =
-    looksLikeBookingStep || /(price|cost|charges|rate|kitna|fees|estimate|quotation|quote|periodic|service)/i.test(userText);
-
-  // IMPORTANT: do NOT hijack informational KB questions into booking/pricing.
-  if (context.flow === 'BOOKING' && intent.intent === 'GeneralInfo' && looksLikeBookingStep) {
-    intent = { ...intent, intent: 'BookingRequest', confidence: Math.max(intent.confidence, 0.75) };
-  }
-  if (context.flow === 'PRICING' && intent.intent === 'GeneralInfo' && looksLikePricingStep) {
-    intent = { ...intent, intent: 'PriceEnquiry', confidence: Math.max(intent.confidence, 0.75) };
-  }
-  // Workshop flow: if we just asked for area/city/pincode, treat the next location-like message as WorkshopLocation.
-  const looksLikeLocationReply =
-    /^\d{6}$/.test(userText.replace(/\D/g, '')) ||
-    (/^[a-zA-Z\u0900-\u097F\s]{3,40}$/.test(userText.trim()) && !/\b(price|cost|book|booking|repair|clean|service)\b/i.test(userText));
-  if (context.flow === 'WORKSHOP' && intent.intent === 'GeneralInfo' && looksLikeLocationReply) {
-    intent = { ...intent, intent: 'WorkshopLocation', confidence: Math.max(intent.confidence, 0.75) };
-  }
-  const missing = detectMissingInfo(context);
-
   // Agent gate (min-cost): use agent primarily for actionable flows.
   // If agent fails or returns invalid output, fall back to deterministic router.
   const isValidLatLng = (lat: unknown, lng: unknown) => {
@@ -117,11 +140,11 @@ export async function POST(req: Request) {
   };
   const canUseWorkshopAgent = isValidLatLng(context.locationLat, context.locationLng);
 
-  const agentEligible =
-    intent.intent === 'PriceEnquiry' ||
-    intent.intent === 'PeriodicService' ||
-    // Keep WorkshopLocation deterministic for stable UI (carousel) and to avoid odd location/tool behavior.
-    intent.intent === 'BookingRequest';
+  // Keep pricing + workshop deterministic to follow our scripted flow and keep token cost minimum.
+  // Agent is ONLY allowed for explicit payment-link style asks (otherwise it breaks booking flow continuity by not setting ctx.flow).
+  const wantsPaymentLink =
+    Boolean((intent as any)?.entities?.wantsPaymentLink) || /(pay\s*now|payment\s*link|upi\s*link|pay link|pay online)/i.test(userText);
+  const agentEligible = intent.intent === 'BookingRequest' && wantsPaymentLink;
   if (agentEligible) {
     const agent = await runToolCallingAgent({ userText, lang, context, intent });
     if (agent) {
