@@ -11,8 +11,18 @@ function firstMatchIntent(text: string): IntentCategory {
 
   if (/(human|agent|call me|talk to human|representative|manager|callback|escalate|complaint agent)/i.test(text)) return 'HumanEscalation';
   if (/(warranty|guarantee|support|complaint|complain|issue after service|post service)/i.test(text)) return 'WarrantySupport';
-  if (/(near|nearby|closest|nearest|workshop|location|address|map|google maps|direction|navigate|kahan|kaha|address)/i.test(text)) return 'WorkshopLocation';
-  if (/(book|booking|schedule|pickup|drop|appointment|confirm booking|service karna hai|book karna|kal|today|tomorrow)/i.test(text))
+  // Workshop/location: keep strict. Hindi "kaha/kahan" alone is too ambiguous (e.g. "aap kaha service karaoge")
+  // so require workshop-ish keywords OR a clear "where is your workshop" phrasing.
+  if (/(near|nearby|closest|nearest|workshop|service\s*center|service\s*centre|location|map|google maps|direction|navigate)/i.test(text))
+    return 'WorkshopLocation';
+  if (/(kaha|kahan).*(workshop|address|location|map|service\s*center|service\s*centre)/i.test(text)) return 'WorkshopLocation';
+  // Booking intent: do NOT trigger on informational pickup/drop questions like "pickup ke baad kya hoga".
+  // Require booking/scheduling language, or explicit "pickup chahiye".
+  if (
+    /(book|booking|schedule|appointment|confirm booking|service karna hai|book karna|kal|today|tomorrow|pickup\s*(chahiye|chahie|chaiye|needed))/i.test(
+      text
+    )
+  )
     return 'BookingRequest';
   if (/(price|cost|charges|rate|kitna|kitne|fees|estimate|budget|quotation|quote)/i.test(text)) return 'PriceEnquiry';
   if (/(periodic|regular|service due|maintenance|engine oil|oil change|general service|servicing)/i.test(text)) return 'PeriodicService';

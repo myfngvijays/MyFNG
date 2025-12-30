@@ -129,7 +129,8 @@ export default function HomePage() {
   const [chatContext, setChatContext] = useState<any>({}); // keep flexible (matches /api/chatbot context)
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const lastAppliedSyncAtRef = useRef<number>(0);
-  const [suggestionModal, setSuggestionModal] = useState<UiSuggestion | null>(null);
+  // V1 homepage chat is disabled; keep this loose to avoid TS nullability issues during build.
+  const [suggestionModal, setSuggestionModal] = useState<any>(null);
 
   const CHAT_STORAGE_KEY = 'myfng_ai_chat_state_v1';
   const CHAT_CHANNEL_NAME = 'myfng_ai_chat_channel_v1';
@@ -639,7 +640,7 @@ export default function HomePage() {
               const q = headerAiQuery.trim();
               if (!q) return;
               setChatDraft(q);
-              setIsChatOpen(true);
+              window.location.href = '/ai-booking';
             }}
             className="w-full"
           >
@@ -719,7 +720,7 @@ export default function HomePage() {
                   type="button"
                   onClick={() => {
                     setChatDraft('I want to book a car service.');
-                    setIsChatOpen(true);
+                    window.location.href = '/ai-booking';
                   }}
                   className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-blue-900 bg-white border border-blue-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
@@ -875,7 +876,7 @@ export default function HomePage() {
       {/* 2. Our Services - Option G: Filter Bar + Results (shop-like) */}
       <ServiceExplorer
         services={services}
-        onAskAI={() => setIsChatOpen(true)}
+        onAskAI={() => (window.location.href = '/ai-booking')}
         onQuickBook={() => setIsBookingFormOpen(true)}
         popularSlugs={['periodic-service', 'ac-service', 'battery-service', 'brake-service', 'engine-service']}
       />
@@ -1716,33 +1717,18 @@ export default function HomePage() {
 
       {/* Floating Chatbot (Always Visible) */}
       <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50 flex flex-col items-end gap-2">
-        {/* Separate V2 button (opens full page) */}
-        {!isChatOpen && (
-          <Link
-            href="/ai-booking?v=2"
-            className="bg-black/90 hover:bg-black text-white px-3 sm:px-4 py-2 rounded-full shadow-xl transition-all transform hover:scale-105 flex items-center gap-2 border border-white/15 backdrop-blur text-xs sm:text-sm"
-          >
-            <Cpu className="w-4 h-4" />
-            <span className="font-semibold">Chat v2</span>
-          </Link>
-        )}
-
-        <button 
-          onClick={() => {
-            const next = !isChatOpen;
-            if (!next) setSuggestionModal(null);
-            setIsChatOpen(next);
-          }}
+        <Link
+          href="/ai-booking"
           className="bg-brand-primary hover:bg-brand-primary-hover text-white px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2 sm:gap-3 group border-2 sm:border-4 border-white/20 animate-bounce-slow"
         >
           <Bot className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 group-hover:rotate-12 transition-transform flex-shrink-0" />
-          <span className="font-semibold text-xs sm:text-sm md:text-base hidden sm:inline">Ask MY FNG AI</span>
+          <span className="font-semibold text-xs sm:text-sm md:text-base hidden sm:inline">MY FNG AI</span>
           <span className="font-semibold text-xs sm:hidden">AI</span>
-        </button>
+        </Link>
       </div>
 
       {/* Chatbot Modal */}
-      {isChatOpen && (
+      {false && (
         <div className="fixed bottom-40 sm:bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-fade-in-up">
           {suggestionModal && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
@@ -1772,7 +1758,7 @@ export default function HomePage() {
                     <div>
                       <div className="text-sm font-semibold text-gray-900 mb-2">Checkpoints</div>
                       <ul className="list-disc pl-5 text-sm text-gray-800 space-y-1">
-                        {suggestionModal.checklistItems.map((it, idx) => (
+                        {suggestionModal.checklistItems.map((it: any, idx: number) => (
                           <li key={idx}>{it}</li>
                         ))}
                       </ul>
@@ -1813,19 +1799,19 @@ export default function HomePage() {
               <div className="min-w-0">
                 <p className="text-white font-bold text-xs sm:text-sm truncate">MY FNG AI Assistant</p>
                 <p className="text-blue-100 text-[10px] sm:text-xs truncate">
-                  {chatConnected ? 'API: /api/chatbot • Connected' : 'API: /api/chatbot • Connecting...'}
+                  MY FNG AI • Online
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
+            <Link
+              href="/ai-booking"
+              className="text-blue-100 hover:text-white text-[10px] sm:text-xs font-semibold whitespace-nowrap"
+            >
+                Open
+            </Link>
               <Link
                 href="/ai-booking"
-                className="text-blue-100 hover:text-white text-[10px] sm:text-xs font-semibold whitespace-nowrap"
-              >
-                Open
-              </Link>
-              <Link
-                href="/ai-booking?v=2"
                 className="text-blue-100 hover:text-white text-[10px] sm:text-xs font-semibold whitespace-nowrap"
               >
                 V2
@@ -2087,7 +2073,7 @@ export default function HomePage() {
                 type="button"
                 onClick={() => {
                   setChatDraft('I want to book a car service.');
-                  setIsChatOpen(true);
+                  window.location.href = '/ai-booking';
                 }}
                 className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
               >

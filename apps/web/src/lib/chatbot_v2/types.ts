@@ -33,7 +33,13 @@ export type ChatbotV2Context = {
   locationConfirmed?: boolean;
 
   // Conversation memory (lightweight)
-  flow?: 'BOOKING' | 'PRICING';
+  flow?: 'BOOKING' | 'PRICING' | 'WORKSHOP';
+  greeted?: boolean; // greeting should happen only once per conversation
+
+  // Last knowledge answer memory (for follow-ups like "tell me more")
+  lastKbQuery?: string;
+  lastKbAnswerFacts?: string;
+  lastKbAt?: number; // epoch ms
 
   // booking / payment
   leadId?: string;
@@ -69,7 +75,8 @@ export type WorkshopHit = {
   name: string;
   address?: string | null;
   mapLink?: string | null;
-  km: number;
+  imageUrl?: string | null;
+  km: number | null;
 };
 
 export type PricingHit = {

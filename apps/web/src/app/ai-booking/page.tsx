@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { ArrowRight, Bot } from 'lucide-react';
 import { createChatPaymentOrder, initializeRazorpayCheckout, loadRazorpayScript } from '@/lib/services/paymentService';
 
@@ -18,7 +17,12 @@ type UiSuggestion = {
 };
 type UiPayload =
   | { kind: 'CATEGORY_CAROUSEL'; title?: string; items: Array<{ id: string; label: string; subtitle?: string }> }
-  | { kind: 'DUAL_CAROUSEL'; title?: string; category: string; packages: UiSuggestion[]; services: UiSuggestion[] };
+  | { kind: 'DUAL_CAROUSEL'; title?: string; category: string; packages: UiSuggestion[]; services: UiSuggestion[] }
+  | {
+      kind: 'WORKSHOP_CAROUSEL';
+      title?: string;
+      items: Array<{ id: string; name: string; subtitle?: string; km?: number | null; imageUrl?: string | null; mapLink?: string | null }>;
+    };
 type ChatMsg = {
   id: string;
   role: ChatRole;
@@ -27,11 +31,10 @@ type ChatMsg = {
   ui?: UiPayload;
 };
 
-const STORAGE_KEY_V1 = 'myfng_ai_chat_state_v1';
-const CHANNEL_NAME_V1 = 'myfng_ai_chat_channel_v1';
-const STORAGE_KEY_V2 = 'myfng_ai_chat_state_v2';
-const CHANNEL_NAME_V2 = 'myfng_ai_chat_channel_v2';
+const STORAGE_KEY = 'myfng_ai_chat_state_v2';
+const CHANNEL_NAME = 'myfng_ai_chat_channel_v2';
 const REQUEST_TIMEOUT_MS = 45000;
+const LOCATION_TTL_MS = 15 * 60 * 1000; // refresh location every 15 min to keep "near workshop" accurate
 
 function safeParseJson<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -52,11 +55,8 @@ export default function AIBookingPage() {
 }
 
 function AIBookingPageInner() {
-  const search = useSearchParams();
-  const isV2 = (search?.get('v') || '').trim() === '2';
-  const CHAT_API = isV2 ? '/api/chatbot/v2' : '/api/chatbot';
-  const STORAGE_KEY = isV2 ? STORAGE_KEY_V2 : STORAGE_KEY_V1;
-  const CHANNEL_NAME = isV2 ? CHANNEL_NAME_V2 : CHANNEL_NAME_V1;
+  // V2 is now the only chatbot experience.
+  const CHAT_API = '/api/chatbot/v2';
 
   const [chatDraft, setChatDraft] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -69,9 +69,7 @@ function AIBookingPageInner() {
     {
       id: 'm0',
       role: 'assistant',
-      text: isV2
-        ? "Hi! I'm MY FNG AI Assistant (v2).\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?"
-        : "Hi! I'm MY FNG AI Assistant.\nMY FNG Mumbai, Thane, Navi Mumbai & Palghar me 50+ A-grade workshops ke saath car service karata hai.\nAap regular service / repair issue / cleaning me se kya chahte ho?\nNote: Exact pricing & workshop address service expert callback pe confirm karega.",
+      text: "Hi! I'm MY FNG AI Assistant.\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?",
     },
   ]);
 
@@ -99,8 +97,18 @@ function AIBookingPageInner() {
     const incomingAt = typeof saved?.updatedAt === 'number' ? saved.updatedAt : 0;
     if (incomingAt) lastAppliedSyncAtRef.current = incomingAt;
     if (saved?.chatMessages?.length) setChatMessages(saved.chatMessages);
-    if (saved?.chatContext) setChatContext({ ...(saved.chatContext || {}), docMode: false });
-  }, [STORAGE_KEY, isV2]);
+    if (saved?.chatContext) {
+      const ctx = { ...(saved.chatContext || {}), docMode: false };
+      // Always re-capture current location on page open.
+      // (Prevents stale Mumbai coords when user is actually in Delhi.)
+      delete (ctx as any).locationLat;
+      delete (ctx as any).locationLng;
+      delete (ctx as any).locationLabel;
+      delete (ctx as any).addressText;
+      delete (ctx as any).locationCapturedAt;
+      setChatContext(ctx);
+    }
+  }, []);
 
   // Load Razorpay checkout script
   useEffect(() => {
@@ -166,17 +174,43 @@ function AIBookingPageInner() {
   // Best-effort: capture coords + address (same as homepage widget)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (chatContext?.addressText && Number.isFinite(chatContext?.locationLat) && Number.isFinite(chatContext?.locationLng)) return;
     if (!('geolocation' in navigator)) return;
 
+    const lastAt = typeof chatContext?.locationCapturedAt === 'number' ? chatContext.locationCapturedAt : 0;
+    const hasCoords = Number.isFinite(chatContext?.locationLat) && Number.isFinite(chatContext?.locationLng);
+    const isFresh = lastAt && Date.now() - lastAt < LOCATION_TTL_MS;
+    if (hasCoords && isFresh) return;
+
     let cancelled = false;
+
+    const buildShortLabel = (data: any) => {
+      const a = data?.address || {};
+      const part1 =
+        a?.suburb ||
+        a?.neighbourhood ||
+        a?.village ||
+        a?.town ||
+        a?.city ||
+        a?.county ||
+        a?.state_district ||
+        '';
+      const part2 = a?.city || a?.town || a?.state || a?.region || '';
+      const label = [part1, part2].filter(Boolean).join(', ').replace(/\s+/g, ' ').trim();
+      return label.slice(0, 80);
+    };
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           if (cancelled) return;
-          setChatContext((prev: any) => ({ ...(prev || {}), locationLat: lat, locationLng: lng }));
+          setChatContext((prev: any) => ({
+            ...(prev || {}),
+            locationLat: lat,
+            locationLng: lng,
+            locationCapturedAt: Date.now(),
+          }));
 
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12&addressdetails=1`
@@ -186,19 +220,28 @@ function AIBookingPageInner() {
           const display = data?.display_name || '';
           if (!display) return;
           if (cancelled) return;
-          setChatContext((prev: any) => ({ ...(prev || {}), addressText: display, locationLat: lat, locationLng: lng }));
+          const shortLabel = buildShortLabel(data);
+          setChatContext((prev: any) => ({
+            ...(prev || {}),
+            addressText: display,
+            locationLabel: shortLabel || prev?.locationLabel,
+            locationLat: lat,
+            locationLng: lng,
+            locationCapturedAt: Date.now(),
+          }));
         } catch {
           // ignore
         }
       },
       () => {},
-      { enableHighAccuracy: false, timeout: 6000, maximumAge: 5 * 60 * 1000 }
+      // maxAge=0 ensures we don't reuse very old cached GPS for "near workshop"
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
 
     return () => {
       cancelled = true;
     };
-  }, [chatContext?.addressText, chatContext?.locationLat, chatContext?.locationLng]);
+  }, [chatContext?.locationCapturedAt, chatContext?.locationLat, chatContext?.locationLng]);
 
   async function sendChatMessage(rawText: string, displayText?: string) {
     const text = (rawText || '').trim();
@@ -298,6 +341,22 @@ function AIBookingPageInner() {
             category: String(ui.category || '').trim(),
             packages: pkg,
             services: svc,
+          };
+        }
+        if (ui.kind === 'WORKSHOP_CAROUSEL' && Array.isArray(ui.items)) {
+          return {
+            kind: 'WORKSHOP_CAROUSEL',
+            title: typeof ui.title === 'string' ? ui.title : undefined,
+            items: ui.items
+              .map((it: any) => ({
+                id: String(it?.id || ''),
+                name: String(it?.name || '').trim(),
+                subtitle: typeof it?.subtitle === 'string' ? it.subtitle : undefined,
+                km: typeof it?.km === 'number' ? it.km : null,
+                imageUrl: typeof it?.imageUrl === 'string' ? it.imageUrl : null,
+                mapLink: typeof it?.mapLink === 'string' ? it.mapLink : null,
+              }))
+              .filter((it: any) => it.id && it.name),
           };
         }
         return undefined;
@@ -656,6 +715,61 @@ function AIBookingPageInner() {
                             </div>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {!isUser && m.ui?.kind === 'WORKSHOP_CAROUSEL' && (
+                      <div className="mt-2">
+                        {m.ui.title && <div className="text-xs font-semibold text-gray-600 mb-1">{m.ui.title}</div>}
+                        <div className="flex gap-2 overflow-x-auto pb-2">
+                          {m.ui.items.map((w) => (
+                            <div
+                              key={w.id}
+                              className="min-w-[260px] bg-white border border-gray-200 rounded-xl overflow-hidden flex-shrink-0"
+                            >
+                              <div className="h-28 bg-gray-100">
+                                {w.imageUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={w.imageUrl} alt={w.name} className="w-full h-full object-cover" />
+                                ) : null}
+                              </div>
+                              <div className="p-3">
+                                <div className="font-semibold text-sm text-gray-900">{w.name}</div>
+                                {w.subtitle && <div className="text-xs text-gray-500 mt-1">{w.subtitle}</div>}
+                                <div className="text-xs text-gray-600 mt-2">
+                                  {typeof w.km === 'number' ? `${w.km.toFixed(1)} km away` : 'Distance unavailable'}
+                                </div>
+                                <div className="mt-2 flex gap-2">
+                                  {w.mapLink ? (
+                                    <a
+                                      href={w.mapLink}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center justify-center px-3 py-2 text-xs font-semibold rounded-lg bg-brand-primary text-white hover:opacity-95"
+                                    >
+                                      Directions
+                                    </a>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => sendChatMessage(`workshop ${w.name}`)}
+                                      className="inline-flex items-center justify-center px-3 py-2 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:opacity-95"
+                                    >
+                                      Select
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => sendChatMessage('Pickup chahiye', 'Pickup chahiye')}
+                                    className="inline-flex items-center justify-center px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 hover:bg-gray-50"
+                                  >
+                                    Pickup?
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 

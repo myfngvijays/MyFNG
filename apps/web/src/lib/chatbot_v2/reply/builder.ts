@@ -17,17 +17,61 @@ function defaultCta(lang: UserLang) {
   return 'Aap kaunsi car chalate ho aur aapka area kaunsa hai?';
 }
 
+function helpMenuCta(lang: UserLang) {
+  if (lang === 'en') return 'What do you need — service, repair, cleaning, or workshop location?';
+  if (lang === 'hi') return 'आपको क्या चाहिए — service, repair, cleaning, या workshop location?';
+  return 'Aapko kya chahiye — service, repair, cleaning, ya workshop location?';
+}
+
+function followUpCta(lang: UserLang, intent: IntentCategory) {
+  if (intent === 'RepairIssue') {
+    if (lang === 'en') return 'What issue are you facing? Also share car model + area.';
+    if (lang === 'hi') return 'कौन‑सा issue है? साथ में car model + area भी बता दीजिए।';
+    return 'Kaunsa issue hai? Saath me car model + area bhi bata do.';
+  }
+  if (intent === 'CleaningDetailing') {
+    if (lang === 'en') return 'Interior or exterior? Also share your area.';
+    if (lang === 'hi') return 'Interior या exterior? और आपका area?';
+    return 'Interior ya exterior? Aur aapka area?';
+  }
+  if (intent === 'WorkshopLocation') {
+    if (lang === 'en') return 'Share your area/pincode, I’ll show nearest verified workshops.';
+    if (lang === 'hi') return 'अपना area/pincode भेजिए, मैं nearest verified workshops दिखा दूँगा।';
+    return 'Apna area/pincode bhejo, main nearest verified workshops dikha dunga.';
+  }
+  // For general FAQs and info, don't aggressively ask model+area.
+  return helpMenuCta(lang);
+}
+
 export function buildWorkshopReply(params: { lang: UserLang; radiusKm: number; workshops: WorkshopHit[] }): ChatbotV2Response {
   const { lang, radiusKm, workshops } = params;
+  if (workshops.length === 0) {
+    const msg =
+      lang === 'en'
+        ? `No verified workshops found within ${radiusKm || 200} km. Location allow kar do ya area/pincode bhejo.`
+        : lang === 'hi'
+          ? `${radiusKm || 200} km के अंदर verified workshops नहीं मिले। Location allow कर दीजिए या area/pincode भेजिए।`
+          : `${radiusKm || 200} km ke andar verified workshops nahi mile. Location allow kar do ya area/pincode bhejo.`;
+    return { type: 'answer', message: joinShortLines([msg]), cta: followUpCta(lang, 'WorkshopLocation'), data: { radiusKm, workshops } };
+  }
   const header =
     lang === 'en'
-      ? `Nearest verified workshops (within ${radiusKm} km):`
+      ? radiusKm > 0
+        ? `Nearest verified workshops (within ${radiusKm} km):`
+        : `Verified workshops:`
       : lang === 'hi'
-        ? `Nearest verified workshops (${radiusKm} km के अंदर):`
-        : `Nearest verified workshops (within ${radiusKm} km):`;
+        ? radiusKm > 0
+          ? `Nearest verified workshops (${radiusKm} km के अंदर):`
+          : `Verified workshops:`
+        : radiusKm > 0
+          ? `Nearest verified workshops (within ${radiusKm} km):`
+          : `Verified workshops:`;
 
   // Keep chat short (3–5 lines). Put full list in data for UI.
-  const preview = workshops.slice(0, 2).map((w, i) => `${i + 1}) ${w.name} (${w.km.toFixed(1)} km)`);
+  const preview = workshops.slice(0, 2).map((w, i) => {
+    const kmText = typeof w.km === 'number' ? `${w.km.toFixed(1)} km` : 'distance unknown';
+    return `${i + 1}) ${w.name} (${kmText})`;
+  });
   const more = workshops.length > 2 ? (lang === 'hi' ? `+${workshops.length - 2} और options` : `+${workshops.length - 2} more`) : '';
 
   const cta =
@@ -41,7 +85,22 @@ export function buildWorkshopReply(params: { lang: UserLang; radiusKm: number; w
     type: 'answer',
     message: joinShortLines([header, ...preview, more]),
     cta,
-    data: { radiusKm, workshops },
+    data: {
+      radiusKm,
+      workshops,
+      ui: {
+        kind: 'WORKSHOP_CAROUSEL',
+        title: header,
+        items: workshops.map((w: any) => ({
+          id: String(w.id),
+          name: String(w.name),
+          subtitle: w.address ? String(w.address) : undefined,
+          km: typeof w.km === 'number' ? w.km : null,
+          imageUrl: w.imageUrl ? String(w.imageUrl) : null,
+          mapLink: w.mapLink ? String(w.mapLink) : null,
+        })),
+      },
+    },
   };
 }
 
@@ -92,7 +151,7 @@ export function buildPricingReply(params: { lang: UserLang; items: PricingHit[] 
 }
 
 export function buildAnswerReply(params: { lang: UserLang; intent: IntentCategory; answer: string | null }): ChatbotV2Response {
-  const { lang, answer } = params;
+  const { lang, answer, intent } = params;
   // Small variation without extra tokens (keeps it human, avoids same feel)
   const openers =
     lang === 'en'
@@ -102,12 +161,19 @@ export function buildAnswerReply(params: { lang: UserLang; intent: IntentCategor
         : ['Samajh gaya.', 'Theek hai.', 'Bilkul.'];
   const intro = openers[Math.floor(Date.now() / 60000) % openers.length]!;
 
-  const msg = answer ? joinShortLines([answer]) : joinShortLines([intro, '']);
+  const msg = answer ? joinShortLines([answer]) : joinShortLines([intro, lang === 'en' ? 'Aap apna sawal thoda clear kar do.' : lang === 'hi' ? 'अपना सवाल थोड़ा clear कर दीजिए।' : 'Apna sawal thoda clear kar do.']);
 
   return {
     type: 'answer',
     message: msg.trim() || intro,
-    cta: defaultCta(lang),
+    // If we don't have a KB answer, avoid spamming the main menu repeatedly.
+    cta: answer
+      ? followUpCta(lang, intent)
+      : lang === 'en'
+        ? 'What exactly do you want to know? (Example: pricing / booking / nearest workshop)'
+        : lang === 'hi'
+          ? 'आप exactly क्या जानना चाहते हैं? (pricing / booking / nearest workshop)'
+          : 'Exactly kya jaan-na hai? (pricing / booking / nearest workshop)',
     data: {},
   };
 }

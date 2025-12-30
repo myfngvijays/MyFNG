@@ -14,6 +14,7 @@ export default function AddWorkshopPage() {
   const [formData, setFormData] = useState({
     // Workshop Details
     name: '',
+    workshop_name: '',
     map_link: '',
     gst_number: '',
     state: '',
@@ -21,8 +22,19 @@ export default function AddWorkshopPage() {
     city: '',
     rto_code: '',
     pincode: '',
+    service_pincode: '',
     mapping_pincodes: '', // CSV string
     address: '',
+    short_address: '',
+    location: '',
+    ro_mumbai: '',
+    system: '',
+    category: '',
+    workshop_area: '',
+    landmark: '',
+    distance: '',
+    near_famous_area: '',
+    near_area_google_map: '',
     pickup_drop_km: '',
     one_day_capacity: '',
     latitude: '',
@@ -31,6 +43,18 @@ export default function AddWorkshopPage() {
     working_days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     google_place_id: '',
     workshop_type: 'Car Service Center',
+    whatsapp_group_id: '',
+    creadit_card_swap: false,
+    engine_oil: false,
+    insurance_claim: false,
+    service_panel_issue: false,
+    note: '',
+    active_date: '',
+    retainer_fee: '',
+    prepaid_postpaid: '',
+    mou: false,
+    board: false,
+    gmb: false,
     
     // Contact Details
     contact_person: '',
@@ -39,6 +63,13 @@ export default function AddWorkshopPage() {
     is_whatsapp: true,
     email: '',
     alt_mobile: '',
+    notification_mobile: '',
+    manager_name: '',
+    manager_mobile: '',
+    manager_name2: '',
+    manager_mobile2: '',
+    manager_name3: '',
+    manager_mobile3: '',
     id_proof: '',
 
     // Bank Details
@@ -85,6 +116,7 @@ export default function AddWorkshopPage() {
       // Prepare data for submission
       const workshopData = {
         name: formData.name,
+        workshop_name: formData.workshop_name || null,
         map_link: formData.map_link || null,
         gst_number: formData.gst_number || null,
         state: formData.state,
@@ -92,8 +124,19 @@ export default function AddWorkshopPage() {
         city: formData.city,
         rto_code: formData.rto_code,
         pincode: formData.pincode,
+        service_pincode: formData.service_pincode || null,
         mapping_pincodes: formData.mapping_pincodes.split(',').map(p => p.trim()).filter(p => p),
         address: formData.address,
+        short_address: formData.short_address || null,
+        location: formData.location || null,
+        ro_mumbai: formData.ro_mumbai || null,
+        system: formData.system || null,
+        category: formData.category || null,
+        workshop_area: formData.workshop_area || null,
+        landmark: formData.landmark || null,
+        distance: formData.distance ? parseFloat(formData.distance) : null,
+        near_famous_area: formData.near_famous_area || null,
+        near_area_google_map: formData.near_area_google_map || null,
         pickup_drop_km: parseFloat(formData.pickup_drop_km) || 0,
         one_day_capacity: parseInt(formData.one_day_capacity) || 0,
         latitude: formData.latitude ? parseFloat(formData.latitude) : null,
@@ -102,6 +145,18 @@ export default function AddWorkshopPage() {
         working_days: formData.working_days,
         google_place_id: formData.google_place_id || null,
         workshop_type: formData.workshop_type,
+        whatsapp_group_id: formData.whatsapp_group_id || null,
+        creadit_card_swap: formData.creadit_card_swap,
+        engine_oil: formData.engine_oil,
+        insurance_claim: formData.insurance_claim,
+        service_panel_issue: formData.service_panel_issue,
+        note: formData.note || null,
+        active_date: formData.active_date || null,
+        retainer_fee: formData.retainer_fee ? parseFloat(formData.retainer_fee) : null,
+        prepaid_postpaid: formData.prepaid_postpaid || null,
+        mou: formData.mou,
+        board: formData.board,
+        gmb: formData.gmb,
         
         contact_person: formData.contact_person,
         designation: formData.designation || null,
@@ -109,6 +164,13 @@ export default function AddWorkshopPage() {
         is_whatsapp: formData.is_whatsapp,
         email: formData.email || null,
         alt_mobile: formData.alt_mobile || null,
+        notification_mobile: formData.notification_mobile || null,
+        manager_name: formData.manager_name || null,
+        manager_mobile: formData.manager_mobile || null,
+        manager_name2: formData.manager_name2 || null,
+        manager_mobile2: formData.manager_mobile2 || null,
+        manager_name3: formData.manager_name3 || null,
+        manager_mobile3: formData.manager_mobile3 || null,
         id_proof: formData.id_proof || null,
 
         bank_name: formData.bank_name || null,
@@ -172,6 +234,10 @@ export default function AddWorkshopPage() {
                 <input type="text" name="name" value={formData.name} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
               </div>
               <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Alternate Workshop Name</label>
+                <input type="text" name="workshop_name" value={formData.workshop_name} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+              </div>
+              <div className="sm:col-span-1 lg:col-span-1">
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Workshop Type</label>
                 <select name="workshop_type" value={formData.workshop_type} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
                   <option>Car Service Center</option>
@@ -202,6 +268,10 @@ export default function AddWorkshopPage() {
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Address *</label>
                 <textarea name="address" value={formData.address} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" rows={2} required />
               </div>
+              <div className="sm:col-span-2 lg:col-span-3">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Short Address</label>
+                <input type="text" name="short_address" value={formData.short_address} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+              </div>
 
               <div className="sm:col-span-1 lg:col-span-1">
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">State *</label>
@@ -219,6 +289,10 @@ export default function AddWorkshopPage() {
               <div className="sm:col-span-1 lg:col-span-1">
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Pincode *</label>
                 <input type="text" name="pincode" value={formData.pincode} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" required />
+              </div>
+              <div className="sm:col-span-1 lg:col-span-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Service Pincode</label>
+                <input type="text" name="service_pincode" value={formData.service_pincode} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
               </div>
               <div className="sm:col-span-1 lg:col-span-2">
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Mapping Pincodes (Comma Separated) *</label>
@@ -263,6 +337,89 @@ export default function AddWorkshopPage() {
                   ))}
                 </div>
               </div>
+
+              <div className="sm:col-span-2 lg:col-span-3">
+                <details className="rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4">
+                  <summary className="cursor-pointer text-xs sm:text-sm font-semibold text-gray-800">
+                    Extra Fields (optional)
+                  </summary>
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Location (sheet)</label>
+                      <input type="text" name="location" value={formData.location} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Workshop Area</label>
+                      <input type="text" name="workshop_area" value={formData.workshop_area} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Landmark</label>
+                      <input type="text" name="landmark" value={formData.landmark} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Distance (km)</label>
+                      <input type="number" step="0.01" name="distance" value={formData.distance} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Near Famous Area</label>
+                      <input type="text" name="near_famous_area" value={formData.near_famous_area} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-2">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Near Area (Google Map)</label>
+                      <input type="text" name="near_area_google_map" value={formData.near_area_google_map} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">RO Mumbai</label>
+                      <input type="text" name="ro_mumbai" value={formData.ro_mumbai} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">System</label>
+                      <input type="text" name="system" value={formData.system} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Category</label>
+                      <input type="text" name="category" value={formData.category} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">WhatsApp Group ID</label>
+                      <input type="text" name="whatsapp_group_id" value={formData.whatsapp_group_id} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Active Date</label>
+                      <input type="date" name="active_date" value={formData.active_date} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Retainer Fee</label>
+                      <input type="number" step="0.01" name="retainer_fee" value={formData.retainer_fee} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-1">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Prepaid/Postpaid</label>
+                      <input type="text" name="prepaid_postpaid" value={formData.prepaid_postpaid} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                    </div>
+                    <div className="lg:col-span-3">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Note</label>
+                      <textarea name="note" value={formData.note} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" rows={2} />
+                    </div>
+
+                    <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {[
+                        ['creadit_card_swap', 'Credit Card Swap'],
+                        ['engine_oil', 'Engine Oil'],
+                        ['insurance_claim', 'Insurance Claim'],
+                        ['service_panel_issue', 'Service Panel Issue'],
+                        ['mou', 'MOU'],
+                        ['board', 'Board'],
+                        ['gmb', 'GMB'],
+                      ].map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" name={key} checked={(formData as any)[key]} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded" />
+                          <span className="text-xs sm:text-sm text-gray-700">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+              </div>
             </div>
           </div>
 
@@ -294,6 +451,10 @@ export default function AddWorkshopPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Alternate Mobile</label>
                 <input type="tel" name="alt_mobile" value={formData.alt_mobile} onChange={handleChange} className="input w-full" />
               </div>
+              <div className="md:col-span-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notification Mobile</label>
+                <input type="tel" name="notification_mobile" value={formData.notification_mobile} onChange={handleChange} className="input w-full" />
+              </div>
               <div className="md:col-span-1 flex items-center pt-6">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" name="is_whatsapp" checked={formData.is_whatsapp} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded" />
@@ -304,6 +465,40 @@ export default function AddWorkshopPage() {
               <div className="md:col-span-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email ID</label>
                 <input type="email" name="email" value={formData.email} onChange={handleChange} className="input w-full" />
+              </div>
+
+              <div className="md:col-span-3">
+                <details className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-gray-800">
+                    Manager Details (optional)
+                  </summary>
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="md:col-span-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Manager Name</label>
+                      <input type="text" name="manager_name" value={formData.manager_name} onChange={handleChange} className="input w-full" />
+                    </div>
+                    <div className="md:col-span-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Manager Mobile</label>
+                      <input type="tel" name="manager_mobile" value={formData.manager_mobile} onChange={handleChange} className="input w-full" />
+                    </div>
+                    <div className="md:col-span-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Manager Name 2</label>
+                      <input type="text" name="manager_name2" value={formData.manager_name2} onChange={handleChange} className="input w-full" />
+                    </div>
+                    <div className="md:col-span-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Manager Mobile 2</label>
+                      <input type="tel" name="manager_mobile2" value={formData.manager_mobile2} onChange={handleChange} className="input w-full" />
+                    </div>
+                    <div className="md:col-span-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Manager Name 3</label>
+                      <input type="text" name="manager_name3" value={formData.manager_name3} onChange={handleChange} className="input w-full" />
+                    </div>
+                    <div className="md:col-span-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Manager Mobile 3</label>
+                      <input type="tel" name="manager_mobile3" value={formData.manager_mobile3} onChange={handleChange} className="input w-full" />
+                    </div>
+                  </div>
+                </details>
               </div>
             </div>
           </div>

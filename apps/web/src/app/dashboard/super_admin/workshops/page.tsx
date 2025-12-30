@@ -80,20 +80,82 @@ export default function WorkshopManagementPage() {
         .from('workshops')
         .update({
           name: editingWorkshop.name,
+          workshop_name: editingWorkshop.workshop_name || null,
           contact_person: editingWorkshop.contact_person,
           phone: editingWorkshop.phone,
+          alt_mobile: editingWorkshop.alt_mobile || null,
           email: editingWorkshop.email,
+          notification_mobile: editingWorkshop.notification_mobile || null,
           
           // Address
           address: editingWorkshop.address,
+          short_address: editingWorkshop.short_address || null,
+          location: editingWorkshop.location || null,
           city: editingWorkshop.city,
           state: editingWorkshop.state,
           pincode: editingWorkshop.pincode,
+          service_pincode: editingWorkshop.service_pincode || null,
           map_link: editingWorkshop.map_link || null,
+          latitude:
+            editingWorkshop.latitude === '' || editingWorkshop.latitude == null
+              ? null
+              : Number.isFinite(Number(editingWorkshop.latitude))
+                ? Number(editingWorkshop.latitude)
+                : null,
+          longitude:
+            editingWorkshop.longitude === '' || editingWorkshop.longitude == null
+              ? null
+              : Number.isFinite(Number(editingWorkshop.longitude))
+                ? Number(editingWorkshop.longitude)
+                : null,
+          workshop_area: editingWorkshop.workshop_area || null,
+          landmark: editingWorkshop.landmark || null,
+          distance:
+            editingWorkshop.distance === '' || editingWorkshop.distance == null
+              ? null
+              : Number(editingWorkshop.distance),
+          near_famous_area: editingWorkshop.near_famous_area || null,
+          near_area_google_map: editingWorkshop.near_area_google_map || null,
+          ro_mumbai: editingWorkshop.ro_mumbai || null,
+          system: editingWorkshop.system || null,
+          category: editingWorkshop.category || null,
           
           // Zone & Tax
           zone_id: editingWorkshop.zone_id,
           gst_number: editingWorkshop.gst_number,
+
+          // Managers / Groups / Flags
+          manager_name: editingWorkshop.manager_name || null,
+          manager_mobile: editingWorkshop.manager_mobile || null,
+          manager_name2: editingWorkshop.manager_name2 || null,
+          manager_mobile2: editingWorkshop.manager_mobile2 || null,
+          manager_name3: editingWorkshop.manager_name3 || null,
+          manager_mobile3: editingWorkshop.manager_mobile3 || null,
+          whatsapp_group_id: editingWorkshop.whatsapp_group_id || null,
+          creadit_card_swap:
+            editingWorkshop.creadit_card_swap === '' || editingWorkshop.creadit_card_swap == null
+              ? null
+              : !!editingWorkshop.creadit_card_swap,
+          engine_oil:
+            editingWorkshop.engine_oil === '' || editingWorkshop.engine_oil == null ? null : !!editingWorkshop.engine_oil,
+          insurance_claim:
+            editingWorkshop.insurance_claim === '' || editingWorkshop.insurance_claim == null
+              ? null
+              : !!editingWorkshop.insurance_claim,
+          service_panel_issue:
+            editingWorkshop.service_panel_issue === '' || editingWorkshop.service_panel_issue == null
+              ? null
+              : !!editingWorkshop.service_panel_issue,
+          note: editingWorkshop.note || null,
+          active_date: editingWorkshop.active_date || null,
+          retainer_fee:
+            editingWorkshop.retainer_fee === '' || editingWorkshop.retainer_fee == null
+              ? null
+              : Number(editingWorkshop.retainer_fee),
+          prepaid_postpaid: editingWorkshop.prepaid_postpaid || null,
+          mou: editingWorkshop.mou === '' || editingWorkshop.mou == null ? null : !!editingWorkshop.mou,
+          board: editingWorkshop.board === '' || editingWorkshop.board == null ? null : !!editingWorkshop.board,
+          gmb: editingWorkshop.gmb === '' || editingWorkshop.gmb == null ? null : !!editingWorkshop.gmb,
           
           // Bank Details
           bank_account_number: editingWorkshop.bank_account_number,
@@ -238,16 +300,48 @@ export default function WorkshopManagementPage() {
       'id',
       // Required (for create)
       'name',
+      'workshop_name',
       'contact_person',
       'phone',
+      'alt_mobile',
       'email',
+      'notification_mobile',
       'address',
+      'short_address',
+      'location',
       'city',
       'state',
       'pincode',
+      'service_pincode',
       // Optional
       'zone_id',
       'zone_name',
+      'ro_mumbai',
+      'system',
+      'category',
+      'workshop_area',
+      'landmark',
+      'distance',
+      'near_famous_area',
+      'near_area_google_map',
+      'manager_name',
+      'manager_mobile',
+      'manager_name2',
+      'manager_mobile2',
+      'manager_name3',
+      'manager_mobile3',
+      'creadit_card_swap',
+      'engine_oil',
+      'insurance_claim',
+      'service_panel_issue',
+      'note',
+      'active_date',
+      'retainer_fee',
+      'prepaid_postpaid',
+      'mou',
+      'board',
+      'gmb',
+      'whatsapp_group_id',
       'gst_number',
       'map_link',
       'latitude',
@@ -261,19 +355,79 @@ export default function WorkshopManagementPage() {
 
     const exampleZoneId = zones?.[0]?.id || '';
     const exampleZoneName = zones?.[0]?.name || '';
+    // Build example row by header name to guarantee column alignment (avoids Excel CSV errors)
+    const example: Record<string, any> = {
+      id: '',
+      name: 'Aman Workshop',
+      workshop_name: '',
+      contact_person: 'Aman',
+      phone: '9999999999',
+      alt_mobile: '',
+      email: 'aman@example.com',
+      notification_mobile: '',
+      address: '123 Main Road, Near Landmark',
+      short_address: '',
+      location: '',
+      city: 'Delhi',
+      state: 'Delhi',
+      pincode: '110001',
+      service_pincode: '',
+      zone_id: exampleZoneId,
+      zone_name: exampleZoneName,
+      map_link: 'https://maps.google.com/?q=...',
+      is_verified: 'true',
+    };
+    const rows = [headers.map((h) => (example[h] ?? ''))];
+
+    /* Legacy hard-coded example row (kept commented to avoid header mismatch issues)
     const rows = [
       [
         '',
         'Aman Workshop',
+        '',
         'Aman',
         '9999999999',
+        '',
         'aman@example.com',
+        '',
         '123 Main Road, Near Landmark',
+        '',
+        '',
         'Delhi',
         'Delhi',
         '110001',
+        '',
         exampleZoneId,
         exampleZoneName,
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
         '',
         'https://maps.google.com/?q=...',
         '',
@@ -285,6 +439,7 @@ export default function WorkshopManagementPage() {
         'true',
       ],
     ];
+    */
 
     const csv = buildCsv(headers, rows);
     downloadTextFile(csv, `workshops-import-template-${new Date().toISOString().slice(0, 10)}.csv`);
@@ -303,6 +458,13 @@ export default function WorkshopManagementPage() {
 
       const header = grid[0].map((h) => (h || '').trim().toLowerCase());
       const col = (name: string) => header.indexOf(name);
+      const colAny = (names: string[]) => {
+        for (const n of names) {
+          const idx = col(n.toLowerCase());
+          if (idx !== -1) return idx;
+        }
+        return -1;
+      };
 
       const idxName = col('name');
       const idxContact = col('contact_person');
@@ -331,6 +493,42 @@ export default function WorkshopManagementPage() {
       const idxUpi = col('upi_id');
       const idxComm = col('commission_percentage');
       const idxVerified = col('is_verified');
+
+      const idxWorkshopName = col('workshop_name');
+      const idxAltMobile = col('alt_mobile');
+      const idxNotificationMobile = col('notification_mobile');
+      const idxShortAddress = col('short_address');
+      const idxLocation = col('location');
+      const idxServicePincode = col('service_pincode');
+
+      const idxRoMumbai = col('ro_mumbai');
+      const idxSystem = col('system');
+      const idxCategory = col('category');
+      const idxWorkshopArea = col('workshop_area');
+      const idxLandmark = col('landmark');
+      const idxDistance = col('distance');
+      const idxNearFamousArea = col('near_famous_area');
+      const idxNearAreaGoogleMap = col('near_area_google_map');
+
+      const idxManagerName = col('manager_name');
+      const idxManagerMobile = col('manager_mobile');
+      const idxManagerName2 = col('manager_name2');
+      const idxManagerMobile2 = col('manager_mobile2');
+      const idxManagerName3 = col('manager_name3');
+      const idxManagerMobile3 = col('manager_mobile3');
+
+      const idxCreditSwap = colAny(['creadit_card_swap', 'credit_card_swap']);
+      const idxEngineOil = col('engine_oil');
+      const idxInsuranceClaim = col('insurance_claim');
+      const idxServicePanelIssue = col('service_panel_issue');
+      const idxNote = col('note');
+      const idxActiveDate = col('active_date');
+      const idxRetainerFee = col('retainer_fee');
+      const idxPrepaidPostpaid = col('prepaid_postpaid');
+      const idxMou = col('mou');
+      const idxBoard = col('board');
+      const idxGmb = col('gmb');
+      const idxWhatsappGroupId = col('whatsapp_group_id');
 
       const rows = grid.slice(1).filter((r) => r.some((x) => (x || '').trim() !== ''));
       if (!rows.length) throw new Error('CSV has no data rows.');
@@ -388,10 +586,52 @@ export default function WorkshopManagementPage() {
         const lat = idxLat !== -1 ? parseOptionalNumber(r[idxLat] || '') : null;
         const lng = idxLng !== -1 ? parseOptionalNumber(r[idxLng] || '') : null;
         const comm = idxComm !== -1 ? parseOptionalNumber(r[idxComm] || '') : null;
+        const distance = idxDistance !== -1 ? parseOptionalNumber(r[idxDistance] || '') : null;
+        const retainer_fee = idxRetainerFee !== -1 ? parseOptionalNumber(r[idxRetainerFee] || '') : null;
 
         if (lat !== null && Number.isNaN(lat)) errors.push(`Row ${rowNum}: invalid latitude "${r[idxLat] || ''}"`);
         if (lng !== null && Number.isNaN(lng)) errors.push(`Row ${rowNum}: invalid longitude "${r[idxLng] || ''}"`);
         if (comm !== null && Number.isNaN(comm)) errors.push(`Row ${rowNum}: invalid commission_percentage "${r[idxComm] || ''}"`);
+        if (distance !== null && Number.isNaN(distance)) errors.push(`Row ${rowNum}: invalid distance "${r[idxDistance] || ''}"`);
+        if (retainer_fee !== null && Number.isNaN(retainer_fee)) errors.push(`Row ${rowNum}: invalid retainer_fee "${r[idxRetainerFee] || ''}"`);
+
+        const parseOptionalBoolean = (val: string) => {
+          const t = (val || '').trim();
+          if (!t) return null;
+          const v = t.toLowerCase();
+          if (['true', '1', 'yes', 'y'].includes(v)) return true;
+          if (['false', '0', 'no', 'n'].includes(v)) return false;
+          return 'INVALID';
+        };
+
+        const parseOptionalDate = (val: string) => {
+          const t = (val || '').trim();
+          if (!t) return null;
+          // Expect YYYY-MM-DD
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return 'INVALID';
+          return t;
+        };
+
+        const creditSwap = idxCreditSwap !== -1 ? parseOptionalBoolean(r[idxCreditSwap] || '') : null;
+        const engineOil = idxEngineOil !== -1 ? parseOptionalBoolean(r[idxEngineOil] || '') : null;
+        const insuranceClaim = idxInsuranceClaim !== -1 ? parseOptionalBoolean(r[idxInsuranceClaim] || '') : null;
+        const servicePanelIssue = idxServicePanelIssue !== -1 ? parseOptionalBoolean(r[idxServicePanelIssue] || '') : null;
+        const mou = idxMou !== -1 ? parseOptionalBoolean(r[idxMou] || '') : null;
+        const board = idxBoard !== -1 ? parseOptionalBoolean(r[idxBoard] || '') : null;
+        const gmb = idxGmb !== -1 ? parseOptionalBoolean(r[idxGmb] || '') : null;
+
+        const activeDate = idxActiveDate !== -1 ? parseOptionalDate(r[idxActiveDate] || '') : null;
+
+        const boolErr = (label: string, raw: string) => errors.push(`Row ${rowNum}: invalid ${label} "${raw}" (use true/false)`);
+        if (creditSwap === 'INVALID') boolErr('creadit_card_swap', r[idxCreditSwap] || '');
+        if (engineOil === 'INVALID') boolErr('engine_oil', r[idxEngineOil] || '');
+        if (insuranceClaim === 'INVALID') boolErr('insurance_claim', r[idxInsuranceClaim] || '');
+        if (servicePanelIssue === 'INVALID') boolErr('service_panel_issue', r[idxServicePanelIssue] || '');
+        if (mou === 'INVALID') boolErr('mou', r[idxMou] || '');
+        if (board === 'INVALID') boolErr('board', r[idxBoard] || '');
+        if (gmb === 'INVALID') boolErr('gmb', r[idxGmb] || '');
+
+        if (activeDate === 'INVALID') errors.push(`Row ${rowNum}: invalid active_date "${r[idxActiveDate] || ''}" (use YYYY-MM-DD)`);
 
         const is_verified =
           idxVerified !== -1 && (r[idxVerified] || '').trim() !== ''
@@ -407,17 +647,63 @@ export default function WorkshopManagementPage() {
           city,
           state,
           pincode,
-          gst_number: idxGst !== -1 ? ((r[idxGst] || '').trim() || null) : null,
-          map_link: idxMap !== -1 ? ((r[idxMap] || '').trim() || null) : null,
-          latitude: lat === null ? null : lat,
-          longitude: lng === null ? null : lng,
-          zone_id: resolvedZoneId || null,
-          bank_account_number: idxBank !== -1 ? ((r[idxBank] || '').trim() || null) : null,
-          ifsc_code: idxIfsc !== -1 ? ((r[idxIfsc] || '').trim() || null) : null,
-          upi_id: idxUpi !== -1 ? ((r[idxUpi] || '').trim() || null) : null,
-          commission_percentage: comm === null ? null : comm,
           is_verified,
         };
+
+        // Optional fields (only apply if header exists)
+        const setOpt = (key: string, idx: number) => {
+          if (idx === -1) return;
+          const v = ((r[idx] || '').trim() || null) as any;
+          payload[key] = v;
+        };
+
+        setOpt('workshop_name', idxWorkshopName);
+        setOpt('alt_mobile', idxAltMobile);
+        setOpt('notification_mobile', idxNotificationMobile);
+        setOpt('short_address', idxShortAddress);
+        setOpt('location', idxLocation);
+        setOpt('service_pincode', idxServicePincode);
+
+        setOpt('ro_mumbai', idxRoMumbai);
+        setOpt('system', idxSystem);
+        setOpt('category', idxCategory);
+        setOpt('workshop_area', idxWorkshopArea);
+        setOpt('landmark', idxLandmark);
+        setOpt('near_famous_area', idxNearFamousArea);
+        setOpt('near_area_google_map', idxNearAreaGoogleMap);
+
+        setOpt('manager_name', idxManagerName);
+        setOpt('manager_mobile', idxManagerMobile);
+        setOpt('manager_name2', idxManagerName2);
+        setOpt('manager_mobile2', idxManagerMobile2);
+        setOpt('manager_name3', idxManagerName3);
+        setOpt('manager_mobile3', idxManagerMobile3);
+
+        setOpt('note', idxNote);
+        setOpt('prepaid_postpaid', idxPrepaidPostpaid);
+        setOpt('whatsapp_group_id', idxWhatsappGroupId);
+
+        if (idxGst !== -1) payload.gst_number = ((r[idxGst] || '').trim() || null) as any;
+        if (idxMap !== -1) payload.map_link = ((r[idxMap] || '').trim() || null) as any;
+        if (idxLat !== -1) payload.latitude = lat === null ? null : lat;
+        if (idxLng !== -1) payload.longitude = lng === null ? null : lng;
+        if (idxZoneId !== -1 || idxZoneName !== -1) payload.zone_id = resolvedZoneId || null;
+        if (idxBank !== -1) payload.bank_account_number = ((r[idxBank] || '').trim() || null) as any;
+        if (idxIfsc !== -1) payload.ifsc_code = ((r[idxIfsc] || '').trim() || null) as any;
+        if (idxUpi !== -1) payload.upi_id = ((r[idxUpi] || '').trim() || null) as any;
+        if (idxComm !== -1) payload.commission_percentage = comm === null ? null : comm;
+
+        if (idxDistance !== -1) payload.distance = distance === null ? null : distance;
+        if (idxRetainerFee !== -1) payload.retainer_fee = retainer_fee === null ? null : retainer_fee;
+        if (idxActiveDate !== -1) payload.active_date = activeDate === null ? null : activeDate;
+
+        if (idxCreditSwap !== -1) payload.creadit_card_swap = creditSwap === null ? null : creditSwap;
+        if (idxEngineOil !== -1) payload.engine_oil = engineOil === null ? null : engineOil;
+        if (idxInsuranceClaim !== -1) payload.insurance_claim = insuranceClaim === null ? null : insuranceClaim;
+        if (idxServicePanelIssue !== -1) payload.service_panel_issue = servicePanelIssue === null ? null : servicePanelIssue;
+        if (idxMou !== -1) payload.mou = mou === null ? null : mou;
+        if (idxBoard !== -1) payload.board = board === null ? null : board;
+        if (idxGmb !== -1) payload.gmb = gmb === null ? null : gmb;
 
         if (id) {
           tasks.push(async () => {
@@ -670,6 +956,11 @@ export default function WorkshopManagementPage() {
                     <td className="px-4 md:px-6 py-3 md:py-4">
                         <div className="font-medium text-sm sm:text-base text-gray-900">{workshop.name}</div>
                         <div className="text-xs sm:text-sm text-gray-500">{workshop.contact_person || 'N/A'}</div>
+                        {(workshop.short_address || workshop.workshop_area) && (
+                          <div className="text-[11px] sm:text-xs text-gray-400 mt-0.5">
+                            {workshop.short_address || workshop.workshop_area}
+                          </div>
+                        )}
                     </td>
                     <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
                         <div className="text-gray-900 truncate max-w-[200px]">{workshop.phone}</div>
@@ -730,6 +1021,9 @@ export default function WorkshopManagementPage() {
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-sm sm:text-base text-gray-900 mb-1">{workshop.name}</div>
                   <div className="text-xs text-gray-500">{workshop.contact_person || 'N/A'}</div>
+                  {(workshop.short_address || workshop.workshop_area) && (
+                    <div className="text-[11px] text-gray-400 mt-1">{workshop.short_address || workshop.workshop_area}</div>
+                  )}
                 </div>
                 <span className={`px-2 py-1 inline-flex text-xs font-semibold rounded-full flex-shrink-0 ${workshop.is_verified ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {workshop.is_verified ? 'Active' : 'Inactive'}
@@ -816,6 +1110,16 @@ export default function WorkshopManagementPage() {
                 />
               </div>
 
+              <div className="col-span-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Alternate Workshop Name</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 text-sm border rounded-lg"
+                  value={editingWorkshop.workshop_name || ''}
+                  onChange={(e) => setEditingWorkshop({ ...editingWorkshop, workshop_name: e.target.value })}
+                />
+              </div>
+
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Contact Person</label>
                 <input type="text" className="w-full px-3 py-2 text-sm border rounded-lg"
@@ -829,6 +1133,26 @@ export default function WorkshopManagementPage() {
                 <input type="text" required className="w-full px-3 py-2 text-sm border rounded-lg"
                   value={editingWorkshop.phone} 
                   onChange={e => setEditingWorkshop({...editingWorkshop, phone: e.target.value})} 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Alternate Mobile</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 text-sm border rounded-lg"
+                  value={editingWorkshop.alt_mobile || ''}
+                  onChange={(e) => setEditingWorkshop({ ...editingWorkshop, alt_mobile: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Notification Mobile</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 text-sm border rounded-lg"
+                  value={editingWorkshop.notification_mobile || ''}
+                  onChange={(e) => setEditingWorkshop({ ...editingWorkshop, notification_mobile: e.target.value })}
                 />
               </div>
 
@@ -850,6 +1174,26 @@ export default function WorkshopManagementPage() {
                 <textarea required className="w-full px-3 py-2 text-sm border rounded-lg" rows={2}
                   value={editingWorkshop.address} 
                   onChange={e => setEditingWorkshop({...editingWorkshop, address: e.target.value})} 
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Short Address</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 text-sm border rounded-lg"
+                  value={editingWorkshop.short_address || ''}
+                  onChange={(e) => setEditingWorkshop({ ...editingWorkshop, short_address: e.target.value })}
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Location (sheet)</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 text-sm border rounded-lg"
+                  value={editingWorkshop.location || ''}
+                  onChange={(e) => setEditingWorkshop({ ...editingWorkshop, location: e.target.value })}
                 />
               </div>
 
@@ -878,6 +1222,29 @@ export default function WorkshopManagementPage() {
               </div>
 
               <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Latitude</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 text-sm border rounded-lg"
+                  value={editingWorkshop.latitude ?? ''}
+                  onChange={(e) => setEditingWorkshop({ ...editingWorkshop, latitude: e.target.value })}
+                  placeholder="Example: 28.6139"
+                />
+                <div className="text-[11px] text-gray-500 mt-1">Distance calculation requires lat/lng.</div>
+              </div>
+
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Longitude</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 text-sm border rounded-lg"
+                  value={editingWorkshop.longitude ?? ''}
+                  onChange={(e) => setEditingWorkshop({ ...editingWorkshop, longitude: e.target.value })}
+                  placeholder="Example: 77.2090"
+                />
+              </div>
+
+              <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">City *</label>
                 <input type="text" required className="w-full px-3 py-2 text-sm border rounded-lg"
                   value={editingWorkshop.city} 
@@ -901,6 +1268,16 @@ export default function WorkshopManagementPage() {
                 />
               </div>
 
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Service Pincode</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 text-sm border rounded-lg"
+                  value={editingWorkshop.service_pincode || ''}
+                  onChange={(e) => setEditingWorkshop({ ...editingWorkshop, service_pincode: e.target.value })}
+                />
+              </div>
+
               {/* Zone Selector */}
               <div>
                 <label className="block text-xs sm:text-sm font-bold text-blue-800 mb-1">Assign Zone *</label>
@@ -917,6 +1294,214 @@ export default function WorkshopManagementPage() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div className="col-span-2">
+                <details className="rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4">
+                  <summary className="cursor-pointer text-xs sm:text-sm font-semibold text-gray-800">
+                    Extra Fields (optional)
+                  </summary>
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Workshop Area</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.workshop_area || ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, workshop_area: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Landmark</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.landmark || ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, landmark: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Distance (km)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.distance ?? ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, distance: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Near Famous Area</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.near_famous_area || ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, near_famous_area: e.target.value })}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Near Area (Google Map)</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.near_area_google_map || ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, near_area_google_map: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">RO Mumbai</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.ro_mumbai || ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, ro_mumbai: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">System</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.system || ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, system: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Category</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.category || ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, category: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">WhatsApp Group ID</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.whatsapp_group_id || ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, whatsapp_group_id: e.target.value })}
+                      />
+                    </div>
+                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Manager Name</label>
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 text-sm border rounded-lg"
+                          value={editingWorkshop.manager_name || ''}
+                          onChange={(e) => setEditingWorkshop({ ...editingWorkshop, manager_name: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Manager Mobile</label>
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 text-sm border rounded-lg"
+                          value={editingWorkshop.manager_mobile || ''}
+                          onChange={(e) => setEditingWorkshop({ ...editingWorkshop, manager_mobile: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Manager Name 2</label>
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 text-sm border rounded-lg"
+                          value={editingWorkshop.manager_name2 || ''}
+                          onChange={(e) => setEditingWorkshop({ ...editingWorkshop, manager_name2: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Manager Mobile 2</label>
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 text-sm border rounded-lg"
+                          value={editingWorkshop.manager_mobile2 || ''}
+                          onChange={(e) => setEditingWorkshop({ ...editingWorkshop, manager_mobile2: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Manager Name 3</label>
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 text-sm border rounded-lg"
+                          value={editingWorkshop.manager_name3 || ''}
+                          onChange={(e) => setEditingWorkshop({ ...editingWorkshop, manager_name3: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Manager Mobile 3</label>
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 text-sm border rounded-lg"
+                          value={editingWorkshop.manager_mobile3 || ''}
+                          onChange={(e) => setEditingWorkshop({ ...editingWorkshop, manager_mobile3: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Note</label>
+                      <textarea
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        rows={2}
+                        value={editingWorkshop.note || ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, note: e.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Active Date</label>
+                      <input
+                        type="date"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.active_date ? String(editingWorkshop.active_date).slice(0, 10) : ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, active_date: e.target.value || null })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Retainer Fee</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.retainer_fee ?? ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, retainer_fee: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Prepaid/Postpaid</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                        value={editingWorkshop.prepaid_postpaid || ''}
+                        onChange={(e) => setEditingWorkshop({ ...editingWorkshop, prepaid_postpaid: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {[
+                        ['creadit_card_swap', 'Credit Card Swap'],
+                        ['engine_oil', 'Engine Oil'],
+                        ['insurance_claim', 'Insurance Claim'],
+                        ['service_panel_issue', 'Service Panel Issue'],
+                        ['mou', 'MOU'],
+                        ['board', 'Board'],
+                        ['gmb', 'GMB'],
+                      ].map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 text-xs sm:text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={!!editingWorkshop[key]}
+                            onChange={(e) => setEditingWorkshop({ ...editingWorkshop, [key]: e.target.checked })}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </details>
               </div>
 
               {/* Bank Details */}

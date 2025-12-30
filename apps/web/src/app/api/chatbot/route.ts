@@ -2379,22 +2379,22 @@ export async function POST(req: Request) {
             'Aapko kya chahiye — regular service, repair/issue, ya cleaning/detailing?'
           );
         } else {
-          // Continue the funnel with the minimum next question.
-          if (!context.modelId && !context.vehicleModel) {
+        // Continue the funnel with the minimum next question.
+        if (!context.modelId && !context.vehicleModel) {
             nextQ = docLine(
               lang,
               'Which car do you drive? (Example: Tata Tigor / Maruti Swift / Hyundai i20)',
               'आपकी कार का मॉडल कौन‑सा है? (Example: Tata Tigor / Maruti Swift / Hyundai i20)',
               'Aapki car model kaunsa hai? (Example: Tata Tigor / Maruti Swift / Hyundai i20)'
             );
-          } else if (!context.customerPhone) {
+        } else if (!context.customerPhone) {
             nextQ = docLine(
               lang,
               'Please share your 10-digit mobile number for callback.',
               'कॉलबैक के लिए 10-digit मोबाइल नंबर शेयर कर दीजिए।',
               'Callback ke liye 10-digit mobile number share kar dijiye.'
             );
-          } else if (!context.problemDescription) {
+        } else if (!context.problemDescription) {
             nextQ = docLine(
               lang,
               'What issue are you facing / what service do you need? (Example: general service, AC cooling, brake noise)',

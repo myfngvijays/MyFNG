@@ -23,7 +23,11 @@ export function normalizeContext(ctx: ChatbotV2Context): ChatbotV2Context {
     customerPhone: ctx.customerPhone ? String(ctx.customerPhone).replace(/\D/g, '').slice(-10) : undefined,
     locationConfirmed: typeof ctx.locationConfirmed === 'boolean' ? ctx.locationConfirmed : undefined,
     pickupPreference: ctx.pickupPreference === 'PICKUP' || ctx.pickupPreference === 'SELF_VISIT' ? ctx.pickupPreference : undefined,
-    flow: ctx.flow === 'BOOKING' || ctx.flow === 'PRICING' ? ctx.flow : undefined,
+    flow: ctx.flow === 'BOOKING' || ctx.flow === 'PRICING' || ctx.flow === 'WORKSHOP' ? ctx.flow : undefined,
+    greeted: typeof ctx.greeted === 'boolean' ? ctx.greeted : undefined,
+    lastKbQuery: ctx.lastKbQuery ? normalize(ctx.lastKbQuery).slice(0, 200) : undefined,
+    lastKbAnswerFacts: ctx.lastKbAnswerFacts ? normalize(ctx.lastKbAnswerFacts).slice(0, 1200) : undefined,
+    lastKbAt: Number.isFinite(ctx.lastKbAt as number) ? Number(ctx.lastKbAt) : undefined,
   };
 }
 
@@ -33,7 +37,14 @@ export function mergeContext(base: ChatbotV2Context, patch: Partial<ChatbotV2Con
 
 export function detectMissingInfo(ctx: ChatbotV2Context): MissingInfo {
   const hasModel = Boolean(ctx.vehicleModel && ctx.vehicleModel.length >= 2);
-  const hasLocation = Number.isFinite(ctx.locationLat as number) && Number.isFinite(ctx.locationLng as number);
+  const lat = Number(ctx.locationLat);
+  const lng = Number(ctx.locationLng);
+  const hasLocation =
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180 &&
+    !(Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001);
   const hasLocationLabel = Boolean(ctx.locationLabel && ctx.locationLabel.length >= 3);
   const hasPickupPref = Boolean(ctx.pickupPreference);
   const hasPhone = Boolean(ctx.customerPhone && String(ctx.customerPhone).replace(/\D/g, '').length === 10);
@@ -50,6 +61,7 @@ export function detectMissingInfo(ctx: ChatbotV2Context): MissingInfo {
 export function extractContextPatchFromUserText(userText: string): Partial<ChatbotV2Context> {
   const patch: Partial<ChatbotV2Context> = {};
   const text = String(userText || '');
+  const low = text.toLowerCase();
 
   // phone (India)
   const digits = text.replace(/\D/g, '');
@@ -71,12 +83,29 @@ export function extractContextPatchFromUserText(userText: string): Partial<Chatb
   // car model (best-effort): treat short make+model strings as vehicleModel
   const carLine = text.trim();
   if (carLine.length >= 3 && carLine.length <= 40) {
-    const low = carLine.toLowerCase();
     const hasMake = /\b(tata|maruti|suzuki|hyundai|mahindra|honda|toyota|kia|mg|renault|nissan|ford|skoda|volkswagen|vw|bmw|audi|mercedes)\b/.test(
       low
     );
     const looksLikeSentence = /\b(please|price|cost|workshop|address|book|booking|warranty|issue|problem)\b/.test(low);
     if (hasMake && !looksLikeSentence) patch.vehicleModel = carLine;
+  }
+
+  // very small city/area capture (conservative) to reduce "car+area" loops
+  // NOTE: keep it simple to avoid false positives and keep token cost low.
+  const cityAliases: Array<{ re: RegExp; label: string }> = [
+    { re: /\b(mumbai|bombay)\b/i, label: 'Mumbai' },
+    { re: /\b(thane)\b/i, label: 'Thane' },
+    { re: /\b(navi\s*mumbai)\b/i, label: 'Navi Mumbai' },
+    { re: /\b(palghar)\b/i, label: 'Palghar' },
+    { re: /\b(delhi|dlhi|dilli)\b/i, label: 'Delhi' },
+    { re: /\b(noida)\b/i, label: 'Noida' },
+    { re: /\b(gurgaon|gurugram)\b/i, label: 'Gurgaon' },
+  ];
+  for (const c of cityAliases) {
+    if (c.re.test(text)) {
+      patch.locationLabel = patch.locationLabel || c.label;
+      break;
+    }
   }
 
   // location confirmation
