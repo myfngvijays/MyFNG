@@ -11,6 +11,9 @@ interface PhotoUploadProps {
   required?: boolean;
   uploadEndpoint?: string; // when provided, uploads via server route (recommended)
   extraFormFields?: Record<string, string>;
+  showGuidelines?: boolean;
+  guidelinesPosition?: 'top' | 'bottom';
+  stickyGuidelines?: boolean;
 }
 
 export default function PhotoUpload({ 
@@ -19,7 +22,10 @@ export default function PhotoUpload({
   label = 'Upload Photos',
   required = false,
   uploadEndpoint,
-  extraFormFields
+  extraFormFields,
+  showGuidelines = true,
+  guidelinesPosition = 'bottom',
+  stickyGuidelines = false,
 }: PhotoUploadProps) {
   const [photos, setPhotos] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -129,8 +135,26 @@ export default function PhotoUpload({
     }
   };
 
+  const Guidelines = showGuidelines ? (
+    <div
+      className={[
+        'bg-blue-50 p-4 rounded-lg text-sm',
+        stickyGuidelines ? 'sticky top-0 z-20 border border-blue-200' : '',
+      ].join(' ')}
+    >
+      <h4 className="font-semibold mb-2 text-brand-my">📸 Photo Guidelines:</h4>
+      <ul className="text-gray-700 space-y-1 list-disc list-inside">
+        <li>Ensure good lighting for clear photos</li>
+        <li>Capture all relevant angles</li>
+        <li>Include close-ups of any damage or issues</li>
+        <li>Photos should be clear and focused</li>
+      </ul>
+    </div>
+  ) : null;
+
   return (
     <div className="space-y-4">
+      {guidelinesPosition === 'top' && Guidelines}
       <div>
         <label className="label">
           {label} {required && <span className="text-red-500">*</span>}
@@ -215,16 +239,7 @@ export default function PhotoUpload({
         )}
       </div>
 
-      {/* Guidelines */}
-      <div className="bg-blue-50 p-4 rounded-lg text-sm">
-        <h4 className="font-semibold mb-2 text-brand-my">📸 Photo Guidelines:</h4>
-        <ul className="text-gray-700 space-y-1 list-disc list-inside">
-          <li>Ensure good lighting for clear photos</li>
-          <li>Capture all relevant angles</li>
-          <li>Include close-ups of any damage or issues</li>
-          <li>Photos should be clear and focused</li>
-        </ul>
-      </div>
+      {guidelinesPosition === 'bottom' && Guidelines}
     </div>
   );
 }

@@ -72,6 +72,13 @@ function isSelfDropQuery(text: string) {
 }
 
 function isNeedAnalysisAnswer(text: string) {
+  // Don't classify informational questions as "need type" just because they contain the word "service".
+  // Example: "Are you a service center or an aggregator?"
+  const raw = String(text || '').trim();
+  if (/\?/.test(raw) && /^(are|is|what|why|how|where|when|which|do|does|can)\b/i.test(raw)) {
+    return null as null | 'REGULAR_SERVICE' | 'REPAIR_ISSUE' | 'CLEANING_DETAILING';
+  }
+
   const t = normalize(text);
   if (!t) return null as null | 'REGULAR_SERVICE' | 'REPAIR_ISSUE' | 'CLEANING_DETAILING';
   // Regular service (typos + Hindi/Hinglish)
@@ -100,7 +107,7 @@ function buildDocNextQuestion(lang: DocLang, ctx: any) {
     return docLine(
       lang,
       'What do you need today — regular service, repair/issue, or cleaning/detailing?',
-      'Aapko kya chahiye — regular service, repair/issue, ya cleaning/detailing?',
+      'आपको क्या चाहिए — रेगुलर सर्विस, रिपेयर/इश्यू, या क्लीनिंग/डिटेलिंग?',
       'Aapko kya chahiye — regular service, repair/issue, ya cleaning/detailing?'
     );
   }
@@ -108,7 +115,7 @@ function buildDocNextQuestion(lang: DocLang, ctx: any) {
     return docLine(
       lang,
       'Which car do you drive? (Make + Model)',
-      'Aap kaunsi car chalate ho? (Make + Model)',
+      'आप कौन‑सी कार चलाते हैं? (Make + Model)',
       'Aap kaunsi car chalate ho? (Make + Model)'
     );
   }
@@ -116,7 +123,7 @@ function buildDocNextQuestion(lang: DocLang, ctx: any) {
     return docLine(
       lang,
       'When was the last service done / how many KM has it run?',
-      'Last service kab hua tha / kitne KM chale hain?',
+      'पिछली सर्विस कब हुई थी / अब तक कितने KM चले हैं?',
       'Last service kab hua tha / kitne KM chale hain?'
     );
   }
@@ -124,7 +131,7 @@ function buildDocNextQuestion(lang: DocLang, ctx: any) {
     return docLine(
       lang,
       'Your location? (Area + City)',
-      'Aapka location? (Area + City)',
+      'आपका लोकेशन? (Area + City)',
       'Aapka location? (Area + City)'
     );
   }
@@ -132,7 +139,7 @@ function buildDocNextQuestion(lang: DocLang, ctx: any) {
     return docLine(
       lang,
       'Preferred service date?\nToday / Later this week',
-      'Preferred service date?\nToday / Later this week',
+      'पसंदीदा सर्विस डेट?\nToday / Later this week',
       'Preferred service date?\nToday / Later this week'
     );
   }
@@ -140,7 +147,7 @@ function buildDocNextQuestion(lang: DocLang, ctx: any) {
     return docLine(
       lang,
       'Please share your 10-digit mobile number (for callback).',
-      'Callback ke liye 10-digit mobile number share kar dijiye.',
+      'कॉलबैक के लिए 10-digit मोबाइल नंबर शेयर कर दीजिए।',
       'Callback ke liye 10-digit mobile number share kar do.'
     );
   }
@@ -149,7 +156,7 @@ function buildDocNextQuestion(lang: DocLang, ctx: any) {
     return docLine(
       lang,
       'If you have it handy, share your vehicle number (e.g., MH12AB1234).',
-      'Agar handy ho to vehicle number share kar dijiye (e.g., MH12AB1234).',
+      'अगर आपके पास हो तो वाहन नंबर शेयर कर दीजिए (e.g., MH12AB1234).',
       'Agar handy ho to vehicle number share kar do (e.g., MH12AB1234).'
     );
   }
@@ -216,7 +223,10 @@ function docKnowledgeAnswer(lang: DocLang, text: string): string | null {
   if (/(dent|paint|denting|painting)/i.test(t)) {
     return docLine(lang, 'Dent/paint is available with quality checks + warranty terms shared on call.', 'Dent/paint available hai. Quality checks + warranty terms call pe share honge.', 'Dent/paint available hai. Quality checks + warranty terms call pe share honge.');
   }
-  if (/(authorized|authorised|service center|service centre)/i.test(t)) {
+  // IMPORTANT: don't hijack business-model questions like
+  // "Are you a service center or an aggregator?" (that should be answered from FAQs/KB).
+  const asksAggregator = /(aggregator)/i.test(t);
+  if (!asksAggregator && /(authorized|authorised|service center|service centre)/i.test(t)) {
     return docLine(lang, 'Many times pricing is comparable, plus you get pickup/drop + transparency.', 'Kaafi cases me pricing comparable hoti hai + pickup/drop + transparency milti hai.', 'Kaafi cases me pricing comparable hoti hai + pickup/drop + transparency milti hai.');
   }
   return null;
@@ -240,10 +250,60 @@ function getRagDbClient(supabase: any) {
 function normalizeForFaqMatch(text: string) {
   return String(text || '')
     .toLowerCase()
+    // Common brand spellings
+    .replace(/\bmyfng\b/g, 'my fng')
+    .replace(/\bmy\s*fng\b/g, 'my fng')
     .replace(/[\u2019']/g, '') // apostrophes
     .replace(/[^a-z0-9\u0900-\u097F\u0A80-\u0AFF]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function looksLikePastedChatTranscript(text: string) {
+  const t = String(text || '');
+  const lineCount = t.split(/\r?\n/).filter((l) => l.trim().length > 0).length;
+  if (lineCount < 4) return false;
+  return (
+    /Hi!\s*I['’]?m\s*MY\s*FNG\s*AI\s*Assistant/i.test(t) ||
+    /\bPlans\b/i.test(t) ||
+    /\bOption\s*\d\b/i.test(t) ||
+    /\bPackages\b/i.test(t)
+  );
+}
+
+function extractLikelyUserQuestion(text: string) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  if (!looksLikePastedChatTranscript(raw)) return raw;
+
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const ignoreLine = (l: string) =>
+    /^hi!\s*i['’]?m\s*my\s*fng/i.test(l) ||
+    /^note:/i.test(l) ||
+    /^plans\b/i.test(l) ||
+    /^packages\b/i.test(l) ||
+    /^option\s*\d\b/i.test(l) ||
+    /^category:/i.test(l);
+
+  const candidates = lines.filter((l) => !ignoreLine(l));
+
+  // Prefer the last line that looks like a question
+  for (let i = candidates.length - 1; i >= 0; i -= 1) {
+    const l = candidates[i]!;
+    if (
+      /\?/.test(l) ||
+      /^(what|why|how|which|where|when)\b/i.test(l) ||
+      /\b(kya|kaise|kyun|kab|kahan|kis|kaunsa)\b/i.test(l)
+    ) {
+      return l;
+    }
+  }
+
+  return candidates[candidates.length - 1] || raw;
 }
 
 const FAQ_STOPWORDS = new Set([
@@ -301,7 +361,14 @@ async function manualFaqAnswer(supabase: any, userText: string): Promise<string 
       .ilike('question', `%${directProbe}%`)
       .limit(5);
     const rows = (data as any[]) || [];
-    if (rows.length === 1 && rows[0]?.answer) return String(rows[0].answer);
+    // If any row contains the full normalized question (or vice-versa), it's a very strong match.
+    for (const r of rows) {
+      const qq = normalizeForFaqMatch(String(r?.question || ''));
+      const ans = String(r?.answer || '');
+      if (!qq || !ans) continue;
+      if (qq.includes(qNorm) || qNorm.includes(qq)) return ans;
+    }
+    // Otherwise, fall through to token scoring on a larger candidate set.
   }
 
   // 2) Token overlap scoring (fast, DB-only)
@@ -315,6 +382,32 @@ async function manualFaqAnswer(supabase: any, userText: string): Promise<string 
     )
   );
   if (tokens.length === 0) return null;
+
+  // 2a) Strong AND match for top tokens (reduces false matches vs OR search)
+  // Use up to 3 tokens to keep query reasonable.
+  const andTokens = tokens.slice(0, 3);
+  try {
+    let q = db.from('kb_manual_faqs_active').select('question, answer');
+    for (const t of andTokens) q = q.ilike('question', `%${t}%`);
+    const { data: andData } = await q.limit(10);
+    const andRows = (andData as any[]) || [];
+    if (andRows.length === 1 && andRows[0]?.answer) return String(andRows[0].answer);
+    if (andRows.length > 1) {
+      let bestAnd: { score: number; answer: string } | null = null;
+      for (const r of andRows) {
+        const qq = normalizeForFaqMatch(String(r?.question || ''));
+        const ans = String(r?.answer || '');
+        if (!qq || !ans) continue;
+        let score = 0;
+        for (const t of tokens) if (qq.includes(t)) score += 1;
+        if (qq.includes(qNorm)) score += 3;
+        if (!bestAnd || score > bestAnd.score) bestAnd = { score, answer: ans };
+      }
+      if (bestAnd) return bestAnd.answer;
+    }
+  } catch {
+    // ignore (RLS/network)
+  }
 
   const or = tokens.map((t) => `question.ilike.%${t}%`).join(',');
   const { data } = await db.from('kb_manual_faqs_active').select('question, answer').or(or).limit(30);
@@ -334,7 +427,11 @@ async function manualFaqAnswer(supabase: any, userText: string): Promise<string 
   }
 
   // Require at least 2 token hits (or a strong direct match)
-  if (best && (best.score >= 2 || qNorm.length <= 12)) return best.answer;
+  const brandQuery = /\bmy\s*fng\b/.test(qNorm);
+  // If the question has only 1-2 meaningful tokens (e.g. "aggregator"),
+  // allow 1 token hit to avoid wrongly falling into sales/package flow.
+  const minScore = tokens.length <= 2 ? 1 : 2;
+  if (best && (best.score >= minScore || qNorm.length <= 12 || brandQuery)) return best.answer;
   return null;
 }
 
@@ -403,6 +500,170 @@ Do not mention sources, databases, or citations.`;
   const content = json?.choices?.[0]?.message?.content;
   if (!content || typeof content !== 'string') return null;
   return content.trim();
+}
+
+function cleanChunkText(s: string) {
+  return String(s || '')
+    .replace(/\r/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function extractBestFaqAnswerFromChunkText(userText: string, chunkText: string): string | null {
+  const text = cleanChunkText(chunkText);
+  if (!text) return null;
+
+  // Our FAQ ingest format is:
+  // ### {Category: Question}
+  // {Answer}
+  const sections: Array<{ q: string; a: string }> = [];
+  const re = /###\s+([^\n]+)\n([\s\S]*?)(?=\n###\s+|$)/g;
+  let m: RegExpExecArray | null = null;
+  while ((m = re.exec(text))) {
+    const q = cleanChunkText(m[1] || '');
+    const a = cleanChunkText(m[2] || '');
+    if (q && a) sections.push({ q, a });
+  }
+  if (sections.length === 0) return null;
+
+  const qNorm = normalizeForFaqMatch(userText);
+  const tokens = Array.from(
+    new Set(
+      qNorm
+        .split(' ')
+        .map((t) => t.trim())
+        .filter((t) => t.length >= 3 && !FAQ_STOPWORDS.has(t))
+        .slice(0, 10)
+    )
+  );
+
+  let best: { score: number; a: string } | null = null;
+  for (const s of sections) {
+    const qq = normalizeForFaqMatch(s.q);
+    if (!qq) continue;
+    let score = 0;
+    for (const t of tokens) if (qq.includes(t)) score += 1;
+    if (qq.includes(qNorm) || qNorm.includes(qq)) score += 4;
+    if (!best || score > best.score) best = { score, a: s.a };
+  }
+
+  if (!best) return null;
+  // Require at least a small signal; otherwise returning a random section is worse than null.
+  if (best.score < 1 && tokens.length >= 2) return null;
+  return best.a;
+}
+
+async function vectorKbExtractedFaqAnswer(supabase: any, userText: string): Promise<string | null> {
+  const emb = await openAiEmbedding(userText);
+  if (!emb) return null;
+  const { db } = getRagDbClient(supabase);
+  const { data } = await db.rpc('kb_search', { query_embedding: emb, match_count: 10 });
+  const rows = (data as any[]) || [];
+
+  const chunks = rows
+    .map((r) => ({
+      text: String(r?.chunk_text || '').trim(),
+      similarity: Number(r?.similarity || 0),
+    }))
+    .filter((c) => c.text.length >= 20)
+    .slice(0, 6);
+
+  // Slightly lower threshold to catch paraphrases, but still avoid garbage retrieval.
+  const strong = chunks.filter((c) => c.similarity >= 0.72).slice(0, 3);
+  if (strong.length === 0) return null;
+
+  for (const c of strong) {
+    const a = extractBestFaqAnswerFromChunkText(userText, c.text);
+    if (a) return a;
+  }
+  return null;
+}
+
+async function rewriteAnswerInUserLanguage(params: { userText: string; answerText: string; lang: DocLang }): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const base = String(params.answerText || '').trim();
+  if (!apiKey || !base) return base;
+
+  // If user wrote in another script, use the existing generic translator.
+  const script = detectScriptFamily(params.userText);
+  if (script !== 'latin' && script !== 'devanagari' && script !== 'gujarati') {
+    return await translateIfNeeded(params.userText, base);
+  }
+
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const sys = `You are MY FNG AI Assistant.
+
+Task:
+- Rewrite the Answer Facts into the user's language & style.
+
+Rules (strict):
+- Preserve ALL facts from "Answer Facts". Do NOT add new information.
+- You may rephrase slightly so it doesn't sound identical every time.
+- Keep it short, chat-style.
+- Preserve numbers, units, names, emojis.
+- Do NOT mention databases, chunks, or sources.
+
+Language target:
+- en: English
+- hi: Hindi (Devanagari)
+- hinglish: Hinglish (Roman Hindi + simple English; do NOT use Devanagari).`;
+
+  const user = `target_language: ${params.lang}
+
+User message:
+${params.userText}
+
+Answer Facts (must preserve):
+${base}`;
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.3,
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: user },
+        ],
+      }),
+    });
+    if (!res.ok) return base;
+    const json = (await res.json().catch(() => null)) as any;
+    const out = json?.choices?.[0]?.message?.content;
+    if (!out || typeof out !== 'string') return base;
+    return out.trim();
+  } catch {
+    return base;
+  }
+}
+
+function looksLikeInfoQuestion(text: string) {
+  const t = normalize(String(text || ''));
+  if (!t) return false;
+  if (/\?/.test(text || '')) return true;
+  return (
+    /^(what|why|how|which|where|when|are|is|do|does|can)\b/i.test(t) ||
+    /\b(tell me|explain|meaning|means|difference)\b/i.test(t) ||
+    /\b(kya|kaise|kyu|kyun|kab|kahan|kis|kaunsa|matlab)\b/i.test(t)
+  );
+}
+
+async function kbAnswerWithLanguage(supabase: any, userText: string, lang: DocLang): Promise<string | null> {
+  const q = String(userText || '').trim();
+  if (!q) return null;
+
+  // 1) Admin-curated manual FAQs (precise)
+  const manual = await manualFaqAnswer(supabase, q).catch(() => null);
+  // 2) Vector KB retrieval (semantic) → extract the exact FAQ answer from chunk text
+  const extracted = manual || (await vectorKbExtractedFaqAnswer(supabase, q).catch(() => null));
+  if (!extracted) return null;
+  return await rewriteAnswerInUserLanguage({ userText: q, answerText: extracted, lang });
 }
 
 async function vectorKbAnswer(supabase: any, lang: DocLang, userText: string): Promise<string | null> {
@@ -1412,12 +1673,20 @@ export async function POST(req: Request) {
   const context: ChatbotContext = body.context || {};
   const conversationId = context.conversationId || newConversationId();
 
+  // If user pasted a long chat transcript, prefer the actual question line across the whole pipeline.
+  const originalUserMessage = body.message;
+  const effectiveMessage = extractLikelyUserQuestion(originalUserMessage);
+  const userText = (effectiveMessage || originalUserMessage || '').trim();
+  // IMPORTANT: from here onwards treat the cleaned userText as the message, otherwise transcript artifacts
+  // like "Category: PERIODIC SERVICE" / "Option 1" can hijack the sales/catalog flow.
+  (body as any).message = userText;
+
   // ============================
   // LLM-led dialog planning (optional)
   // - Uses OpenAI for understanding + "next best question" + sales benefits
   // - DB remains the source of truth for services/pricing/workshops
   // ============================
-  const plan = await planNextStep({ userMessage: body.message, context });
+  const plan = await planNextStep({ userMessage: userText, context });
   const planAsk = (plan?.next?.ask || '').trim() || null;
   // Attach to context for downstream reply composition (kept server-side only)
   (context as any)._dialog = plan
@@ -1432,7 +1701,7 @@ export async function POST(req: Request) {
   // Apply extracted fields if not already present
   if (plan?.extracted) {
     // Don't let the LLM overwrite car model on "option number" messages (can hallucinate).
-    const isOptionOnly = pickChoiceIndex(body.message) !== null && /\boption\b/i.test(body.message);
+    const isOptionOnly = pickChoiceIndex(userText) !== null && /\boption\b/i.test(userText);
     if (!context.customerName && plan.extracted.customerName) {
       const rawName = String(plan.extracted.customerName).trim().replace(/\s+/g, ' ').slice(0, 32);
       const n = normalize(rawName);
@@ -1454,26 +1723,26 @@ export async function POST(req: Request) {
   }
 
   // Detect intent + safety
-  const intent = await detectIntent(body.message);
+  const intent = await detectIntent(userText);
 
   // Best-effort: extract structured fields from free text so UI doesn't need forms.
   // (Still deterministic, no workflow bypass.)
   const hadPhone = Boolean(context.customerPhone);
-  const extractedPhone = extractPhoneFromText(body.message);
+  const extractedPhone = extractPhoneFromText(userText);
   const capturedPhoneThisTurn = Boolean(extractedPhone) && !hadPhone;
   if (extractedPhone && !hadPhone) context.customerPhone = extractedPhone;
 
-  const extractedName = extractNameFromText(body.message);
+  const extractedName = extractNameFromText(userText);
   if (extractedName && !context.customerName) context.customerName = extractedName;
 
-  const extractedVehicle = extractVehicleNumberFromText(body.message);
+  const extractedVehicle = extractVehicleNumberFromText(userText);
   if (extractedVehicle && !context.vehicleNumber) context.vehicleNumber = extractedVehicle;
 
-  const pickupPref = extractPickupPreference(body.message, { allowOptionNumber: context.conversationStage === 'NEED_PICKUP_PREF' });
+  const pickupPref = extractPickupPreference(userText, { allowOptionNumber: context.conversationStage === 'NEED_PICKUP_PREF' });
   if (pickupPref !== null && typeof context.pickupRequired !== 'boolean') context.pickupRequired = pickupPref;
 
   // Capture payment method if user is selecting it (typed text or option number).
-  const extractedPayment = extractPaymentMethodFromText(body.message, { allowOptionNumber: context.conversationStage === 'NEED_PAYMENT' });
+  const extractedPayment = extractPaymentMethodFromText(userText, { allowOptionNumber: context.conversationStage === 'NEED_PAYMENT' });
   if (extractedPayment && !context.paymentMethod) context.paymentMethod = extractedPayment;
 
   // If intent detector extracted a locationText, keep it as addressText.
@@ -1534,10 +1803,10 @@ export async function POST(req: Request) {
   // Quick FAQ / info answers (works even when doc-mode is OFF)
   // - warranty, pickup/drop, GST, genuine parts, workshop/self-drop questions
   // ============================
-  const qLang = pickDocLang(context, body.message);
-  const faq = docKnowledgeAnswer(qLang, body.message);
-  const wantsWorkshopLoc = isWorkshopAddressQuery(body.message);
-  const wantsSelfDrop = isSelfDropQuery(body.message);
+  const qLang = pickDocLang(context, userText);
+  const faq = docKnowledgeAnswer(qLang, userText);
+  const wantsWorkshopLoc = isWorkshopAddressQuery(userText);
+  const wantsSelfDrop = isSelfDropQuery(userText);
 
   // This intercept is only for the non-doc workflow.
   // In doc-mode, we handle KB/guardrails inside the doc-mode block so we can continue the funnel correctly.
@@ -1575,9 +1844,9 @@ export async function POST(req: Request) {
   // Payment link quick action (user can ask "pay now" anytime)
   // ============================
   const rawPayMsg = normalize(body.message);
-  const wantsPayLink = /(pay\s*now|payment\s*link|pay link|upi\s*link|pay online|make payment|pay invoice)/i.test(body.message);
-  const wantsAdvance = /(advance|token|booking token)/i.test(body.message);
-  const wantsInvoicePay = /(invoice|full payment|remaining)/i.test(body.message);
+  const wantsPayLink = /(pay\s*now|payment\s*link|pay link|upi\s*link|pay online|make payment|pay invoice)/i.test(userText);
+  const wantsAdvance = /(advance|token|booking token)/i.test(userText);
+  const wantsInvoicePay = /(invoice|full payment|remaining)/i.test(userText);
 
   const extractAmountFromText = (text: string): number | null => {
     // pick the first 2-6 digit number as INR
@@ -1673,11 +1942,13 @@ export async function POST(req: Request) {
     // This prevents wrong captures like using "Hyundai Creta" as last-service/location.
     const raw = (body.message || '').trim();
     const needFromText = isNeedAnalysisAnswer(raw);
-    const isKnowledgeTurn = Boolean(docKnowledgeAnswer(lang, raw) || isPricingQuery(raw) || isWorkshopAddressQuery(raw));
+    const docLooksLikeQuestion = /\?/.test(raw) && /^(are|is|what|why|how|where|when|which|do|does|can)\b/i.test(raw.trim());
+    const isKnowledgeTurn = Boolean(docKnowledgeAnswer(lang, raw) || isPricingQuery(raw) || isWorkshopAddressQuery(raw) || docLooksLikeQuestion);
 
     // 1) Need type
     if (!context.docNeedType) {
-      if (needFromText) ctxPatch.docNeedType = needFromText;
+      // Don't capture need type on FAQ/info questions.
+      if (!isKnowledgeTurn && needFromText) ctxPatch.docNeedType = needFromText;
     } else if (!isKnowledgeTurn && !context.docCarModelText && !context.vehicleModel) {
       // 2) Car model (Make + Model)
       if (raw.length >= 3 && !extractPhoneFromText(raw) && !isPricingQuery(raw) && !isWorkshopAddressQuery(raw)) {
@@ -1725,7 +1996,7 @@ export async function POST(req: Request) {
     const mergedCtxForNext = { ...(context as any), ...(ctxPatch as any) };
 
     // Handle guardrails / KB answers first
-    if (isPricingQuery(body.message)) {
+    if (isPricingQuery(userText)) {
       const kb = docLine(
         lang,
         'Our service expert will share the exact pricing for your car model during the callback 📞.',
@@ -1734,7 +2005,7 @@ export async function POST(req: Request) {
       );
       const nextQ = buildDocNextQuestion(lang, mergedCtxForNext);
       let assistantMessage = [kb, nextQ].filter(Boolean).join('\n');
-      assistantMessage = await translateIfNeeded(body.message, assistantMessage);
+      assistantMessage = await translateIfNeeded(userText, assistantMessage);
       const resp: ChatbotResponse = { conversationId, intent, assistantMessage, contextPatch: ctxPatch };
       await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent, mode: 'doc', step: 'pricing_guardrail' } });
       return NextResponse.json(resp);
@@ -1795,7 +2066,7 @@ export async function POST(req: Request) {
       return NextResponse.json(resp);
     }
 
-    if (isWorkshopAddressQuery(body.message)) {
+    if (isWorkshopAddressQuery(userText)) {
       const kb = docLine(
         lang,
         'Pickup & drop is free 🚗. Our service expert will confirm the workshop location when they call you.',
@@ -1804,13 +2075,18 @@ export async function POST(req: Request) {
       );
       const nextQ = buildDocNextQuestion(lang, mergedCtxForNext);
       let assistantMessage = [kb, nextQ].filter(Boolean).join('\n');
-      assistantMessage = await translateIfNeeded(body.message, assistantMessage);
+      assistantMessage = await translateIfNeeded(userText, assistantMessage);
       const resp: ChatbotResponse = { conversationId, intent, assistantMessage, contextPatch: ctxPatch };
       await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent, mode: 'doc', step: 'address_guardrail' } });
       return NextResponse.json(resp);
     }
 
-    let kb = docKnowledgeAnswer(lang, body.message);
+    // Prefer FAQ/KB answers for info questions, then rewrite into user's language/style (facts preserved).
+    let kb = docKnowledgeAnswer(lang, userText);
+    if (kb) kb = await rewriteAnswerInUserLanguage({ userText, answerText: kb, lang });
+    if (!kb && (docLooksLikeQuestion || looksLikeInfoQuestion(userText))) {
+      kb = (await kbAnswerWithLanguage(supabase, userText, lang).catch(() => null)) || null;
+    }
     const nextQ = buildDocNextQuestion(lang, mergedCtxForNext);
 
     // If complete (including optional vehicle number), close.
@@ -1824,7 +2100,7 @@ export async function POST(req: Request) {
 
     if (isComplete && !nextQ) {
       let assistantMessage = docClosing(lang, mergedCtxForNext);
-      assistantMessage = await translateIfNeeded(body.message, assistantMessage);
+      assistantMessage = await translateIfNeeded(userText, assistantMessage);
       const resp: ChatbotResponse = { conversationId, intent, assistantMessage, contextPatch: ctxPatch };
       await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent, mode: 'doc', step: 'done' } });
       return NextResponse.json(resp);
@@ -1842,11 +2118,12 @@ export async function POST(req: Request) {
 
     // If not a simple slot-fill answer, try Vector KB (Supabase pgvector) for better accuracy.
     // We do this before out-of-KB escalation so we only escalate when retrieval is weak.
-    const looksLikeQuestion = /\?/.test(body.message || '');
-    const looksLikeKbTopic = /(warranty|gst|tax|amc|subscription|dent|paint|denting|painting|cng|genuine|oem|oes|proof|video|invoice|support|inspection)/i.test(body.message || '');
-    if (!kb && !didCaptureSomething && (looksLikeQuestion || looksLikeKbTopic)) {
+    const looksLikeQuestionMark = /\?/.test(userText || '');
+    const looksLikeKbTopic = /(warranty|gst|tax|amc|subscription|dent|paint|denting|painting|cng|genuine|oem|oes|proof|video|invoice|support|inspection)/i.test(userText || '');
+    if (!kb && !didCaptureSomething && (looksLikeQuestionMark || looksLikeKbTopic)) {
       try {
-        kb = (await vectorKbAnswer(supabase, lang, body.message)) || null;
+        // First try deterministic FAQ extraction; fall back to RAG answerer only if needed.
+        kb = (await kbAnswerWithLanguage(supabase, userText, lang)) || (await vectorKbAnswer(supabase, lang, userText)) || null;
       } catch {
         // ignore retrieval errors
       }
@@ -1854,13 +2131,13 @@ export async function POST(req: Request) {
 
     // Out-of-KB escalation (doc rule): if user asks a question we don't recognize, handoff to expert briefly and continue funnel.
     const shouldEscalate =
-      looksLikeQuestion &&
+      looksLikeQuestionMark &&
       !kb &&
-      !isPricingQuery(body.message) &&
-      !isWorkshopAddressQuery(body.message) &&
+      !isPricingQuery(userText) &&
+      !isWorkshopAddressQuery(userText) &&
       !needFromText &&
       !didCaptureSomething &&
-      !isOnlySmallTalk(body.message);
+      !isOnlySmallTalk(userText);
 
     const kbOrEscalation = shouldEscalate
       ? docLine(
@@ -1875,7 +2152,7 @@ export async function POST(req: Request) {
       const { usp, nextIndex } = nextUsp(mergedCtxForNext);
       ctxPatch.docUspIndex = nextIndex;
       let assistantMessage = [kbOrEscalation, usp, nextQ].filter(Boolean).join('\n');
-      assistantMessage = await translateIfNeeded(body.message, assistantMessage);
+      assistantMessage = await translateIfNeeded(userText, assistantMessage);
       const resp: ChatbotResponse = { conversationId, intent, assistantMessage, contextPatch: ctxPatch };
       await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent, mode: 'doc', step: 'next_with_usp' } });
       return NextResponse.json(resp);
@@ -1883,7 +2160,7 @@ export async function POST(req: Request) {
 
     // Default: just ask next
     let assistantMessage = [kbOrEscalation, nextQ].filter(Boolean).join('\n');
-    assistantMessage = await translateIfNeeded(body.message, assistantMessage);
+    assistantMessage = await translateIfNeeded(userText, assistantMessage);
     const resp: ChatbotResponse = { conversationId, intent, assistantMessage, contextPatch: ctxPatch };
     await bestEffortLog(supabase, { conversationId, context, userText: body.message, botText: assistantMessage, meta: { intent, mode: 'doc', step: 'next' } });
 
@@ -1908,14 +2185,14 @@ export async function POST(req: Request) {
   // We only capture names via explicit patterns (extractNameFromText / LLM extracted) or when UI sends it.
 
   if (context.conversationStage === 'NEED_LOCATION' && !context.addressText) {
-    const raw = (body.message || '').trim();
+    const raw = userText;
     if (raw.length >= 4 && !/^(pickup|self|ok|okay|yes|no)$/i.test(raw)) {
       context.addressText = raw.slice(0, 160);
     }
   }
 
   if (context.conversationStage === 'NEED_CAR_MODEL') {
-    const choiceIdx = pickChoiceIndex(body.message);
+    const choiceIdx = pickChoiceIndex(userText);
     // Only set if user selected an option number from suggestions
     if (choiceIdx !== null && context.carModelSuggestions && context.carModelSuggestions[choiceIdx]) {
       const selected = context.carModelSuggestions[choiceIdx];
@@ -1929,7 +2206,7 @@ export async function POST(req: Request) {
   }
 
   // Capture service category selection (book-service style tabs)
-  const categoryText = (body.message || '').trim().toUpperCase();
+  const categoryText = userText.toUpperCase();
   const KNOWN_CATEGORIES = new Set([
     'PERIODIC SERVICE',
     'AC SERVICE',
@@ -1950,7 +2227,7 @@ export async function POST(req: Request) {
   // Also infer category from free text (e.g. "need periodic service", "ac service", "battery issue").
   if (!context.serviceCategory && context.docMode === false) {
     const menu = renderCategoryMenu();
-    const inferred = resolveCategoryFromFreeText(String(body.message || ''), menu.cats);
+    const inferred = resolveCategoryFromFreeText(userText, menu.cats);
     if (inferred) {
       context.serviceCategory = inferred;
       if (!context.problemDescription) context.problemDescription = inferred;
@@ -2080,23 +2357,51 @@ export async function POST(req: Request) {
   // Non-doc mode: try KB/RAG for free-text questions (then continue funnel).
   // This improves "customer wrote free text" handling without breaking deterministic workflow.
   if (!DOC_MODE_ENABLED || context.docMode === false) {
-    const q = String(body.message || '').trim();
-    const looksLikeQuestion = /\?/.test(q) || /^(what|why|how|which|where|when)\b/i.test(q);
+    const q = String(effectiveMessage || body.message || '').trim();
+    const looksLikeQuestion = looksLikeInfoQuestion(q);
     const looksLikeKbTopic = /(warranty|gst|tax|amc|subscription|dent|paint|denting|painting|cng|genuine|oem|oes|proof|video|invoice|include|included|inclusion|checklist|points)/i.test(q);
     if ((looksLikeQuestion || looksLikeKbTopic) && !isPricingQuery(q) && !isWorkshopAddressQuery(q)) {
       const lang = pickDocLang(context, q);
-      // First try DB-only manual FAQs (works even if OpenAI quota is exhausted).
-      const kbManual = await manualFaqAnswer(supabase, q).catch(() => null);
-      const kb = kbManual || (await vectorKbAnswer(supabase, lang, q).catch(() => null));
+      // Prefer deterministic FAQ extraction (then fallback to vector RAG answerer).
+      const kb = (await kbAnswerWithLanguage(supabase, q, lang).catch(() => null)) || (await vectorKbAnswer(supabase, lang, q).catch(() => null));
       if (kb) {
         let nextQ: string | null = null;
-        // Continue the funnel with the minimum next question.
-        if (!context.modelId && !context.vehicleModel) {
-          nextQ = 'Aapki car model kaunsa hai? (Example: Tata Tigor / Maruti Swift / Hyundai i20)';
-        } else if (!context.customerPhone) {
-          nextQ = 'Callback ke liye 10-digit mobile number share kar dijiye.';
-        } else if (!context.problemDescription) {
-          nextQ = 'Ab aapki car me kya issue hai / kaunsi service chahiye? (Example: general service, AC cooling, brake noise)';
+        const stage = String((context as any).conversationStage || 'INITIAL');
+        const isEarly = stage === 'INITIAL' || stage === 'GREETING' || stage === 'START' || stage === 'NEW';
+
+        // If user asked an informational FAQ, don't force "car model" immediately.
+        // Keep the same top-of-funnel question as the greeting.
+        if (isEarly) {
+          nextQ = docLine(
+            lang,
+            'What do you need today — regular service, repair/issue, or cleaning/detailing?',
+            'आपको क्या चाहिए — रेगुलर सर्विस, रिपेयर/इश्यू, या क्लीनिंग/डिटेलिंग?',
+            'Aapko kya chahiye — regular service, repair/issue, ya cleaning/detailing?'
+          );
+        } else {
+          // Continue the funnel with the minimum next question.
+          if (!context.modelId && !context.vehicleModel) {
+            nextQ = docLine(
+              lang,
+              'Which car do you drive? (Example: Tata Tigor / Maruti Swift / Hyundai i20)',
+              'आपकी कार का मॉडल कौन‑सा है? (Example: Tata Tigor / Maruti Swift / Hyundai i20)',
+              'Aapki car model kaunsa hai? (Example: Tata Tigor / Maruti Swift / Hyundai i20)'
+            );
+          } else if (!context.customerPhone) {
+            nextQ = docLine(
+              lang,
+              'Please share your 10-digit mobile number for callback.',
+              'कॉलबैक के लिए 10-digit मोबाइल नंबर शेयर कर दीजिए।',
+              'Callback ke liye 10-digit mobile number share kar dijiye.'
+            );
+          } else if (!context.problemDescription) {
+            nextQ = docLine(
+              lang,
+              'What issue are you facing / what service do you need? (Example: general service, AC cooling, brake noise)',
+              'आपकी कार में क्या समस्या है / कौन‑सी सर्विस चाहिए? (Example: general service, AC cooling, brake noise)',
+              'Aapki car me kya issue hai / kaunsi service chahiye? (Example: general service, AC cooling, brake noise)'
+            );
+          }
         }
 
         const assistantMessage = [kb, nextQ].filter(Boolean).join('\n\n');
@@ -2108,11 +2413,11 @@ export async function POST(req: Request) {
   }
 
   // Friendly greeting/small talk: respond naturally
-  if (isOnlySmallTalk(body.message)) {
+  if (isOnlySmallTalk(userText)) {
     const fallback =
       'Hi! Aapko kis cheez me help chahiye — RSA (roadside) ya car service? Aap 1–2 lines me problem bata dijiye.';
     const assistantMessage = await composeReply({
-      userMessage: body.message,
+      userMessage: userText,
       context,
       stage: 'SMALLTALK',
       deterministicFacts: { ask: 'problem_or_rsa' },
@@ -3436,7 +3741,7 @@ export async function POST(req: Request) {
   });
 
   // If we're not confident / unknown, capture the question for human review -> add to KB later.
-  if (intent.intent === 'UNKNOWN' && intent.confidence <= 0.65 && !isOnlySmallTalk(body.message)) {
+  if (intent.intent === 'UNKNOWN' && intent.confidence <= 0.65 && !isOnlySmallTalk(userText)) {
     await bestEffortCaptureKbQuestion({
       supabase,
       conversationId,

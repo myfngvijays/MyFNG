@@ -5,7 +5,11 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Eye, Loader2, Plus, Save, Trash2, UploadCloud } from 'lucide-react';
+import { ArrowLeft, Eye, Loader2, Plus, Save, Sparkles, Trash2, UploadCloud } from 'lucide-react';
+import RichTextEditor from '@/components/blog/RichTextEditor';
+import LimitHint from '@/components/blog/LimitHint';
+import { extractKeywordsFromSummary } from '@/lib/blog/seo';
+import { collectHeadingWordWarnings, stripHtmlToText } from '@/lib/blog/text';
 
 export default function CreateBlogPage() {
   const router = useRouter();
@@ -14,11 +18,16 @@ export default function CreateBlogPage() {
   const [tags, setTags] = useState<any[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [uploadingFeatured, setUploadingFeatured] = useState(false);
+  const [generatingFaqs, setGeneratingFaqs] = useState(false);
+  const [autoTagging, setAutoTagging] = useState(false);
+  const [generatingLocalKeywords, setGeneratingLocalKeywords] = useState(false);
+  const [customLocalArea, setCustomLocalArea] = useState('');
 
   type ContentBlock = {
     id: string;
     heading: string;
     image_url?: string;
+    image_alt?: string;
     body_html: string; // HTML supported
   };
 
@@ -46,7 +55,7 @@ export default function CreateBlogPage() {
   );
 
   const [contentBlocks, setContentBlocks] = useState<ContentBlock[]>([
-    { id: uid(), heading: '', image_url: '', body_html: '' },
+    { id: uid(), heading: '', image_url: '', image_alt: '', body_html: '' },
   ]);
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [primaryCity, setPrimaryCity] = useState('Pune');
@@ -58,6 +67,7 @@ export default function CreateBlogPage() {
     excerpt: '',
     content: '',
     category_id: '',
+    category_ids: [] as string[],
     featured_image: '',
     read_time: 3,
     status: 'draft',
@@ -73,6 +83,7 @@ export default function CreateBlogPage() {
       og_title: '',
       og_description: '',
       og_image: '',
+      featured_image_alt: '',
       // Extra fields (JSON) - safe to store in seo_data
       search_intent: 'Informational',
       schema_blogposting: true,
@@ -134,10 +145,12 @@ export default function CreateBlogPage() {
         const h = (b.heading || '').trim();
         const img = (b.image_url || '').trim();
         const body = (b.body_html || '').trim();
+        const altSource = String((b.image_alt || '').trim() || h || 'Section image').slice(0, 125);
+        const altText = escapeText(altSource);
         return [
           '<section>',
           h ? `<h2>${escapeText(h)}</h2>` : '',
-          img ? `<p><img src="${escapeText(img)}" alt="${escapeText(h || 'Section image')}" /></p>` : '',
+          img ? `<p><img src="${escapeText(img)}" alt="${altText}" /></p>` : '',
           body || '',
           '</section>',
         ]
@@ -169,6 +182,43 @@ export default function CreateBlogPage() {
     // Keep formData.content in sync so submit validation passes
     setFormData((prev) => ({ ...prev, content: generatedHtml }));
   }, [generatedHtml]);
+
+  // Auto-fill meta description from AI Summary (excerpt) if empty
+  useEffect(() => {
+    const summary = String(formData.excerpt || '').trim();
+    const current = String((formData.seo_data as any).meta_description || '').trim();
+    if (!summary) return;
+    if (current) return;
+    setFormData((p) => ({
+      ...p,
+      seo_data: { ...p.seo_data, meta_description: summary.slice(0, 155) } as any,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.excerpt]);
+
+  // Auto-fill keywords from AI Summary if empty
+  useEffect(() => {
+    const summary = String(formData.excerpt || '').trim();
+    const current = String((formData.seo_data as any).keywords || '').trim();
+    if (!summary || current) return;
+    const kw = extractKeywordsFromSummary(summary, 10);
+    if (!kw) return;
+    setFormData((p) => ({
+      ...p,
+      seo_data: { ...p.seo_data, keywords: kw } as any,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.excerpt]);
+
+  const wordText = useMemo(() => stripHtmlToText(String(generatedHtml || '')), [generatedHtml]);
+  const headingWarnings = useMemo(() => collectHeadingWordWarnings(String(generatedHtml || ''), 10), [generatedHtml]);
+
+  const selectedTagWordViolations = useMemo(() => {
+    const selected = new Set<string>(formData.tag_ids || []);
+    const chosen = (tags || []).filter((t: any) => selected.has(t.id)).map((t: any) => t.name);
+    const bad = chosen.filter((name: any) => String(name || '').trim().split(/\s+/).filter(Boolean).length > 3);
+    return bad;
+  }, [formData.tag_ids, tags]);
 
   async function fetchCategories() {
     try {
@@ -225,6 +275,111 @@ export default function CreateBlogPage() {
     }
   }
 
+  async function generateFaqsWithAi() {
+    const title = (formData.title || '').trim();
+    const content = generatedHtml || '';
+    const focusKeyword = String((formData.seo_data as any).keywords || '').trim();
+    if (!title || title.length < 6) {
+      toast.error('Please enter a valid Title first.');
+      return;
+    }
+    if (!content || content.length < 50) {
+      toast.error('Please add some content first.');
+      return;
+    }
+    try {
+      setGeneratingFaqs(true);
+      const res = await fetch('/api/blogs/ai-faqs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content, focusKeyword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to generate FAQs');
+
+      const items = Array.isArray(data?.faqs) ? data.faqs : [];
+      setFaqs(items.slice(0, 8).map((f: any) => ({ id: uid(), question: String(f.question || ''), answer: String(f.answer || '') })));
+      toast.success('FAQs generated (editable)');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to generate FAQs');
+    } finally {
+      setGeneratingFaqs(false);
+    }
+  }
+
+  async function autoTagWithAi() {
+    const title = (formData.title || '').trim();
+    const content = generatedHtml || '';
+    const focusKeyword = String((formData.seo_data as any).keywords || '').trim();
+    if (!title || title.length < 6) {
+      toast.error('Please enter a valid Title first.');
+      return;
+    }
+    if (!content || content.length < 50) {
+      toast.error('Please add some content first.');
+      return;
+    }
+    try {
+      setAutoTagging(true);
+      const res = await fetch('/api/blogs/ai-auto-tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content, focusKeyword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to auto-tag');
+
+      const ids: string[] = Array.isArray(data?.tag_ids) ? data.tag_ids : [];
+      setFormData((p) => ({ ...p, tag_ids: Array.from(new Set([...(p.tag_ids || []), ...ids])) }));
+      toast.success('Tags updated');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to auto-tag');
+    } finally {
+      setAutoTagging(false);
+    }
+  }
+
+  async function generateLocalSeoKeywords() {
+    const title = (formData.title || '').trim();
+    const focusKeyword = String((formData.seo_data as any).keywords || '').trim();
+    const location = customLocalArea.trim();
+    if (!location) {
+      toast.error('Enter a specific area (e.g. "Vartak Nagar, Thane West").');
+      return;
+    }
+    if (!title || title.length < 6) {
+      toast.error('Please enter a valid Title first.');
+      return;
+    }
+    try {
+      setGeneratingLocalKeywords(true);
+      const res = await fetch('/api/blogs/ai-local-seo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location, title, focusKeyword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to generate local keywords');
+
+      const locals: string[] = Array.isArray(data?.local_keywords) ? data.local_keywords : [];
+      if (!locals.length) throw new Error('No keywords returned');
+
+      setFormData((p) => {
+        const existing = String((p.seo_data as any).keywords || '')
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean);
+        const merged = Array.from(new Set([...existing, ...locals])).slice(0, 25);
+        return { ...p, seo_data: { ...p.seo_data, keywords: merged.join(', ') } as any };
+      });
+      toast.success('Local SEO keywords added to Focus Keyword field');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to generate local keywords');
+    } finally {
+      setGeneratingLocalKeywords(false);
+    }
+  }
+
   async function submitBlog(statusOverride?: string) {
     setLoading(true);
 
@@ -234,12 +389,36 @@ export default function CreateBlogPage() {
         status: statusOverride ?? formData.status,
         // Always submit generated HTML
         content: generatedHtml,
+        faqs: faqs
+          .filter((f) => (f.question || '').trim() && (f.answer || '').trim())
+          .map((f) => ({ question: String(f.question).trim(), answer: String(f.answer).trim() })),
       };
 
       // Validate required fields
       if (!payload.title || !payload.slug || !payload.content) {
         toast.error('Please fill Title + Slug + at least 1 content section');
         return;
+      }
+
+      // Enforce Featured image ALT if featured image set (backend also enforces).
+      if (payload.featured_image && !String((payload.seo_data as any).featured_image_alt || '').trim()) {
+        toast.error('Featured image ALT text is required.');
+        return;
+      }
+
+      // Enforce image ALT field for any section image URL (backend validates final HTML too).
+      for (const b of contentBlocks) {
+        const img = String(b.image_url || '').trim();
+        if (!img) continue;
+        const alt = String((b.image_alt || '').trim() || (b.heading || '').trim());
+        if (!alt) {
+          toast.error('Section image ALT is required (use Heading or fill Image ALT).');
+          return;
+        }
+        if (alt.length > 125) {
+          toast.error('Section image ALT is too long (max 125 chars).');
+          return;
+        }
       }
 
       const response = await fetch('/api/blogs', {
@@ -338,6 +517,7 @@ export default function CreateBlogPage() {
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                 placeholder="e.g. Best Car Service in Pune – Prices & Expert Tips"
               />
+              <LimitHint value={formData.title} mode="chars" recommended={{ min: 50, max: 60 }} />
 
               <div className="mt-4">
                 <label className="block text-sm font-semibold text-slate-900 mb-1">Featured Image</label>
@@ -385,6 +565,24 @@ export default function CreateBlogPage() {
                     Note: If hosted on `myfng.*` / Supabase, filename must match slug (backend validation).
                   </p>
                 </div>
+
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Featured Image ALT Text {formData.featured_image ? <span className="text-red-600">*</span> : null}
+                  </label>
+                  <input
+                    type="text"
+                    value={String((formData.seo_data as any).featured_image_alt || '')}
+                    onChange={(e) =>
+                      setFormData((p) => ({ ...p, seo_data: { ...p.seo_data, featured_image_alt: e.target.value } as any }))
+                    }
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                    placeholder="Describe the featured image (max 125 chars)"
+                    maxLength={125}
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">Required to save/publish if you set a featured image.</p>
+                <LimitHint value={String((formData.seo_data as any).featured_image_alt || '')} mode="chars" recommended={{ max: 125 }} hardMax={125} />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
@@ -402,10 +600,17 @@ export default function CreateBlogPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-900 mb-1">Category</label>
+                  <label className="block text-sm font-semibold text-slate-900 mb-1">Primary Category</label>
                   <select
-                    value={formData.category_id}
-                    onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                    value={formData.category_ids[0] || formData.category_id || ''}
+                    onChange={(e) => {
+                      const primary = e.target.value;
+                      setFormData((p) => {
+                        const rest = (p.category_ids || []).filter((id) => id !== primary);
+                        const nextIds = primary ? [primary, ...rest] : rest;
+                        return { ...p, category_id: primary, category_ids: nextIds };
+                      });
+                    }}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                   >
                     <option value="">Select category</option>
@@ -419,6 +624,39 @@ export default function CreateBlogPage() {
               </div>
 
               <div className="mt-4">
+                <label className="block text-sm font-semibold text-slate-900 mb-2">Additional Categories (Multi-select)</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-auto pr-1">
+                  {categories.map((cat) => {
+                    const selected = (formData.category_ids || []).includes(cat.id);
+                    return (
+                      <label key={cat.id} className="flex items-center gap-2 text-sm text-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setFormData((p) => {
+                              const current = p.category_ids || [];
+                              if (checked) {
+                                const next = Array.from(new Set([...(current.length ? current : p.category_id ? [p.category_id] : []), cat.id]));
+                                // If no primary chosen yet, set this as primary
+                                const primary = next[0] || cat.id;
+                                const reordered = primary === cat.id ? [cat.id, ...next.filter((id) => id !== cat.id)] : next;
+                                return { ...p, category_id: reordered[0] || '', category_ids: reordered };
+                              }
+                              const next = current.filter((id) => id !== cat.id);
+                              return { ...p, category_id: next[0] || '', category_ids: next };
+                            });
+                          }}
+                        />
+                        <span className="truncate">{cat.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-4">
                 <label className="block text-sm font-semibold text-slate-900 mb-1">AI Summary (40–60 words)</label>
                 <textarea
                   value={formData.excerpt}
@@ -427,6 +665,10 @@ export default function CreateBlogPage() {
                   rows={3}
                   placeholder="Summarize the value of this post..."
                 />
+                <div className="text-[11px] text-slate-500 mt-1">
+                  Recommended: max 60 words.
+                </div>
+                <LimitHint value={formData.excerpt} mode="words" recommended={{ max: 60 }} />
               </div>
             </div>
 
@@ -463,6 +705,7 @@ export default function CreateBlogPage() {
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                       placeholder="Why Choosing the Right Car Service Matters"
                     />
+                    <LimitHint value={b.heading || ''} mode="words" label="Heading words" recommended={{ max: 10 }} />
 
                     <label className="block text-sm font-semibold text-slate-900 mt-3 mb-1">Section Image (Optional URL)</label>
                     <input
@@ -477,16 +720,37 @@ export default function CreateBlogPage() {
                       placeholder="https://example.com/illustration.jpg"
                     />
 
+                    {String(b.image_url || '').trim() ? (
+                      <>
+                        <label className="block text-sm font-semibold text-slate-900 mt-3 mb-1">
+                          Image ALT Text <span className="text-red-600">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={b.image_alt || ''}
+                          onChange={(e) =>
+                            setContentBlocks((prev) =>
+                              prev.map((x) => (x.id === b.id ? { ...x, image_alt: e.target.value } : x))
+                            )
+                          }
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                          placeholder="Describe this image (max 125 chars)"
+                          maxLength={125}
+                        />
+                      </>
+                    ) : null}
+
                     <label className="block text-sm font-semibold text-slate-900 mt-3 mb-1">Body Content (HTML supported)</label>
-                    <textarea
-                      value={b.body_html}
-                      onChange={(e) =>
-                        setContentBlocks((prev) => prev.map((x) => (x.id === b.id ? { ...x, body_html: e.target.value } : x)))
-                      }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-brand-primary focus:border-transparent font-mono text-sm resize-y"
-                      rows={6}
-                      placeholder="<p>Write detailed, helpful content here...</p>"
-                    />
+                    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                      <RichTextEditor
+                        slug={String(formData.slug || '').trim() || 'draft'}
+                        value={b.body_html}
+                        onChange={(html) =>
+                          setContentBlocks((prev) => prev.map((x) => (x.id === b.id ? { ...x, body_html: html } : x)))
+                        }
+                        disabled={loading}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -494,7 +758,7 @@ export default function CreateBlogPage() {
               <button
                 type="button"
                 className="w-full mt-4 border-2 border-dashed border-slate-200 rounded-lg py-2 text-brand-primary hover:bg-blue-50 hover:border-brand-primary transition inline-flex items-center justify-center gap-2"
-                onClick={() => setContentBlocks((prev) => [...prev, { id: uid(), heading: '', image_url: '', body_html: '' }])}
+                onClick={() => setContentBlocks((prev) => [...prev, { id: uid(), heading: '', image_url: '', image_alt: '', body_html: '' }])}
               >
                 <Plus className="w-4 h-4" />
                 Add New Section Block
@@ -503,9 +767,19 @@ export default function CreateBlogPage() {
 
             {/* 3. FAQ Section */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 sm:p-5">
-              <h2 className="text-sm font-bold tracking-wide uppercase text-slate-900 border-b border-slate-200 pb-2 mb-4">
-                3. FAQ Section (Structured Data)
-              </h2>
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2 mb-4">
+                <h2 className="text-sm font-bold tracking-wide uppercase text-slate-900">3. FAQ Section (Structured Data)</h2>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm inline-flex items-center gap-2"
+                  onClick={generateFaqsWithAi}
+                  disabled={generatingFaqs || loading}
+                  title="Generate minimum 5 FAQs using OpenAI (editable)"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {generatingFaqs ? 'Generating...' : 'AI Generate FAQs'}
+                </button>
+              </div>
 
               {faqs.length === 0 ? (
                 <div className="text-sm text-slate-600">No FAQ added yet.</div>
@@ -560,6 +834,28 @@ export default function CreateBlogPage() {
               <h2 className="text-sm font-bold tracking-wide uppercase text-slate-900 border-b border-slate-200 pb-2 mb-4">
                 4. Local SEO Targeting
               </h2>
+
+              <label className="block text-sm font-semibold text-slate-900 mb-1">Specific Area (AI keywords)</label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={customLocalArea}
+                  onChange={(e) => setCustomLocalArea(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  placeholder='e.g. "Vartak Nagar, Thane West"'
+                />
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={generateLocalSeoKeywords}
+                  disabled={generatingLocalKeywords || loading}
+                >
+                  {generatingLocalKeywords ? 'Generating...' : 'Generate'}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Generates and appends local keyword variations into the Focus Keyword field.
+              </p>
 
               <label className="block text-sm font-semibold text-slate-900 mb-1">Primary City</label>
               <select
@@ -635,6 +931,7 @@ export default function CreateBlogPage() {
                 placeholder="Looking for trusted car service in Pune? Compare prices, packages and expert tips."
                 maxLength={160}
               />
+              <LimitHint value={String((formData.seo_data as any).meta_description || '')} mode="chars" recommended={{ min: 120, max: 155 }} />
 
               <label className="block text-sm font-semibold text-slate-900 mt-3 mb-1">Focus Keyword</label>
               <input
@@ -741,6 +1038,33 @@ export default function CreateBlogPage() {
               <h2 className="text-sm font-bold tracking-wide uppercase text-slate-900 border-b border-slate-200 pb-2 mb-4">
                 Tags
               </h2>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm w-full mb-3 inline-flex items-center justify-center gap-2"
+                onClick={autoTagWithAi}
+                disabled={autoTagging || loading}
+              >
+                <Sparkles className="w-4 h-4" />
+                {autoTagging ? 'Auto-tagging...' : 'Auto-Tag (AI)'}
+              </button>
+              <LimitHint
+                value=""
+                mode="chars"
+                label="Tags selected"
+                countOverride={(formData.tag_ids || []).length}
+                unitOverride="tags"
+                recommended={{ min: 5, max: 10 }}
+              />
+              <div className="text-[11px] text-slate-500 -mt-0.5">
+                Each tag should be 1–3 words.
+                {selectedTagWordViolations.length ? (
+                  <span className="text-amber-700">
+                    {' '}
+                    ({selectedTagWordViolations.slice(0, 2).join(', ')}
+                    {selectedTagWordViolations.length > 2 ? '…' : ''} too long)
+                  </span>
+                ) : null}
+              </div>
               <div className="grid grid-cols-1 gap-2 max-h-56 overflow-auto pr-1">
                 {tags.map((tag) => (
                   <label key={tag.id} className="flex items-center gap-2 text-sm text-slate-800">
@@ -839,6 +1163,14 @@ export default function CreateBlogPage() {
                   // eslint-disable-next-line react/no-danger
                   dangerouslySetInnerHTML={{ __html: generatedHtml || '<p>No content yet.</p>' }}
                 />
+                <LimitHint value={wordText} mode="words" label="Word count" recommended={{ min: 800 }} />
+                {headingWarnings.length ? (
+                  <div className="text-[11px] text-amber-700 mt-1">
+                    {headingWarnings.slice(0, 3).map((w) => (
+                      <div key={w}>• {w}</div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

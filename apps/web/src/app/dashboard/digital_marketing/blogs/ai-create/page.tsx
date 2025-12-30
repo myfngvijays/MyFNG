@@ -106,7 +106,7 @@ export default function AICreateBlogPage() {
     }
   }
 
-  async function createBlog(status: 'draft' | 'published') {
+  async function createBlog(status: 'draft' | 'pending_review' | 'published') {
     if (!draft) return;
     try {
       setSaving(true);
@@ -116,6 +116,7 @@ export default function AICreateBlogPage() {
         excerpt: draft.excerpt,
         content: draft.content_html,
         category_id: categoryId || null,
+        category_ids: categoryId ? [categoryId] : [],
         featured_image: '',
         read_time: draft.read_time || 5,
         status,
@@ -123,6 +124,7 @@ export default function AICreateBlogPage() {
         is_premium: false,
         tag_ids: selectedTagIds,
         image_urls: [],
+        faqs: [], // FAQs are generated separately (AI FAQs button in editor)
         seo_data: {
           meta_title: draft.seo.meta_title,
           meta_description: draft.seo.meta_description,
@@ -133,6 +135,9 @@ export default function AICreateBlogPage() {
           og_image: '',
           // Helpful metadata
           search_intent: intent,
+          schema_blogposting: true,
+          schema_faq: true,
+          eligible_ai_overview: true,
           ai_generated: true,
           ai_topic: topic,
           ai_city: city,
@@ -147,7 +152,7 @@ export default function AICreateBlogPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Failed to create blog');
 
-      toast.success(status === 'published' ? 'Blog published' : 'Draft created');
+      toast.success(status === 'published' ? 'Blog published' : status === 'pending_review' ? 'Sent for review' : 'Draft created');
       router.push(`/dashboard/digital_marketing/blogs/${data.blog.id}/edit`);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to create blog');
@@ -308,6 +313,15 @@ export default function AICreateBlogPage() {
                   >
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Create Draft
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm flex items-center gap-2"
+                    disabled={!draft || saving}
+                    onClick={() => createBlog('pending_review')}
+                  >
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Send for Review
                   </button>
                   <button
                     type="button"

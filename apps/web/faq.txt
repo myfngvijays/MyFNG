@@ -1,186 +1,435 @@
+    {
+      "category": "First-Time / Homepage Questions",
+      "question": "What is MY FNG?",
+      "answer": "MY FNG is a trusted car service platform that connects car owners with verified, high-quality workshops. We manage the entire service process with transparent pricing, photo/video updates, warranty, and centralised support."
+    },
+    {
+      "category": "First-Time / Homepage Questions",
+      "question": "How does MY FNG work?",
+      "answer": "You book a service → we assign a verified workshop → free pickup → inspection & estimate → your approval → service → delivery with warranty and full transparency."
+    },
+    {
+      "category": "First-Time / Homepage Questions",
+      "question": "Are you a service center or an aggregator?",
+      "answer": "MY FNG is an aggregator. We partner with verified workshops and manage quality, pricing transparency, and customer protection."
+    },
+    {
+      "category": "First-Time / Homepage Questions",
+      "question": "Why should I book through MY FNG?",
+      "answer": "Because you get workshop-level pricing with MY FNG-level quality control, transparency, warranty, and support."
+    },
+    {
+      "category": "First-Time / Homepage Questions",
+      "question": "How are you different from local garages?",
+      "answer": "Local garages vary in quality. MY FNG standardises processes, pricing transparency, photo/video proof, warranty, and accountability."
+    },
+    {
+      "category": "First-Time / Homepage Questions",
+      "question": "Is MY FNG trustworthy?",
+      "answer": "Yes. All workshops are verified, services are documented with photos/videos, estimates are approved before work, and warranty is provided."
+    },
+    {
+      "category": "First-Time / Homepage Questions",
+      "question": "Are workshops verified?",
+      "answer": "Yes. All workshops are audited and continuously monitored."
+    },
+    {
+      "category": "First-Time / Homepage Questions",
+      "question": "Do you service all car brands?",
+      "answer": "We service all major brands."
+    },
+    {
+      "category": "First-Time / Homepage Questions",
+      "question": "Is this an authorised service center?",
+      "answer": "No. We are a multi-brand service platform, not an authorised dealer."
+    },
 
- {
-  "category": "General",
-  "question": "What is MY FNG?",
-  "answer": "MY FNG is Mumbais most trusted multi-brand car service platform . We connect car owners with 50 A-grade workshops in Mumbai, Thane, Navi Mumbai, and Palghar."
- },
- {
-  "category": "General",
-  "question": "Why should I choose MY FNG instead of my local garage?",
-  "answer": "With MY FNG you get:\n Free pickup  drop \n OEM\/OES genuine spare parts \n Photo\/video proof \n 50-point checkup \n 1-month \/ 1,000 km warranty \n Same-day service\nLocal garages may not offer this level of transparency  guarantee."
- },
- {
-  "category": "General",
-  "question": "Do you provide doorstep service?",
-  "answer": "We provide free pickup  drop . Service is done at our partner workshops with proper equipment."
- },
- {
-  "category": "General",
-  "question": "How do I book service?",
-  "answer": "Just share your car details and preferred date. Well arrange a callback from our expert to confirm pickup."
- },
- {
-  "category": "General",
-  "question": "Can I get service today?",
-  "answer": "Yes , in most areas we provide same-day pickup  service."
- },
- {
-  "category": "General",
-  "question": "Is it safe to give my car to you?",
-  "answer": "Absolutely . Driver takes pre-inspection photos, you get updates throughout, and youre covered with warranty."
- },
- {
-  "category": "Services",
-  "question": "What services do you provide?",
-  "answer": "We provide:\n- Regular car servicing (basic\/standard\/premium)\n- Repairs (engine, brakes, clutch, AC, suspension)\n- Cleaning  detailing\n- Car scanning  diagnostics"
- },
- {
-  "category": "Services",
-  "question": "Can you handle my car model?",
-  "answer": "Yes . We service all car models with expert mechanics."
- },
- {
-  "category": "Services",
-  "question": "Do you do repairs also?",
-  "answer": "Yes . From engine  clutch to AC, suspension, brakes  we handle all repairs with OEM\/OES parts."
- },
- {
-  "category": "Services",
-  "question": "What service plans do you offer?",
-  "answer": "We have 3 plans  General, Premium, and Platinum:\n General: 30-point (engine oil, oil filter, brake service, tuning, top-ups)\n Premium: 50-point (General  AC filter, air filter, scanning, preventive maintenance, health report)\n Platinum: Full synthetic oil  premium add-ons.\nExact pricing depends on car model, shared by service expert ."
- },
- {
-  "category": "Services",
-  "question": "CNG service available hai kya?",
-  "answer": "CNG service certified CNG fitment centers mein hoti hai. Hum aapko recommend\/assist kar sakte hain."
- },
- {
-  "category": "Services",
-  "question": "System mein ek hi car hai, second car ka kya plan hai?",
-  "answer": "Sir, hum aapki second car ko system mein add kar dete hain aur uske packages ka PDF bhej dete hain."
- },
- {
-  "category": "Repairs",
-  "question": "My service is not due, but I have an issue in my car. Can you help?",
-  "answer": "Yes . MY FNG also handles custom repairs. Our partner workshop will pick up your car, inspect it, and share an estimate. If you dont go ahead, only Pickup\/Drop\/Inspection\/Estimate charges apply: 999 (Hatchbacks\/Sedans) or 1,299 (SUVs\/MUVs)."
- },
- {
-  "category": "Repairs",
-  "question": "What kind of car issues can you fix?",
-  "answer": "We handle all problems   clutch hard, brake noise, suspension, AC cooling, steering, vibration, starting issues, overheating, fuel average drop, window issues, etc."
- },
- {
-  "category": "Repairs",
-  "question": "Do you also do denting and painting?",
-  "answer": "Yes . Denting  painting starts from 3,500 per panel (solid color). Metallic, pearl, or SUV\/MUV panels cost more. Final estimate after inspection."
- },
- {
-  "category": "Repairs",
-  "question": "What happens if I only want scanning or inspection?",
-  "answer": "We provide complete scanning  50-point health reports. If only inspection is done, Pickup\/Drop\/Inspection charges apply (999 hatchbacks\/sedans, 1,299 SUVs\/MUVs)."
- },
- {
-  "category": "Repairs",
-  "question": "Clutch plate ka cost aur labour charges kya hai?",
-  "answer": "Sir, cost car model pe depend karta hai. Aap model bataiye, hum parts  labour breakup bhej dete hain via expert call."
- },
- {
-  "category": "Process",
-  "question": "How does the service process work?",
-  "answer": "1 Free pickup \n2 Pre-inspection photos \n3 Estimate approval \n4 Service\/repairs with proof \n5 Car delivered back with warranty"
- },
- {
-  "category": "Process",
-  "question": "How will I know what work is done?",
-  "answer": "Youll get photos  videos of all major work (oil change, parts replacement, washing, etc.)."
- },
- {
-  "category": "Process",
-  "question": "How long does the service take?",
-  "answer": "Most cars are completed the same day. Major repairs may take longer."
- },
- {
-  "category": "Trust  Warranty",
-  "question": "Do you give warranty?",
-  "answer": "Yes , every service comes with a 1-month or 1,000 km warranty."
- },
- {
-  "category": "Trust  Warranty",
-  "question": "What if I face issues after service?",
-  "answer": "Dont worry  well resolve it under warranty ."
- },
- {
-  "category": "Trust  Warranty",
-  "question": "How do I know parts are genuine?",
-  "answer": "We only use OEM\/OES genuine parts  and share photo\/video proof."
- },
- {
-  "category": "Trust  Warranty",
-  "question": "Authorized jaisa record milega kya?",
-  "answer": "Yes . Aapko proper GST invoice  digital record milta hai."
- },
- {
-  "category": "Trust  Warranty",
-  "question": "Aap spare parts ke sath chedchad karte ho?",
-  "answer": "Bilkul nahi sir . Aapko har kaam ka photo\/video proof milta hai. Hum trust aur transparency ke liye known hain (Google rating 4.2)."
- },
- {
-  "category": "Trust  Warranty",
-  "question": "Dent  paint pe warranty kya milta hai?",
-  "answer": "Dent  paint service pe 1-yr warranty hoti hai against paint chipping, peeling, or fading. We use top-grade materials."
- },
- {
-  "category": "Objections",
-  "question": "Mujhe address do, main kabhi aa jaunga.",
-  "answer": "Sir, hamare workshops strictly appointment-based hain  walk-in vehicles bina booking ke accept nahi hote. Aap slot batayein, hum confirm kar denge aur ek din pehle reminder bhejenge."
- },
- {
-  "category": "Objections",
-  "question": "Aapka price aur authorized ka price same hai, toh difference kya hai?",
-  "answer": "Even if price matches, MY FNG gives:\n- Full transparency (photos\/videos)\n- Free pickup\/drop\n- Warranty (1 month\/1,000 km)\n- Same-day delivery\n- Free mini service within 6 months (inspection  oil\/consumables top-up). Authorized\/local workshops dont provide this."
- },
- {
-  "category": "Objections",
-  "question": "Workshop aapka khud ka hai ya tie-up hai?",
-  "answer": "Workshops humare tie-up partners hain , sab A-grade verified. Direct jaane se price same ya zyada hi hota hai. MY FNG aapko deta hai bulk-negotiated rates, free pickup\/drop, real-time updates, warranty, transparency."
- },
- {
-  "category": "Objections",
-  "question": "Same rate mein dusra workshop de raha hai, toh aapse kyun karu?",
-  "answer": "Fair question . MY FNG gives transparency, photos\/videos, real-time updates, warranty, and a free mini service within 6 months. Dusra workshop yeh sab nahi deta."
- },
- {
-  "category": "Objections",
-  "question": "Aapke package mein wheel alignment\/balancing nahi hai.",
-  "answer": "Sir, wheel alignment\/balancing har service mein mandatory nahi hota. Agar inspection mein zarurat lage toh hum add karte hain at nominal cost."
- },
- {
-  "category": "Commercial",
-  "question": "Yeh package mein GST included hai kya?",
-  "answer": "Yes . Package prices are inclusive of GST. Aapko proper GST invoice milega."
- },
- {
-  "category": "Commercial",
-  "question": "AMC package hai kya?",
-  "answer": "Yes . We have Annual Maintenance Contracts with multiple services, priority slots, and savings."
- },
- {
-  "category": "Commercial",
-  "question": "Do you have any offers?",
-  "answer": "Yes   We sometimes provide free car scanning or free Teflon coating with a 50-point report (on selected packages). Our service expert will confirm if any current offer is available."
- },
- {
-  "category": "Fallback",
-  "question": "Can you tell me the price?",
-  "answer": "Our service expert will share the exact pricing for your car model during the callback ."
- },
- {
-  "category": "Fallback",
-  "question": "Can you share the workshop address?",
-  "answer": "Pickup  drop is free . Our service expert will confirm the workshop location when they call you."
- },
- {
-  "category": "Fallback",
-  "question": "Mere vehicle ke liye cost aur workshop details do.",
-  "answer": "Sir, aapki car model confirm karke hum nearest workshop  exact package price callback mein share karenge."
- }
+    {
+      "category": "Booking & Process",
+      "question": "How do I book a car service?",
+      "answer": "You can book directly through this chat, WhatsApp, website, or app."
+    },
+    {
+      "category": "Booking & Process",
+      "question": "Can I book service through this chatbot?",
+      "answer": "Yes. Just answer a few questions and we’ll take care of the rest."
+    },
+    {
+      "category": "Booking & Process",
+      "question": "What details are required to book?",
+      "answer": "Car model, location, preferred date, and contact details."
+    },
+    {
+      "category": "Booking & Process",
+      "question": "Can I book for today?",
+      "answer": "Same-day bookings are subject to slot availability."
+    },
+    {
+      "category": "Booking & Process",
+      "question": "What happens after booking?",
+      "answer": "Pickup is scheduled → inspection is done → estimate shared → service begins after your approval."
+    },
+    {
+      "category": "Booking & Process",
+      "question": "Can I choose pickup or drop?",
+      "answer": "Pickup and drop are included by default."
+    },
+    {
+      "category": "Booking & Process",
+      "question": "Can I visit the workshop directly?",
+      "answer": "No. MY FNG manages the booking process on an appointment basis."
+    },
+    {
+      "category": "Booking & Process",
+      "question": "Who will contact me?",
+      "answer": "MY FNG or the assigned workshop driver for pickup coordination."
+    },
+    {
+      "category": "Booking & Process",
+      "question": "Will I get booking confirmation?",
+      "answer": "Yes. Via WhatsApp/SMS."
+    },
+    {
+      "category": "Booking & Process",
+      "question": "Can I reschedule my booking?",
+      "answer": "Yes, before pickup."
+    },
+    {
+      "category": "Booking & Process",
+      "question": "Can I cancel my booking?",
+      "answer": "Yes, before pickup."
+    },
+
+    {
+      "category": "Pricing & Packages",
+      "question": "How much does car servicing cost?",
+      "answer": "Pricing depends on your car model and service type."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "Are prices fixed?",
+      "answer": "Service package prices are fixed. Repairs are done only after inspection and your approval."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "Are there hidden charges?",
+      "answer": "No. Every charge is shared in advance with photo/video proof."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "Do you offer discounts?",
+      "answer": "No discounts. We focus on transparent, fair pricing and quality service."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "What service packages do you offer?",
+      "answer": "Interim, Basic, General, Premium, and Platinum service packages."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "What is included in each package?",
+      "answer": "Each package differs by engine oil type and service points. Details are shown before booking."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "Which package should I choose?",
+      "answer": "The chatbot recommends the right package based on your car and usage."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "Do prices vary by car model?",
+      "answer": "Yes."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "Do prices vary by location?",
+      "answer": "Slightly, based on workshop availability."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "Will I get an estimate before work starts?",
+      "answer": "Yes."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "Can the price change after inspection?",
+      "answer": "Only if additional repairs are needed and approved by you."
+    },
+    {
+      "category": "Pricing & Packages",
+      "question": "Why are prices higher or lower than local garages?",
+      "answer": "MY FNG includes verified quality, warranty, and accountability."
+    },
+
+    {
+      "category": "Pickup & Drop",
+      "question": "Is pickup and drop free?",
+      "answer": "Yes, free pickup and drop is included."
+    },
+    {
+      "category": "Pickup & Drop",
+      "question": "Is pickup safe?",
+      "answer": "Yes. Pickup is done by trained drivers and documented with photos."
+    },
+    {
+      "category": "Pickup & Drop",
+      "question": "From where do you pick up the car?",
+      "answer": "From your provided address."
+    },
+    {
+      "category": "Pickup & Drop",
+      "question": "What time will pickup happen?",
+      "answer": "Pickup time is confirmed after booking."
+    },
+    {
+      "category": "Pickup & Drop",
+      "question": "Who picks up the car?",
+      "answer": "A trained driver from the assigned workshop."
+    },
+    {
+      "category": "Pickup & Drop",
+      "question": "Will you share pickup photos?",
+      "answer": "Yes."
+    },
+    {
+      "category": "Pickup & Drop",
+      "question": "Can I track my car?",
+      "answer": "Service updates are shared at every stage."
+    },
+    {
+      "category": "Pickup & Drop",
+      "question": "How long will servicing take?",
+      "answer": "Most services are same-day unless major repairs are required."
+    },
+    {
+      "category": "Pickup & Drop",
+      "question": "When will my car be delivered?",
+      "answer": "Delivery time is shared after inspection."
+    },
+
+    {
+      "category": "Transparency & Updates",
+      "question": "Will I get service updates?",
+      "answer": "Yes. You receive real-time updates with photos and videos."
+    },
+    {
+      "category": "Transparency & Updates",
+      "question": "What updates are shared?",
+      "answer": "Pre-inspection, car arrival, parts replaced, service progress, and final bill."
+    },
+    {
+      "category": "Transparency & Updates",
+      "question": "What if I don’t approve the estimate?",
+      "answer": "No work is done without your approval."
+    },
+    {
+      "category": "Transparency & Updates",
+      "question": "How will I receive updates?",
+      "answer": "Via WhatsApp and App."
+    },
+    {
+      "category": "Transparency & Updates",
+      "question": "Will I get photos and videos?",
+      "answer": "Yes."
+    },
+    {
+      "category": "Transparency & Updates",
+      "question": "Who monitors service quality?",
+      "answer": "MY FNG centrally monitors every service."
+    },
+
+    {
+      "category": "Spare Parts & Quality",
+      "question": "Do you use genuine spare parts?",
+      "answer": "Yes. Only genuine or OEM-recommended spare parts are used."
+    },
+    {
+      "category": "Spare Parts & Quality",
+      "question": "Can I see old replaced parts?",
+      "answer": "Yes, on request."
+    },
+    {
+      "category": "Spare Parts & Quality",
+      "question": "What engine oil do you use?",
+      "answer": "Brand and grade depend on package selection."
+    },
+    {
+      "category": "Spare Parts & Quality",
+      "question": "Are parts billed separately?",
+      "answer": "Yes, clearly in the invoice."
+    },
+    {
+      "category": "Spare Parts & Quality",
+      "question": "How do I know parts pricing is fair?",
+      "answer": "Prices are standardised and pre-approved."
+    },
+
+    {
+      "category": "Warranty & Guarantee",
+      "question": "Do you provide warranty?",
+      "answer": "Yes. We provide 1 month or 1000 km warranty on service."
+    },
+    {
+      "category": "Warranty & Guarantee",
+      "question": "How do I claim warranty?",
+      "answer": "Contact MY FNG support. We handle it for you."
+    },
+    {
+      "category": "Warranty & Guarantee",
+      "question": "Who handles warranty?",
+      "answer": "MY FNG coordinates warranty resolution."
+    },
+
+    {
+      "category": "Payments",
+      "question": "When do I pay?",
+      "answer": "After service completion and delivery."
+    },
+    {
+      "category": "Payments",
+      "question": "What payment modes are accepted?",
+      "answer": "UPI, card, net banking, and cash."
+    },
+    {
+      "category": "Payments",
+      "question": "Will I get a bill?",
+      "answer": "Yes. A detailed invoice is shared."
+    },
+    {
+      "category": "Payments",
+      "question": "Do I pay before service?",
+      "answer": "No."
+    },
+    {
+      "category": "Payments",
+      "question": "Is GST included?",
+      "answer": "Yes, where applicable."
+    },
+
+    {
+      "category": "Location & Coverage",
+      "question": "Is MY FNG available in my area?",
+      "answer": "Enter your location and the chatbot will confirm availability instantly."
+    },
+    {
+      "category": "Location & Coverage",
+      "question": "Do you operate in Mumbai and nearby areas?",
+      "answer": "Yes. We operate across Mumbai, Navi Mumbai, Thane, and nearby regions."
+    },
+
+    {
+      "category": "Car Model & Eligibility",
+      "question": "Do you service my car model?",
+      "answer": "We service most petrol, diesel, CNG, and EV cars. Enter your model to confirm."
+    },
+    {
+      "category": "Car Model & Eligibility",
+      "question": "Do you service old cars?",
+      "answer": "Yes, including high-mileage vehicles."
+    },
+    {
+      "category": "Car Model & Eligibility",
+      "question": "Do you service luxury cars?",
+      "answer": "Yes, subject to availability."
+    },
+    {
+      "category": "Car Model & Eligibility",
+      "question": "Do you service electric cars?",
+      "answer": "Yes, limited services."
+    },
+    {
+      "category": "Car Model & Eligibility",
+      "question": "Do you service company or fleet cars?",
+      "answer": "Yes."
+    },
+
+    {
+      "category": "Specific Service Queries",
+      "question": "I want periodic service",
+      "answer": "Sure. The chatbot will suggest the best package based on your car."
+    },
+    {
+      "category": "Specific Service Queries",
+      "question": "My car has an issue",
+      "answer": "Describe the problem and we’ll recommend the right service."
+    },
+    {
+      "category": "Specific Service Queries",
+      "question": "I want AC service",
+      "answer": "Yes, AC services are available."
+    },
+    {
+      "category": "Specific Service Queries",
+      "question": "I want brake, clutch, or engine work",
+      "answer": "Yes."
+    },
+    {
+      "category": "Specific Service Queries",
+      "question": "My car is making noise, overheating, or not starting",
+      "answer": "Describe the issue and we’ll guide you."
+    },
+
+    {
+      "category": "Comparison & Objections",
+      "question": "Why not authorised service center?",
+      "answer": "After warranty, authorised centers are expensive. MY FNG offers the same quality with transparency and better value."
+    },
+    {
+      "category": "Comparison & Objections",
+      "question": "Who is responsible if something goes wrong?",
+      "answer": "MY FNG takes responsibility and resolves the issue."
+    },
+    {
+      "category": "Comparison & Objections",
+      "question": "Is local garage cheaper?",
+      "answer": "Sometimes, but without warranty or accountability."
+    },
+    {
+      "category": "Comparison & Objections",
+      "question": "What if workshop damages my car?",
+      "answer": "MY FNG intervenes and resolves."
+    },
+
+    {
+      "category": "Post-Service & Support",
+      "question": "How do I raise a complaint?",
+      "answer": "Contact MY FNG support through WhatsApp or the app."
+    },
+    {
+      "category": "Post-Service & Support",
+      "question": "What if I’m not satisfied?",
+      "answer": "We investigate and resolve issues immediately."
+    },
+    {
+      "category": "Post-Service & Support",
+      "question": "How do I give feedback?",
+      "answer": "Feedback link is shared post-service."
+    },
+
+    {
+      "category": "Business & Partnerships",
+      "question": "Can my workshop join MY FNG?",
+      "answer": "Yes. Share your details and our team will contact you."
+    },
+
+    {
+      "category": "AI / Smart Booking",
+      "question": "Can AI suggest the right service?",
+      "answer": "Yes. Just describe your issue and AI will guide you."
+    },
+    {
+      "category": "AI / Smart Booking",
+      "question": "Can I book without selecting a package?",
+      "answer": "Yes. AI will recommend the right option."
+    },
+
+    {
+      "category": "Human Escalation",
+      "question": "I want to talk to a human",
+      "answer": "Sure. Please share your number and our team will contact you."
+    },
+    {
+      "category": "Human Escalation",
+      "question": "I need urgent help",
+      "answer": "Please select “Urgent Assistance” and we’ll prioritise your request."
+    }

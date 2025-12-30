@@ -153,12 +153,14 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger for blogs table
+DROP TRIGGER IF EXISTS update_blogs_updated_at ON public.blogs;
 CREATE TRIGGER update_blogs_updated_at
     BEFORE UPDATE ON public.blogs
     FOR EACH ROW
     EXECUTE FUNCTION update_blog_updated_at();
 
 -- Trigger for blog_categories table
+DROP TRIGGER IF EXISTS update_blog_categories_updated_at ON public.blog_categories;
 CREATE TRIGGER update_blog_categories_updated_at
     BEFORE UPDATE ON public.blog_categories
     FOR EACH ROW
@@ -198,6 +200,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger to save version on blog update
+DROP TRIGGER IF EXISTS save_blog_version_trigger ON public.blogs;
 CREATE TRIGGER save_blog_version_trigger
     BEFORE UPDATE ON public.blogs
     FOR EACH ROW

@@ -433,21 +433,40 @@ export default function ExtraWorkApprovalsPage() {
   function buildQuoteHtml(group: any) {
     const publicPath = `/customer/track/${group.lead_id}`;
     const publicUrl = typeof window !== 'undefined' ? `${window.location.origin}${publicPath}` : publicPath;
+
+    const escapeHtml = (v: any) =>
+      String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const fmt = (n: number) =>
+      `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
     const rows = group.items
       .map((r: ExtraWorkRequest) => {
         const p = getEffectivePricingForRequest(r);
         const priority = r.is_urgent ? 'HIGH' : 'NORMAL';
-        const reason = (r.reason || '').replace(/\n/g, '<br/>');
+        const reason = escapeHtml(r.reason || '').replace(/\n/g, '<br/>');
+        const desc = escapeHtml(r.description || '-');
+        const priorityBadge =
+          priority === 'HIGH'
+            ? `<span class="badge badge-high">HIGH</span>`
+            : `<span class="badge badge-normal">NORMAL</span>`;
         return `
           <tr>
-            <td style="padding:8px;border:1px solid #ddd;">${r.description || '-'}</td>
-            <td style="padding:8px;border:1px solid #ddd;">${priority}</td>
-            <td style="padding:8px;border:1px solid #ddd;">${reason || '-'}</td>
-            <td style="padding:8px;border:1px solid #ddd;text-align:right;">₹${p.oem.toFixed(2)}</td>
-            <td style="padding:8px;border:1px solid #ddd;text-align:right;">₹${p.oes.toFixed(2)}</td>
-            <td style="padding:8px;border:1px solid #ddd;text-align:right;">₹${p.labour.toFixed(2)}</td>
-            <td style="padding:8px;border:1px solid #ddd;text-align:right;">₹${p.total_oem.toFixed(2)}</td>
-            <td style="padding:8px;border:1px solid #ddd;text-align:right;">₹${p.total_oes.toFixed(2)}</td>
+            <td class="td td-item">
+              <div class="item-title">${desc}</div>
+            </td>
+            <td class="td td-priority">${priorityBadge}</td>
+            <td class="td td-note">${reason ? reason : '<span class="muted">—</span>'}</td>
+            <td class="td td-num">${fmt(p.oem)}</td>
+            <td class="td td-num">${fmt(p.oes)}</td>
+            <td class="td td-num">${fmt(p.labour)}</td>
+            <td class="td td-num td-strong">${fmt(p.total_oem)}</td>
+            <td class="td td-num td-strong">${fmt(p.total_oes)}</td>
           </tr>
         `;
       })
@@ -455,44 +474,206 @@ export default function ExtraWorkApprovalsPage() {
 
     const totalOem = group.items.reduce((sum: number, r: ExtraWorkRequest) => sum + getEffectivePricingForRequest(r).total_oem, 0);
     const totalOes = group.items.reduce((sum: number, r: ExtraWorkRequest) => sum + getEffectivePricingForRequest(r).total_oes, 0);
+    const now = new Date();
 
     return `
       <html>
         <head>
           <title>Additional Work Quote - ${group.lead_number}</title>
           <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <style>
+            :root {
+              --bg: #f6f7fb;
+              --card: #ffffff;
+              --text: #0f172a;
+              --muted: #64748b;
+              --border: #e2e8f0;
+              --header1: #0ea5e9;
+              --header2: #2563eb;
+              --badge-high-bg: #fee2e2;
+              --badge-high-text: #991b1b;
+              --badge-normal-bg: #e0f2fe;
+              --badge-normal-text: #075985;
+            }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+              background: var(--bg);
+              color: var(--text);
+              padding: 24px;
+            }
+            .container { max-width: 1100px; margin: 0 auto; }
+            .header {
+              border-radius: 14px;
+              color: white;
+              padding: 16px 18px;
+              background: linear-gradient(90deg, var(--header1), var(--header2));
+              display: flex;
+              align-items: flex-start;
+              justify-content: space-between;
+              gap: 16px;
+            }
+            .header h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.2px; }
+            .header .sub { margin-top: 6px; font-size: 12px; opacity: 0.9; }
+            .chip {
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              padding: 6px 10px;
+              border-radius: 999px;
+              background: rgba(255,255,255,0.18);
+              border: 1px solid rgba(255,255,255,0.25);
+              font-size: 11px;
+              font-weight: 700;
+              white-space: nowrap;
+            }
+            .card {
+              margin-top: 14px;
+              background: var(--card);
+              border: 1px solid var(--border);
+              border-radius: 14px;
+              overflow: hidden;
+            }
+            .meta {
+              padding: 14px 16px;
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 10px 16px;
+              font-size: 13px;
+            }
+            .meta .row { display: flex; gap: 8px; min-width: 0; }
+            .meta .k { color: var(--muted); width: 80px; flex: 0 0 auto; }
+            .meta .v { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+            a { color: #1d4ed8; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            .table-wrap { overflow-x: auto; border-top: 1px solid var(--border); }
+            table { width: 100%; border-collapse: collapse; font-size: 13px; }
+            thead th {
+              position: sticky;
+              top: 0;
+              background: #f8fafc;
+              border-bottom: 1px solid var(--border);
+              color: #334155;
+              text-align: left;
+              padding: 10px 12px;
+              white-space: nowrap;
+            }
+            tbody tr:nth-child(odd) { background: #ffffff; }
+            tbody tr:nth-child(even) { background: #fbfdff; }
+            .td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+            .td-item { min-width: 220px; }
+            .td-note { min-width: 220px; color: #334155; }
+            .td-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+            .td-strong { font-weight: 800; }
+            .item-title { font-weight: 700; }
+            .muted { color: var(--muted); }
+            .badge {
+              display: inline-flex;
+              align-items: center;
+              padding: 4px 10px;
+              border-radius: 999px;
+              font-size: 11px;
+              font-weight: 800;
+              letter-spacing: 0.3px;
+              border: 1px solid transparent;
+            }
+            .badge-high { background: var(--badge-high-bg); color: var(--badge-high-text); border-color: #fecaca; }
+            .badge-normal { background: var(--badge-normal-bg); color: var(--badge-normal-text); border-color: #bae6fd; }
+            tfoot td {
+              padding: 12px;
+              background: #f8fafc;
+              border-top: 1px solid var(--border);
+              font-weight: 800;
+            }
+            .totals {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 10px;
+              padding: 14px 16px;
+              border-top: 1px solid var(--border);
+              background: #fbfdff;
+              font-size: 13px;
+            }
+            .totals .box {
+              border: 1px solid var(--border);
+              border-radius: 12px;
+              padding: 10px 12px;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 12px;
+            }
+            .totals .label { color: var(--muted); font-weight: 700; }
+            .totals .value { font-weight: 900; }
+            @media (max-width: 720px) {
+              body { padding: 12px; }
+              .meta { grid-template-columns: 1fr; }
+              .totals { grid-template-columns: 1fr; }
+            }
+            @media print {
+              body { background: white; padding: 0; }
+              .header { border-radius: 0; }
+              .card { border: none; border-radius: 0; }
+              thead th { position: static; }
+              a { color: black; text-decoration: none; }
+            }
+          </style>
         </head>
-        <body style="font-family: Arial, sans-serif; padding: 24px;">
-          <h2 style="margin:0 0 6px 0;">Additional Work Quote</h2>
-          <div style="color:#444;margin-bottom:16px;">
-            <div><strong>Lead:</strong> ${group.lead_number}</div>
-            <div><strong>Customer:</strong> ${group.customer_name}</div>
-            <div><strong>Vehicle:</strong> ${group.vehicle_number}</div>
-            <div><strong>Tracking:</strong> <a href="${publicUrl}">${publicUrl}</a></div>
-          </div>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div>
+                <h1>Additional Work Quote</h1>
+                <div class="sub">Generated on ${escapeHtml(now.toLocaleString())}</div>
+              </div>
+              <div class="chip">Lead: ${escapeHtml(group.lead_number)}</div>
+            </div>
 
-          <table style="border-collapse:collapse;width:100%;font-size:14px;">
-            <thead>
-              <tr>
-                <th style="padding:8px;border:1px solid #ddd;text-align:left;background:#f5f5f5;">Item</th>
-                <th style="padding:8px;border:1px solid #ddd;text-align:left;background:#f5f5f5;">Priority</th>
-                <th style="padding:8px;border:1px solid #ddd;text-align:left;background:#f5f5f5;">Remark / Note</th>
-                <th style="padding:8px;border:1px solid #ddd;text-align:right;background:#f5f5f5;">OEM</th>
-                <th style="padding:8px;border:1px solid #ddd;text-align:right;background:#f5f5f5;">OES</th>
-                <th style="padding:8px;border:1px solid #ddd;text-align:right;background:#f5f5f5;">Labour</th>
-                <th style="padding:8px;border:1px solid #ddd;text-align:right;background:#f5f5f5;">Total (OEM)</th>
-                <th style="padding:8px;border:1px solid #ddd;text-align:right;background:#f5f5f5;">Total (OES)</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-            <tfoot>
-              <tr>
-                <td colspan="6" style="padding:8px;border:1px solid #ddd;text-align:right;"><strong>Total</strong></td>
-                <td style="padding:8px;border:1px solid #ddd;text-align:right;"><strong>₹${totalOem.toFixed(2)}</strong></td>
-                <td style="padding:8px;border:1px solid #ddd;text-align:right;"><strong>₹${totalOes.toFixed(2)}</strong></td>
-              </tr>
-            </tfoot>
-          </table>
+            <div class="card">
+              <div class="meta">
+                <div class="row"><div class="k">Customer</div><div class="v">${escapeHtml(group.customer_name || '—')}</div></div>
+                <div class="row"><div class="k">Vehicle</div><div class="v">${escapeHtml(group.vehicle_number || '—')}</div></div>
+                <div class="row"><div class="k">Tracking</div><div class="v"><a href="${publicUrl}" rel="noopener noreferrer">${escapeHtml(publicUrl)}</a></div></div>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Priority</th>
+                      <th>Remark / Note</th>
+                      <th style="text-align:right;">OEM</th>
+                      <th style="text-align:right;">OES</th>
+                      <th style="text-align:right;">Labour</th>
+                      <th style="text-align:right;">Total (OEM)</th>
+                      <th style="text-align:right;">Total (OES)</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rows}</tbody>
+                  <tfoot>
+                    <tr>
+                      <td colspan="6" style="text-align:right;">Grand Total</td>
+                      <td style="text-align:right;">${fmt(totalOem)}</td>
+                      <td style="text-align:right;">${fmt(totalOes)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <div class="totals">
+                <div class="box">
+                  <div class="label">Total (OEM)</div>
+                  <div class="value">${fmt(totalOem)}</div>
+                </div>
+                <div class="box">
+                  <div class="label">Total (OES)</div>
+                  <div class="value">${fmt(totalOes)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </body>
       </html>
     `;

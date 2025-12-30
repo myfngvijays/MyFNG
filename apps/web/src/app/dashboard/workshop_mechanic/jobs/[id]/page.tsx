@@ -1340,6 +1340,8 @@ export default function MechanicJobDetailPage() {
                       alert(`Please upload all required after service photos (${job.min_after_images} required, ${job.after_images_count} uploaded). Go to Manage tab to upload photos.`);
                       router.push(`/dashboard/workshop_mechanic/jobs/${leadId}/manage`);
                     } else {
+                      const ok = window.confirm('Are you sure you want to mark this job as complete?');
+                      if (!ok) return;
                       updateJobStatus('COMPLETED');
                     }
                   }}
@@ -1868,6 +1870,7 @@ export default function MechanicJobDetailPage() {
                                 <td className="py-2 sm:py-3 px-2">
                                   <input
                                     type="checkbox"
+                                    id={`checklist-item-${item.id}`}
                                     checked={item.status === 'COMPLETED'}
                                     disabled={shouldBlurCategory}
                                     onChange={(e) => {
@@ -1910,7 +1913,7 @@ export default function MechanicJobDetailPage() {
                                 
                                 {/* Point Name */}
                                 <td className="py-2 sm:py-3 px-2 sm:px-3">
-                                  <div className="flex items-center gap-1.5 sm:gap-2">
+                                  <label htmlFor={`checklist-item-${item.id}`} className="cursor-pointer flex items-center gap-1.5 sm:gap-2">
                                     <span className={`font-medium text-xs sm:text-sm ${
                                       item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
                                     }`}>
@@ -1921,7 +1924,7 @@ export default function MechanicJobDetailPage() {
                                         Required
                                       </span>
                                     )}
-                                  </div>
+                                  </label>
                                 </td>
                                 
                                 {/* Remark Input */}
@@ -1936,7 +1939,9 @@ export default function MechanicJobDetailPage() {
                                       );
                                       setChecklist(updatedChecklist);
                                     }}
-                                    onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
+                                    onBlur={(e) =>
+                                      updateChecklistItem(item.id, item.status, item.notes || '', (e.target as HTMLInputElement).value)
+                                    }
                                     placeholder="Enter remark..."
                                     className={`w-full px-2 sm:px-3 py-1 sm:py-1.5 border border-gray-300 rounded text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                       shouldBlurCategory ? 'bg-gray-100 cursor-not-allowed' : ''
@@ -1973,6 +1978,7 @@ export default function MechanicJobDetailPage() {
                             <div className="flex items-start gap-2 sm:gap-3">
                               <input
                                 type="checkbox"
+                                id={`checklist-item-${item.id}`}
                                 checked={item.status === 'COMPLETED'}
                                 disabled={shouldBlurCategory}
                                 onChange={(e) => {
@@ -2000,18 +2006,20 @@ export default function MechanicJobDetailPage() {
                                 className="w-4 h-4 sm:w-5 sm:h-5 cursor-pointer mt-0.5 flex-shrink-0"
                               />
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-                                  <span className={`font-medium text-xs sm:text-sm ${
-                                    item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
-                                  }`}>
-                                    {item.name}
-                                  </span>
-                                  {item.mandatory && (
-                                    <span className="px-1.5 sm:px-2 py-0.5 bg-red-100 text-red-800 text-[10px] sm:text-xs rounded font-semibold">
-                                      Required
+                                <div className="flex items-center justify-between gap-2 mb-1.5 sm:mb-2">
+                                  <label htmlFor={`checklist-item-${item.id}`} className="cursor-pointer flex items-center gap-1.5 sm:gap-2 min-w-0">
+                                    <span className={`font-medium text-xs sm:text-sm truncate ${
+                                      item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
+                                    }`}>
+                                      {item.name}
                                     </span>
-                                  )}
-                                  <span className={`ml-auto px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold ${
+                                    {item.mandatory && (
+                                      <span className="px-1.5 sm:px-2 py-0.5 bg-red-100 text-red-800 text-[10px] sm:text-xs rounded font-semibold">
+                                        Required
+                                      </span>
+                                    )}
+                                  </label>
+                                  <span className={`flex-shrink-0 px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold ${
                                     item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
                                     item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
                                     'bg-gray-100 text-gray-600'
@@ -2029,7 +2037,9 @@ export default function MechanicJobDetailPage() {
                                     );
                                     setChecklist(updatedChecklist);
                                   }}
-                                  onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
+                                  onBlur={(e) =>
+                                    updateChecklistItem(item.id, item.status, item.notes || '', (e.target as HTMLInputElement).value)
+                                  }
                                   placeholder="Enter remark..."
                                   className={`w-full px-2 sm:px-3 py-1 sm:py-1.5 border border-gray-300 rounded text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                     shouldBlurCategory ? 'bg-gray-100 cursor-not-allowed' : ''
@@ -2075,6 +2085,7 @@ export default function MechanicJobDetailPage() {
                           <td className="py-2 sm:py-3 px-2">
                             <input
                               type="checkbox"
+                              id={`checklist-item-${item.id}`}
                               checked={item.status === 'COMPLETED'}
                               onChange={(e) => {
                                 const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
@@ -2084,7 +2095,7 @@ export default function MechanicJobDetailPage() {
                             />
                           </td>
                           <td className="py-2 sm:py-3 px-2 sm:px-3">
-                            <div className="flex items-center gap-1.5 sm:gap-2">
+                            <label htmlFor={`checklist-item-${item.id}`} className="cursor-pointer flex items-center gap-1.5 sm:gap-2">
                               <span className={`font-medium text-xs sm:text-sm ${
                                 item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
                               }`}>
@@ -2095,7 +2106,7 @@ export default function MechanicJobDetailPage() {
                                   Required
                                 </span>
                               )}
-                            </div>
+                            </label>
                           </td>
                           <td className="py-2 sm:py-3 px-2 sm:px-3">
                             <input
@@ -2107,7 +2118,9 @@ export default function MechanicJobDetailPage() {
                               );
                               setChecklist(updatedChecklist);
                             }}
-                            onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
+                            onBlur={(e) =>
+                              updateChecklistItem(item.id, item.status, item.notes || '', (e.target as HTMLInputElement).value)
+                            }
                             placeholder="Enter remark..."
                             className="w-full px-2 sm:px-3 py-1 sm:py-1.5 border border-gray-300 rounded text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
@@ -2140,6 +2153,7 @@ export default function MechanicJobDetailPage() {
                     <div className="flex items-start gap-2 sm:gap-3">
                       <input
                         type="checkbox"
+                        id={`checklist-item-${item.id}`}
                         checked={item.status === 'COMPLETED'}
                         onChange={(e) => {
                           const newStatus = e.target.checked ? 'COMPLETED' : 'PENDING';
@@ -2148,18 +2162,20 @@ export default function MechanicJobDetailPage() {
                         className="w-4 h-4 sm:w-5 sm:h-5 cursor-pointer mt-0.5 flex-shrink-0"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-                          <span className={`font-medium text-xs sm:text-sm ${
-                            item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
-                          }`}>
-                            {item.name}
-                          </span>
-                          {item.mandatory && (
-                            <span className="px-1.5 sm:px-2 py-0.5 bg-red-100 text-red-800 text-[10px] sm:text-xs rounded font-semibold">
-                              Required
+                        <div className="flex items-center justify-between gap-2 mb-1.5 sm:mb-2">
+                          <label htmlFor={`checklist-item-${item.id}`} className="cursor-pointer flex items-center gap-1.5 sm:gap-2 min-w-0">
+                            <span className={`font-medium text-xs sm:text-sm truncate ${
+                              item.status === 'COMPLETED' ? 'text-green-700 line-through' : 'text-gray-800'
+                            }`}>
+                              {item.name}
                             </span>
-                          )}
-                          <span className={`ml-auto px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold ${
+                            {item.mandatory && (
+                              <span className="px-1.5 sm:px-2 py-0.5 bg-red-100 text-red-800 text-[10px] sm:text-xs rounded font-semibold">
+                                Required
+                              </span>
+                            )}
+                          </label>
+                          <span className={`flex-shrink-0 px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold ${
                             item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
                             item.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-800' :
                             'bg-gray-100 text-gray-600'
@@ -2176,7 +2192,9 @@ export default function MechanicJobDetailPage() {
                             );
                             setChecklist(updatedChecklist);
                           }}
-                          onBlur={() => updateChecklistItem(item.id, item.status, item.notes || '', item.remark || '')}
+                          onBlur={(e) =>
+                            updateChecklistItem(item.id, item.status, item.notes || '', (e.target as HTMLInputElement).value)
+                          }
                           placeholder="Enter remark..."
                           className="w-full px-2 sm:px-3 py-1 sm:py-1.5 border border-gray-300 rounded text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
@@ -2730,57 +2748,93 @@ export default function MechanicJobDetailPage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-2 sm:space-y-3">
-                {extraWorkRequests.map((request: any) => {
-                  const status = String(request.status || 'PENDING').toUpperCase();
-                  const byCustomer = Boolean(request.customer_approved_at);
-                  const decisionLabel =
-                    status === 'REJECTED'
-                      ? byCustomer
-                        ? 'REJECTED • Customer'
-                        : 'REJECTED • Advisor'
-                      : status === 'APPROVED'
-                        ? byCustomer
-                          ? `APPROVED • Customer (${String(request.part_price_type || 'OEM').toUpperCase()})`
-                          : 'APPROVED • Advisor'
-                        : 'PENDING';
-                  return (
-                  <div key={request.id} className="p-3 sm:p-4 border rounded-lg">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm sm:text-base">{request.description}</p>
-                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 whitespace-pre-line">{request.reason}</p>
-                        {request.amount !== null && request.amount !== undefined && Number(request.amount) > 0 && (
-                          <p className="text-xs sm:text-sm font-medium text-green-600 mt-1 sm:mt-2">
-                            Estimated: ₹{Number(request.amount)}
-                          </p>
-                        )}
-                      </div>
-                      <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded text-xs sm:text-sm ml-0 sm:ml-4 ${
-                        request.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                        request.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {decisionLabel}
-                      </span>
-                    </div>
-                    {(request.supervisor_approval_notes || request.rejection_reason) && (
-                      <div className="pt-2 sm:pt-3 border-t">
-                        <p className="text-xs sm:text-sm text-gray-600">
-                          <strong>Review Notes:</strong>{' '}
-                          {request.supervisor_approval_notes ||
-                            (status === 'REJECTED' && byCustomer
-                              ? `Customer: ${request.rejection_reason || ''}`
-                              : request.rejection_reason)}
-                        </p>
-                      </div>
-                    )}
-                    <div className="pt-1.5 sm:pt-2 border-t mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-gray-500">
-                      Requested: {formatDateTime(request.created_at)}
-                    </div>
-                  </div>
-                  );
-                })}
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="text-left py-2 px-3">Job</th>
+                      <th className="text-left py-2 px-3 whitespace-nowrap">Priority</th>
+                      <th className="text-left py-2 px-3">Note</th>
+                      <th className="text-left py-2 px-3 whitespace-nowrap">Status</th>
+                      <th className="text-left py-2 px-3 whitespace-nowrap">Requested</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y bg-white">
+                    {extraWorkRequests.map((request: any) => {
+                      const status = String(request.status || 'PENDING').toUpperCase();
+                      const byCustomer = Boolean(request.customer_approved_at);
+                      const decisionLabel =
+                        status === 'REJECTED'
+                          ? byCustomer
+                            ? 'REJECTED • Customer'
+                            : 'REJECTED • Advisor'
+                          : status === 'APPROVED'
+                            ? byCustomer
+                              ? `APPROVED • Customer (${String(request.part_price_type || 'OEM').toUpperCase()})`
+                              : 'APPROVED • Advisor'
+                            : 'PENDING';
+
+                      const priority = request.is_urgent ? 'HIGH' : 'MEDIUM';
+                      const reviewNotes =
+                        request.supervisor_approval_notes ||
+                        (status === 'REJECTED' && byCustomer
+                          ? `Customer: ${request.rejection_reason || ''}`
+                          : request.rejection_reason);
+
+                      return (
+                        <tr
+                          key={request.id}
+                          className={
+                            status === 'APPROVED'
+                              ? 'bg-green-50/30'
+                              : status === 'REJECTED'
+                                ? 'bg-red-50/30'
+                                : 'bg-yellow-50/20'
+                          }
+                        >
+                          <td className="py-3 px-3 align-top">
+                            <div className="font-semibold text-gray-900">{request.description}</div>
+                          </td>
+                          <td className="py-3 px-3 align-top">
+                            <span
+                              className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                request.is_urgent ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'
+                              }`}
+                            >
+                              {priority}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 align-top min-w-[260px]">
+                            <div className="text-gray-700 whitespace-pre-line text-xs sm:text-sm">
+                              {request.reason || '—'}
+                            </div>
+                            {reviewNotes && (
+                              <div className="mt-1 text-[10px] sm:text-xs text-gray-600">
+                                <strong>Review Notes:</strong> {String(reviewNotes)}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 align-top">
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${
+                                status === 'APPROVED'
+                                  ? 'bg-green-100 text-green-800'
+                                  : status === 'REJECTED'
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-yellow-100 text-yellow-800'
+                              }`}
+                            >
+                              {decisionLabel}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 align-top whitespace-nowrap text-xs text-gray-600">
+                            {formatDateTime(request.created_at)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
             </div>

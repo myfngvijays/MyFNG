@@ -6,48 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
-const ALLOWED_BLOG_IMAGE_EXTS = new Set(['webp', 'jpg', 'jpeg', 'png']);
-
-function extractFilenameParts(url: string): { base: string | null; ext: string | null } {
-  const clean = url.split('?')[0]?.split('#')[0] ?? '';
-  const last = clean.split('/').filter(Boolean).pop() ?? '';
-  const idx = last.lastIndexOf('.');
-  if (idx <= 0) return { base: null, ext: null };
-  const base = last.slice(0, idx);
-  const ext = last.slice(idx + 1).toLowerCase();
-  return { base, ext };
-}
-
-function shouldEnforceBlogImageName(url: string): boolean {
-  if (!url) return false;
-  // Relative URLs are assumed to be our assets → enforce.
-  if (url.startsWith('/')) return true;
-  // If not an absolute http(s) URL, enforce as well.
-  if (!/^https?:\/\//i.test(url)) return true;
-  try {
-    const u = new URL(url);
-    const host = u.hostname.toLowerCase();
-    // Enforce for our domains and common storage hosts used by us.
-    return host.endsWith('myfng.in') || host.endsWith('myfng.cloud') || host.includes('supabase.co');
-  } catch {
-    return true;
-  }
-}
-
-function validateBlogImageName(url: string, slug: string): string | null {
-  if (!url || !slug) return null;
-  if (!shouldEnforceBlogImageName(url)) return null;
-
-  const { base, ext } = extractFilenameParts(url);
-  if (!base || !ext || !ALLOWED_BLOG_IMAGE_EXTS.has(ext)) {
-    return `Blog image file name must exactly match the slug (e.g. "${slug}.webp" or "${slug}.jpg").`;
-  }
-  if (base !== slug) {
-    return `Blog image file name must exactly match the slug (expected "${slug}.${ext}", got "${base}.${ext}").`;
-  }
-  return null;
-}
+import { validateBlogImageName } from '@/lib/blog/imageNaming';
+import { collectHeadingWordWarnings, computeReadTimeFromHtml, countWords, validateAllImgHaveAlt } from '@/lib/blog/text';
+import { autoFillSeoFromSummary } from '@/lib/blog/seo';
 
 export async function GET(request: NextRequest) {
   try {
@@ -86,23 +47,29 @@ export async function GET(request: NextRequest) {
     // Build query
     let query = supabase
       .from('blogs')
-      .select(`
+      .select(
+        `
         *,
         category:blog_categories(*),
+        categories:blog_category_mapping(
+          category_id,
+          is_primary,
+          category:blog_categories(*)
+        ),
         author:users_login!author_id(id, full_name, email),
         tags:blog_tag_mapping(
           tag:blog_tags(*)
         )
-      `, { count: 'exact' });
+      `,
+        { count: 'exact' }
+      );
 
     // Apply filters
     if (status) {
       query = query.eq('status', status);
     }
     
-    if (category_id) {
-      query = query.eq('category_id', category_id);
-    }
+    // NOTE: Multi-category filtering is applied after fetch (via blog_category_mapping).
     
     if (featured) {
       query = query.eq('is_featured', true);
@@ -131,6 +98,13 @@ export async function GET(request: NextRequest) {
         return blogTags.includes(tag_id);
       });
     }
+    if (category_id) {
+      filteredBlogs = filteredBlogs.filter((blog: any) => {
+        const primary = blog.category_id;
+        const mapped = (blog.categories || []).map((c: any) => c?.category_id || c?.category?.id).filter(Boolean);
+        return primary === category_id || mapped.includes(category_id);
+      });
+    }
 
     if (error) {
       console.error('Blog fetch error:', error);
@@ -140,7 +114,8 @@ export async function GET(request: NextRequest) {
     // Transform tags structure
     const transformedBlogs = filteredBlogs.map((blog: any) => ({
       ...blog,
-      tags: blog.tags?.map((t: any) => t.tag) || []
+      tags: blog.tags?.map((t: any) => t.tag) || [],
+      categories: (blog.categories || []).map((c: any) => c?.category).filter(Boolean) || [],
     }));
 
     return NextResponse.json({
@@ -148,8 +123,8 @@ export async function GET(request: NextRequest) {
       pagination: {
         page,
         limit,
-        total: tag_id ? filteredBlogs.length : (count || 0), // Adjust count if tag filtered
-        totalPages: tag_id ? Math.ceil(filteredBlogs.length / limit) : Math.ceil((count || 0) / limit)
+        total: tag_id || category_id ? filteredBlogs.length : (count || 0),
+        totalPages: tag_id || category_id ? Math.ceil(filteredBlogs.length / limit) : Math.ceil((count || 0) / limit)
       }
     });
   } catch (error: any) {
@@ -194,6 +169,7 @@ export async function POST(request: NextRequest) {
       content,
       seo_data,
       category_id,
+      category_ids,
       read_time,
       featured_image,
       status: requestedStatus = 'draft',
@@ -202,6 +178,8 @@ export async function POST(request: NextRequest) {
       tag_ids = [],
       image_urls = []
     } = body;
+
+    const faqs = Array.isArray(body?.faqs) ? body.faqs : (Array.isArray((seo_data || {})?.faqs) ? (seo_data as any).faqs : []);
 
     // Normalize optional UUID/text fields (avoid sending empty string to DB)
     const normalizedCategoryId =
@@ -230,6 +208,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Title, slug, and content are required' }, { status: 400 });
     }
 
+    // Enforce ALT tags on all images inside the HTML body.
+    const altCheck = validateAllImgHaveAlt(String(content), 125);
+    if (!altCheck.ok) return NextResponse.json({ error: altCheck.error }, { status: 400 });
+
+    // Featured image ALT must be provided (stored in seo_data.featured_image_alt).
+    const featuredAlt = String((seo_data || {})?.featured_image_alt || '').trim();
+    if (featured_image && !featuredAlt) {
+      return NextResponse.json({ error: 'Featured image ALT text is required' }, { status: 400 });
+    }
+    if (featuredAlt && featuredAlt.length > 125) {
+      return NextResponse.json({ error: 'Featured image ALT is too long (max 125 chars)' }, { status: 400 });
+    }
+
     // SEO requirement: uploaded blog image filename must match slug.
     if (featured_image) {
       const err = validateBlogImageName(String(featured_image), String(slug));
@@ -238,11 +229,37 @@ export async function POST(request: NextRequest) {
     if (Array.isArray(image_urls) && image_urls.length) {
       for (const item of image_urls) {
         const url = typeof item === 'string' ? item : item?.url;
+        const alt_text = typeof item === 'object' ? String(item?.alt_text ?? item?.alt ?? '').trim() : '';
         if (!url) continue;
+        if (!alt_text) {
+          return NextResponse.json({ error: 'Every uploaded image must have an ALT tag (alt_text is missing).' }, { status: 400 });
+        }
+        if (alt_text.length > 125) {
+          return NextResponse.json({ error: 'ALT tag too long (max 125 chars).' }, { status: 400 });
+        }
         const err = validateBlogImageName(String(url), String(slug));
         if (err) return NextResponse.json({ error: err }, { status: 400 });
       }
     }
+
+    // Auto-calc reading time as per spec (100 words/minute).
+    const { words, minutes } = computeReadTimeFromHtml(String(content));
+
+    // Soft SEO warnings (returned, but do not block save).
+    const warnings: string[] = [];
+    const titleLen = String(title).trim().length;
+    if (titleLen < 50 || titleLen > 60) warnings.push('Blog Title recommended length: 50–60 characters.');
+    const metaDescLen = String((seo_data || {})?.meta_description || '').trim().length;
+    if (metaDescLen && (metaDescLen < 120 || metaDescLen > 155)) warnings.push('Meta Description recommended length: 120–155 characters.');
+    const summaryWords = countWords(String(excerpt || ''));
+    if (summaryWords && summaryWords > 60) warnings.push('AI Summary (Takeaways) recommended max: 60 words.');
+    const tagCount = Array.isArray(tag_ids) ? tag_ids.length : 0;
+    if (tagCount && (tagCount < 5 || tagCount > 10)) warnings.push('Tags recommended: 5–10 tags total per post.');
+    if (words && words < 800) warnings.push('Word Count recommended minimum: 800+ words.');
+    warnings.push(...collectHeadingWordWarnings(String(content), 10));
+
+    // FAQ warning
+    if (Array.isArray(faqs) && faqs.length && faqs.length < 5) warnings.push('FAQs recommended minimum: 5 (AI can generate).');
 
     // Check if slug already exists
     const { data: existingBlog } = await supabase
@@ -255,6 +272,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Blog with this slug already exists' }, { status: 400 });
     }
 
+    // Multi-category: pick primary
+    const normalizedCategoryIds = Array.isArray(category_ids)
+      ? category_ids.filter((x: any) => typeof x === 'string' && x.trim()).map((x: string) => x.trim())
+      : [];
+    const primaryCategoryId = normalizedCategoryIds[0] || normalizedCategoryId;
+
+    // Server-side auto-fill: meta_description + keywords from AI Summary if empty.
+    const finalSeoData = autoFillSeoFromSummary(excerpt, seo_data || {});
+
     // Create blog
     const { data: blog, error: blogError } = await supabase
       .from('blogs')
@@ -263,12 +289,12 @@ export async function POST(request: NextRequest) {
         slug,
         excerpt: normalizedExcerpt,
         content,
-        seo_data: seo_data || {},
-        category_id: normalizedCategoryId,
+        seo_data: finalSeoData,
+        category_id: primaryCategoryId,
         author_id: userProfile.id,
         created_by: userProfile.id,
         updated_by: userProfile.id,
-        read_time: read_time || 3,
+        read_time: minutes,
         featured_image: normalizedFeaturedImage,
         status: finalStatus,
         is_featured: finalIsFeatured,
@@ -304,18 +330,56 @@ export async function POST(request: NextRequest) {
 
     // Add additional images if provided
     if (image_urls.length > 0) {
-      const images = image_urls.map((url: string) => ({
-        blog_id: blog.id,
-        image_url: url
-      }));
+      const images = image_urls
+        .map((item: any) => {
+          const url = typeof item === 'string' ? item : item?.url;
+          if (!url) return null;
+          return {
+            blog_id: blog.id,
+            image_url: url,
+            caption: typeof item === 'object' ? (item?.caption ?? null) : null,
+            alt_text: typeof item === 'object' ? String(item?.alt_text ?? item?.alt ?? '').trim() : '',
+          };
+        })
+        .filter(Boolean) as any[];
 
-      const { error: imageError } = await supabase
-        .from('blog_images')
-        .insert(images);
+      const invalid = images.find((x: any) => !x.alt_text || String(x.alt_text).trim().length === 0);
+      if (invalid) return NextResponse.json({ error: 'Every uploaded image must have an ALT tag.' }, { status: 400 });
+
+      let imageError: any = null;
+      if (images.length) imageError = (await supabase.from('blog_images').insert(images)).error;
 
       if (imageError) {
         console.error('Image insertion error:', imageError);
-        // Don't fail the whole request, just log it
+        return NextResponse.json({ error: 'Failed to save blog images', details: imageError.message }, { status: 500 });
+      }
+    }
+
+    // Multi-category support (best-effort, requires blog_category_mapping table)
+    if (normalizedCategoryIds.length) {
+      const mappings = normalizedCategoryIds.map((cid: string, idx: number) => ({
+        blog_id: blog.id,
+        category_id: cid,
+        is_primary: idx === 0,
+      }));
+      const { error: mapErr } = await supabase.from('blog_category_mapping').insert(mappings as any);
+      if (mapErr) return NextResponse.json({ error: 'Failed to save categories', details: mapErr.message }, { status: 500 });
+    }
+
+    // Save FAQs (editable, structured)
+    if (Array.isArray(faqs) && faqs.length) {
+      const faqRows = faqs
+        .map((f: any, idx: number) => ({
+          blog_id: blog.id,
+          question: String(f?.question || '').trim(),
+          answer: String(f?.answer || '').trim(),
+          sort_order: typeof f?.sort_order === 'number' ? f.sort_order : idx,
+        }))
+        .filter((f: any) => f.question && f.answer);
+
+      if (faqRows.length) {
+        const { error: faqErr } = await supabase.from('blog_faqs').insert(faqRows as any);
+        if (faqErr) return NextResponse.json({ error: 'Failed to save FAQs', details: faqErr.message }, { status: 500 });
       }
     }
 
@@ -325,10 +389,16 @@ export async function POST(request: NextRequest) {
       .select(`
         *,
         category:blog_categories(*),
+        categories:blog_category_mapping(
+          is_primary,
+          category:blog_categories(*)
+        ),
         author:users_login!author_id(id, full_name, email),
         tags:blog_tag_mapping(
           tag:blog_tags(*)
-        )
+        ),
+        images:blog_images(*),
+        faqs:blog_faqs(*)
       `)
       .eq('id', blog.id)
       .single();
@@ -339,10 +409,11 @@ export async function POST(request: NextRequest) {
 
     const transformedBlog = completeBlog ? {
       ...completeBlog,
-      tags: completeBlog.tags?.map((t: any) => t.tag) || []
+      tags: completeBlog.tags?.map((t: any) => t.tag) || [],
+      categories: (completeBlog as any).categories?.map((c: any) => c?.category).filter(Boolean) || [],
     } : blog;
 
-    return NextResponse.json({ blog: transformedBlog }, { status: 201 });
+    return NextResponse.json({ blog: transformedBlog, warnings }, { status: 201 });
   } catch (error: any) {
     console.error('Blogs POST error:', error);
     return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });

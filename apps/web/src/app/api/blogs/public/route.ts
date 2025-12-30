@@ -39,6 +39,11 @@ export async function GET(request: NextRequest) {
       .select(`
         *,
         category:blog_categories(*),
+        categories:blog_category_mapping(
+          category_id,
+          is_primary,
+          category:blog_categories(*)
+        ),
         author:users_login!author_id(id, full_name, email),
         tags:blog_tag_mapping(
           tag:blog_tags(*)
@@ -47,9 +52,7 @@ export async function GET(request: NextRequest) {
       .eq('status', 'published'); // Only published blogs
 
     // Apply filters
-    if (category_id) {
-      query = query.eq('category_id', category_id);
-    }
+    // Multi-category filtering is applied after fetch using blog_category_mapping.
     
     if (featured) {
       query = query.eq('is_featured', true);
@@ -74,6 +77,13 @@ export async function GET(request: NextRequest) {
         return blogTags.includes(tag_id);
       });
     }
+    if (category_id) {
+      filteredBlogs = filteredBlogs.filter((blog: any) => {
+        const primary = blog.category_id;
+        const mapped = (blog.categories || []).map((c: any) => c?.category_id || c?.category?.id).filter(Boolean);
+        return primary === category_id || mapped.includes(category_id);
+      });
+    }
 
     if (error) {
       console.error('Blog fetch error:', error);
@@ -83,7 +93,8 @@ export async function GET(request: NextRequest) {
     // Transform tags structure
     const transformedBlogs = filteredBlogs.map((blog: any) => ({
       ...blog,
-      tags: blog.tags?.map((t: any) => t.tag).filter(Boolean) || []
+      tags: blog.tags?.map((t: any) => t.tag).filter(Boolean) || [],
+      categories: (blog.categories || []).map((c: any) => c?.category).filter(Boolean) || [],
     }));
 
     return NextResponse.json({
@@ -91,8 +102,8 @@ export async function GET(request: NextRequest) {
       pagination: {
         page,
         limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit)
+        total: tag_id || category_id ? filteredBlogs.length : (count || 0),
+        totalPages: tag_id || category_id ? Math.ceil(filteredBlogs.length / limit) : Math.ceil((count || 0) / limit)
       }
     });
   } catch (error: any) {

@@ -73,11 +73,11 @@ export async function POST(
         'DELIVERED',
         'CLOSED',
       ];
-      if (protectedStatuses.includes(lead.status)) {
+    if (protectedStatuses.includes(lead.status)) {
         return NextResponse.json(
           {
-            error: 'Cannot update status - work already completed',
-            current_status: lead.status,
+        error: 'Cannot update status - work already completed',
+        current_status: lead.status,
             message: 'Mechanic has already completed the work. Status cannot be changed.',
           },
           { status: 400 }
@@ -170,32 +170,32 @@ export async function POST(
     }
 
     if (otpType === 'PICKUP') {
-      // Update service_leads status to VEHICLE_IN_TRANSIT (vehicle picked up, driving to workshop)
-      const { error: updateLeadError } = await supabase
-        .from('service_leads')
-        .update({
-          pickup_otp_verified_at: now,
-          pickup_status: 'VEHICLE_IN_TRANSIT',
-          status: 'VEHICLE_IN_TRANSIT',
+    // Update service_leads status to VEHICLE_IN_TRANSIT (vehicle picked up, driving to workshop)
+    const { error: updateLeadError } = await supabase
+      .from('service_leads')
+      .update({
+        pickup_otp_verified_at: now,
+        pickup_status: 'VEHICLE_IN_TRANSIT',
+        status: 'VEHICLE_IN_TRANSIT',
           updated_at: now,
-        })
-        .eq('id', leadId);
+      })
+      .eq('id', leadId);
 
-      if (updateLeadError) {
-        console.error('Error updating lead status:', updateLeadError);
+    if (updateLeadError) {
+      console.error('Error updating lead status:', updateLeadError);
         return NextResponse.json({ error: 'Failed to update lead status', details: updateLeadError.message }, { status: 500 });
-      }
+    }
 
-      // Update pickup tracking
-      await supabase
-        .from('pickup_tracking')
-        .update({
-          pickup_status: 'VEHICLE_IN_TRANSIT',
-          pickup_otp_verified_at: now,
-          pickup_in_transit_at: now,
+    // Update pickup tracking
+    await supabase
+      .from('pickup_tracking')
+      .update({
+        pickup_status: 'VEHICLE_IN_TRANSIT',
+        pickup_otp_verified_at: now,
+        pickup_in_transit_at: now,
           updated_at: now,
-        })
-        .eq('lead_id', leadId);
+      })
+      .eq('lead_id', leadId);
     } else {
       // DROP OTP verification: record on tracking but do NOT change lead.status (it stays READY_FOR_DELIVERY / COD_PENDING)
       await supabase
@@ -214,24 +214,24 @@ export async function POST(
     }
 
     if (otpType === 'PICKUP') {
-      // Log status change
-      await supabase
-        .from('lead_status_history')
-        .insert({
-          lead_id: leadId,
-          old_status: lead.status,
-          new_status: 'VEHICLE_IN_TRANSIT',
-          changed_by: userProfile.id,
-          changed_at: now,
-          reason: 'OTP verified - Vehicle picked up, driving to workshop',
+    // Log status change
+    await supabase
+      .from('lead_status_history')
+      .insert({
+        lead_id: leadId,
+        old_status: lead.status,
+        new_status: 'VEHICLE_IN_TRANSIT',
+        changed_by: userProfile.id,
+        changed_at: now,
+        reason: 'OTP verified - Vehicle picked up, driving to workshop',
           notes: 'Customer OTP verified successfully',
-        });
+      });
     }
 
     // Create activity log
     await supabase.from('lead_activities').insert({
-      lead_id: leadId,
-      user_id: userProfile.id,
+        lead_id: leadId,
+        user_id: userProfile.id,
       activity_type: `${otpType}_OTP_VERIFIED`,
       description: otpType === 'DROP' ? 'Delivery OTP verified' : 'Customer OTP verified - Vehicle picked up, driving to workshop',
       metadata: { pickup_boy_id: userProfile.id, verified_at: now, otp_type: otpType },
@@ -245,9 +245,9 @@ export async function POST(
         otpType === 'DROP'
           ? ['Confirm handover with customer', 'Complete delivery']
           : [
-              'Take clear photos of all 4 sides of vehicle',
-              'Include close-ups of any existing damage',
-              'Check vehicle interior condition',
+        'Take clear photos of all 4 sides of vehicle',
+        'Include close-ups of any existing damage',
+        'Check vehicle interior condition',
               'Note down fuel level and odometer reading',
             ],
     }, { status: 200 });

@@ -205,7 +205,7 @@ export default function PickupTasksPage() {
     
     // Open Google Maps
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
-
+    
     // For delivery-ready leads, "Navigate" should start delivery (drop) flow (generate DROP OTP),
     // not pickup flow.
     const isDeliveryReady = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';

@@ -120,8 +120,8 @@ export async function POST(
     if (protectedStatuses.includes(lead.status)) {
       return NextResponse.json(
         {
-          error: 'Cannot update status - work already completed',
-          current_status: lead.status,
+        error: 'Cannot update status - work already completed',
+        current_status: lead.status,
           message: 'Mechanic has already completed the work. Status cannot be changed.',
         },
         { status: 400 }

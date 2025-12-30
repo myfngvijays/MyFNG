@@ -7,44 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
-const ALLOWED_BLOG_IMAGE_EXTS = new Set(['webp', 'jpg', 'jpeg', 'png']);
-
-function extractFilenameParts(url: string): { base: string | null; ext: string | null } {
-  const clean = url.split('?')[0]?.split('#')[0] ?? '';
-  const last = clean.split('/').filter(Boolean).pop() ?? '';
-  const idx = last.lastIndexOf('.');
-  if (idx <= 0) return { base: null, ext: null };
-  const base = last.slice(0, idx);
-  const ext = last.slice(idx + 1).toLowerCase();
-  return { base, ext };
-}
-
-function shouldEnforceBlogImageName(url: string): boolean {
-  if (!url) return false;
-  if (url.startsWith('/')) return true;
-  if (!/^https?:\/\//i.test(url)) return true;
-  try {
-    const u = new URL(url);
-    const host = u.hostname.toLowerCase();
-    return host.endsWith('myfng.in') || host.endsWith('myfng.cloud') || host.includes('supabase.co');
-  } catch {
-    return true;
-  }
-}
-
-function validateBlogImageName(url: string, slug: string): string | null {
-  if (!url || !slug) return null;
-  if (!shouldEnforceBlogImageName(url)) return null;
-  const { base, ext } = extractFilenameParts(url);
-  if (!base || !ext || !ALLOWED_BLOG_IMAGE_EXTS.has(ext)) {
-    return `Blog image file name must exactly match the slug (e.g. "${slug}.webp" or "${slug}.jpg").`;
-  }
-  if (base !== slug) {
-    return `Blog image file name must exactly match the slug (expected "${slug}.${ext}", got "${base}.${ext}").`;
-  }
-  return null;
-}
+import { validateBlogImageName } from '@/lib/blog/imageNaming';
+import { collectHeadingWordWarnings, computeReadTimeFromHtml, countWords, validateAllImgHaveAlt } from '@/lib/blog/text';
 
 export async function GET(
   request: NextRequest,
@@ -67,11 +31,16 @@ export async function GET(
       .select(`
         *,
         category:blog_categories(*),
+        categories:blog_category_mapping(
+          is_primary,
+          category:blog_categories(*)
+        ),
         author:users_login!author_id(id, full_name, email),
         tags:blog_tag_mapping(
           tag:blog_tags(*)
         ),
-        images:blog_images(*)
+        images:blog_images(*),
+        faqs:blog_faqs(*)
       `)
       .or(`id.eq.${blogId},slug.eq.${blogId}`)
       .single();
@@ -99,7 +68,8 @@ export async function GET(
     // Transform tags structure
     const transformedBlog = {
       ...blog,
-      tags: blog.tags?.map((t: any) => t.tag) || []
+      tags: blog.tags?.map((t: any) => t.tag) || [],
+      categories: (blog as any)?.categories?.map((c: any) => c?.category).filter(Boolean) || [],
     };
 
     return NextResponse.json({ blog: transformedBlog });
@@ -174,6 +144,7 @@ export async function PUT(
       content,
       seo_data,
       category_id,
+      category_ids,
       read_time,
       featured_image,
       status,
@@ -182,6 +153,8 @@ export async function PUT(
       tag_ids,
       image_urls
     } = body;
+
+    const faqs = Array.isArray(body?.faqs) ? body.faqs : (Array.isArray((seo_data || {})?.faqs) ? (seo_data as any).faqs : undefined);
 
     // Check slug uniqueness if changed
     if (slug && slug !== existingBlog.slug) {
@@ -197,6 +170,24 @@ export async function PUT(
       }
     }
 
+    // Enforce ALT tags on all images inside the HTML body (if content is being updated).
+    if (content !== undefined) {
+      const altCheck = validateAllImgHaveAlt(String(content), 125);
+      if (!altCheck.ok) return NextResponse.json({ error: altCheck.error }, { status: 400 });
+    }
+
+    // Featured image ALT must be provided if featured_image is present or being set.
+    if (featured_image !== undefined) {
+      const effectiveSeo = seo_data !== undefined ? seo_data : existingBlog.seo_data;
+      const featuredAlt = String((effectiveSeo || {})?.featured_image_alt || '').trim();
+      if (featured_image && !featuredAlt) {
+        return NextResponse.json({ error: 'Featured image ALT text is required' }, { status: 400 });
+      }
+      if (featuredAlt && featuredAlt.length > 125) {
+        return NextResponse.json({ error: 'Featured image ALT is too long (max 125 chars)' }, { status: 400 });
+      }
+    }
+
     // SEO requirement: uploaded blog image filename must match slug.
     const effectiveSlug = String(slug ?? existingBlog.slug);
     if (featured_image !== undefined && featured_image !== null) {
@@ -206,7 +197,14 @@ export async function PUT(
     if (image_urls !== undefined && Array.isArray(image_urls) && image_urls.length) {
       for (const item of image_urls) {
         const url = typeof item === 'string' ? item : item?.url;
+        const alt_text = typeof item === 'object' ? String(item?.alt_text ?? item?.alt ?? '').trim() : '';
         if (!url) continue;
+        if (!alt_text) {
+          return NextResponse.json({ error: 'Every uploaded image must have an ALT tag (alt_text is missing).' }, { status: 400 });
+        }
+        if (alt_text.length > 125) {
+          return NextResponse.json({ error: 'ALT tag too long (max 125 chars).' }, { status: 400 });
+        }
         const err = validateBlogImageName(String(url), effectiveSlug);
         if (err) return NextResponse.json({ error: err }, { status: 400 });
       }
@@ -220,10 +218,14 @@ export async function PUT(
     if (title !== undefined) updateData.title = title;
     if (slug !== undefined) updateData.slug = slug;
     if (excerpt !== undefined) updateData.excerpt = excerpt;
-    if (content !== undefined) updateData.content = content;
+    if (content !== undefined) {
+      updateData.content = content;
+      // Auto-calc reading time as per spec (100 words/minute).
+      const { minutes } = computeReadTimeFromHtml(String(content));
+      updateData.read_time = minutes;
+    }
     if (seo_data !== undefined) updateData.seo_data = seo_data;
     if (category_id !== undefined) updateData.category_id = category_id;
-    if (read_time !== undefined) updateData.read_time = read_time;
     if (featured_image !== undefined) updateData.featured_image = featured_image;
     if (status !== undefined) {
       // Only Digital Marketing and Super Admin can change status to published
@@ -287,15 +289,63 @@ export async function PUT(
 
       // Insert new images
       if (image_urls.length > 0) {
-        const images = image_urls.map((item: any) => ({
-          blog_id: blogId,
-          image_url: typeof item === 'string' ? item : item.url,
-          caption: typeof item === 'object' ? item.caption : null
-        }));
+        const images = image_urls
+          .map((item: any) => {
+            const url = typeof item === 'string' ? item : item?.url;
+            if (!url) return null;
+            return {
+              blog_id: blogId,
+              image_url: url,
+              caption: typeof item === 'object' ? (item?.caption ?? null) : null,
+              alt_text: typeof item === 'object' ? String(item?.alt_text ?? item?.alt ?? '').trim() : '',
+            };
+          })
+          .filter(Boolean) as any[];
 
-        await supabase
-          .from('blog_images')
-          .insert(images);
+        const invalid = images.find((x: any) => !x.alt_text || String(x.alt_text).trim().length === 0);
+        if (invalid) return NextResponse.json({ error: 'Every uploaded image must have an ALT tag.' }, { status: 400 });
+
+        const imageErr = images.length ? (await supabase.from('blog_images').insert(images)).error : null;
+        if (imageErr) return NextResponse.json({ error: 'Failed to save blog images', details: imageErr.message }, { status: 500 });
+      }
+    }
+
+    // Multi-category support (best-effort)
+    if (category_ids !== undefined) {
+      // reset mappings
+      const del = await supabase.from('blog_category_mapping').delete().eq('blog_id', blogId);
+      if (del.error) return NextResponse.json({ error: 'Failed to update categories', details: del.error.message }, { status: 500 });
+
+      if (Array.isArray(category_ids) && category_ids.length) {
+        const ids = category_ids.filter((x: any) => typeof x === 'string' && x.trim()).map((x: string) => x.trim());
+        if (ids.length) {
+          const mappings = ids.map((cid: string, idx: number) => ({ blog_id: blogId, category_id: cid, is_primary: idx === 0 }));
+          const ins = await supabase.from('blog_category_mapping').insert(mappings as any);
+          if (ins.error) return NextResponse.json({ error: 'Failed to update categories', details: ins.error.message }, { status: 500 });
+
+          // Keep single category_id in sync
+          updateData.category_id = ids[0];
+        }
+      }
+    }
+
+    // Update FAQs if provided
+    if (faqs !== undefined) {
+      const delFaq = await supabase.from('blog_faqs').delete().eq('blog_id', blogId);
+      if (delFaq.error) return NextResponse.json({ error: 'Failed to update FAQs', details: delFaq.error.message }, { status: 500 });
+
+      const faqRows = (Array.isArray(faqs) ? faqs : [])
+        .map((f: any, idx: number) => ({
+          blog_id: blogId,
+          question: String(f?.question || '').trim(),
+          answer: String(f?.answer || '').trim(),
+          sort_order: typeof f?.sort_order === 'number' ? f.sort_order : idx,
+        }))
+        .filter((f: any) => f.question && f.answer);
+
+      if (faqRows.length) {
+        const insFaq = await supabase.from('blog_faqs').insert(faqRows as any);
+        if (insFaq.error) return NextResponse.json({ error: 'Failed to update FAQs', details: insFaq.error.message }, { status: 500 });
       }
     }
 
@@ -314,12 +364,29 @@ export async function PUT(
       .eq('id', blogId)
       .single();
 
+    // Soft SEO warnings (returned, but do not block save).
+    const warnings: string[] = [];
+    const effectiveTitle = String(title ?? existingBlog.title ?? '').trim();
+    const titleLen = effectiveTitle.length;
+    if (titleLen && (titleLen < 50 || titleLen > 60)) warnings.push('Blog Title recommended length: 50–60 characters.');
+    const effectiveSeo = seo_data !== undefined ? seo_data : existingBlog.seo_data;
+    const metaDescLen = String((effectiveSeo || {})?.meta_description || '').trim().length;
+    if (metaDescLen && (metaDescLen < 120 || metaDescLen > 155)) warnings.push('Meta Description recommended length: 120–155 characters.');
+    const summaryWords = countWords(String(excerpt ?? existingBlog.excerpt ?? ''));
+    if (summaryWords && summaryWords > 60) warnings.push('AI Summary (Takeaways) recommended max: 60 words.');
+    const tagCount = Array.isArray(tag_ids) ? tag_ids.length : Array.isArray(existingBlog?.tag_ids) ? existingBlog.tag_ids.length : 0;
+    if (tagCount && (tagCount < 5 || tagCount > 10)) warnings.push('Tags recommended: 5–10 tags total per post.');
+    const effectiveContent = String(content ?? existingBlog.content ?? '');
+    const { words } = computeReadTimeFromHtml(effectiveContent);
+    if (words && words < 800) warnings.push('Word Count recommended minimum: 800+ words.');
+    warnings.push(...collectHeadingWordWarnings(effectiveContent, 10));
+
     const transformedBlog = completeBlog ? {
       ...completeBlog,
       tags: completeBlog.tags?.map((t: any) => t.tag) || []
     } : updatedBlog;
 
-    return NextResponse.json({ blog: transformedBlog });
+    return NextResponse.json({ blog: transformedBlog, warnings });
   } catch (error: any) {
     console.error('Blog PUT error:', error);
     return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });

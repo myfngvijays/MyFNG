@@ -6,6 +6,9 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { calculateTaxes, getPlaceOfSupply, numberToWords, roundOff } from '@/lib/utils/invoiceUtils';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: Request,
@@ -392,6 +395,100 @@ export async function GET(
   const leadId = params.id;
 
   try {
+    const parseIdList = (raw: any): string[] => {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
+      if (typeof raw === 'string') {
+        const txt = raw.trim();
+        if (!txt) return [];
+        try {
+          const parsed = JSON.parse(txt);
+          if (Array.isArray(parsed)) return parsed.map(String).map((s) => s.trim()).filter(Boolean);
+        } catch {
+          // ignore
+        }
+        return txt.split(',').map((s) => s.trim()).filter(Boolean);
+      }
+      return [];
+    };
+
+    const isApprovedExtra = (row: any) => {
+      const s = String(row?.status || '').trim().toUpperCase();
+      const customerApproved = row?.customer_approved === true;
+      return (
+        customerApproved ||
+        s === 'APPROVED' ||
+        s === 'CUSTOMER_APPROVED' ||
+        s === 'APPROVED_BY_CUSTOMER' ||
+        s === 'ACCEPTED'
+      );
+    };
+
+    const normalizeName = (s: string) =>
+      String(s || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // Will be populated lazily when/if we need to hydrate invoices
+    let masterByName: Map<string, { oem: number; oes: number; labour: number }> | null = null;
+
+    const ensureMasterMap = async (workshopId: string) => {
+      if (masterByName) return masterByName;
+      masterByName = new Map<string, { oem: number; oes: number; labour: number }>();
+      try {
+        const { data: masterJobs } = await supabase
+          .from('additional_jobs_master')
+          .select('name, oem_price, oes_price, labour_price, workshop_id, is_active, deleted_at')
+          .or(`workshop_id.eq.${workshopId},workshop_id.is.null`)
+          .eq('is_active', true);
+
+        for (const it of masterJobs || []) {
+          if ((it as any)?.deleted_at) continue;
+          const key = normalizeName(String((it as any).name || ''));
+          if (!key) continue;
+          const oem = Number((it as any).oem_price);
+          const oes = Number((it as any).oes_price);
+          const labour = Number((it as any).labour_price);
+          const row = { oem: Number.isFinite(oem) ? oem : 0, oes: Number.isFinite(oes) ? oes : 0, labour: Number.isFinite(labour) ? labour : 0 };
+          // Prefer workshop-specific entry over global
+          if ((it as any).workshop_id === workshopId) {
+            masterByName.set(key, row);
+          } else if (!masterByName.has(key)) {
+            masterByName.set(key, row);
+          }
+        }
+      } catch {
+        // ignore if missing table/cols
+      }
+      return masterByName;
+    };
+
+    const computeExtraAmount = (row: any, workshopId?: string) => {
+      const legacy = Number(row?.amount ?? 0) || 0;
+      if (legacy > 0) return legacy;
+      const partType = String(row?.part_price_type || 'OEM').toUpperCase();
+      const part =
+        partType === 'OES'
+          ? Number(row?.oes_price ?? 0) || 0
+          : Number(row?.oem_price ?? 0) || 0;
+      const labour = Number(row?.labour_price ?? 0) || 0;
+      const computed = part + labour;
+      if (computed > 0) return computed;
+      // If no saved prices, fallback to additional_jobs_master by description
+      if (workshopId) {
+        const key = normalizeName(String(row?.description || row?.reason || ''));
+        const master = masterByName?.get(key);
+        if (master) {
+          const masterPart = partType === 'OES' ? master.oes : master.oem;
+          return (Number(masterPart) || 0) + (Number(master.labour) || 0);
+        }
+      }
+      return 0;
+    };
+
     // Check authorization - fetch role with join
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
@@ -440,47 +537,393 @@ export async function GET(
       null;
 
     // If invoice exists, verify workshop access for workshop staff
-    if (invoice && ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode)) {
-      // Fetch lead to check workshop
-      const { data: lead } = await supabase
-        .from('service_leads')
-        .select('workshop_id')
-        .eq('id', leadId)
-        .single();
+    // Fetch lead meta for scoping + service_type_ids (schema-safe)
+    const { data: leadMeta } = await supabase
+      .from('service_leads')
+      .select('*')
+      .eq('id', leadId)
+      .maybeSingle();
 
-      if (lead && userProfile.workshop_id !== lead.workshop_id) {
+    if (invoice && ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode)) {
+      if (leadMeta && userProfile.workshop_id !== (leadMeta as any).workshop_id) {
         return NextResponse.json({ error: 'Forbidden: Lead not in your workshop' }, { status: 403 });
+      }
+    }
+
+    // Included products/parts for each service type (service_types as packages)
+    const included_service_items: Array<{
+      service_type_id: string;
+      service_name: string;
+      items: Array<{
+        product_id: string;
+        name: string;
+        type: string;
+        part_number?: string | null;
+        unit?: string | null;
+        quantity: number;
+      }>;
+    }> = [];
+
+    try {
+      const serviceTypeIdsRaw =
+        parseIdList((leadMeta as any)?.service_type_ids) ||
+        [];
+      const serviceTypeIds =
+        serviceTypeIdsRaw.length > 0
+          ? serviceTypeIdsRaw
+          : (leadMeta as any)?.service_type
+          ? [String((leadMeta as any).service_type)]
+          : [];
+
+      if (serviceTypeIds.length > 0) {
+        const { data: svcTypes } = await supabase
+          .from('service_types')
+          .select('id, name')
+          .in('id', serviceTypeIds);
+        const nameById = new Map<string, string>();
+        for (const st of svcTypes || []) {
+          const id = String((st as any).id || '');
+          if (id) nameById.set(id, String((st as any).name || ''));
+        }
+
+        const { data: svcItems } = await supabase
+          .from('service_type_items')
+          .select(
+            'service_type_id, quantity, is_active, product:master_products(id, name, type, part_number, unit)'
+          )
+          .in('service_type_id', serviceTypeIds)
+          .eq('is_active', true);
+
+        const byService: Record<string, any[]> = {};
+        for (const row of svcItems || []) {
+          const sid = String((row as any).service_type_id || '');
+          if (!sid) continue;
+          if (!byService[sid]) byService[sid] = [];
+          byService[sid].push(row);
+        }
+
+        for (const sid of serviceTypeIds) {
+          const raw = byService[sid] || [];
+          if (!raw.length) continue;
+          included_service_items.push({
+            service_type_id: sid,
+            service_name: nameById.get(sid) || '',
+            items: raw
+              .map((r: any) => ({
+                product_id: String(r?.product?.id || ''),
+                name: String(r?.product?.name || ''),
+                type: String(r?.product?.type || ''),
+                part_number: r?.product?.part_number ?? null,
+                unit: r?.product?.unit ?? null,
+                quantity: Number(r?.quantity || 1) || 1,
+              }))
+              .filter((x: any) => x.product_id && x.name),
+          });
+        }
+      }
+    } catch {
+      // best-effort; don't block invoice
+    }
+
+    // If OS/CI/TI exists but looks stale (extra work rates/amounts are 0), rebuild line_items and totals on-the-fly.
+    // This happens when OS is generated at QC time, but extra-job prices are updated later (CI/TI reflect latest).
+    const osInvoices = list.filter((inv: any) => String(inv?.invoice_type || '').toUpperCase() === 'ORDER_SUMMARY');
+    const ciInvoices = list.filter((inv: any) => String(inv?.invoice_type || '').toUpperCase() === 'CUSTOMER_INVOICE');
+    const tiInvoices = list.filter((inv: any) => String(inv?.invoice_type || '').toUpperCase() === 'TAX_INVOICE');
+    const osHydratedById = new Map<string, any>();
+    const ciHydratedById = new Map<string, any>();
+    const tiHydratedById = new Map<string, any>();
+
+    const osLooksStale = (inv: any) => {
+      const li = Array.isArray(inv?.line_items) ? inv.line_items : [];
+      if (li.length === 0) return true;
+      const extraLi = li.filter((x: any) => String(x?.category || '').toUpperCase() === 'EXTRA');
+      const hasZeroExtra = extraLi.some((x: any) => Number(x?.amount || 0) <= 0 && Number(x?.rate || 0) <= 0);
+      const totalsZero = Number(inv?.final_amount || inv?.total_amount || 0) <= 0;
+      return hasZeroExtra || totalsZero;
+    };
+
+    const ciLooksStale = (inv: any) => osLooksStale(inv);
+    const tiLooksStale = (inv: any) => osLooksStale(inv);
+
+    if (osInvoices.some(osLooksStale) || ciInvoices.some(ciLooksStale) || tiInvoices.some(tiLooksStale)) {
+      // Fetch lead + latest billable sources (best-effort)
+      // Reuse leadMeta (schema-safe) if available.
+      const leadFull: any = leadMeta || null;
+
+      if (leadFull?.workshop_id) {
+        // Load master mapping for fallback extra job pricing
+        await ensureMasterMap(String(leadFull.workshop_id));
+
+        // Workshop schema can also vary; try state_code, fall back gracefully.
+        let workshop: any = null;
+        try {
+          const { data } = await supabase
+            .from('workshops')
+            .select('id, state, state_code')
+            .eq('id', leadFull.workshop_id)
+            .maybeSingle();
+          workshop = data;
+        } catch {
+          // ignore
+        }
+        if (!workshop) {
+          const { data } = await supabase
+            .from('workshops')
+            .select('id, state')
+            .eq('id', leadFull.workshop_id)
+            .maybeSingle();
+          workshop = data;
+        }
+
+        const customerState = (leadFull as any).customer_state || (leadFull as any).state || '';
+        const customerStateCode = (leadFull as any).customer_state_code || (leadFull as any).state_code || '';
+        const workshopState = workshop?.state || '';
+        const workshopStateCode = (workshop as any)?.state_code || '';
+        const place = getPlaceOfSupply(customerState, customerStateCode, workshopState, workshopStateCode);
+
+        const [{ data: pricingItems }, { data: extraChargesRaw }, { data: jobCard }] = await Promise.all([
+          supabase
+            .from('lead_pricing_items')
+            .select('id, item_name, item_description, base_price, final_price, qty, is_addon, status')
+            .eq('lead_id', leadId)
+            .eq('status', 'ACTIVE'),
+          supabase
+            .from('lead_extra_charges')
+            .select('*')
+            .eq('lead_id', leadId),
+          supabase
+            .from('job_cards')
+            .select('id, jobcard_number, job_card_parts(part_name, part_number, quantity, unit_price, total_price)')
+            .eq('lead_id', leadId)
+            .maybeSingle(),
+        ]);
+
+        // Base service lines from pricing items
+        const serviceLines = (pricingItems || []).map((it: any) => {
+          const qtyRaw = it.quantity ?? it.qty ?? 1;
+          const qty = qtyRaw ? parseFloat(String(qtyRaw)) : 1;
+          const amount = parseFloat(it.final_price || '0') || 0;
+          return {
+            description: it.name || it.item_name || 'Service',
+            qty,
+            rate: qty ? amount / qty : amount,
+            amount,
+            category: it.item_type || (it.is_addon ? 'ADDON' : 'SERVICE'),
+          };
+        });
+
+        // Fallback: if lead_pricing_items empty, use workshop pricing tables by service_type_ids/subservice_ids
+        let fallbackServiceLines: any[] = [];
+        try {
+          if ((serviceLines?.length || 0) === 0) {
+            const serviceTypeIds = parseIdList((leadFull as any).service_type_ids);
+            const addonIds = parseIdList((leadFull as any).subservice_ids);
+
+            if (serviceTypeIds.length > 0) {
+              let serviceTypes: any[] = [];
+              const { data: serviceTypesData, error: stErr } = await supabase
+                .from('service_types')
+                .select('id, name, base_price')
+                .in('id', serviceTypeIds);
+              if (!stErr && serviceTypesData) {
+                serviceTypes = serviceTypesData as any[];
+              } else {
+                const { data: stAlt } = await supabase
+                  .from('service_types')
+                  .select('id, name')
+                  .in('id', serviceTypeIds);
+                serviceTypes = (stAlt || []) as any[];
+              }
+
+              const { data: wsp } = await supabase
+                .from('workshop_service_pricing')
+                .select('service_type_id, custom_price')
+                .eq('workshop_id', leadFull.workshop_id)
+                .in('service_type_id', serviceTypeIds)
+                .eq('is_active', true);
+
+              const priceByServiceType: Record<string, number> = {};
+              for (const row of wsp || []) {
+                const id = String((row as any).service_type_id || '');
+                const p = parseFloat(String((row as any).custom_price || '0')) || 0;
+                if (id) priceByServiceType[id] = p;
+              }
+
+              for (const st of serviceTypes) {
+                const id = String(st?.id || '');
+                const base = parseFloat(String((st as any).base_price || '0')) || 0;
+                const custom = priceByServiceType[id] || 0;
+                const amount = custom > 0 ? custom : base;
+                fallbackServiceLines.push({
+                  description: st?.name || 'Service',
+                  qty: 1,
+                  rate: amount,
+                  amount,
+                  category: 'SERVICE',
+                });
+              }
+            }
+
+            if (addonIds.length > 0) {
+              const { data: addons } = await supabase
+                .from('service_addons')
+                .select('id, name, price')
+                .in('id', addonIds);
+
+              const { data: wap } = await supabase
+                .from('workshop_service_addons_pricing')
+                .select('service_addon_id, custom_price')
+                .eq('workshop_id', leadFull.workshop_id)
+                .in('service_addon_id', addonIds)
+                .eq('is_active', true);
+
+              const priceByAddon: Record<string, number> = {};
+              for (const row of wap || []) {
+                const id = String((row as any).service_addon_id || '');
+                const p = parseFloat(String((row as any).custom_price || '0')) || 0;
+                if (id) priceByAddon[id] = p;
+              }
+
+              for (const a of addons || []) {
+                const id = String((a as any).id || '');
+                const base = parseFloat(String((a as any).price || '0')) || 0;
+                const custom = priceByAddon[id] || 0;
+                const amount = custom > 0 ? custom : base;
+                fallbackServiceLines.push({
+                  description: (a as any).name || 'Addon',
+                  qty: 1,
+                  rate: amount,
+                  amount,
+                  category: 'ADDON',
+                });
+              }
+            }
+          }
+        } catch {
+          // ignore fallback errors
+        }
+
+        const effectiveServiceLines = (serviceLines?.length || 0) > 0 ? serviceLines : fallbackServiceLines;
+        const partLines = (jobCard?.job_card_parts || []).map((p: any) => ({
+          description: `${p.part_name || 'Part'}${p.part_number ? ` (${p.part_number})` : ''}`,
+          qty: p.quantity || 1,
+          rate: Number(p.unit_price || 0) || 0,
+          amount: Number(p.total_price || 0) || 0,
+          category: 'PART',
+        }));
+
+        const extraCharges = (Array.isArray(extraChargesRaw) ? extraChargesRaw : []).filter(isApprovedExtra);
+        const extraLines = (extraCharges || []).map((c: any) => {
+          const amt = computeExtraAmount(c, String(leadFull.workshop_id));
+          return {
+            description: c.description || c.reason || 'Additional Request',
+            qty: 1,
+            rate: amt,
+            amount: amt,
+            category: 'EXTRA',
+          };
+        });
+
+        const baseAmount = effectiveServiceLines.reduce((sum: number, l: any) => sum + (Number(l.amount) || 0), 0);
+        const partsCost = partLines.reduce((sum: number, l: any) => sum + (Number(l.amount) || 0), 0);
+        const extraChargesAmount = extraLines.reduce((sum: number, l: any) => sum + (Number(l.amount) || 0), 0);
+        const subTotal = Math.max(0, baseAmount + partsCost + extraChargesAmount);
+        const leadDiscount = parseFloat(String((leadFull as any).discount_amount || '0')) || 0;
+
+        const hydrateOS = (inv: any) => {
+          const discountAmount = parseFloat(String((inv as any).discount_amount ?? leadDiscount ?? 0)) || 0;
+          const finalAmount = Math.max(0, subTotal - discountAmount);
+          osHydratedById.set(inv.id, {
+            ...inv,
+            base_amount: baseAmount,
+            parts_cost: partsCost,
+            extra_charges: extraChargesAmount,
+            extra_charges_amount: extraChargesAmount,
+            sub_total: subTotal,
+            subtotal: subTotal,
+            discount_amount: discountAmount,
+            final_amount: finalAmount,
+            total_amount: finalAmount,
+            show_gst_breakup: false,
+            line_items: [...effectiveServiceLines, ...partLines, ...extraLines],
+          });
+        };
+
+        const hydrateCIorTI = (inv: any, type: 'CUSTOMER_INVOICE' | 'TAX_INVOICE') => {
+          const discountAmount = parseFloat(String((inv as any).discount_amount ?? leadDiscount ?? 0)) || 0;
+          const netTaxable = Math.max(0, subTotal - discountAmount);
+          const taxes = calculateTaxes(netTaxable, place.useIGST);
+          const preRoundTotal = netTaxable + taxes.totalTax;
+          const roundedTotal = roundOff(preRoundTotal);
+          const roundOffAmount = parseFloat((roundedTotal - preRoundTotal).toFixed(2));
+          const finalAmount = roundedTotal;
+          const amountInWords = numberToWords(finalAmount);
+          const payload = {
+            ...inv,
+            base_amount: baseAmount,
+            parts_cost: partsCost,
+            extra_charges: extraChargesAmount,
+            extra_charges_amount: extraChargesAmount,
+            sub_total: subTotal,
+            subtotal: subTotal,
+            discount_amount: discountAmount,
+            cgst_percentage: place.useIGST ? 0 : 9,
+            cgst_amount: taxes.cgstAmount,
+            sgst_percentage: place.useIGST ? 0 : 9,
+            sgst_amount: taxes.sgstAmount,
+            igst_percentage: place.useIGST ? 18 : 0,
+            igst_amount: taxes.igstAmount,
+            total_tax: taxes.totalTax,
+            round_off_amount: roundOffAmount,
+            final_amount: finalAmount,
+            total_amount: finalAmount,
+            amount_in_words: amountInWords,
+            place_of_supply: place.placeOfSupply,
+            place_of_supply_state_code: place.stateCode,
+            show_gst_breakup: type === 'TAX_INVOICE',
+            line_items: [...effectiveServiceLines, ...partLines, ...extraLines],
+          };
+          if (type === 'CUSTOMER_INVOICE') ciHydratedById.set(inv.id, payload);
+          else tiHydratedById.set(inv.id, payload);
+        };
+
+        for (const os of osInvoices) hydrateOS(os);
+        for (const ci of ciInvoices) hydrateCIorTI(ci, 'CUSTOMER_INVOICE');
+        for (const ti of tiInvoices) hydrateCIorTI(ti, 'TAX_INVOICE');
       }
     }
 
     const mapInvoice = (inv: any) => {
       if (!inv) return null;
+      const hydrated = osHydratedById.get(inv.id) || ciHydratedById.get(inv.id) || tiHydratedById.get(inv.id);
+      const src = hydrated || inv;
       return {
-        ...inv,
-        parts_amount: (inv as any).parts_cost || 0,
-        extra_charges_amount: (inv as any).extra_charges || 0,
+        ...src,
+        parts_amount: (src as any).parts_cost || 0,
+        extra_charges_amount: (src as any).extra_charges || 0,
         subtotal:
-          (inv as any).sub_total ||
-          ((inv as any).base_amount || 0) + ((inv as any).extra_charges || 0) - ((inv as any).discount_amount || (inv as any).discount || 0),
-        sub_total: (inv as any).sub_total,
-        cgst: (inv as any).cgst_amount || 0,
-        cgst_amount: (inv as any).cgst_amount || 0,
-        sgst: (inv as any).sgst_amount || 0,
-        sgst_amount: (inv as any).sgst_amount || 0,
-        igst: (inv as any).igst_amount || 0,
-        igst_amount: (inv as any).igst_amount || 0,
-        total_tax: (inv as any).total_tax || 0,
-        round_off_amount: (inv as any).round_off_amount || 0,
-        discount_amount: (inv as any).discount_amount || (inv as any).discount || 0,
-        total_amount: (inv as any).final_amount || (inv as any).total_amount || 0,
-        final_amount: (inv as any).final_amount || (inv as any).total_amount || 0,
-        amount_in_words: (inv as any).amount_in_words,
-        invoice_date: (inv as any).invoice_date || (inv as any).created_at || new Date().toISOString(),
-        due_date: (inv as any).due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        payment_status: (inv as any).payment_status || 'PENDING',
-        payment_mode: (inv as any).payment_mode,
-        payment_txn_id: (inv as any).payment_txn_id,
-        payment_remarks: (inv as any).payment_remarks,
+          (src as any).sub_total ||
+          ((src as any).base_amount || 0) + ((src as any).extra_charges || 0) - ((src as any).discount_amount || (src as any).discount || 0),
+        sub_total: (src as any).sub_total,
+        cgst: (src as any).cgst_amount || 0,
+        cgst_amount: (src as any).cgst_amount || 0,
+        sgst: (src as any).sgst_amount || 0,
+        sgst_amount: (src as any).sgst_amount || 0,
+        igst: (src as any).igst_amount || 0,
+        igst_amount: (src as any).igst_amount || 0,
+        total_tax: (src as any).total_tax || 0,
+        round_off_amount: (src as any).round_off_amount || 0,
+        discount_amount: (src as any).discount_amount || (src as any).discount || 0,
+        total_amount: (src as any).final_amount || (src as any).total_amount || 0,
+        final_amount: (src as any).final_amount || (src as any).total_amount || 0,
+        amount_in_words: (src as any).amount_in_words,
+        invoice_date: (src as any).invoice_date || (src as any).created_at || new Date().toISOString(),
+        due_date: (src as any).due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        payment_status: (src as any).payment_status || 'PENDING',
+        payment_mode: (src as any).payment_mode,
+        payment_txn_id: (src as any).payment_txn_id,
+        payment_remarks: (src as any).payment_remarks,
       };
     };
 
@@ -509,12 +952,15 @@ export async function GET(
       (mappedInvoice as any).creator = (invoice as any).creator;
     }
 
-    return NextResponse.json({ invoice: mappedInvoice, invoices: mappedInvoices });
+    return NextResponse.json(
+      { invoice: mappedInvoice, invoices: mappedInvoices, included_service_items },
+      { headers: { 'Cache-Control': 'no-store' } }
+    );
   } catch (error: any) {
     console.error('Error fetching invoice:', error);
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
     );
   }
 }

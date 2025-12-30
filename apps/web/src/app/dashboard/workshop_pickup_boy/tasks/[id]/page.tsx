@@ -32,6 +32,7 @@ export default function PickupTaskDetailPage() {
   const [otpVerified, setOtpVerified] = useState(false);
   const [beforePhotos, setBeforePhotos] = useState<any[]>([]);
   const [observationText, setObservationText] = useState('');
+  const [odometerReading, setOdometerReading] = useState<string>('');
 
   useEffect(() => {
     fetchTaskDetails();
@@ -104,6 +105,8 @@ export default function PickupTaskDetailPage() {
 
       setTask(finalOtpData);
       setObservationText(String((finalOtpData as any)?.pickup_observation || ''));
+      // Prefill odometer if already present on lead
+      setOdometerReading((prev) => (prev && prev.trim().length > 0 ? prev : String((leadData as any)?.vehicle_odometer ?? '')));
 
       // Fetch photos
       const { data: photos } = await supabase
@@ -254,6 +257,15 @@ export default function PickupTaskDetailPage() {
 
     try {
       const isDelivery = task?.status === 'READY_FOR_DELIVERY' || task?.status === 'COD_PENDING';
+      if (!isDelivery) {
+        const v = (odometerReading || '').trim();
+        const n = v === '' ? NaN : Number(v);
+        if (!Number.isFinite(n) || n <= 0) {
+          toast.error('Please enter a valid odometer reading');
+          setProcessing(false);
+          return;
+        }
+      }
 
       // Delivery completion uses drop API; pickup completion uses pickup API.
       const response = await fetch(isDelivery ? `/api/pickup/tasks/${taskId}/drop/complete` : `/api/pickup/tasks/${taskId}/complete`, {
@@ -264,7 +276,7 @@ export default function PickupTaskDetailPage() {
             ? { notes: 'Vehicle delivered to customer' }
             : {
                 notes: 'Vehicle delivered to workshop',
-                odometer_reading: null,
+                odometer_reading: Number((odometerReading || '').trim()),
                 fuel_level: null,
               }
         ),
@@ -868,6 +880,27 @@ export default function PickupTaskDetailPage() {
                 </p>
                 <p className="text-xs sm:text-sm text-blue-700">✓ Team will be notified</p>
               </div>
+
+              {!isDeliveryTask && (
+                <div className="mb-3 sm:mb-4">
+                  <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">
+                    Odometer Reading (km) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    step="1"
+                    value={odometerReading}
+                    onChange={(e) => setOdometerReading(e.target.value)}
+                    className="input w-full"
+                    placeholder="e.g. 12345"
+                  />
+                  <p className="mt-1 text-[10px] sm:text-xs text-gray-500">
+                    This will be visible to advisor/supervisor in the lead.
+                  </p>
+                </div>
+              )}
 
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button

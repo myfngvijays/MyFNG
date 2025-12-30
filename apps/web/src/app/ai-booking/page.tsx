@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { ArrowRight, Bot } from 'lucide-react';
 import { createChatPaymentOrder, initializeRazorpayCheckout, loadRazorpayScript } from '@/lib/services/paymentService';
 
@@ -26,8 +27,10 @@ type ChatMsg = {
   ui?: UiPayload;
 };
 
-const STORAGE_KEY = 'myfng_ai_chat_state_v1';
-const CHANNEL_NAME = 'myfng_ai_chat_channel_v1';
+const STORAGE_KEY_V1 = 'myfng_ai_chat_state_v1';
+const CHANNEL_NAME_V1 = 'myfng_ai_chat_channel_v1';
+const STORAGE_KEY_V2 = 'myfng_ai_chat_state_v2';
+const CHANNEL_NAME_V2 = 'myfng_ai_chat_channel_v2';
 const REQUEST_TIMEOUT_MS = 45000;
 
 function safeParseJson<T>(raw: string | null): T | null {
@@ -40,6 +43,21 @@ function safeParseJson<T>(raw: string | null): T | null {
 }
 
 export default function AIBookingPage() {
+  // Next.js requires useSearchParams() to be wrapped in Suspense.
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+      <AIBookingPageInner />
+    </Suspense>
+  );
+}
+
+function AIBookingPageInner() {
+  const search = useSearchParams();
+  const isV2 = (search?.get('v') || '').trim() === '2';
+  const CHAT_API = isV2 ? '/api/chatbot/v2' : '/api/chatbot';
+  const STORAGE_KEY = isV2 ? STORAGE_KEY_V2 : STORAGE_KEY_V1;
+  const CHANNEL_NAME = isV2 ? CHANNEL_NAME_V2 : CHANNEL_NAME_V1;
+
   const [chatDraft, setChatDraft] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatConnected, setChatConnected] = useState(false);
@@ -47,11 +65,13 @@ export default function AIBookingPage() {
   const [payLoading, setPayLoading] = useState(false);
   const [suggestionModal, setSuggestionModal] = useState<UiSuggestion | null>(null);
 
-  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>(() => [
     {
       id: 'm0',
       role: 'assistant',
-      text: "Hi! I'm MY FNG AI Assistant.\nMY FNG Mumbai, Thane, Navi Mumbai & Palghar me 50+ A-grade workshops ke saath car service karata hai.\nAap regular service / repair issue / cleaning me se kya chahte ho?\nNote: Exact pricing & workshop address service expert callback pe confirm karega.",
+      text: isV2
+        ? "Hi! I'm MY FNG AI Assistant (v2).\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?"
+        : "Hi! I'm MY FNG AI Assistant.\nMY FNG Mumbai, Thane, Navi Mumbai & Palghar me 50+ A-grade workshops ke saath car service karata hai.\nAap regular service / repair issue / cleaning me se kya chahte ho?\nNote: Exact pricing & workshop address service expert callback pe confirm karega.",
     },
   ]);
 
@@ -70,7 +90,7 @@ export default function AIBookingPage() {
     } catch {
       return null;
     }
-  }, []);
+  }, [CHANNEL_NAME]);
 
   // Load persisted state
   useEffect(() => {
@@ -80,7 +100,7 @@ export default function AIBookingPage() {
     if (incomingAt) lastAppliedSyncAtRef.current = incomingAt;
     if (saved?.chatMessages?.length) setChatMessages(saved.chatMessages);
     if (saved?.chatContext) setChatContext({ ...(saved.chatContext || {}), docMode: false });
-  }, []);
+  }, [STORAGE_KEY, isV2]);
 
   // Load Razorpay checkout script
   useEffect(() => {
@@ -195,7 +215,7 @@ export default function AIBookingPage() {
     try {
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-      const res = await fetch('/api/chatbot', {
+      const res = await fetch(CHAT_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, context: nextContext }),
@@ -204,10 +224,15 @@ export default function AIBookingPage() {
       clearTimeout(t);
 
       const data: any = await res.json().catch(() => null);
-      if (res.ok && data?.conversationId) setChatConnected(true);
+      const v2ConversationId = data?.data?.conversationId;
+      if (res.ok && (data?.conversationId || v2ConversationId)) setChatConnected(true);
+
+      const v2Msg = typeof data?.message === 'string' ? data.message.trim() : '';
+      const v2Cta = typeof data?.cta === 'string' ? data.cta.trim() : '';
 
       const assistantText =
         (typeof data?.assistantMessage === 'string' && data.assistantMessage.trim()) ||
+        (v2Msg ? [v2Msg, v2Cta].filter(Boolean).join('\n') : '') ||
         (typeof data?.error === 'string' && data.error.trim()) ||
         'Sorry, kuch issue aa gaya. Please try again.';
 
@@ -278,19 +303,22 @@ export default function AIBookingPage() {
         return undefined;
       })();
 
-      const carModels = data?.contextPatch?.carModelSuggestions || [];
-      const stage = data?.contextPatch?.conversationStage || '';
+      const ctxPatch = (data?.contextPatch && typeof data.contextPatch === 'object'
+        ? data.contextPatch
+        : data?.data?.contextPatch && typeof data.data.contextPatch === 'object'
+          ? data.data.contextPatch
+          : null) as any;
+
+      const carModels = ctxPatch?.carModelSuggestions || [];
+      const stage = ctxPatch?.conversationStage || '';
 
       console.log('[AI-BOOKING DEBUG]', { stage, carModels });
 
       const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: assistantText, suggestions: uiSuggestions, ui: uiPayload }]);
 
-      if (data?.contextPatch) {
-        setChatContext((prev: any) => ({ ...(prev || {}), ...(nextContext || {}), ...(data.contextPatch || {}) }));
-      } else {
-        setChatContext(nextContext);
-      }
+      if (ctxPatch) setChatContext((prev: any) => ({ ...(prev || {}), ...(nextContext || {}), ...(ctxPatch || {}) }));
+      else setChatContext(nextContext);
 
       // If backend returned model suggestions (user typed a make like "tata"), treat make as selected
       // Pure chat mode: no UI suggestions
@@ -438,7 +466,7 @@ export default function AIBookingPage() {
             <div className="min-w-0">
               <div className="font-bold text-gray-900 truncate">Book via MY FNG AI</div>
               <div className="text-xs text-gray-500 truncate">
-                {chatConnected ? 'API: /api/chatbot • Connected' : 'API: /api/chatbot • Connecting...'}
+                {chatConnected ? `API: ${CHAT_API} • Connected` : `API: ${CHAT_API} • Connecting...`}
               </div>
             </div>
           </div>

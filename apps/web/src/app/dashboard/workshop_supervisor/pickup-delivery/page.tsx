@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
@@ -34,57 +34,121 @@ interface PickupDeliveryJob {
 export default function PickupDeliveryCoordinationPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<PickupDeliveryJob[]>([]);
+  const [allJobs, setAllJobs] = useState<PickupDeliveryJob[]>([]);
   const [pickupBoys, setPickupBoys] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'ready_for_pickup' | 'ready_for_delivery'>('all');
   const [instructionsEdit, setInstructionsEdit] = useState<Record<string, string>>({});
   const [savingInstructions, setSavingInstructions] = useState<Record<string, boolean>>({});
+  const [workshopId, setWorkshopId] = useState<string | null>(null);
+  const refreshTimer = useRef<number | null>(null);
+
+  const isReadyForPickup = (j: any) => ['PENDING', 'ASSIGNED'].includes(String(j?.pickup_status || '').toUpperCase());
+  const isPickupDone = (j: any) =>
+    [
+      'COMPLETED',
+      'VEHICLE_DROPPED_AT_WORKSHOP',
+      'VEHICLE_DROPPED',
+      'DROPPED_AT_WORKSHOP',
+    ].includes(String(j?.pickup_status || '').toUpperCase());
+  const isReadyForDelivery = (j: any) =>
+    ['READY_FOR_DELIVERY', 'QC_APPROVED', 'PAYMENT_AWAITING', 'INVOICE_GENERATED'].includes(String(j?.job_status || j?.status || '').toUpperCase()) &&
+    isPickupDone(j);
+
+  const applyFilter = (list: PickupDeliveryJob[]) => {
+    if (filterStatus === 'ready_for_pickup') return list.filter(isReadyForPickup);
+    if (filterStatus === 'ready_for_delivery') return list.filter(isReadyForDelivery);
+    return list;
+  };
 
   useEffect(() => {
-    fetchData();
-
-    // Real-time subscription
+    // Resolve user's workshop once
     const supabase = createClient();
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: userProfile } = await supabase
+          .from('users_login')
+          .select('workshop_id')
+          .eq('email', user.email)
+          .single();
+        if (!cancelled) setWorkshopId(userProfile?.workshop_id || null);
+      } catch (e) {
+        console.error('Failed to resolve workshop:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!workshopId) return;
+    fetchData({ silent: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workshopId]);
+
+  useEffect(() => {
+    // Switching tabs should NOT refetch; it should filter already-loaded jobs (keeps counts stable)
+    setJobs(applyFilter(allJobs));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStatus, allJobs]);
+
+  useEffect(() => {
+    if (!workshopId) return;
+    const supabase = createClient();
+
+    const scheduleRefresh = () => {
+      // Debounce bursts of updates
+      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
+      refreshTimer.current = window.setTimeout(() => {
+        fetchData({ silent: true });
+      }, 500);
+    };
+
+    // Create a unique channel per workshop to avoid collisions across pages
     const channel = supabase
-      .channel('pickup-delivery-updates')
+      .channel(`pickup-delivery-updates-${workshopId}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'service_leads'
-        },
-        () => {
-          fetchData();
-        }
+        { event: '*', schema: 'public', table: 'service_leads', filter: `workshop_id=eq.${workshopId}` },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'invoices', filter: `workshop_id=eq.${workshopId}` },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'lead_media' },
+        // lead_media doesn't have workshop_id on all installs; still safe to refresh.
+        scheduleRefresh
       )
       .subscribe();
 
     return () => {
-      channel.unsubscribe();
+      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
+      refreshTimer.current = null;
+      supabase.removeChannel(channel);
     };
-  }, [filterStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workshopId]);
 
-  async function fetchData() {
+  async function fetchData(opts?: { silent?: boolean }) {
     try {
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
       const supabase = createClient();
 
-      // Get user's workshop
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const wid = workshopId;
+      if (!wid) return;
 
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('workshop_id')
-        .eq('email', user.email)
-        .single();
-
-      if (!userProfile?.workshop_id) return;
-
-      // Build query based on filter
-      let query = supabase
+      // Always fetch ALL pickup-required jobs for the workshop.
+      // Filtering is handled client-side so the tab counts don't drop to 0 when switching filters.
+      const query = supabase
         .from('service_leads')
         .select(`
           id,
@@ -102,15 +166,8 @@ export default function PickupDeliveryCoordinationPage() {
           pickup_boy:assigned_pickup_boy_id(id, full_name, phone, profile_image),
           mechanic:assigned_mechanic_id(id, full_name)
         `)
-        .eq('workshop_id', userProfile.workshop_id)
+        .eq('workshop_id', wid)
         .eq('pickup_required', true);
-
-      if (filterStatus === 'ready_for_pickup') {
-        query = query.in('pickup_status', ['PENDING', 'ASSIGNED']);
-      } else if (filterStatus === 'ready_for_delivery') {
-        query = query.in('status', ['READY_FOR_DELIVERY', 'QC_APPROVED'])
-          .eq('pickup_status', 'COMPLETED');
-      }
 
       const { data: jobsData } = await query.order('created_at', { ascending: false });
 
@@ -147,7 +204,9 @@ export default function PickupDeliveryCoordinationPage() {
         })
       );
 
-      setJobs(enhancedJobs);
+      // Keep both: all jobs for counts + filtered jobs for list rendering
+      setAllJobs(enhancedJobs);
+      setJobs(applyFilter(enhancedJobs));
 
       // Fetch pickup boys
       const { data: pickupBoysData } = await supabase
@@ -159,7 +218,7 @@ export default function PickupDeliveryCoordinationPage() {
           profile_image,
           roles!inner(role_code)
         `)
-        .eq('workshop_id', userProfile.workshop_id)
+        .eq('workshop_id', wid)
         .eq('roles.role_code', 'WORKSHOP_PICKUP_BOY')
         .eq('is_active', true);
 
@@ -189,7 +248,7 @@ export default function PickupDeliveryCoordinationPage() {
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }
 
@@ -295,7 +354,10 @@ export default function PickupDeliveryCoordinationPage() {
       'ASSIGNED': 'bg-blue-100 text-blue-700',
       'EN_ROUTE': 'bg-yellow-100 text-yellow-700',
       'AT_LOCATION': 'bg-orange-100 text-orange-700',
-      'COMPLETED': 'bg-green-100 text-green-700'
+      'COMPLETED': 'bg-green-100 text-green-700',
+      'VEHICLE_IN_TRANSIT': 'bg-yellow-100 text-yellow-700',
+      'VEHICLE_DROPPED_AT_WORKSHOP': 'bg-green-100 text-green-700',
+      'DROPPED_AT_WORKSHOP': 'bg-green-100 text-green-700'
     };
     return colors[status] || 'bg-gray-100 text-gray-700';
   };
@@ -310,8 +372,8 @@ export default function PickupDeliveryCoordinationPage() {
     );
   }
 
-  const readyForPickup = jobs.filter(j => j.pickup_status === 'PENDING' || j.pickup_status === 'ASSIGNED');
-  const readyForDelivery = jobs.filter(j => j.job_status === 'READY_FOR_DELIVERY' && j.pickup_status === 'COMPLETED');
+  const readyForPickup = allJobs.filter(isReadyForPickup);
+  const readyForDelivery = allJobs.filter(isReadyForDelivery);
 
   return (
     <DashboardLayout role="workshop_supervisor">
@@ -413,7 +475,7 @@ export default function PickupDeliveryCoordinationPage() {
               onClick={() => setFilterStatus('all')}
               className={`btn text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 ${filterStatus === 'all' ? 'btn-primary' : 'btn-outline'}`}
             >
-              All Jobs ({jobs.length})
+              All Jobs ({allJobs.length})
             </button>
             <button
               onClick={() => setFilterStatus('ready_for_pickup')}

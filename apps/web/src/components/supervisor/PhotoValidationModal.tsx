@@ -122,8 +122,8 @@ export default function PhotoValidationModal({
         url: p.photo_url,
         category:
           p.photo_category === 'before' || p.photo_category === 'during' || p.photo_category === 'after'
-            ? p.photo_category
-            : 'other',
+          ? p.photo_category
+          : 'other',
         type: p.photo_type,
         created_at: p.created_at,
         source: 'mechanic_job_photos',

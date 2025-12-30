@@ -683,9 +683,13 @@ export default function WorkshopMechanicDashboard() {
                 <div className="flex flex-wrap gap-2 sm:gap-3 pt-2 sm:pt-3 border-t">
                   {/* Media upload status */}
                   <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
-                    <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                    {job.before_images_count > 0 ? (
+                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
+                    ) : (
+                      <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                    )}
                     <span className={job.before_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
-                      📷 Pickup/Visit: {job.before_images_count}
+                      Pickup/Visit: {job.before_images_count}
                     </span>
                     <span className={job.progress_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
                       Progress: {job.progress_images_count}

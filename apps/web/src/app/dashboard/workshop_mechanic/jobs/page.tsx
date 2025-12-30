@@ -310,22 +310,28 @@ export default function MechanicJobsPage() {
               </div>
 
               {/* Image counts */}
-              {(job.before_images_count > 0 || job.after_images_count > 0) && (
-                <div className="mb-3 sm:mb-4 flex gap-3 sm:gap-4 text-xs sm:text-sm">
-                  <div className={`flex items-center gap-1 ${
-                    job.before_images_count > 0 ? 'text-green-600' : 'text-gray-400'
-                  }`}>
+              <div className="mb-3 sm:mb-4 flex gap-3 sm:gap-4 text-xs sm:text-sm">
+                <div className={`flex items-center gap-1 ${
+                  job.before_images_count > 0 ? 'text-green-600' : 'text-gray-400'
+                }`}>
+                  {job.before_images_count > 0 ? (
+                    <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                  ) : (
                     <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                    Before: {job.before_images_count}
-                  </div>
-                  <div className={`flex items-center gap-1 ${
-                    job.after_images_count > 0 ? 'text-green-600' : 'text-gray-400'
-                  }`}>
-                    <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                    After: {job.after_images_count}
-                  </div>
+                  )}
+                  Pickup/Visit: {job.before_images_count}
                 </div>
-              )}
+                <div className={`flex items-center gap-1 ${
+                  job.after_images_count > 0 ? 'text-green-600' : 'text-gray-400'
+                }`}>
+                  {job.after_images_count > 0 ? (
+                    <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                  ) : (
+                    <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                  )}
+                  After: {job.after_images_count}
+                </div>
+              </div>
 
               {job.problem_description && (
                 <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-gray-50 rounded-lg">
@@ -364,6 +370,8 @@ export default function MechanicJobsPage() {
                     <button
                       onClick={() => {
                         if (job.lead_id) {
+                          const ok = window.confirm('Are you sure you want to mark this job as complete?');
+                          if (!ok) return;
                           updateJobStatus(job.lead_id, 'COMPLETED');
                         }
                       }}

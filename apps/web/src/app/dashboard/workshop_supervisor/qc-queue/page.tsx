@@ -142,7 +142,8 @@ export default function QCQueuePage() {
         .not('status', 'eq', 'QC_APPROVED')
         .not('status', 'eq', 'READY_FOR_BILLING')
         .not('status', 'eq', 'PAYMENT_AWAITING')
-        .order('mechanic_completed_at', { ascending: true, nullsFirst: false });
+        // Latest first
+        .order('mechanic_completed_at', { ascending: false, nullsFirst: false });
 
       // Second: Get jobs from mechanic_jobs table where completed_at is set
       // Then fetch the corresponding service_leads
@@ -209,7 +210,8 @@ export default function QCQueuePage() {
       const qcJobs = uniqueJobs.sort((a, b) => {
         const dateA = a.mechanic_completed_at ? new Date(a.mechanic_completed_at).getTime() : 0;
         const dateB = b.mechanic_completed_at ? new Date(b.mechanic_completed_at).getTime() : 0;
-        return dateA - dateB;
+        // Latest first
+        return dateB - dateA;
       });
 
       if (leadsError) {

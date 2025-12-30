@@ -35,15 +35,13 @@ export default function SupervisorJobDetailPage() {
   const router = useRouter();
   const jobId = params.id as string;
 
-  type MainTab = 'overview' | 'service' | 'photos' | 'billing' | 'workflow' | 'timeline';
-  type BillingSubTab = 'billing' | 'parts';
+  type MainTab = 'overview' | 'service' | 'photos' | 'billing' | 'parts' | 'workflow';
 
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showQC, setShowQC] = useState(false);
   const [activeTab, setActiveTab] = useState<MainTab>('overview');
-  const [billingSubTab, setBillingSubTab] = useState<BillingSubTab>('billing');
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [selectedExtraCharge, setSelectedExtraCharge] = useState<any>(null);
@@ -273,12 +271,8 @@ export default function SupervisorJobDetailPage() {
     };
   }, [jobId]);
 
-  useEffect(() => {
-    // When switching back to Billing main tab, default to Billing sub-tab
-    if (activeTab === 'billing') {
-      setBillingSubTab('billing');
-    }
-  }, [activeTab]);
+  // NOTE: Billing view is handled inside `InvoiceSection` (OS/CI/TI tabs),
+  // so we intentionally don't keep a separate billingMode state here.
 
   // Autocomplete for Part Name -> master_products (type=PART)
   useEffect(() => {
@@ -847,6 +841,27 @@ export default function SupervisorJobDetailPage() {
   const mediaCount = Array.isArray(lead?.media) ? lead.media.length : 0;
   const eventsCount = Array.isArray(lead?.events) ? lead.events.length : 0;
   const qcPending = ['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING';
+  const invoiceGenerated =
+    Boolean((lead as any)?.invoice_id) ||
+    [
+      'INVOICE_GENERATED',
+      'AWAITING_PAYMENT',
+      'PARTIAL_PAYMENT',
+      'PAID',
+      'COD_PENDING',
+      'READY_FOR_DELIVERY',
+      'DELIVERED_TO_CUSTOMER',
+      'DELIVERED',
+      'CLOSED',
+    ].includes(String(lead.status || '').toUpperCase());
+  const effectivePickupStatus =
+    (lead?.pickup_status as string | undefined) ||
+    (lead?.pickup_otp_verified_at ? 'VEHICLE_IN_TRANSIT' : null) ||
+    (lead?.pickup_otp ? 'IN_PROGRESS' : null) ||
+    (lead?.assigned_pickup_boy_id ? 'ASSIGNED' : null) ||
+    'NOT_ASSIGNED';
+  // After pickup OTP is verified, pickup details should not be editable from supervisor/advisor.
+  const pickupLocked = Boolean(lead?.pickup_otp_verified_at);
 
   const tabBtn = (tab: MainTab) => {
     const base = 'btn !px-4 !py-2 text-xs sm:text-sm';
@@ -910,15 +925,36 @@ export default function SupervisorJobDetailPage() {
             Photos {mediaCount > 0 && <span className="ml-1">({mediaCount})</span>}
           </button>
           <button type="button" className={tabBtn('billing')} onClick={() => setActiveTab('billing')}>
-            Billing & Parts {(pendingExtraCharges.length > 0 || parts.length > 0) && (
-              <span className="ml-1">({pendingExtraCharges.length + parts.length})</span>
+            Billing {pendingExtraCharges.length > 0 && <span className="ml-1">({pendingExtraCharges.length})</span>}
+          </button>
+          <button type="button" className={tabBtn('parts')} onClick={() => setActiveTab('parts')}>
+            Parts {parts.length > 0 && <span className="ml-1">({parts.length})</span>}
+          </button>
+          <button
+            type="button"
+            className="btn !px-4 !py-2 text-xs sm:text-sm btn-outline bg-white border-orange-300 text-orange-800 hover:bg-orange-50"
+            onClick={() => {
+              setActiveTab('billing');
+              // Scroll to pending additional jobs section (best-effort)
+              if (typeof window !== 'undefined') {
+                window.requestAnimationFrame(() => {
+                  const el = document.getElementById('pending-additional-jobs');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+              }
+            }}
+          >
+            Additional Jobs
+            {pendingExtraCharges.length > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-orange-100 text-orange-800 text-[10px] font-bold border border-orange-200">
+                {pendingExtraCharges.length}
+              </span>
             )}
           </button>
           <button type="button" className={tabBtn('workflow')} onClick={() => setActiveTab('workflow')}>
-            Workflow {qcPending && <span className="ml-1 text-yellow-700 font-semibold">(QC)</span>}
-          </button>
-          <button type="button" className={tabBtn('timeline')} onClick={() => setActiveTab('timeline')}>
-            Timeline {eventsCount > 0 && <span className="ml-1">({eventsCount})</span>}
+            Workflow &amp; Timeline
+            {qcPending && <span className="ml-1 text-yellow-700 font-semibold">(QC)</span>}
+            {eventsCount > 0 && <span className="ml-1">({eventsCount})</span>}
           </button>
         </div>
 
@@ -985,6 +1021,12 @@ export default function SupervisorJobDetailPage() {
               {lead.vehicle_year && (
                 <p className="text-xs sm:text-sm"><span className="text-gray-600">Year:</span> {lead.vehicle_year}</p>
               )}
+              {lead.vehicle_odometer && (
+                <p className="text-xs sm:text-sm">
+                  <span className="text-gray-600">Odometer:</span>{' '}
+                  <strong>{Number(lead.vehicle_odometer).toLocaleString()} km</strong>
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -1002,25 +1044,27 @@ export default function SupervisorJobDetailPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                // Prefill from lead if available
-                if (!showAddPickupForm) {
-                  const prefill = (lead?.pickup_address || lead?.customer_address || lead?.address || '') as string;
-                  setPickupFormAddress((prefill || '').toString());
-                  setPickupFormDate((lead?.preferred_date || '') as string);
-                  setPickupFormTimeSlot((lead?.preferred_time_slot || '') as string);
+            {!pickupLocked && (
+              <button
+                onClick={() => {
+                  // Prefill from lead if available
+                  if (!showAddPickupForm) {
+                    const prefill = (lead?.pickup_address || lead?.customer_address || lead?.address || '') as string;
+                    setPickupFormAddress((prefill || '').toString());
+                    setPickupFormDate((lead?.preferred_date || '') as string);
+                    setPickupFormTimeSlot((lead?.preferred_time_slot || '') as string);
+                  }
+                  setShowAddPickupForm((v) => !v);
+                }}
+                className={
+                  lead.pickup_required
+                    ? 'btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start'
+                    : 'btn bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start'
                 }
-                setShowAddPickupForm((v) => !v);
-              }}
-              className={
-                lead.pickup_required
-                  ? 'btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start'
-                  : 'btn bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start'
-              }
-            >
-              {showAddPickupForm ? 'Close' : lead.pickup_required ? 'Update Pickup Details' : 'Add Pickup'}
-            </button>
+              >
+                {showAddPickupForm ? 'Close' : lead.pickup_required ? 'Update Pickup Details' : 'Add Pickup'}
+              </button>
+            )}
           </div>
 
           {/* Pickup Observation (shared between pickup boy + supervisor) */}
@@ -1152,19 +1196,29 @@ export default function SupervisorJobDetailPage() {
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">Pickup Status</p>
                 <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
-                  {lead.pickup_status === 'COMPLETED' ? (
+                  {String(effectivePickupStatus).toUpperCase() === 'COMPLETED' ? (
                     <>
                       <CheckCircle className="w-4 h-4 text-green-600" />
                       <span className="font-semibold text-green-700 text-xs sm:text-sm">Completed</span>
                     </>
-                  ) : lead.pickup_status === 'IN_PROGRESS' || lead.pickup_status === 'ON_THE_WAY' ? (
+                  ) : String(effectivePickupStatus).toUpperCase() === 'VEHICLE_DROPPED_AT_WORKSHOP' ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      <span className="font-semibold text-emerald-700 text-xs sm:text-sm">Dropped at Workshop</span>
+                    </>
+                  ) : String(effectivePickupStatus).toUpperCase() === 'VEHICLE_IN_TRANSIT' ? (
+                    <>
+                      <Clock className="w-4 h-4 text-blue-600" />
+                      <span className="font-semibold text-blue-700 text-xs sm:text-sm">Vehicle In Transit</span>
+                    </>
+                  ) : String(effectivePickupStatus).toUpperCase() === 'IN_PROGRESS' || String(effectivePickupStatus).toUpperCase() === 'ON_THE_WAY' ? (
                     <>
                       <Clock className="w-4 h-4 text-blue-600" />
                       <span className="font-semibold text-blue-700 text-xs sm:text-sm">
-                        {lead.pickup_status === 'ON_THE_WAY' ? 'On The Way' : 'In Progress'}
+                        {String(effectivePickupStatus).toUpperCase() === 'ON_THE_WAY' ? 'On The Way' : 'In Progress'}
                       </span>
                     </>
-                  ) : lead.pickup_status === 'ASSIGNED' ? (
+                  ) : String(effectivePickupStatus).toUpperCase() === 'ASSIGNED' ? (
                     <>
                       <User className="w-4 h-4 text-yellow-600" />
                       <span className="font-semibold text-yellow-700 text-xs sm:text-sm">Assigned</span>
@@ -1212,7 +1266,12 @@ export default function SupervisorJobDetailPage() {
                   </p>
                 ) : (
                   <p className="text-xs sm:text-sm text-gray-700 mt-0.5 sm:mt-1">
-                    Not set. Click <strong>Update Pickup Details</strong> and add date/time.
+                    Not set.
+                    {!pickupLocked && (
+                      <>
+                        {' '}Click <strong>Update Pickup Details</strong> and add date/time.
+                      </>
+                    )}
                   </p>
                 )}
               </div>
@@ -1233,7 +1292,7 @@ export default function SupervisorJobDetailPage() {
                 </div>
               )}
 
-              {lead.pickup_otp && lead.pickup_status !== 'COMPLETED' && (
+              {lead.pickup_otp && String(effectivePickupStatus).toUpperCase() !== 'COMPLETED' && (
                 <div>
                   <p className="text-xs sm:text-sm text-gray-600">Pickup OTP</p>
                   <p className="font-mono text-xl sm:text-2xl font-bold text-orange-700 tracking-wider mt-0.5 sm:mt-1">
@@ -1242,7 +1301,7 @@ export default function SupervisorJobDetailPage() {
                 </div>
               )}
 
-              {!lead.assigned_pickup_boy_id && (lead.pickup_status === 'NOT_ASSIGNED' || !lead.pickup_status) && (
+              {!lead.assigned_pickup_boy_id && (String(effectivePickupStatus).toUpperCase() === 'NOT_ASSIGNED') && (
                 <div className="sm:col-span-2 md:col-span-3 p-3 sm:p-4 bg-white border border-orange-200 rounded-lg">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div className="flex items-start gap-2">
@@ -1428,31 +1487,11 @@ export default function SupervisorJobDetailPage() {
 
         {/* Job Card section hidden as requested */}
 
-        {/* Billing sub-tabs (separate Parts from Billing) */}
-        {activeTab === 'billing' && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              className={billingSubTab === 'billing' ? 'btn btn-primary' : 'btn btn-outline bg-white'}
-              onClick={() => setBillingSubTab('billing')}
-            >
-              Billing
-              {(pendingExtraCharges.length > 0) && <span className="ml-1">({pendingExtraCharges.length})</span>}
-            </button>
-            <button
-              type="button"
-              className={billingSubTab === 'parts' ? 'btn btn-primary' : 'btn btn-outline bg-white'}
-              onClick={() => setBillingSubTab('parts')}
-            >
-              Parts
-              {(parts.length > 0) && <span className="ml-1">({parts.length})</span>}
-            </button>
-          </div>
-        )}
+        {/* Billing UI is rendered by `InvoiceSection` below (single source of truth for OS/CI/TI). */}
 
         {/* Section 6: Extra Charges */}
-        {activeTab === 'billing' && billingSubTab === 'billing' && pendingExtraCharges.length > 0 && (
-          <div className="card bg-orange-50 border-orange-200">
+        {activeTab === 'billing' && pendingExtraCharges.length > 0 && (
+          <div id="pending-additional-jobs" className="card bg-orange-50 border-orange-200">
             <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
               <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
               Pending Additional Jobs Approval
@@ -1511,7 +1550,7 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Section 7: Mechanic Parts Assignment */}
-        {activeTab === 'billing' && billingSubTab === 'parts' && lead.mechanic && (
+        {activeTab === 'parts' && lead.mechanic && (
           <div className="card">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
               <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
@@ -1537,48 +1576,57 @@ export default function SupervisorJobDetailPage() {
                 <p className="text-xs sm:text-sm">No parts assigned yet</p>
               </div>
             ) : (
-              <div className="space-y-2 sm:space-y-3">
-                {parts.map((part) => (
-                  <div key={part.id} className="p-3 sm:p-4 border rounded-lg bg-gray-50">
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm sm:text-base md:text-lg">{part.part_name}</p>
-                        {part.part_code && (
-                          <p className="text-xs sm:text-sm text-gray-600 mt-0.5">Code: {part.part_code}</p>
-                        )}
-                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
-                          Quantity: {part.quantity || 0}
-                        </p>
-                        {part.notes && (
-                          <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{part.notes}</p>
-                        )}
-                      </div>
-                      <div className="flex gap-1.5 sm:gap-2 self-start">
-                        <button
-                          onClick={() => {
-                            setEditingPart(part);
-                            setPartForm({
-                              part_name: part.part_name,
-                              part_code: part.part_code || '',
-                              quantity_issued: part.quantity || 1,
-                              part_notes: part.notes || ''
-                            });
-                            setShowAddPartModal(true);
-                          }}
-                          className="btn btn-outline text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => deletePart(part.id)}
-                          className="btn bg-red-500 hover:bg-red-600 text-white text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold">Part</th>
+                      <th className="px-4 py-3 text-left font-semibold">Code</th>
+                      <th className="px-4 py-3 text-right font-semibold w-24">Qty</th>
+                      <th className="px-4 py-3 text-left font-semibold">Notes</th>
+                      <th className="px-4 py-3 text-right font-semibold w-36">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {parts.map((part) => (
+                      <tr key={part.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-gray-900">{part.part_name}</div>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">{part.part_code || '—'}</td>
+                        <td className="px-4 py-3 text-right font-medium">{part.quantity || 0}</td>
+                        <td className="px-4 py-3 text-gray-700">
+                          <div className="max-w-[520px] whitespace-pre-wrap break-words">{part.notes || '—'}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingPart(part);
+                                setPartForm({
+                                  part_name: part.part_name,
+                                  part_code: part.part_code || '',
+                                  quantity_issued: part.quantity || 1,
+                                  part_notes: part.notes || ''
+                                });
+                                setShowAddPartModal(true);
+                              }}
+                              className="btn btn-outline text-xs sm:text-sm px-3 py-1.5"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => deletePart(part.id)}
+                              className="btn bg-red-500 hover:bg-red-600 text-white text-xs sm:text-sm px-3 py-1.5"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -1624,7 +1672,7 @@ export default function SupervisorJobDetailPage() {
         )}
 
         {/* Invoice Section - should stay visible through billing/payment/delivery */}
-        {activeTab === 'billing' && billingSubTab === 'billing' && [
+        {activeTab === 'billing' && [
           'WORK_COMPLETED',
           'COMPLETED',
           'QC_APPROVED',
@@ -1740,26 +1788,28 @@ export default function SupervisorJobDetailPage() {
           />
         )}
 
-        {/* Section 10: Activity Timeline */}
-        {activeTab === 'timeline' && lead.events && lead.events.length > 0 && (
+        {/* Section 10: Activity Timeline (merged into Workflow tab) */}
+        {activeTab === 'workflow' && lead.events && lead.events.length > 0 && (
           <div className="card">
             <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
               <History className="w-4 h-4 sm:w-5 sm:h-5" />
               Activity Timeline
             </h3>
-            <div className="space-y-2 sm:space-y-3">
-              {lead.events.slice(0, 10).map((event: any) => (
-                <div key={event.id} className="flex gap-2 sm:gap-3 pb-2 sm:pb-3 border-b border-gray-200 last:border-0">
-                  <div className="flex-shrink-0 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-brand-primary mt-1.5 sm:mt-2"></div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium">{event.event_description}</p>
-                    <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
-                      {formatDateTime(event.created_at)}
-                      {event.created_by_user && ` • by ${event.created_by_user.full_name}`}
-                    </p>
+            <div className="max-h-[420px] overflow-y-auto pr-1">
+              <div className="space-y-2 sm:space-y-3">
+                {lead.events.map((event: any) => (
+                  <div key={event.id} className="flex gap-2 sm:gap-3 pb-2 sm:pb-3 border-b border-gray-200 last:border-0">
+                    <div className="flex-shrink-0 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-brand-primary mt-1.5 sm:mt-2"></div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium">{event.event_description}</p>
+                      <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
+                        {formatDateTime(event.created_at)}
+                        {event.created_by_user && ` • by ${event.created_by_user.full_name}`}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         )}

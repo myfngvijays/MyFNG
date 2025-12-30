@@ -782,26 +782,51 @@ export default function QCReviewPage() {
             {checklist.length > 0 && (
               <div className="card">
                 <h3 className="text-lg font-semibold mb-3">Service Checklist</h3>
-                <div className="space-y-2">
-                  {checklist.map((item: any, index: number) => (
-                    <div
-                      key={index}
-                      className={`flex items-center gap-3 p-2 rounded ${
-                        item.status === 'COMPLETED' ? 'bg-green-50' : 'bg-gray-50'
-                      }`}
-                    >
-                      {item.status === 'COMPLETED' ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                      ) : (
-                        <div className="w-5 h-5 border-2 border-gray-300 rounded-full"></div>
-                      )}
-                      <span className={`flex-1 ${
-                        item.status === 'COMPLETED' ? 'text-green-800' : 'text-gray-700'
-                      }`}>
-                        {item.name || item.item_name || `Item ${index + 1}`}
-                      </span>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold w-16">Status</th>
+                        <th className="px-4 py-3 text-left font-semibold">Point</th>
+                        <th className="px-4 py-3 text-left font-semibold">Remark</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {checklist.map((item: any, index: number) => {
+                        const status = String(item.status || '').toUpperCase();
+                        const remark = String(item.remark || item.notes || item.comment || '').trim();
+                        return (
+                          <tr key={index} className={status === 'COMPLETED' ? 'bg-green-50/40' : ''}>
+                            <td className="px-4 py-3">
+                              {status === 'COMPLETED' ? (
+                                <span className="inline-flex items-center gap-1 text-green-700 font-semibold">
+                                  <CheckCircle className="w-4 h-4" />
+                                  Done
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-gray-600 font-semibold">
+                                  <div className="w-4 h-4 border-2 border-gray-300 rounded-full"></div>
+                                  Pending
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={status === 'COMPLETED' ? 'text-green-800' : 'text-gray-800'}>
+                                {item.name || item.item_name || `Item ${index + 1}`}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-700">
+                              {remark ? (
+                                <span className="whitespace-pre-wrap break-words">{remark}</span>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -1207,112 +1232,139 @@ export default function QCReviewPage() {
               </div>
 
               {/* Questions */}
-              <div className="space-y-3">
-                {ADVISOR_QC_ITEMS.map((item, idx) => (
-                  <div key={item.serial} className="p-4 border border-gray-200 rounded-lg bg-white">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-bold text-gray-800">{idx + 1}.</span>
-                          <span className="text-sm font-semibold text-gray-800">{item.question}</span>
-                          {proofSet.has(item.serial) && (
-                            <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">
-                              Proof Required
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-2">
-                          <YesNoToggle
-                            value={advisorAnswers[item.serial]}
-                            onChange={(v) => {
-                              setAnswer(item.serial, v);
-                              if (v === 'YES') {
-                                maybeRequestProofOnYes(item.serial);
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Proof upload area */}
-                    {proofSet.has(item.serial) && advisorAnswers[item.serial] === 'YES' && (
-                      <div className="mt-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-gray-800">Upload proof photos</p>
-                          <span className={`text-xs font-semibold ${((proofUploads[item.serial]?.length || 0) > 0) ? 'text-green-700' : 'text-red-600'}`}>
-                            {(proofUploads[item.serial]?.length || 0) > 0 ? 'Uploaded' : 'Required'}
-                          </span>
-                        </div>
-
-                        {(() => {
-                          const expiry = proofExpiryAt[item.serial] || 0;
-                          const remaining = Math.max(0, Math.ceil((expiry - nowTick) / 1000));
-                          const expired = expiry > 0 && remaining === 0 && (proofUploads[item.serial]?.length || 0) === 0;
-                          if (!expiry) return null;
-                          return (
-                            <div className="mt-2 flex items-center justify-between gap-3">
-                              {!expired ? (
-                                <p className="text-xs text-gray-600">
-                                  Time left to upload: <strong>{remaining}s</strong>
-                                </p>
-                              ) : (
-                                <p className="text-xs text-red-600 font-semibold">
-                                  Time over. Please retry to continue uploading.
-                                </p>
-                              )}
-                              {expired && (
-                                <button
-                                  type="button"
-                                  className="btn btn-outline !px-3 !py-2 text-xs"
-                                  onClick={() => requestProofForSerial(item.serial)}
-                                >
-                                  Retry
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })()}
-
-                        {(proofUploads[item.serial]?.length || 0) > 0 && (
-                          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mt-2">
-                            {(proofUploads[item.serial] || []).map((u) => (
-                              <div key={u} className="relative group">
-                                <img src={u} alt="Proof" className="w-full h-16 object-cover rounded border" />
-                                <button
-                                  type="button"
-                                  className="absolute top-1 right-1 bg-black/60 text-white text-xs px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition"
-                                  onClick={() => removeProofUrl(item.serial, u)}
-                                >
-                                  Remove
-                                </button>
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold w-14">#</th>
+                      <th className="px-4 py-3 text-left font-semibold">Point</th>
+                      <th className="px-4 py-3 text-left font-semibold w-44">YES / NO</th>
+                      <th className="px-4 py-3 text-left font-semibold w-[360px]">Proof</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {ADVISOR_QC_ITEMS.map((item, idx) => {
+                      const hasProof = proofSet.has(item.serial);
+                      const uploadsCount = proofUploads[item.serial]?.length || 0;
+                      const showProof = hasProof && advisorAnswers[item.serial] === 'YES';
+                      return (
+                        <tr key={item.serial} className="align-top">
+                          <td className="px-4 py-3 text-gray-700 font-semibold">{idx + 1}</td>
+                          <td className="px-4 py-3">
+                            <div className="font-semibold text-gray-900">{item.question}</div>
+                            {hasProof && (
+                              <div className="mt-1">
+                                <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-800">
+                                  Proof Required
+                                </span>
                               </div>
-                            ))}
-                          </div>
-                        )}
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <YesNoToggle
+                              value={advisorAnswers[item.serial]}
+                              onChange={(v) => {
+                                setAnswer(item.serial, v);
+                                if (v === 'YES') {
+                                  maybeRequestProofOnYes(item.serial);
+                                }
+                              }}
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            {!hasProof ? (
+                              <span className="text-xs text-gray-500">—</span>
+                            ) : advisorAnswers[item.serial] !== 'YES' ? (
+                              <span className="text-xs text-gray-500">Proof will be requested only when answer is YES.</span>
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className={`text-xs font-semibold ${uploadsCount > 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                    {uploadsCount > 0 ? `Uploaded (${uploadsCount})` : 'Required'}
+                                  </span>
+                                  <span className="text-xs text-gray-500">Max 3 photos</span>
+                                </div>
 
-                        {(() => {
-                          const expiry = proofExpiryAt[item.serial] || 0;
-                          const remaining = Math.max(0, Math.ceil((expiry - nowTick) / 1000));
-                          const expired = expiry > 0 && remaining === 0 && (proofUploads[item.serial]?.length || 0) === 0;
-                          if (expired) return null;
-                          return (
-                            <div className="mt-3">
-                              <PhotoUpload
-                                label={`Proof for point #${idx + 1}`}
-                                maxPhotos={3}
-                                uploadEndpoint={`/api/leads/${jobId}/upload-qc-proof`}
-                                extraFormFields={{ point: String(idx + 1), serial: String(item.serial) }}
-                                onUpload={(urls) => addProofUrls(item.serial, urls)}
-                                required
-                              />
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                                {(() => {
+                                  const expiry = proofExpiryAt[item.serial] || 0;
+                                  const remaining = Math.max(0, Math.ceil((expiry - nowTick) / 1000));
+                                  const expired = expiry > 0 && remaining === 0 && uploadsCount === 0;
+                                  if (!expiry) return null;
+                                  return (
+                                    <div className="flex items-center justify-between gap-3">
+                                      {!expired ? (
+                                        <p className="text-xs text-gray-600">
+                                          Time left: <strong>{remaining}s</strong>
+                                        </p>
+                                      ) : (
+                                        <p className="text-xs text-red-600 font-semibold">
+                                          Time over. Please retry to continue uploading.
+                                        </p>
+                                      )}
+                                      {expired && (
+                                        <button
+                                          type="button"
+                                          className="btn btn-outline !px-3 !py-2 text-xs"
+                                          onClick={() => requestProofForSerial(item.serial)}
+                                        >
+                                          Retry
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+
+                                {uploadsCount > 0 && (
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {(proofUploads[item.serial] || []).slice(0, 3).map((u) => (
+                                      <div key={u} className="relative group">
+                                        <img src={u} alt="Proof" className="w-full h-16 object-cover rounded border" />
+                                        <button
+                                          type="button"
+                                          className="absolute top-1 right-1 bg-black/60 text-white text-xs px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition"
+                                          onClick={() => removeProofUrl(item.serial, u)}
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {(() => {
+                                  const expiry = proofExpiryAt[item.serial] || 0;
+                                  const remaining = Math.max(0, Math.ceil((expiry - nowTick) / 1000));
+                                  const expired = expiry > 0 && remaining === 0 && uploadsCount === 0;
+                                  if (expired) return null;
+                                  return (
+                                    <details className="rounded border border-gray-200 bg-gray-50 p-2">
+                                      <summary className="cursor-pointer text-xs font-semibold text-gray-800">
+                                        Upload / Change Photos
+                                      </summary>
+                                      <div className="mt-2">
+                                        <PhotoUpload
+                                          label={`Proof for point #${idx + 1}`}
+                                          maxPhotos={3}
+                                          uploadEndpoint={`/api/leads/${jobId}/upload-qc-proof`}
+                                          extraFormFields={{ point: String(idx + 1), serial: String(item.serial) }}
+                                          onUpload={(urls) => addProofUrls(item.serial, urls)}
+                                          required
+                                          showGuidelines
+                                          guidelinesPosition="top"
+                                          stickyGuidelines
+                                        />
+                                      </div>
+                                    </details>
+                                  );
+                                })()}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
 
               <div className="flex items-center justify-between gap-3 mt-6 pt-4 border-t border-gray-200">

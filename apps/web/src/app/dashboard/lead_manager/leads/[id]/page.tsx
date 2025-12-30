@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY, formatDateTime, formatTime12h } from '@/lib/utils';
+import { getStatusColor, getStatusLabel } from '@/lib/services/leadStatusService';
 import {
   CheckCircle, XCircle, Building, MapPin, Phone, Mail, Car,
   Calendar, DollarSign, FileText, AlertCircle, ArrowRight,
@@ -18,6 +19,8 @@ export default function LeadReviewPage() {
   const supabase = createClient();
   
   const [lead, setLead] = useState<any>(null);
+  const [statusHistory, setStatusHistory] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
@@ -80,8 +83,106 @@ export default function LeadReviewPage() {
   useEffect(() => {
     if (params.id) {
       fetchLeadDetails();
+      fetchLeadHistory();
     }
   }, [params.id]);
+
+  const fetchLeadHistory = async () => {
+    if (!params.id) return;
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/audit/lead-history/${params.id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // Non-blocking: lead details page should still render without history.
+        setStatusHistory([]);
+        return;
+      }
+      setStatusHistory(Array.isArray(data?.status_history) ? data.status_history : []);
+    } catch (e) {
+      setStatusHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const timelineItems = useMemo(() => {
+    const items: Array<{
+      key: string;
+      status?: string;
+      title: string;
+      time?: string;
+      meta?: string;
+      iconBg: string;
+      iconText: string;
+    }> = [];
+
+    if (lead?.created_at) {
+      items.push({
+        key: `created-${lead.created_at}`,
+        status: 'CREATED',
+        title: 'Created',
+        time: formatDateTime(lead.created_at),
+        meta: lead.created_by?.full_name ? `by ${lead.created_by.full_name}` : undefined,
+        iconBg: 'bg-blue-100',
+        iconText: 'text-blue-600',
+      });
+    }
+
+    // API returns DESC; show oldest -> newest
+    const histAsc = [...(statusHistory || [])].sort((a, b) => {
+      const at = new Date(a?.changed_at || a?.created_at || 0).getTime();
+      const bt = new Date(b?.changed_at || b?.created_at || 0).getTime();
+      return at - bt;
+    });
+
+    for (const h of histAsc) {
+      const newStatus = String(h?.new_status || '').trim();
+      if (!newStatus) continue;
+      const when = h?.changed_at || h?.created_at;
+      const c = getStatusColor(newStatus);
+      const metaParts = [
+        h?.reason ? String(h.reason) : null,
+        h?.notes ? String(h.notes) : null,
+      ].filter(Boolean);
+      items.push({
+        key: `status-${h?.id || `${newStatus}-${when || ''}`}`,
+        status: newStatus,
+        title: getStatusLabel(newStatus),
+        time: when ? formatDateTime(when) : undefined,
+        meta: metaParts.length ? metaParts.join(' • ') : undefined,
+        iconBg: c.bg,
+        iconText: c.text,
+      });
+    }
+
+    // Ensure current status shows even if history table is empty / missing latest
+    const lastStatus = items
+      .slice()
+      .reverse()
+      .find((x) => x.status && x.status !== 'CREATED')?.status;
+    const currentStatus = lead?.status ? String(lead.status) : '';
+    if (currentStatus && currentStatus !== lastStatus) {
+      const c = getStatusColor(currentStatus);
+      items.push({
+        key: `current-${currentStatus}-${lead?.updated_at || ''}`,
+        status: currentStatus,
+        title: `${getStatusLabel(currentStatus)} (Current)`,
+        time: lead?.updated_at ? formatDateTime(lead.updated_at) : undefined,
+        iconBg: c.bg,
+        iconText: c.text,
+      });
+    }
+
+    // Dedupe consecutive duplicates (common on reassignment / repeated writes)
+    const deduped: typeof items = [];
+    for (const it of items) {
+      const prev = deduped[deduped.length - 1];
+      if (prev && prev.title === it.title && prev.time === it.time) continue;
+      deduped.push(it);
+    }
+    return deduped;
+  }, [lead, statusHistory]);
 
   // Fetch workshops when search changes (with debounce)
   useEffect(() => {
@@ -380,6 +481,19 @@ export default function LeadReviewPage() {
                   Validated by {lead.validated_by?.full_name} on {formatDateTime(lead.validated_at)}
                 </p>
               )}
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 flex items-center gap-1.5 sm:gap-2">
+                <Building className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
+                <span className="font-medium text-gray-700">Assigned Workshop:</span>
+                {lead.workshop_id ? (
+                  <span className="font-semibold text-gray-900 truncate">
+                    {lead.workshop?.name || '—'}
+                    {lead.workshop?.city ? ` • ${lead.workshop.city}` : ''}
+                    {lead.workshop?.phone ? ` • ${lead.workshop.phone}` : ''}
+                  </span>
+                ) : (
+                  <span className="font-semibold text-gray-900">Not assigned</span>
+                )}
+              </p>
             </div>
             <span className={`px-3 sm:px-4 py-1 sm:py-2 rounded-full font-semibold text-xs sm:text-sm flex-shrink-0 ${
               lead.priority === 'CRITICAL' ? 'bg-red-600 text-white' :
@@ -595,46 +709,36 @@ export default function LeadReviewPage() {
           <div className="space-y-4 sm:space-y-5 md:space-y-6">
             {/* Timeline */}
             <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
-              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4">Timeline</h3>
-              <div className="space-y-3 sm:space-y-4">
-                <div className="flex items-start gap-2 sm:gap-3">
-                  <div className="bg-blue-100 p-1.5 sm:p-2 rounded-full flex-shrink-0">
-                    <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium">Created</p>
-                    <p className="text-[10px] sm:text-xs text-gray-600">{formatDateTime(lead.created_at)}</p>
-                    {lead.created_by && (
-                      <p className="text-[10px] sm:text-xs text-gray-500">by {lead.created_by.full_name}</p>
-                    )}
-                  </div>
-                </div>
-                
-                {lead.validated_at && (
-                  <div className="flex items-start gap-2 sm:gap-3">
-                    <div className="bg-green-100 p-1.5 sm:p-2 rounded-full flex-shrink-0">
-                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs sm:text-sm font-medium">Validated</p>
-                      <p className="text-[10px] sm:text-xs text-gray-600">{formatDateTime(lead.validated_at)}</p>
-                      {lead.validated_by && (
-                        <p className="text-[10px] sm:text-xs text-gray-500">by {lead.validated_by.full_name}</p>
-                      )}
-                    </div>
-                  </div>
+              <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+                <h3 className="text-base sm:text-lg font-bold text-gray-900">Timeline</h3>
+                {historyLoading && (
+                  <span className="text-[10px] sm:text-xs text-gray-500">Loading…</span>
                 )}
-                
-                {lead.assigned_to_workshop_at && (
-                  <div className="flex items-start gap-2 sm:gap-3">
-                    <div className="bg-purple-100 p-1.5 sm:p-2 rounded-full flex-shrink-0">
-                      <Building className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600" />
+              </div>
+              <div className="space-y-3 sm:space-y-4 max-h-[420px] overflow-y-auto pr-1">
+                {timelineItems.length === 0 ? (
+                  <div className="text-xs sm:text-sm text-gray-600">No tracking updates yet.</div>
+                ) : (
+                  timelineItems.map((it) => (
+                    <div key={it.key} className="flex items-start gap-2 sm:gap-3">
+                      <div className={`${it.iconBg} p-1.5 sm:p-2 rounded-full flex-shrink-0`}>
+                        <span className={`w-3.5 h-3.5 sm:w-4 sm:h-4 inline-flex items-center justify-center ${it.iconText} text-[10px] sm:text-xs font-bold`}>
+                          •
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs sm:text-sm font-medium text-gray-900">{it.title}</p>
+                        {it.time && (
+                          <p className="text-[10px] sm:text-xs text-gray-600">{it.time}</p>
+                        )}
+                        {it.meta && (
+                          <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 line-clamp-2">
+                            {it.meta}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs sm:text-sm font-medium">Workshop Assigned</p>
-                      <p className="text-[10px] sm:text-xs text-gray-600">{formatDateTime(lead.assigned_to_workshop_at)}</p>
-                    </div>
-                  </div>
+                  ))
                 )}
               </div>
             </div>

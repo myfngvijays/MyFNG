@@ -175,13 +175,57 @@ export async function POST(
       );
     };
 
+    // Optional: load additional job master prices (workshop-specific first, then global) as a fallback
+    const normalizeName = (s: string) =>
+      String(s || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const masterByName = new Map<string, { oem: number; oes: number; labour: number }>();
+    try {
+      const { data: masterJobs } = await supabase
+        .from('additional_jobs_master')
+        .select('name, oem_price, oes_price, labour_price, workshop_id, is_active, deleted_at')
+        .or(`workshop_id.eq.${lead.workshop_id},workshop_id.is.null`)
+        .eq('is_active', true);
+
+      for (const it of masterJobs || []) {
+        if ((it as any)?.deleted_at) continue;
+        const key = normalizeName(String((it as any).name || ''));
+        if (!key) continue;
+        const oem = Number((it as any).oem_price);
+        const oes = Number((it as any).oes_price);
+        const labour = Number((it as any).labour_price);
+        const row = { oem: Number.isFinite(oem) ? oem : 0, oes: Number.isFinite(oes) ? oes : 0, labour: Number.isFinite(labour) ? labour : 0 };
+        // Prefer workshop-specific entry over global
+        if ((it as any).workshop_id === lead.workshop_id) {
+          masterByName.set(key, row);
+        } else if (!masterByName.has(key)) {
+          masterByName.set(key, row);
+        }
+      }
+    } catch {
+      // ignore if table/columns missing
+    }
+
     const computeExtraAmount = (row: any) => {
       const legacy = Number(row?.amount ?? 0) || 0;
       if (legacy > 0) return legacy;
       const partType = String(row?.part_price_type || 'OEM').toUpperCase();
       const part = partType === 'OES' ? Number(row?.oes_price ?? 0) || 0 : Number(row?.oem_price ?? 0) || 0;
       const labour = Number(row?.labour_price ?? 0) || 0;
-      return part + labour;
+      const computed = part + labour;
+      if (computed > 0) return computed;
+      // Fallback: if breakdown not saved yet, use additional_jobs_master by description
+      const descKey = normalizeName(String(row?.description || row?.reason || ''));
+      const master = masterByName.get(descKey);
+      if (master) {
+        const masterPart = partType === 'OES' ? master.oes : master.oem;
+        return (Number(masterPart) || 0) + (Number(master.labour) || 0);
+      }
+      return 0;
     };
 
     const extraCharges = (Array.isArray(extraChargesRaw) ? extraChargesRaw : []).filter(isApprovedExtra);

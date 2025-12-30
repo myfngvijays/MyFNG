@@ -5,6 +5,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { validateBlogImageName } from '@/lib/blog/imageNaming';
+import { validateAllImgHaveAlt } from '@/lib/blog/text';
 
 export async function POST(
   request: NextRequest,
@@ -49,11 +51,41 @@ export async function POST(
       return NextResponse.json({ error: 'Blog not found' }, { status: 404 });
     }
 
-    // Validate blog before publishing
-    if (!existingBlog.title || !existingBlog.content || !existingBlog.featured_image) {
-      return NextResponse.json({ 
-        error: 'Cannot publish: Blog must have title, content, and featured image' 
-      }, { status: 400 });
+    // Validate blog before publishing (Aman Sir workflow)
+    if (!existingBlog.title || !existingBlog.content || !existingBlog.slug) {
+      return NextResponse.json({ error: 'Cannot publish: Blog must have title, slug, and content' }, { status: 400 });
+    }
+
+    // All <img> in HTML must have alt
+    const altCheck = validateAllImgHaveAlt(String(existingBlog.content || ''), 125);
+    if (!altCheck.ok) return NextResponse.json({ error: altCheck.error }, { status: 400 });
+
+    // Featured image required + ALT required
+    if (!existingBlog.featured_image) {
+      return NextResponse.json({ error: 'Cannot publish: Featured image is required' }, { status: 400 });
+    }
+    const featuredAlt = String((existingBlog.seo_data || {})?.featured_image_alt || '').trim();
+    if (!featuredAlt) {
+      return NextResponse.json({ error: 'Cannot publish: Featured image ALT text is required' }, { status: 400 });
+    }
+    if (featuredAlt.length > 125) {
+      return NextResponse.json({ error: 'Cannot publish: Featured image ALT too long (max 125 chars)' }, { status: 400 });
+    }
+
+    // Enforce image naming for our hosted images
+    const nameErr = validateBlogImageName(String(existingBlog.featured_image), String(existingBlog.slug));
+    if (nameErr) return NextResponse.json({ error: nameErr }, { status: 400 });
+
+    // If FAQ schema is enabled, require at least 5 FAQs.
+    const seo = (existingBlog.seo_data || {}) as any;
+    if (Boolean(seo?.schema_faq)) {
+      const { count: faqCount } = await supabase
+        .from('blog_faqs')
+        .select('id', { count: 'exact', head: true })
+        .eq('blog_id', existingBlog.id);
+      if ((faqCount || 0) < 5) {
+        return NextResponse.json({ error: 'Cannot publish: At least 5 FAQs are required (generate/edit FAQs before publishing).' }, { status: 400 });
+      }
     }
 
     // Publish the blog
@@ -68,10 +100,15 @@ export async function POST(
       .select(`
         *,
         category:blog_categories(*),
+        categories:blog_category_mapping(
+          is_primary,
+          category:blog_categories(*)
+        ),
         author:users_login!author_id(id, full_name, email),
         tags:blog_tag_mapping(
           tag:blog_tags(*)
-        )
+        ),
+        faqs:blog_faqs(*)
       `)
       .single();
 
@@ -82,7 +119,8 @@ export async function POST(
 
     const transformedBlog = publishedBlog ? {
       ...publishedBlog,
-      tags: publishedBlog.tags?.map((t: any) => t.tag) || []
+      tags: publishedBlog.tags?.map((t: any) => t.tag) || [],
+      categories: (publishedBlog as any).categories?.map((c: any) => c?.category).filter(Boolean) || [],
     } : null;
 
     return NextResponse.json({ 

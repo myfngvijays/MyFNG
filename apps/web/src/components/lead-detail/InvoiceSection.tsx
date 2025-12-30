@@ -81,6 +81,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const [invoiceList, setInvoiceList] = useState<Invoice[]>([]);
   const [selectedInvoiceType, setSelectedInvoiceType] = useState<'ORDER_SUMMARY' | 'CUSTOMER_INVOICE' | 'TAX_INVOICE' | null>(null);
   const [loading, setLoading] = useState(false);
+  const [includedByServiceTypeId, setIncludedByServiceTypeId] = useState<Record<string, any[]>>({});
+  const [includedByServiceNameKey, setIncludedByServiceNameKey] = useState<Record<string, any[]>>({});
   const [finalizing, setFinalizing] = useState(false);
   const [activating, setActivating] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -94,16 +96,36 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     fetchInvoice();
   }, [lead.id]);
 
+  const normalizeName = (s: string) =>
+    String(s || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
   async function fetchInvoice() {
     setLoading(true);
     try {
       // Fetch invoice using the existing API route
-      const response = await fetch(`/api/leads/${lead.id}/invoice`);
+      const response = await fetch(`/api/leads/${lead.id}/invoice`, { cache: 'no-store' });
       
       if (response.ok) {
         const data = await response.json();
         const invoiceData = data.invoice as Invoice | null;
         const list = Array.isArray(data?.invoices) ? (data.invoices as Invoice[]) : [];
+        const included = Array.isArray(data?.included_service_items) ? data.included_service_items : [];
+        const byId: Record<string, any[]> = {};
+        const byName: Record<string, any[]> = {};
+        for (const s of included) {
+          const sid = String(s?.service_type_id || '').trim();
+          const sname = String(s?.service_name || '').trim();
+          const items = Array.isArray(s?.items) ? s.items : [];
+          if (sid) byId[sid] = items;
+          if (sname) byName[normalizeName(sname)] = items;
+        }
+        setIncludedByServiceTypeId(byId);
+        setIncludedByServiceNameKey(byName);
         setInvoiceList(list);
 
         // Keep current selected type if user chose; otherwise default to best invoice returned.
@@ -542,10 +564,38 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                           const rate = it?.rate != null ? Number(it.rate) : qty ? Number(it?.amount || 0) / qty : Number(it?.amount || 0);
                           const amt = Number(it?.amount ?? 0) || 0;
                           const sr = idx + 1;
+                          const cat = String(it?.category || '').toUpperCase();
+                          const includedItems =
+                            cat === 'SERVICE'
+                              ? (it?.service_type_id && includedByServiceTypeId[String(it.service_type_id)])
+                                ? includedByServiceTypeId[String(it.service_type_id)]
+                                : includedByServiceNameKey[normalizeName(String(it?.description || ''))]
+                              : [];
                           return (
                             <tr key={`${g.key}-${idx}`}>
                               <td className="px-4 py-3 text-gray-600">{sr}</td>
-                              <td className="px-4 py-3">{it?.description || '-'}</td>
+                              <td className="px-4 py-3">
+                                <div>{it?.description || '-'}</div>
+                                {Array.isArray(includedItems) && includedItems.length > 0 && (
+                                  <div className="mt-1 text-[11px] text-gray-500">
+                                    <div className="font-semibold">Included:</div>
+                                    <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                                      {includedItems.slice(0, 8).map((p: any, i: number) => (
+                                        <li key={`${p?.product_id || p?.name || i}`}>
+                                          {String(p?.name || 'Item')}
+                                          {p?.type ? ` (${String(p.type)})` : ''}
+                                          {` ×${Number(p?.quantity || 1) || 1}`}
+                                        </li>
+                                      ))}
+                                      {includedItems.length > 8 && (
+                                        <li className="list-none ml-[-1rem] text-gray-400">
+                                          +{includedItems.length - 8} more
+                                        </li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                )}
+                              </td>
                               <td className="px-4 py-3 text-right">{qty}</td>
                               <td className="px-4 py-3 text-right">{money(rate)}</td>
                               <td className="px-4 py-3 text-right font-medium">{money(amt)}</td>

@@ -1715,7 +1715,18 @@ export default function HomePage() {
       )}
 
       {/* Floating Chatbot (Always Visible) */}
-      <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50">
+      <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50 flex flex-col items-end gap-2">
+        {/* Separate V2 button (opens full page) */}
+        {!isChatOpen && (
+          <Link
+            href="/ai-booking?v=2"
+            className="bg-black/90 hover:bg-black text-white px-3 sm:px-4 py-2 rounded-full shadow-xl transition-all transform hover:scale-105 flex items-center gap-2 border border-white/15 backdrop-blur text-xs sm:text-sm"
+          >
+            <Cpu className="w-4 h-4" />
+            <span className="font-semibold">Chat v2</span>
+          </Link>
+        )}
+
         <button 
           onClick={() => {
             const next = !isChatOpen;
@@ -1806,12 +1817,20 @@ export default function HomePage() {
                 </p>
               </div>
             </div>
-            <Link
-              href="/ai-booking"
-              className="text-blue-100 hover:text-white text-[10px] sm:text-xs font-semibold whitespace-nowrap"
-            >
-              Open full page
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/ai-booking"
+                className="text-blue-100 hover:text-white text-[10px] sm:text-xs font-semibold whitespace-nowrap"
+              >
+                Open
+              </Link>
+              <Link
+                href="/ai-booking?v=2"
+                className="text-blue-100 hover:text-white text-[10px] sm:text-xs font-semibold whitespace-nowrap"
+              >
+                V2
+              </Link>
+            </div>
             <button
               onClick={() => {
                 setSuggestionModal(null);
@@ -1863,10 +1882,10 @@ export default function HomePage() {
                           );
                         }
                         return (
-                          <span key={idx}>
-                            {line}
-                            <br />
-                          </span>
+                        <span key={idx}>
+                          {line}
+                          <br />
+                        </span>
                         );
                       })}
                     </div>
@@ -1884,8 +1903,8 @@ export default function HomePage() {
                               <div className="font-semibold text-sm text-gray-900">{it.label}</div>
                               {it.subtitle && <div className="text-xs text-gray-500 mt-1">{it.subtitle}</div>}
                             </button>
-                          ))}
-                        </div>
+                      ))}
+                    </div>
                       </div>
                     )}
 
