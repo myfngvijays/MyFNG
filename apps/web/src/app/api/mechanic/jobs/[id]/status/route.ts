@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
@@ -19,7 +19,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -384,7 +384,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();

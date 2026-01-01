@@ -44,10 +44,10 @@ export default function AddWorkshopPage() {
     google_place_id: '',
     workshop_type: 'Car Service Center',
     whatsapp_group_id: '',
-    creadit_card_swap: false,
-    engine_oil: false,
-    insurance_claim: false,
-    service_panel_issue: false,
+    creadit_card_swap: '',
+    engine_oil: '',
+    insurance_claim: '',
+    service_panel_issue: '',
     note: '',
     active_date: '',
     retainer_fee: '',
@@ -146,13 +146,13 @@ export default function AddWorkshopPage() {
         google_place_id: formData.google_place_id || null,
         workshop_type: formData.workshop_type,
         whatsapp_group_id: formData.whatsapp_group_id || null,
-        creadit_card_swap: formData.creadit_card_swap,
-        engine_oil: formData.engine_oil,
-        insurance_claim: formData.insurance_claim,
-        service_panel_issue: formData.service_panel_issue,
+        creadit_card_swap: formData.creadit_card_swap || null,
+        engine_oil: formData.engine_oil || null,
+        insurance_claim: formData.insurance_claim || null,
+        service_panel_issue: formData.service_panel_issue || null,
         note: formData.note || null,
         active_date: formData.active_date || null,
-        retainer_fee: formData.retainer_fee ? parseFloat(formData.retainer_fee) : null,
+        retainer_fee: formData.retainer_fee || null,
         prepaid_postpaid: formData.prepaid_postpaid || null,
         mou: formData.mou,
         board: formData.board,
@@ -390,7 +390,7 @@ export default function AddWorkshopPage() {
                     </div>
                     <div className="lg:col-span-1">
                       <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Retainer Fee</label>
-                      <input type="number" step="0.01" name="retainer_fee" value={formData.retainer_fee} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" />
+                      <input type="text" name="retainer_fee" value={formData.retainer_fee} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" placeholder="Example: 5000 / 5000+GST / NA" />
                     </div>
                     <div className="lg:col-span-1">
                       <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Prepaid/Postpaid</label>
@@ -401,12 +401,31 @@ export default function AddWorkshopPage() {
                       <textarea name="note" value={formData.note} onChange={handleChange} className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2" rows={2} />
                     </div>
 
-                    <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                       {[
                         ['creadit_card_swap', 'Credit Card Swap'],
                         ['engine_oil', 'Engine Oil'],
                         ['insurance_claim', 'Insurance Claim'],
                         ['service_panel_issue', 'Service Panel Issue'],
+                      ].map(([key, label]) => (
+                        <div key={key}>
+                          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">{label}</label>
+                          <select
+                            name={key}
+                            value={(formData as any)[key]}
+                            onChange={handleChange}
+                            className="input w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                          >
+                            <option value="">--</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {[
                         ['mou', 'MOU'],
                         ['board', 'Board'],
                         ['gmb', 'GMB'],

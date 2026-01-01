@@ -90,13 +90,13 @@ export type Database = {
           longitude: number | null;
           zone_id: string | null;
           whatsapp_group_id: string | null;
-          creadit_card_swap: boolean | null;
-          engine_oil: boolean | null;
-          insurance_claim: boolean | null;
-          service_panel_issue: boolean | null;
+          creadit_card_swap: string | null;
+          engine_oil: string | null;
+          insurance_claim: string | null;
+          service_panel_issue: string | null;
           note: string | null;
           active_date: string | null;
-          retainer_fee: number | null;
+          retainer_fee: string | null;
           prepaid_postpaid: string | null;
           mou: boolean | null;
           board: boolean | null;

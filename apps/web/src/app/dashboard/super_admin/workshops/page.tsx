@@ -132,26 +132,13 @@ export default function WorkshopManagementPage() {
           manager_name3: editingWorkshop.manager_name3 || null,
           manager_mobile3: editingWorkshop.manager_mobile3 || null,
           whatsapp_group_id: editingWorkshop.whatsapp_group_id || null,
-          creadit_card_swap:
-            editingWorkshop.creadit_card_swap === '' || editingWorkshop.creadit_card_swap == null
-              ? null
-              : !!editingWorkshop.creadit_card_swap,
-          engine_oil:
-            editingWorkshop.engine_oil === '' || editingWorkshop.engine_oil == null ? null : !!editingWorkshop.engine_oil,
-          insurance_claim:
-            editingWorkshop.insurance_claim === '' || editingWorkshop.insurance_claim == null
-              ? null
-              : !!editingWorkshop.insurance_claim,
-          service_panel_issue:
-            editingWorkshop.service_panel_issue === '' || editingWorkshop.service_panel_issue == null
-              ? null
-              : !!editingWorkshop.service_panel_issue,
+          creadit_card_swap: (editingWorkshop.creadit_card_swap || '').trim() || null,
+          engine_oil: (editingWorkshop.engine_oil || '').trim() || null,
+          insurance_claim: (editingWorkshop.insurance_claim || '').trim() || null,
+          service_panel_issue: (editingWorkshop.service_panel_issue || '').trim() || null,
           note: editingWorkshop.note || null,
           active_date: editingWorkshop.active_date || null,
-          retainer_fee:
-            editingWorkshop.retainer_fee === '' || editingWorkshop.retainer_fee == null
-              ? null
-              : Number(editingWorkshop.retainer_fee),
+          retainer_fee: (editingWorkshop.retainer_fee || '').trim() || null,
           prepaid_postpaid: editingWorkshop.prepaid_postpaid || null,
           mou: editingWorkshop.mou === '' || editingWorkshop.mou == null ? null : !!editingWorkshop.mou,
           board: editingWorkshop.board === '' || editingWorkshop.board == null ? null : !!editingWorkshop.board,
@@ -587,13 +574,13 @@ export default function WorkshopManagementPage() {
         const lng = idxLng !== -1 ? parseOptionalNumber(r[idxLng] || '') : null;
         const comm = idxComm !== -1 ? parseOptionalNumber(r[idxComm] || '') : null;
         const distance = idxDistance !== -1 ? parseOptionalNumber(r[idxDistance] || '') : null;
-        const retainer_fee = idxRetainerFee !== -1 ? parseOptionalNumber(r[idxRetainerFee] || '') : null;
+        const retainer_fee = idxRetainerFee !== -1 ? (r[idxRetainerFee] || '').trim() : '';
 
         if (lat !== null && Number.isNaN(lat)) errors.push(`Row ${rowNum}: invalid latitude "${r[idxLat] || ''}"`);
         if (lng !== null && Number.isNaN(lng)) errors.push(`Row ${rowNum}: invalid longitude "${r[idxLng] || ''}"`);
         if (comm !== null && Number.isNaN(comm)) errors.push(`Row ${rowNum}: invalid commission_percentage "${r[idxComm] || ''}"`);
         if (distance !== null && Number.isNaN(distance)) errors.push(`Row ${rowNum}: invalid distance "${r[idxDistance] || ''}"`);
-        if (retainer_fee !== null && Number.isNaN(retainer_fee)) errors.push(`Row ${rowNum}: invalid retainer_fee "${r[idxRetainerFee] || ''}"`);
+        // retainer_fee is TEXT in DB; no numeric validation
 
         const parseOptionalBoolean = (val: string) => {
           const t = (val || '').trim();
@@ -612,10 +599,6 @@ export default function WorkshopManagementPage() {
           return t;
         };
 
-        const creditSwap = idxCreditSwap !== -1 ? parseOptionalBoolean(r[idxCreditSwap] || '') : null;
-        const engineOil = idxEngineOil !== -1 ? parseOptionalBoolean(r[idxEngineOil] || '') : null;
-        const insuranceClaim = idxInsuranceClaim !== -1 ? parseOptionalBoolean(r[idxInsuranceClaim] || '') : null;
-        const servicePanelIssue = idxServicePanelIssue !== -1 ? parseOptionalBoolean(r[idxServicePanelIssue] || '') : null;
         const mou = idxMou !== -1 ? parseOptionalBoolean(r[idxMou] || '') : null;
         const board = idxBoard !== -1 ? parseOptionalBoolean(r[idxBoard] || '') : null;
         const gmb = idxGmb !== -1 ? parseOptionalBoolean(r[idxGmb] || '') : null;
@@ -623,10 +606,6 @@ export default function WorkshopManagementPage() {
         const activeDate = idxActiveDate !== -1 ? parseOptionalDate(r[idxActiveDate] || '') : null;
 
         const boolErr = (label: string, raw: string) => errors.push(`Row ${rowNum}: invalid ${label} "${raw}" (use true/false)`);
-        if (creditSwap === 'INVALID') boolErr('creadit_card_swap', r[idxCreditSwap] || '');
-        if (engineOil === 'INVALID') boolErr('engine_oil', r[idxEngineOil] || '');
-        if (insuranceClaim === 'INVALID') boolErr('insurance_claim', r[idxInsuranceClaim] || '');
-        if (servicePanelIssue === 'INVALID') boolErr('service_panel_issue', r[idxServicePanelIssue] || '');
         if (mou === 'INVALID') boolErr('mou', r[idxMou] || '');
         if (board === 'INVALID') boolErr('board', r[idxBoard] || '');
         if (gmb === 'INVALID') boolErr('gmb', r[idxGmb] || '');
@@ -694,13 +673,13 @@ export default function WorkshopManagementPage() {
         if (idxComm !== -1) payload.commission_percentage = comm === null ? null : comm;
 
         if (idxDistance !== -1) payload.distance = distance === null ? null : distance;
-        if (idxRetainerFee !== -1) payload.retainer_fee = retainer_fee === null ? null : retainer_fee;
+        if (idxRetainerFee !== -1) payload.retainer_fee = retainer_fee ? retainer_fee : null;
         if (idxActiveDate !== -1) payload.active_date = activeDate === null ? null : activeDate;
 
-        if (idxCreditSwap !== -1) payload.creadit_card_swap = creditSwap === null ? null : creditSwap;
-        if (idxEngineOil !== -1) payload.engine_oil = engineOil === null ? null : engineOil;
-        if (idxInsuranceClaim !== -1) payload.insurance_claim = insuranceClaim === null ? null : insuranceClaim;
-        if (idxServicePanelIssue !== -1) payload.service_panel_issue = servicePanelIssue === null ? null : servicePanelIssue;
+        if (idxCreditSwap !== -1) payload.creadit_card_swap = ((r[idxCreditSwap] || '').trim() || null) as any;
+        if (idxEngineOil !== -1) payload.engine_oil = ((r[idxEngineOil] || '').trim() || null) as any;
+        if (idxInsuranceClaim !== -1) payload.insurance_claim = ((r[idxInsuranceClaim] || '').trim() || null) as any;
+        if (idxServicePanelIssue !== -1) payload.service_panel_issue = ((r[idxServicePanelIssue] || '').trim() || null) as any;
         if (idxMou !== -1) payload.mou = mou === null ? null : mou;
         if (idxBoard !== -1) payload.board = board === null ? null : board;
         if (idxGmb !== -1) payload.gmb = gmb === null ? null : gmb;
@@ -1463,11 +1442,11 @@ export default function WorkshopManagementPage() {
                     <div>
                       <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Retainer Fee</label>
                       <input
-                        type="number"
-                        step="0.01"
+                        type="text"
                         className="w-full px-3 py-2 text-sm border rounded-lg"
                         value={editingWorkshop.retainer_fee ?? ''}
                         onChange={(e) => setEditingWorkshop({ ...editingWorkshop, retainer_fee: e.target.value })}
+                        placeholder="Example: 5000 / 5000+GST / NA"
                       />
                     </div>
                     <div>
@@ -1480,12 +1459,30 @@ export default function WorkshopManagementPage() {
                       />
                     </div>
 
-                    <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {[
                         ['creadit_card_swap', 'Credit Card Swap'],
                         ['engine_oil', 'Engine Oil'],
                         ['insurance_claim', 'Insurance Claim'],
                         ['service_panel_issue', 'Service Panel Issue'],
+                      ].map(([key, label]) => (
+                        <div key={key}>
+                          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">{label}</label>
+                          <select
+                            className="w-full px-3 py-2 text-sm border rounded-lg"
+                            value={editingWorkshop[key] || ''}
+                            onChange={(e) => setEditingWorkshop({ ...editingWorkshop, [key]: e.target.value })}
+                          >
+                            <option value="">--</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {[
                         ['mou', 'MOU'],
                         ['board', 'Board'],
                         ['gmb', 'GMB'],

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 // GET - Get checklist for a job
@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -48,7 +48,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -238,7 +238,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
