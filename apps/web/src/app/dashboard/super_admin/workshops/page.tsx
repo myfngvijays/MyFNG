@@ -542,6 +542,7 @@ export default function WorkshopManagementPage() {
         const city = (r[idxCity] || '').trim();
         const state = (r[idxState] || '').trim();
         const pincode = (r[idxPincode] || '').trim();
+        const servicePincodeRaw = idxServicePincode !== -1 ? (r[idxServicePincode] || '').trim() : '';
 
         if (!name) errors.push(`Row ${rowNum}: name is required`);
         if (!contact_person) errors.push(`Row ${rowNum}: contact_person is required`);
@@ -551,6 +552,7 @@ export default function WorkshopManagementPage() {
         if (!city) errors.push(`Row ${rowNum}: city is required`);
         if (!state) errors.push(`Row ${rowNum}: state is required`);
         if (!pincode) errors.push(`Row ${rowNum}: pincode is required`);
+        if (pincode && pincode.length > 10) errors.push(`Row ${rowNum}: pincode too long (max 10): "${pincode}"`);
 
         const zoneIdRaw = idxZoneId !== -1 ? (r[idxZoneId] || '').trim() : '';
         const zoneNameRaw = idxZoneName !== -1 ? (r[idxZoneName] || '').trim() : '';
@@ -629,6 +631,39 @@ export default function WorkshopManagementPage() {
           is_verified,
         };
 
+        // Special handling: service_pincode is VARCHAR(10) but many sheets provide a list like:
+        // "401502 | 401501 | 401404". In that case we:
+        // - set service_pincode = first pincode
+        // - set mapping_pincodes = all pincodes (jsonb) if more than one
+        const extractPincodes = (raw: string) => {
+          const t = (raw || '').trim();
+          if (!t) return [] as string[];
+          // Prefer digit runs (supports "400028/22" -> ["400028", "22"] so we filter by length below)
+          const matches = t.match(/\b\d{2,10}\b/g) || [];
+          const norm = matches.length ? matches : t.split(/[|,]/).map((x) => x.trim()).filter(Boolean);
+          const cleaned = norm
+            .map((x) => String(x).replace(/[^\d]/g, ''))
+            .filter((x) => x.length > 0);
+          const pincodes = cleaned.filter((x) => x.length >= 5 && x.length <= 10);
+          return Array.from(new Set(pincodes));
+        };
+
+        if (idxServicePincode !== -1) {
+          const pincodes = extractPincodes(servicePincodeRaw);
+          if (pincodes.length === 0) {
+            if (servicePincodeRaw && servicePincodeRaw.length > 10) {
+              errors.push(
+                `Row ${rowNum}: service_pincode too long (max 10). If you have multiple pincodes, separate them with | and we will store them in mapping_pincodes.`
+              );
+            } else {
+              payload.service_pincode = servicePincodeRaw || null;
+            }
+          } else {
+            payload.service_pincode = pincodes[0].slice(0, 10);
+            if (pincodes.length > 1) payload.mapping_pincodes = pincodes;
+          }
+        }
+
         // Optional fields (only apply if header exists)
         const setOpt = (key: string, idx: number) => {
           if (idx === -1) return;
@@ -641,7 +676,6 @@ export default function WorkshopManagementPage() {
         setOpt('notification_mobile', idxNotificationMobile);
         setOpt('short_address', idxShortAddress);
         setOpt('location', idxLocation);
-        setOpt('service_pincode', idxServicePincode);
 
         setOpt('ro_mumbai', idxRoMumbai);
         setOpt('system', idxSystem);
@@ -842,6 +876,10 @@ export default function WorkshopManagementPage() {
                 <div className="text-[10px] sm:text-xs text-gray-500 mb-2">
                   Required columns: <span className="font-mono">name, contact_person, phone, email, address, city, state, pincode</span>.
                   If <span className="font-mono">id</span> is provided, that row will be updated; otherwise a new workshop will be created.
+                </div>
+                <div className="text-[10px] sm:text-xs text-gray-500 mb-2">
+                  Tip: If you have multiple service pincodes, put them in <span className="font-mono">service_pincode</span> separated by <span className="font-mono">|</span>
+                  (e.g. <span className="font-mono">401502 | 401501 | 401404</span>). We will auto-store the list in <span className="font-mono">mapping_pincodes</span>.
                 </div>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <input
