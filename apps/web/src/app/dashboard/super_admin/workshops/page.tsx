@@ -686,11 +686,57 @@ export default function WorkshopManagementPage() {
         setOpt('near_area_google_map', idxNearAreaGoogleMap);
 
         setOpt('manager_name', idxManagerName);
-        setOpt('manager_mobile', idxManagerMobile);
         setOpt('manager_name2', idxManagerName2);
-        setOpt('manager_mobile2', idxManagerMobile2);
         setOpt('manager_name3', idxManagerName3);
-        setOpt('manager_mobile3', idxManagerMobile3);
+
+        // Manager mobiles are VARCHAR(20) each. Sheets often provide multiple numbers in one cell
+        // (e.g. "8318220540/9920026096"). Auto-split across manager_mobile, manager_mobile2, manager_mobile3.
+        const extractMobiles = (raw: string) => {
+          const t = (raw || '').trim();
+          if (!t) return [] as string[];
+          const parts = t.split(/[\/|,;]+/).map((p) => p.trim()).filter(Boolean);
+          const nums: string[] = [];
+          const pushNum = (part: string) => {
+            const digits = String(part || '').replace(/[^\d]/g, '');
+            // Typical mobile lengths (India incl. optional country code)
+            if (digits.length >= 8 && digits.length <= 15) nums.push(digits);
+            else if (digits.length === 10) nums.push(digits);
+          };
+          if (parts.length) parts.forEach(pushNum);
+          else pushNum(t);
+          // De-dup (preserve order)
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const n of nums) {
+            if (!n) continue;
+            if (seen.has(n)) continue;
+            seen.add(n);
+            out.push(n.slice(0, 20));
+          }
+          return out;
+        };
+
+        const managerMobiles: string[] = [];
+        if (idxManagerMobile !== -1) managerMobiles.push(...extractMobiles(r[idxManagerMobile] || ''));
+        if (idxManagerMobile2 !== -1) managerMobiles.push(...extractMobiles(r[idxManagerMobile2] || ''));
+        if (idxManagerMobile3 !== -1) managerMobiles.push(...extractMobiles(r[idxManagerMobile3] || ''));
+        // Final de-dup
+        const mmSeen = new Set<string>();
+        const mm: string[] = [];
+        for (const n of managerMobiles) {
+          if (!n) continue;
+          if (mmSeen.has(n)) continue;
+          mmSeen.add(n);
+          mm.push(n.slice(0, 20));
+        }
+        if (mm.length) {
+          payload.manager_mobile = mm[0] || null;
+          payload.manager_mobile2 = mm[1] || null;
+          payload.manager_mobile3 = mm[2] || null;
+        } else {
+          // If headers exist but cell empty, set nulls (avoid old values on update only if provided)
+          // We intentionally do nothing here to preserve existing values during partial updates.
+        }
 
         setOpt('note', idxNote);
         setOpt('prepaid_postpaid', idxPrepaidPostpaid);
