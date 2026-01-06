@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createNotification, notifyTelecallerTeamlead } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -114,6 +115,60 @@ export async function POST(
           rejection_notes: notes
         }
       });
+
+    // In-app notifications (Phase A)
+    try {
+      const leadNumber = (lead as any)?.lead_number || leadId;
+      const actorName = 'Workshop Admin';
+
+      // Notify Lead Manager (if present)
+      const leadManagerId = (lead as any)?.lead_manager_assigned_id;
+      if (leadManagerId) {
+        await createNotification({
+          userId: leadManagerId,
+          type: 'LEAD_REJECTED',
+          title: 'Workshop rejected lead',
+          message: `Lead ${leadNumber} was rejected by workshop. Reason: ${reason}${notes ? `. Notes: ${notes}` : ''}`,
+          priority: 'HIGH',
+          leadId,
+          leadNumber,
+          relatedUserName: actorName,
+          actionUrl: `/dashboard/lead_manager/leads/${leadId}`,
+          metadata: { reason, notes: notes || null },
+        });
+      }
+
+      // Notify Telecaller + Teamlead (if telecaller assigned)
+      const telecallerId = (lead as any)?.assigned_telecaller_id;
+      if (telecallerId) {
+        const msg = `Lead ${leadNumber} was rejected by workshop. Reason: ${reason}`;
+
+        await createNotification({
+          userId: telecallerId,
+          type: 'LEAD_REJECTED',
+          title: 'Workshop rejected lead',
+          message: msg,
+          priority: 'HIGH',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/telecaller/leads/${leadId}`,
+          metadata: { reason, notes: notes || null },
+        });
+
+        await notifyTelecallerTeamlead({
+          telecallerId,
+          leadId,
+          leadNumber,
+          type: 'LEAD_REJECTED',
+          title: 'Workshop rejected lead',
+          message: msg,
+          priority: 'HIGH',
+          metadata: { reason, notes: notes || null },
+        });
+      }
+    } catch (e) {
+      console.warn('Reject lead notifications failed (non-blocking):', e);
+    }
 
     // TODO: Notify Lead Manager for reassignment
     // TODO: Send notification to customer

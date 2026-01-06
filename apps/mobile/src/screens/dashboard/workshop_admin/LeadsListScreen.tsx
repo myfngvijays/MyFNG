@@ -30,7 +30,7 @@ interface Lead {
 }
 
 export default function LeadsListScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);

@@ -11,7 +11,7 @@ import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 
 export default function PickupDeliveryTrackingScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<any[]>([]);
@@ -154,7 +154,19 @@ export default function PickupDeliveryTrackingScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchTasks(workshopId); }} />}>
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            if (workshopId) fetchTasks(workshopId);
+            else setRefreshing(false);
+          }}
+        />
+      }
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Pickup & Delivery Tracking</Text>
         <Text style={styles.subtitle}>{tasks.length} Active Tasks</Text>

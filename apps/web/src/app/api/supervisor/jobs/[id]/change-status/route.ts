@@ -5,6 +5,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createNotification } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -229,6 +230,49 @@ export async function POST(
         })
         .eq('lead_id', leadId)
         .eq('mechanic_id', lead.assigned_mechanic_id);
+    }
+
+    // Mechanic notification (job reopened / rework required)
+    try {
+      const leadNumber = (lead as any)?.lead_number || leadId;
+      const mechanicId = (lead as any)?.assigned_mechanic_id as string | null | undefined;
+
+      if (mechanicId) {
+        // Reopened after delivery
+        const reopenedFromDelivered =
+          (currentStatus === 'DELIVERED_TO_CUSTOMER' || currentStatus === 'DELIVERED') &&
+          (new_status === 'IN_PROGRESS' || new_status === 'INSPECTED');
+
+        if (reopenedFromDelivered) {
+          await createNotification({
+            userId: mechanicId,
+            type: 'SYSTEM_ALERT',
+            title: 'Job reopened',
+            message: `Lead ${leadNumber} reopened by supervisor. Reason: ${notes || 'Customer follow-up/issue'}.`,
+            priority: 'HIGH',
+            leadId,
+            leadNumber,
+            actionUrl: `/dashboard/workshop_mechanic/jobs/${leadId}/manage`,
+            metadata: { kind: 'JOB_REOPENED', from_status: currentStatus, to_status: new_status },
+          });
+        }
+
+        if (new_status === 'REWORK_REQUIRED') {
+          await createNotification({
+            userId: mechanicId,
+            type: 'QC_REJECTED',
+            title: 'Rework required',
+            message: `Lead ${leadNumber}: rework required. ${notes || 'Please check supervisor notes.'}`,
+            priority: 'URGENT',
+            leadId,
+            leadNumber,
+            actionUrl: `/dashboard/workshop_mechanic/jobs/${leadId}/manage`,
+            metadata: { kind: 'REWORK_REQUIRED', from_status: currentStatus, to_status: new_status },
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Mechanic status-change notification failed (non-blocking):', e);
     }
 
     return NextResponse.json({

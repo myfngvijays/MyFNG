@@ -6,7 +6,11 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "export:android": "expo export --platform android --non-interactive",
+    "export:ios": "expo export --platform ios --non-interactive",
+    "build": "npm run typecheck"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
@@ -20,6 +24,7 @@
     "expo-font": "~11.10.3",
     "expo-image-picker": "~14.7.1",
     "expo-location": "~16.5.5",
+    "expo-notifications": "~0.27.8",
     "expo-status-bar": "~1.11.1",
     "react": "18.2.0",
     "react-native": "0.73.6",

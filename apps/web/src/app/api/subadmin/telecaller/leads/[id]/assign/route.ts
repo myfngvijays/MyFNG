@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { notifyTelecallerAssignedToLead } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export async function POST(
     // Get user profile
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, department, roles!inner(role_code)')
+      .select('id, department, full_name, roles!inner(role_code)')
       .eq('id', user.id)
       .single();
 
@@ -66,7 +67,7 @@ export async function POST(
     // Get current lead
     const { data: currentLead } = await supabase
       .from('service_leads')
-      .select('id, status, assigned_telecaller_id')
+      .select('id, lead_number, status, assigned_telecaller_id')
       .eq('id', leadId)
       .single();
 
@@ -92,6 +93,24 @@ export async function POST(
         { error: 'Failed to assign lead', details: updateError?.message },
         { status: 500 }
       );
+    }
+
+    // In-app notification to assigned telecaller (Phase A)
+    try {
+      const isReassignment =
+        Boolean(currentLead?.assigned_telecaller_id) &&
+        String(currentLead.assigned_telecaller_id) !== String(assign_to_id);
+
+      await notifyTelecallerAssignedToLead({
+        leadId,
+        leadNumber: currentLead?.lead_number || leadId,
+        telecallerId: assign_to_id,
+        assignedByName: userProfile.full_name || undefined,
+        isReassignment,
+        notes: notes || undefined,
+      });
+    } catch (e) {
+      console.warn('Telecaller assignment notification failed (non-blocking):', e);
     }
 
     // Log action

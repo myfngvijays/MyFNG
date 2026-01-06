@@ -32,7 +32,7 @@ interface Workshop {
 }
 
 export default function LeadManagerWorkshopsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
@@ -118,7 +118,7 @@ export default function LeadManagerWorkshopsScreen() {
   };
 
   const handleWorkshopPress = (workshop: Workshop) => {
-    navigation.navigate('LeadManagerWorkshopDetail' as never, { workshopId: workshop.id } as never);
+    navigation.navigate('LeadManagerWorkshopDetail', { workshopId: workshop.id });
   };
 
   if (loading) {

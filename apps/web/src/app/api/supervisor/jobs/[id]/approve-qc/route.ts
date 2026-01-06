@@ -1,6 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyQCDecision, notifyAccountsTeam } from '@/lib/notifications';
+import { notifyQCDecision, notifyAccountsTeam, notifyWorkshopRoles } from '@/lib/notifications';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -544,10 +544,25 @@ export async function POST(
       },
     ]);
 
-    // TODO: Send notification to workshop admin
+    // Workshop Admin visibility (final)
     // TODO: Send notification to billing team
     // TODO: Send notification to auditor (if audit required)
     try {
+      if (lead.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: lead.workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN'],
+          type: 'QC_APPROVED',
+          title: 'QC Approved',
+          message: `QC approved for lead ${lead.lead_number || leadId}. Ready for billing.`,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber: lead.lead_number || leadId,
+          actionUrl: `/dashboard/workshop_admin/leads/pending`,
+          metadata: { final_status: finalLeadStatus },
+        });
+      }
+
       // Notify mechanic about QC decision
       if (lead.assigned_mechanic_id) {
         await notifyQCDecision(

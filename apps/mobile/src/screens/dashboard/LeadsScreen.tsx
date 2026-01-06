@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
-import { Search } from 'lucide-react-native';
 import LeadCard from '../../components/LeadCard';
 import { COLORS, SIZES } from '../../constants/theme';
+import { Icon } from '../../components/Icon';
 
 export default function LeadsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,7 +29,7 @@ export default function LeadsScreen() {
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
-          <Search color={COLORS.textGray} size={20} />
+          <Icon name="magnify" color={COLORS.textGray} size={20} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search leads..."

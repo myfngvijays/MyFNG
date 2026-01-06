@@ -146,6 +146,13 @@ export default function ReassignMechanicModal({
       setLoading(true);
       setError(null);
 
+      const newMechanicName = mechanics.find((m) => m.id === selectedMechanicId)?.full_name || 'selected mechanic';
+      const ok = confirm(`Reassign this lead from "${currentMechanicName}" to "${newMechanicName}"?`);
+      if (!ok) {
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch(`/api/leads/${leadId}/reassign-mechanic`, {
         method: 'POST',
         headers: {

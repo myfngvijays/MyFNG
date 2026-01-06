@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyExtraWorkDecision, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ async function getAuthedProfile(supabase: Awaited<ReturnType<typeof createClient
 
   const email = (user.email || '').trim();
   const phone = (user.phone || '').trim();
-  const selectProfile = 'id, email, phone, workshop_id, role_id, roles!inner(role_code)';
+  const selectProfile = 'id, email, phone, full_name, workshop_id, role_id, roles!inner(role_code)';
 
   const { data: userProfileByEmail } = email
     ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     const { data: lead, error: leadErr } = await updater
       .from('service_leads')
-      .select('id, workshop_id')
+      .select('id, workshop_id, lead_number, assigned_mechanic_id')
       .eq('id', reqRow.lead_id)
       .maybeSingle();
     if (leadErr || !lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
@@ -148,6 +149,39 @@ export async function POST(request: NextRequest) {
       } as any);
     } catch {
       // ignore
+    }
+
+    // In-app notifications (Phase A)
+    try {
+      const leadNumber = (lead as any)?.lead_number || reqRow.lead_id;
+      const mechanicId = (lead as any)?.assigned_mechanic_id;
+      const supervisorName = (profile as any)?.full_name || 'Supervisor';
+
+      if (mechanicId) {
+        await notifyExtraWorkDecision(
+          reqRow.lead_id,
+          leadNumber,
+          mechanicId,
+          true,
+          computedTotal,
+          supervisorName
+        );
+      }
+
+      await notifyWorkshopRoles({
+        workshopId: profile.workshop_id,
+        roleCodes: ['WORKSHOP_ADMIN'],
+        type: 'EXTRA_WORK_APPROVED',
+        title: 'Extra work approved',
+        message: `Extra work approved for lead ${leadNumber}. Amount: ₹${computedTotal}`,
+        priority: 'LOW',
+        leadId: reqRow.lead_id,
+        leadNumber,
+        actionUrl: `/dashboard/workshop_admin/leads/pending`,
+        metadata: { extra_work_id: id, amount: computedTotal },
+      });
+    } catch (e) {
+      console.warn('Extra work approval notifications failed (non-blocking):', e);
     }
 
     return NextResponse.json({ success: true }, { status: 200 });

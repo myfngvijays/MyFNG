@@ -12,7 +12,8 @@ export interface Notification {
   user_id: string;
   title: string;
   message: string;
-  type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR';
+  // Stored in DB as MyFNG NotificationType (e.g., TEAM_ASSIGNED, QC_REJECTED, SYSTEM_ALERT, etc.)
+  type: string;
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   is_read: boolean;
   read_at: string | null;
@@ -27,6 +28,8 @@ interface NotificationContextType {
   notifications: Notification[];
   unreadCount: number;
   loading: boolean;
+  // Increments when a lead/job impacting notification arrives; consumers can refetch job lists.
+  jobRefreshTick: number;
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   deleteNotification: (notificationId: string) => Promise<void>;
@@ -40,6 +43,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [jobRefreshTick, setJobRefreshTick] = useState(0);
 
   // Fetch user ID from auth
   useEffect(() => {
@@ -47,28 +51,32 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       try {
         const { data: { user }, error: authError } = await supabase.auth.getUser();
         
-        if (authError || !user?.email) {
+        if (authError || !user) {
           console.log('No authenticated user');
           setLoading(false);
           return;
         }
 
-        // Get user profile from users_login table
-        const { data: userProfile, error: profileError } = await supabase
+        // Prefer users_login.id == auth.user.id, else fallback to email/phone
+        const email = (user.email || '').trim();
+        const phone = (user.phone || '').trim();
+
+        const { data: byId } = await supabase
           .from('users_login')
           .select('id')
-          .eq('email', user.email)
-          .single();
+          .eq('id', user.id)
+          .maybeSingle();
 
-        if (profileError) {
-          console.error('Error fetching user profile:', profileError);
-          setLoading(false);
-          return;
-        }
+        const { data: byEmail } = !byId && email
+          ? await supabase.from('users_login').select('id').ilike('email', email).maybeSingle()
+          : { data: null as any };
 
-        if (userProfile?.id) {
-          setUserId(userProfile.id);
-        }
+        const { data: byPhone } = !byId && !byEmail && phone
+          ? await supabase.from('users_login').select('id').eq('phone', phone).maybeSingle()
+          : { data: null as any };
+
+        const profile = byId || byEmail || byPhone;
+        if (profile?.id) setUserId(profile.id);
       } catch (error) {
         console.error('Error in fetchUser:', error);
         setLoading(false);
@@ -160,6 +168,30 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             // Add to notifications list
             setNotifications(prev => [newNotification, ...prev]);
             setUnreadCount(prev => prev + 1);
+
+            // Signal job list refresh for mechanic/job-impacting notifications
+            try {
+              const type = String((newNotification as any)?.type || '');
+              const leadId = (newNotification as any)?.lead_id;
+              const kind = (newNotification as any)?.metadata?.kind;
+              const jobTypes = new Set([
+                'TEAM_ASSIGNED',
+                'JOB_STARTED',
+                'JOB_COMPLETED',
+                'QC_APPROVED',
+                'QC_REJECTED',
+                'PICKUP_COMPLETED',
+                'SLA_WARNING',
+                'SLA_BREACH',
+                'SYSTEM_ALERT',
+                'CUSTOMER_COMPLAINT',
+                'AUDIT_FLAGGED',
+              ]);
+              const isJobImpacting = Boolean(leadId) && (jobTypes.has(type) || String(kind || '').startsWith('MECH_') || String(kind || '').startsWith('MECHANIC_'));
+              if (isJobImpacting) setJobRefreshTick((t) => t + 1);
+            } catch {
+              // ignore
+            }
 
             // Show native alert for important notifications
             if (newNotification.priority === 'URGENT' || newNotification.priority === 'HIGH') {
@@ -297,6 +329,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         notifications,
         unreadCount,
         loading,
+        jobRefreshTick,
         markAsRead,
         markAllAsRead,
         deleteNotification,

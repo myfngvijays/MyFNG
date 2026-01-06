@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
+import { ENV } from '../../../config/environment';
 import type { IncidentType } from '../../../../../shared/types';
 
 interface Props {
@@ -124,7 +125,7 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
 
       // Create incident report
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/api/pickup/${leadId}/report-incident`,
+        `${ENV.API_URL}/api/pickup/${leadId}/report-incident`,
         {
           method: 'POST',
           headers: {

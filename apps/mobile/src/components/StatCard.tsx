@@ -3,17 +3,26 @@ import { View, Text, StyleSheet } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 
 interface StatCardProps {
-  title: string;
+  title?: string;
   value: string | number;
   subtitle?: string;
   color?: string;
+  icon?: React.ReactNode;
+
+  // Legacy prop name used by some screens
+  label?: string;
 }
 
-export default function StatCard({ title, value, subtitle, color = COLORS.primary }: StatCardProps) {
+export default function StatCard({ title, label, value, subtitle, color = COLORS.primary, icon }: StatCardProps) {
   return (
     <View style={[styles.card, { borderLeftColor: color }]}>
-          <Text style={styles.title}>{title}</Text>
+      <View style={styles.row}>
+        <View style={styles.left}>
+          <Text style={styles.title}>{title || label}</Text>
           <Text style={[styles.value, { color }]}>{value}</Text>
+        </View>
+        {icon ? <View style={styles.icon}>{icon}</View> : null}
+      </View>
       {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
     </View>
   );
@@ -36,6 +45,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.bodyText,
     marginBottom: SPACING.xs,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  left: {
+    flex: 1,
+    paddingRight: SPACING.sm,
+  },
+  icon: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   value: {
     fontSize: FONT_SIZES.xxl,

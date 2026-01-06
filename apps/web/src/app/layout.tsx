@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Toaster } from 'react-hot-toast';
+import { NotificationProvider } from '@/contexts/NotificationContext';
 import '@fontsource/poppins/300.css';
 import '@fontsource/poppins/400.css';
 import '@fontsource/poppins/500.css';
@@ -29,7 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="font-sans">
-        {children}
+        <NotificationProvider>{children}</NotificationProvider>
         <Toaster position="top-right" />
       </body>
     </html>

@@ -8,6 +8,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyWorkshopRoles } from '@/lib/notifications';
 
 export async function POST(request: NextRequest) {
   try {
@@ -203,6 +204,45 @@ export async function POST(request: NextRequest) {
       },
       created_by: user.id
     });
+
+    // Workshop Admin notification (final)
+    try {
+      const leadNumber = (lead as any)?.lead_number || lead_id;
+      const pickup = Boolean((lead as any)?.pickup_required);
+      const slot =
+        (lead as any)?.preferred_time_slot ||
+        (lead as any)?.preferred_slot ||
+        (lead as any)?.pickup_slot ||
+        null;
+      const title = isReassignment ? 'Lead reassigned to your workshop' : 'New lead assigned';
+      const msgParts = [
+        `Lead ${leadNumber} assigned.`,
+        pickup ? 'Pickup: Yes' : 'Pickup: No',
+        slot ? `Slot: ${String(slot)}` : null,
+        `Action: Accept/Reject within SLA.`,
+      ].filter(Boolean);
+
+      await notifyWorkshopRoles({
+        workshopId: workshop_id,
+        roleCodes: ['WORKSHOP_ADMIN'],
+        type: 'LEAD_ASSIGNED',
+        title,
+        message: msgParts.join(' '),
+        priority: 'HIGH',
+        leadId: lead_id,
+        leadNumber,
+        actionUrl: `/dashboard/workshop_admin/pending-leads`,
+        metadata: {
+          sla_accept_deadline: slaAcceptDeadline.toISOString(),
+          pickup_required: pickup,
+          time_slot: slot,
+          is_reassignment: Boolean(isReassignment),
+          previous_workshop_id: isReassignment ? lead.workshop_id : null,
+        },
+      });
+    } catch (e) {
+      console.warn('Workshop assignment notification failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

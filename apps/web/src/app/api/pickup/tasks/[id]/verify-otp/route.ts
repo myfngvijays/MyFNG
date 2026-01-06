@@ -1,5 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -236,6 +237,48 @@ export async function POST(
       description: otpType === 'DROP' ? 'Delivery OTP verified' : 'Customer OTP verified - Vehicle picked up, driving to workshop',
       metadata: { pickup_boy_id: userProfile.id, verified_at: now, otp_type: otpType },
     } as any);
+
+    // Workshop Admin notification (final)
+    try {
+      const leadNumber = (lead as any)?.lead_number || leadId;
+      const title = otpType === 'DROP' ? 'Delivery OTP verified' : 'Vehicle picked up (OTP verified)';
+      const msg =
+        otpType === 'DROP'
+          ? `Delivery OTP verified for lead ${leadNumber}.`
+          : `Pickup OTP verified for lead ${leadNumber}. Vehicle is in transit to workshop.`;
+
+      if ((lead as any)?.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: (lead as any).workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'OTP_VERIFIED',
+          title,
+          message: msg,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_admin/pending-leads`,
+          metadata: { otp_type: otpType, pickup_boy_id: userProfile.id },
+        });
+      }
+
+      // Also notify assigned mechanic (optional awareness)
+      if (otpType === 'PICKUP' && (lead as any)?.assigned_mechanic_id) {
+        await createNotification({
+          userId: (lead as any).assigned_mechanic_id,
+          type: 'OTP_VERIFIED',
+          title,
+          message: msg,
+          priority: 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_mechanic/jobs/${leadId}/manage`,
+          metadata: { otp_type: otpType },
+        });
+      }
+    } catch (e) {
+      console.warn('OTP verified notifications failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

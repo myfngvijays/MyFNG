@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
-import { createNotification, notifyWorkshopAdmin, notifyCSETeam } from '@/lib/notifications';
+import { createNotification, notifyCSETeam, notifyTelecallerTeamlead, notifyWorkshopRoles } from '@/lib/notifications';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
 import type { Database } from '@/types/database';
 
@@ -463,7 +463,20 @@ export async function POST(
         const leadNumber = leadAny?.lead_number || invoice.lead_id;
 
         if (leadAny?.workshop_id) {
-          await notifyWorkshopAdmin(leadAny.workshop_id, invoice.lead_id, leadNumber, userProfile.full_name || 'Supervisor');
+          await notifyWorkshopRoles({
+            workshopId: leadAny.workshop_id,
+            roleCodes: ['WORKSHOP_ADMIN'],
+            type: 'PAYMENT_RECEIVED',
+            title: 'Payment updated',
+            message: isFullPayment
+              ? `Full payment received for lead ${leadNumber}.`
+              : `Payment recorded for lead ${leadNumber}. Balance pending.`,
+            priority: isFullPayment ? 'MEDIUM' : 'LOW',
+            leadId: invoice.lead_id,
+            leadNumber,
+            actionUrl: `/dashboard/workshop_admin/leads/pending`,
+            metadata: { invoice_id: invoiceId, payment_mode, paid_amount: paidAmount, is_cod },
+          });
         }
 
         if (leadAny?.assigned_supervisor_id) {
@@ -478,6 +491,33 @@ export async function POST(
             leadId: invoice.lead_id,
             leadNumber,
             actionUrl: `/dashboard/workshop_supervisor/jobs/${invoice.lead_id}`,
+            metadata: { invoice_id: invoiceId, payment_mode, paid_amount: paidAmount, is_cod },
+          });
+        }
+
+        // Telecaller + Teamlead: notify only on full payment to avoid spam
+        if (isFullPayment && leadAny?.assigned_telecaller_id) {
+          const telecallerId = String(leadAny.assigned_telecaller_id);
+          await createNotification({
+            userId: telecallerId,
+            type: 'PAYMENT_RECEIVED',
+            title: 'Payment received',
+            message: `Lead ${leadNumber} is fully paid.`,
+            priority: 'LOW',
+            leadId: invoice.lead_id,
+            leadNumber,
+            actionUrl: `/dashboard/telecaller/leads/${invoice.lead_id}`,
+            metadata: { invoice_id: invoiceId, payment_mode, paid_amount: paidAmount, is_cod },
+          });
+
+          await notifyTelecallerTeamlead({
+            telecallerId,
+            leadId: invoice.lead_id,
+            leadNumber,
+            type: 'PAYMENT_RECEIVED',
+            title: 'Payment received',
+            message: `Lead ${leadNumber} is fully paid.`,
+            priority: 'LOW',
             metadata: { invoice_id: invoiceId, payment_mode, paid_amount: paidAmount, is_cod },
           });
         }

@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createNotification, notifyTelecallerTeamlead } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -169,8 +170,57 @@ export async function POST(
       console.error('Error creating audit log:', auditError);
     }
 
-    // 11. TODO: Send notification to customer
-    // 12. TODO: Send notification to lead manager
+    // 11. In-app notifications (Phase A)
+    try {
+      const leadId = params.id;
+      const leadNumber = (lead as any)?.lead_number || leadId;
+      const actorName = userProfile.full_name || 'Workshop';
+
+      const leadManagerId = (lead as any)?.lead_manager_assigned_id;
+      if (leadManagerId) {
+        await createNotification({
+          userId: leadManagerId,
+          type: 'LEAD_ACCEPTED',
+          title: 'Workshop accepted lead',
+          message: `Lead ${leadNumber} was accepted by ${actorName}.`,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          relatedUserName: actorName,
+          actionUrl: `/dashboard/lead_manager/leads/${leadId}`,
+        });
+      }
+
+      const telecallerId = (lead as any)?.assigned_telecaller_id;
+      if (telecallerId) {
+        await createNotification({
+          userId: telecallerId,
+          type: 'LEAD_ACCEPTED',
+          title: 'Workshop accepted lead',
+          message: `Lead ${leadNumber} has been accepted by workshop.`,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/telecaller/leads/${leadId}`,
+          metadata: { new_status: 'ACCEPTED' },
+        });
+
+        await notifyTelecallerTeamlead({
+          telecallerId,
+          leadId,
+          leadNumber,
+          type: 'LEAD_ACCEPTED',
+          title: 'Workshop accepted lead',
+          message: `Lead ${leadNumber} has been accepted by workshop.`,
+          priority: 'MEDIUM',
+          metadata: { new_status: 'ACCEPTED' },
+        });
+      }
+    } catch (e) {
+      console.warn('Accept lead notifications failed (non-blocking):', e);
+    }
+
+    // 12. TODO: Send notification to customer (if needed)
 
     return NextResponse.json({
       success: true,

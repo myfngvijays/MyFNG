@@ -1,5 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -161,6 +162,33 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       description: 'Vehicle delivered to customer',
       metadata: { notes },
     } as any);
+
+    // Workshop Admin notification (final)
+    try {
+      const { data: fullLead } = await supabase
+        .from('service_leads')
+        .select('id, lead_number, workshop_id')
+        .eq('id', leadId)
+        .maybeSingle();
+
+      if (fullLead?.workshop_id) {
+        const leadNumber = (fullLead as any)?.lead_number || leadId;
+        await notifyWorkshopRoles({
+          workshopId: fullLead.workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'SYSTEM_ALERT',
+          title: 'Vehicle delivered successfully',
+          message: `Delivery completed for lead ${leadNumber}.`,
+          priority: 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_supervisor/pickup-delivery`,
+          metadata: { kind: 'DELIVERY_COMPLETED' },
+        });
+      }
+    } catch (e) {
+      console.warn('Delivery completed notification failed (non-blocking):', e);
+    }
 
     return NextResponse.json({ success: true, message: 'Delivery completed successfully' }, { status: 200 });
   } catch (e: any) {

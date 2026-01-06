@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createNotification, notifyTelecallerTeamlead } from '@/lib/notifications';
 
 interface RejectLeadRequest {
   reason: string;
@@ -165,7 +166,60 @@ export async function POST(
       console.error('Error creating audit log:', auditError);
     }
 
-    // 11. TODO: Send notification to Lead Manager
+    // 11. In-app notifications (Phase A)
+    try {
+      const leadId = params.id;
+      const leadNumber = (lead as any)?.lead_number || leadId;
+      const actorName = userProfile.full_name || 'Workshop Admin';
+      const reason = body.reason.trim();
+
+      const leadManagerId = (lead as any)?.lead_manager_assigned_id;
+      if (leadManagerId) {
+        await createNotification({
+          userId: leadManagerId,
+          type: 'LEAD_REJECTED',
+          title: 'Workshop rejected lead',
+          message: `Lead ${leadNumber} was rejected by ${actorName}. Reason: ${reason}${body.notes ? `. Notes: ${body.notes}` : ''}`,
+          priority: 'HIGH',
+          leadId,
+          leadNumber,
+          relatedUserName: actorName,
+          actionUrl: `/dashboard/lead_manager/leads/${leadId}`,
+          metadata: { reason, notes: body.notes || null },
+        });
+      }
+
+      const telecallerId = (lead as any)?.assigned_telecaller_id;
+      if (telecallerId) {
+        const msg = `Lead ${leadNumber} was rejected by workshop. Reason: ${reason}`;
+
+        await createNotification({
+          userId: telecallerId,
+          type: 'LEAD_REJECTED',
+          title: 'Workshop rejected lead',
+          message: msg,
+          priority: 'HIGH',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/telecaller/leads/${leadId}`,
+          metadata: { reason, notes: body.notes || null },
+        });
+
+        await notifyTelecallerTeamlead({
+          telecallerId,
+          leadId,
+          leadNumber,
+          type: 'LEAD_REJECTED',
+          title: 'Workshop rejected lead',
+          message: msg,
+          priority: 'HIGH',
+          metadata: { reason, notes: body.notes || null },
+        });
+      }
+    } catch (e) {
+      console.warn('Reject lead notifications failed (non-blocking):', e);
+    }
+
     // 12. TODO: Send notification to customer (if needed)
 
     return NextResponse.json({

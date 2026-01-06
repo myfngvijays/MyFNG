@@ -14,7 +14,7 @@ import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function CMRSATasksScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tasks, setTasks] = useState<any[]>([]);

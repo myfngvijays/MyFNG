@@ -17,6 +17,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 interface JobDetail {
   id: string;
   lead_id: {
+    id: string;
     lead_number: string;
     customer_name: string;
     vehicle_number: string;
@@ -34,7 +35,7 @@ interface JobDetail {
 
 export default function JobDetailScreen() {
   const route = useRoute();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { jobId } = route.params as { jobId: string };
 
   const [job, setJob] = useState<JobDetail | null>(null);
@@ -110,7 +111,7 @@ export default function JobDetailScreen() {
       // Fetch job details
       const { data: jobData, error: jobError } = await supabase
         .from('mechanic_jobs')
-        .select('*, lead_id(lead_number, customer_name, vehicle_number, service_type, estimated_amount), mechanic_id(full_name)')
+        .select('*, lead_id(id, lead_number, customer_name, vehicle_number, service_type, estimated_amount), mechanic_id(full_name)')
         .eq('id', jobId)
         .single();
 

@@ -352,7 +352,7 @@ interface FilterChipProps {
   color?: string;
 }
 
-function FilterChip({ label, active, onPress, color = COLORS.gray }: FilterChipProps) {
+function FilterChip({ label, active, onPress, color = COLORS.gray[500] }: FilterChipProps) {
   return (
     <TouchableOpacity
       style={[
@@ -377,7 +377,7 @@ function getStatusColor(status: string): string {
     case 'ASSIGNED': return COLORS.indigo + '30';
     case 'ACCEPTED': return COLORS.green + '30';
     case 'REJECTED': return COLORS.red + '30';
-    default: return COLORS.gray + '30';
+    default: return COLORS.gray[500] + '30';
   }
 }
 
@@ -443,7 +443,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: 20,
-    backgroundColor: COLORS.gray + '30',
+    backgroundColor: COLORS.gray[500] + '30',
     marginRight: SPACING.xs,
   },
   filterChipText: {
@@ -530,7 +530,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
     paddingTop: SPACING.xs,
     borderTopWidth: 1,
-    borderTopColor: COLORS.gray + '30',
+    borderTopColor: COLORS.gray[500] + '30',
   },
   timeText: {
     fontSize: 11,
@@ -574,7 +574,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: COLORS.gray + '30',
+    borderTopColor: COLORS.gray[500] + '30',
   },
   footerText: {
     fontSize: 11,

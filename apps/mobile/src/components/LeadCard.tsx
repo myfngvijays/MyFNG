@@ -2,23 +2,36 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 
-interface LeadCardProps {
-  customerName: string;
-  vehicleModel: string;
-  serviceType: string;
-  status: string;
-  date: string;
-  onPress?: () => void;
-}
+type LeadCardProps =
+  | {
+      // Newer/simple usage
+      customerName: string;
+      vehicleModel: string;
+      serviceType: string;
+      status: string;
+      date: string;
+      onPress?: () => void;
+    }
+  | {
+      // Legacy usage from some dashboards
+      leadNumber: string;
+      customerName: string;
+      vehicleNumber: string;
+      status: string;
+      serviceType: string;
+      onPress?: () => void;
+    };
 
 export default function LeadCard({
-  customerName,
-  vehicleModel,
-  serviceType,
-  status,
-  date,
-  onPress,
+  ...props
 }: LeadCardProps) {
+  const customerName = (props as any).customerName;
+  const status = (props as any).status;
+  const serviceType = (props as any).serviceType;
+  const date = (props as any).date || (props as any).leadNumber || '';
+  const vehicleModel = (props as any).vehicleModel || (props as any).vehicleNumber || '';
+  const onPress = (props as any).onPress as (() => void) | undefined;
+
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'pending':

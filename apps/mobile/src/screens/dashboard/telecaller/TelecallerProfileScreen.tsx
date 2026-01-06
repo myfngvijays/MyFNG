@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
-import { COLORS } from '../../../utils/constants';
+import { COLORS } from '../../../constants/theme';
 
 interface UserProfile {
   id: string;

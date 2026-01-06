@@ -57,7 +57,13 @@ export default function DailyReportScreen() {
   const fetchDailyReport = async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const { data } = await supabase.from('mechanic_jobs').select('*').eq('workshop_id', userProfile?.workshop_id).gte('created_at', today);
+      const workshopId = (userProfile as any)?.workshop_id || userProfile?.workshop?.id;
+      if (!workshopId) return;
+      const { data } = await supabase
+        .from('mechanic_jobs')
+        .select('*')
+        .eq('workshop_id', workshopId)
+        .gte('created_at', today);
       setReport({
         completed: data?.filter(j => j.status === 'COMPLETED').length || 0,
         pending: data?.filter(j => j.status === 'PENDING').length || 0,
@@ -75,7 +81,7 @@ export default function DailyReportScreen() {
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchDailyReport(); }} />}>
       <View style={styles.header}>
         <Text style={styles.title}>Daily Report</Text>
-        <Text style={styles.date}>{formatDateDMY()}</Text>
+        <Text style={styles.date}>{formatDateDMY(new Date().toISOString())}</Text>
       </View>
       <View style={styles.grid}>
         <View style={styles.card}><Ionicons name="checkmark-circle" size={32} color={COLORS.success} /><Text style={styles.value}>{report.completed}</Text><Text style={styles.label}>Completed</Text></View>

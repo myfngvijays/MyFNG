@@ -78,12 +78,30 @@ export default function NotificationsScreen({ navigation }: any) {
       await markAsRead(notification.id);
     }
 
-    // Navigate if action_url exists (implement navigation based on your routes)
-    if (notification.action_url) {
-      // Parse action_url and navigate accordingly
-      // For now, just show the message
-      Alert.alert(notification.title, notification.message);
+    // Mechanic deep-link: if notification references a lead/job, open Mechanic Lead Detail.
+    // (Other roles can extend this mapping later.)
+    const leadId = notification.lead_id;
+    const actionUrl = notification.action_url || '';
+    const kind = (notification as any)?.metadata?.kind;
+    const type = String((notification as any)?.type || '');
+
+    if (
+      leadId &&
+      (String(actionUrl).includes('workshop_mechanic') ||
+        String(kind || '').startsWith('MECH_') ||
+        String(kind || '').startsWith('MECHANIC_') ||
+        type === 'TEAM_ASSIGNED')
+    ) {
+      try {
+        navigation.navigate('LeadDetail', { leadId });
+        return;
+      } catch {
+        // fallthrough to alert
+      }
     }
+
+    // Default fallback
+    Alert.alert(notification.title, notification.message);
   };
 
   const handleDelete = (notificationId: string) => {

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { registerAndSyncExpoPushToken } from '../services/pushNotifications';
 
 interface UserProfile {
   id: string;
@@ -11,6 +12,12 @@ interface UserProfile {
     role_name: string;
   };
   phone?: string;
+  department?: string | null;
+  created_at?: string;
+  workshop?: {
+    id: string;
+    name?: string;
+  } | null;
 }
 
 interface AuthContextType {
@@ -31,6 +38,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const role = userProfile?.role?.role_code || null;
+
+  // Register mobile push token (Expo) after login
+  useEffect(() => {
+    if (!user?.id) return;
+    // Best-effort; never block app render
+    void registerAndSyncExpoPushToken(user.id).catch(() => null);
+  }, [user?.id]);
 
   useEffect(() => {
     // Check for existing session

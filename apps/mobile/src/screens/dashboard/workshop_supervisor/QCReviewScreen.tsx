@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { COLORS, SPACING, FONT_SIZES } from '../../../constants/theme';
+import { ENV } from '../../../config/environment';
 
 interface Photo {
   id: string;
@@ -177,11 +178,15 @@ export default function QCReviewScreen() {
     setProcessing(true);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'}/api/supervisor/jobs/${jobId}/approve-qc`,
+        `${ENV.API_URL}/api/supervisor/jobs/${jobId}/approve-qc`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             notes: approvalNotes,
             quality_score: qualityScore,
@@ -218,11 +223,15 @@ export default function QCReviewScreen() {
     setProcessing(true);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'}/api/supervisor/jobs/${jobId}/reject-qc`,
+        `${ENV.API_URL}/api/supervisor/jobs/${jobId}/reject-qc`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             reason: rejectionReason,
             failed_checklist_items: failedItems,

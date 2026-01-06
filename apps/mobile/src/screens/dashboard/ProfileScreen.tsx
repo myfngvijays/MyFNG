@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { User, Mail, Phone, Briefcase, Building2, Calendar } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES, SHADOWS } from '../../constants/theme';
 import { formatDateDMY } from "@/lib/dateFormat";
+import { Icon } from '../../components/Icon';
 
 export default function ProfileScreen() {
   const { userProfile } = useAuth();
@@ -23,7 +23,7 @@ export default function ProfileScreen() {
       {/* Profile Header */}
       <View style={styles.header}>
         <View style={styles.avatar}>
-          <User color={COLORS.white} size={40} />
+          <Icon name="account" color={COLORS.white} size={40} />
         </View>
         <Text style={styles.name}>{userProfile?.full_name}</Text>
         <Text style={styles.role}>{userProfile?.role?.role_name}</Text>
@@ -34,26 +34,26 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>Personal Information</Text>
         
         <InfoRow
-          icon={<Mail color={COLORS.primary} size={20} />}
+          icon={<Icon name="email" color={COLORS.primary} size={20} />}
           label="Email"
           value={userProfile?.email}
         />
         
         <InfoRow
-          icon={<Phone color={COLORS.primary} size={20} />}
+          icon={<Icon name="phone" color={COLORS.primary} size={20} />}
           label="Phone"
           value={userProfile?.phone}
         />
         
         <InfoRow
-          icon={<Briefcase color={COLORS.primary} size={20} />}
+          icon={<Icon name="briefcase" color={COLORS.primary} size={20} />}
           label="Role"
           value={userProfile?.role?.role_name}
         />
         
         {userProfile?.department && (
           <InfoRow
-            icon={<Building2 color={COLORS.primary} size={20} />}
+            icon={<Icon name="building" color={COLORS.primary} size={20} />}
             label="Department"
             value={userProfile?.department}
           />
@@ -61,14 +61,14 @@ export default function ProfileScreen() {
         
         {userProfile?.workshop && (
           <InfoRow
-            icon={<Building2 color={COLORS.primary} size={20} />}
+            icon={<Icon name="building" color={COLORS.primary} size={20} />}
             label="Workshop"
             value={userProfile?.workshop?.name}
           />
         )}
         
         <InfoRow
-          icon={<Calendar color={COLORS.primary} size={20} />}
+          icon={<Icon name="calendar" color={COLORS.primary} size={20} />}
           label="Member Since"
           value={formatDateDMY(userProfile?.created_at || '')}
         />

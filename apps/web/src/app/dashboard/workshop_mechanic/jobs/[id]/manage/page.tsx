@@ -108,6 +108,7 @@ export default function ManageJobPage() {
     setProcessing(true);
 
     try {
+      const now = new Date().toISOString();
       const response = await fetch(`/api/mechanic/jobs/${jobId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -123,7 +124,17 @@ export default function ManageJobPage() {
 
       toast.success('Job started successfully!');
       setShowStartModal(false);
-      fetchJobDetails();
+      // Instant UI update (avoid refetching photos + job payload which makes start feel slow)
+      setLead((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              status: 'IN_PROGRESS',
+              mechanic_started_at: prev.mechanic_started_at || now,
+              updated_at: now,
+            }
+          : prev
+      );
     } catch (error) {
       console.error('Error:', error);
       toast.error('Failed to start job');

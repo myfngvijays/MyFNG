@@ -3,7 +3,7 @@
  * Step 4: Invoice Review - Approve invoice after verification
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 
@@ -12,7 +12,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();

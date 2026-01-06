@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
+import { ENV } from '../../../config/environment';
 import type { VehiclePhotoType, FuelLevel } from '../../../../../shared/types';
 
 interface Props {
@@ -190,7 +191,7 @@ export default function PhotoUploadScreen({
       }
 
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/api/pickup/${leadId}/upload-photos`,
+        `${ENV.API_URL}/api/pickup/${leadId}/upload-photos`,
         {
           method: 'POST',
           headers: {

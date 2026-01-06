@@ -82,6 +82,9 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
     setLoading(true);
 
     try {
+      const getNameById = (list: any[], id: string) =>
+        (list || []).find((x) => String(x?.id) === String(id))?.full_name || '';
+
       // Use the proper API endpoint for team assignment
       // This ensures mechanic_jobs entry is created/updated
       const requestBody: any = {
@@ -94,6 +97,11 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
           setLoading(false);
           return;
         }
+        const mechanicName = getNameById(mechanics, userId) || 'selected mechanic';
+        if (!confirm(`Assign this lead to mechanic: ${mechanicName}?`)) {
+          setLoading(false);
+          return;
+        }
         requestBody.mechanic_id = userId;
         // Keep existing supervisor/pickup if already assigned
         if (lead.assigned_supervisor_id) {
@@ -103,6 +111,16 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
           requestBody.pickup_boy_id = lead.assigned_pickup_boy_id;
         }
       } else if (type === 'pickup') {
+        if (!userId) {
+          alert('Please select a pickupboy/driver');
+          setLoading(false);
+          return;
+        }
+        const pickupName = getNameById(pickupBoys, userId) || 'selected pickupboy/driver';
+        if (!confirm(`Assign this lead to pickupboy/driver: ${pickupName}?`)) {
+          setLoading(false);
+          return;
+        }
         requestBody.pickup_boy_id = userId || null;
         // Keep existing mechanic/supervisor if already assigned
         if (lead.assigned_mechanic_id) {

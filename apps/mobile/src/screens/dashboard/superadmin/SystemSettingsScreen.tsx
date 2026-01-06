@@ -32,7 +32,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
     serviceCompletion: '240',
   });
 
-  const handleToggle = (key: string) => {
+  const handleToggle = (key: keyof typeof settings) => {
     if (key === 'maintenanceMode') {
       Alert.alert(
         'Maintenance Mode',
@@ -109,7 +109,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
               <Switch
                 value={settings.maintenanceMode}
                 onValueChange={() => handleToggle('maintenanceMode')}
-                trackColor={{ false: COLORS.gray, true: COLORS.red }}
+                trackColor={{ false: COLORS.gray[400], true: COLORS.red }}
                 thumbColor={settings.maintenanceMode ? '#fff' : '#f4f3f4'}
               />
             </View>
@@ -129,7 +129,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
               <Switch
                 value={settings.autoAssignment}
                 onValueChange={() => handleToggle('autoAssignment')}
-                trackColor={{ false: COLORS.gray, true: COLORS.blue }}
+                trackColor={{ false: COLORS.gray[400], true: COLORS.blue }}
               />
             </View>
           </View>
@@ -148,7 +148,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
               <Switch
                 value={settings.smsNotifications}
                 onValueChange={() => handleToggle('smsNotifications')}
-                trackColor={{ false: COLORS.gray, true: COLORS.green }}
+                trackColor={{ false: COLORS.gray[400], true: COLORS.green }}
               />
             </View>
           </View>
@@ -162,7 +162,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
               <Switch
                 value={settings.emailNotifications}
                 onValueChange={() => handleToggle('emailNotifications')}
-                trackColor={{ false: COLORS.gray, true: COLORS.blue }}
+                trackColor={{ false: COLORS.gray[400], true: COLORS.blue }}
               />
             </View>
           </View>
@@ -176,7 +176,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
               <Switch
                 value={settings.pushNotifications}
                 onValueChange={() => handleToggle('pushNotifications')}
-                trackColor={{ false: COLORS.gray, true: COLORS.orange }}
+                trackColor={{ false: COLORS.gray[400], true: COLORS.orange }}
               />
             </View>
           </View>
@@ -200,7 +200,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
               <Switch
                 value={settings.twoFactorAuth}
                 onValueChange={() => handleToggle('twoFactorAuth')}
-                trackColor={{ false: COLORS.gray, true: COLORS.purple }}
+                trackColor={{ false: COLORS.gray[400], true: COLORS.purple }}
               />
             </View>
           </View>
@@ -214,7 +214,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
               <Switch
                 value={settings.apiAccess}
                 onValueChange={() => handleToggle('apiAccess')}
-                trackColor={{ false: COLORS.gray, true: COLORS.teal }}
+                trackColor={{ false: COLORS.gray[400], true: COLORS.teal }}
               />
             </View>
           </View>
@@ -293,7 +293,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
               <Switch
                 value={settings.autoBackup}
                 onValueChange={() => handleToggle('autoBackup')}
-                trackColor={{ false: COLORS.gray, true: COLORS.green }}
+                trackColor={{ false: COLORS.gray[400], true: COLORS.green }}
               />
             </View>
           </View>

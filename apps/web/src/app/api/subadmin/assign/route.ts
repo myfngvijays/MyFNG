@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { notifyTelecallerAssignedToLead } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
     // Get user profile
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, department, roles!inner(role_code)')
+      .select('id, department, full_name, roles!inner(role_code)')
       .eq('id', user.id)
       .single();
 
@@ -84,6 +85,12 @@ export async function POST(request: Request) {
 
     } else if (department === 'TELECALLER' && entity_type === 'LEAD') {
       // Assign lead to telecaller
+      const { data: currentLead } = await supabase
+        .from('service_leads')
+        .select('id, lead_number, assigned_telecaller_id')
+        .eq('id', entity_id)
+        .maybeSingle();
+
       const { data, error } = await supabase
         .from('service_leads')
         .update({
@@ -97,6 +104,26 @@ export async function POST(request: Request) {
 
       updateResult = data;
       updateError = error;
+
+      // In-app notification to assigned telecaller (Phase A)
+      if (!error && data) {
+        try {
+          const isReassignment =
+            Boolean((currentLead as any)?.assigned_telecaller_id) &&
+            String((currentLead as any)?.assigned_telecaller_id) !== String(assign_to_id);
+
+          await notifyTelecallerAssignedToLead({
+            leadId: entity_id,
+            leadNumber: (currentLead as any)?.lead_number || entity_id,
+            telecallerId: assign_to_id,
+            assignedByName: userProfile.full_name || undefined,
+            isReassignment,
+            notes: notes || undefined,
+          });
+        } catch (e) {
+          console.warn('Telecaller assignment notification failed (non-blocking):', e);
+        }
+      }
 
     } else if (department === 'AUDITOR' && entity_type === 'AUDIT') {
       // Assign audit to auditor

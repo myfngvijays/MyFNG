@@ -1,5 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -104,6 +105,33 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       description: 'Delivery started (out for delivery)',
       metadata: { otp_generated: true },
     } as any);
+
+    // Workshop Admin notification (final)
+    try {
+      const { data: fullLead } = await supabase
+        .from('service_leads')
+        .select('id, lead_number, workshop_id')
+        .eq('id', leadId)
+        .maybeSingle();
+
+      if (fullLead?.workshop_id) {
+        const leadNumber = (fullLead as any)?.lead_number || leadId;
+        await notifyWorkshopRoles({
+          workshopId: fullLead.workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'SYSTEM_ALERT',
+          title: 'Vehicle out for delivery',
+          message: `Delivery started for lead ${leadNumber}.`,
+          priority: 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_supervisor/pickup-delivery`,
+          metadata: { kind: 'DELIVERY_OUT_FOR_DELIVERY' },
+        });
+      }
+    } catch (e) {
+      console.warn('Delivery started notification failed (non-blocking):', e);
+    }
 
     return NextResponse.json(
       { success: true, message: 'Delivery started successfully', otp }, // otp returned for testing

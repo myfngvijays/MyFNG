@@ -9,7 +9,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { formatDateDMY } from "@/lib/dateFormat";
 
 export default function CustomerDashboard() {
-  const [userProfile, setUserProfile] = React.useState(null);
+  const [userProfile, setUserProfile] = React.useState<any | null>(null);
 
   React.useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {

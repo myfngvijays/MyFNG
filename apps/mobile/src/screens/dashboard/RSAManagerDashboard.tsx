@@ -231,7 +231,7 @@ export default function RSAManagerDashboard() {
       'completed': COLORS.success,
       'cancelled': COLORS.error,
     };
-    return colors[status] || COLORS.gray;
+    return colors[status] || COLORS.gray[500];
   };
 
   const renderLeadCard = (lead: any) => (

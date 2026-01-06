@@ -14,7 +14,7 @@ import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function BillingInvoiceDetailScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const route = useRoute();
   const { invoiceId, leadId } = route.params as any;
   const [loading, setLoading] = useState(true);
@@ -27,16 +27,15 @@ export default function BillingInvoiceDetailScreen() {
   const fetchInvoiceDetail = async () => {
     try {
       setLoading(true);
-      const query = supabase
+      let query = supabase
         .from('service_leads')
-        .select('*, workshop:workshops(name, address, phone, gst_number), customer:users_login(full_name, email, phone)')
-        .single();
+        .select('*, workshop:workshops(name, address, phone, gst_number), customer:users_login(full_name, email, phone)');
 
       if (invoiceId || leadId) {
-        query.eq('id', invoiceId || leadId);
+        query = query.eq('id', invoiceId || leadId);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await query.single();
 
       if (error) throw error;
       setInvoice(data);

@@ -345,7 +345,7 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
         <TouchableOpacity
           style={[
             styles.assignButton,
-            hasAssignment && styles.reassignButton,
+            !!hasAssignment && styles.reassignButton,
           ]}
           onPress={() => openMechanicModal(item)}
         >

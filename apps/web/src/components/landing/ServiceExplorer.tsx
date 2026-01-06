@@ -127,19 +127,23 @@ export default function ServiceExplorer({
   popularSlugs?: string[];
   className?: string;
 }) {
-  if (!services.length) return null;
-
-  const bySlug = useMemo(() => new Map(services.map((s) => [s.slug, s] as const)), [services]);
+  const list = services ?? [];
+  const bySlug = useMemo(() => new Map(list.map((s) => [s.slug, s] as const)), [list]);
 
   const initialActive = useMemo(() => {
     const firstPopular = popularSlugs?.find((slug) => bySlug.has(slug));
-    return firstPopular ?? services[0]?.slug ?? '';
-  }, [bySlug, popularSlugs, services]);
+    return firstPopular ?? list[0]?.slug ?? '';
+  }, [bySlug, popularSlugs, list]);
 
-  const [activeSlug, setActiveSlug] = useState<string>(initialActive);
+  const [activeSlug, setActiveSlug] = useState<string>('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetSlug, setSheetSlug] = useState<string | null>(null);
-  const list = services;
+
+  // Initialize selection once we have data (and keep it in sync if the preferred default changes).
+  useEffect(() => {
+    if (!list.length) return;
+    setActiveSlug((prev) => (prev ? prev : initialActive));
+  }, [initialActive, list.length]);
 
   // Keep selection valid.
   useEffect(() => {
@@ -148,6 +152,8 @@ export default function ServiceExplorer({
       setActiveSlug(list[0].slug);
     }
   }, [activeSlug, list]);
+
+  if (!list.length) return null;
 
   const active = (bySlug.get(activeSlug) ?? list[0] ?? services[0]) as ServiceExplorerItem | undefined;
   const ActiveIcon = active?.icon;

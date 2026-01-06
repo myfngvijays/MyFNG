@@ -14,6 +14,9 @@ interface ExtraWorkRequest {
   lead_number: string;
   customer_name: string;
   vehicle_number: string;
+  vehicle_fuel_type?: string | null;
+  vehicle_class?: string | null;
+  customer_public_enabled?: boolean;
   mechanic_name: string;
   description: string;
   reason: string;
@@ -51,6 +54,8 @@ export default function ExtraWorkApprovalsPage() {
     requestId: string | null;
     choice: 'OEM' | 'OES';
   }>({ open: false, requestId: null, choice: 'OEM' });
+
+  const [publicLinkBusyByLeadId, setPublicLinkBusyByLeadId] = useState<Record<string, boolean>>({});
 
   function getDecisionLabel(r: ExtraWorkRequest) {
     const status = String(r.status || 'PENDING').toUpperCase();
@@ -141,6 +146,28 @@ export default function ExtraWorkApprovalsPage() {
     }
   }
 
+  async function setLeadPublicLinkEnabled(leadId: string, enabled: boolean) {
+    try {
+      setPublicLinkBusyByLeadId((p) => ({ ...p, [leadId]: true }));
+      const res = await fetch(`/api/workshop/leads/${leadId}/public-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await safeReadJson(res);
+      if (!res.ok) {
+        toast.error((data as any)?.error || 'Failed to update public link');
+        return;
+      }
+      toast.success(enabled ? 'Public link enabled' : 'Public link disabled');
+      await fetchExtraWorkRequests();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update public link');
+    } finally {
+      setPublicLinkBusyByLeadId((p) => ({ ...p, [leadId]: false }));
+    }
+  }
+
   useEffect(() => {
     fetchExtraWorkRequests();
     
@@ -199,7 +226,7 @@ export default function ExtraWorkApprovalsPage() {
       // Fetch workshop additional jobs master prices (for fallback display)
       const { data: masterJobs, error: masterError } = await supabase
         .from('additional_jobs_master')
-        .select('name, oem_price, oes_price, labour_price, workshop_id, is_active, deleted_at')
+        .select('id, name, oem_price, oes_price, labour_price, workshop_id, is_active, deleted_at')
         .or(`workshop_id.eq.${userProfile.workshop_id},workshop_id.is.null`)
         .eq('is_active', true)
         .is('deleted_at', null);
@@ -214,9 +241,10 @@ export default function ExtraWorkApprovalsPage() {
           .toLowerCase()
           .replace(/\s+/g, ' ');
 
-      const masterByName = new Map<string, { oem: number; oes: number; labour: number }>();
+      const masterByName = new Map<string, { id: string; oem: number; oes: number; labour: number; workshop_id: string | null }>();
       for (const it of masterJobs || []) {
         const key = normalizeName(String((it as any).name || ''));
+        const id = String((it as any).id || '').trim();
         const oem = Number((it as any).oem_price);
         const oes = Number((it as any).oes_price);
         const labour = Number((it as any).labour_price);
@@ -224,16 +252,45 @@ export default function ExtraWorkApprovalsPage() {
         // Prefer workshop-specific row over global (null workshop_id) if duplicates exist
         if ((it as any).workshop_id === userProfile.workshop_id) {
           masterByName.set(key, {
+            id,
             oem: Number.isFinite(oem) ? oem : 0,
             oes: Number.isFinite(oes) ? oes : 0,
             labour: Number.isFinite(labour) ? labour : 0,
+            workshop_id: (it as any).workshop_id ?? null,
           });
         } else if (!masterByName.has(key)) {
           masterByName.set(key, {
+            id,
             oem: Number.isFinite(oem) ? oem : 0,
             oes: Number.isFinite(oes) ? oes : 0,
             labour: Number.isFinite(labour) ? labour : 0,
+            workshop_id: (it as any).workshop_id ?? null,
           });
+        }
+      }
+
+      // Fetch labour matrix rates for these master items (best-effort)
+      const masterIds = Array.from(new Set(Array.from(masterByName.values()).map((v) => v.id).filter(Boolean)));
+      const labourRatesByJobId = new Map<string, Map<string, number>>();
+      if (masterIds.length) {
+        const { data: labourRates, error: lrErr } = await supabase
+          .from('additional_jobs_master_labour_rates')
+          .select('additional_job_id, fuel_type, car_class, labour_price')
+          .in('additional_job_id', masterIds);
+        if (lrErr) {
+          console.warn('Failed to fetch additional_jobs_master_labour_rates:', lrErr);
+        } else {
+          for (const r of labourRates || []) {
+            const jobId = String((r as any).additional_job_id || '').trim();
+            const fuel = String((r as any).fuel_type || '').trim().toUpperCase();
+            const cls = String((r as any).car_class || '').trim();
+            const price = Number((r as any).labour_price ?? 0);
+            if (!jobId || !fuel || !cls) continue;
+            if (!Number.isFinite(price) || price < 0) continue;
+            const key = `${fuel}::${cls.toLowerCase()}`;
+            if (!labourRatesByJobId.has(jobId)) labourRatesByJobId.set(jobId, new Map());
+            labourRatesByJobId.get(jobId)!.set(key, price);
+          }
         }
       }
 
@@ -264,7 +321,10 @@ export default function ExtraWorkApprovalsPage() {
             lead_number,
             customer_name,
             vehicle_number,
-            workshop_id
+            vehicle_fuel_type,
+            model_id,
+            workshop_id,
+            customer_public_enabled
           )
         `;
 
@@ -283,7 +343,10 @@ export default function ExtraWorkApprovalsPage() {
             lead_number,
             customer_name,
             vehicle_number,
-            workshop_id
+            vehicle_fuel_type,
+            model_id,
+            workshop_id,
+            customer_public_enabled
           )
         `;
 
@@ -316,6 +379,28 @@ export default function ExtraWorkApprovalsPage() {
         return;
       }
 
+      // Resolve car class for each lead (best-effort): model_id -> car_models.class
+      const modelIds = Array.from(
+        new Set(
+          (extraWork || [])
+            .map((r: any) => String(r?.service_leads?.model_id || '').trim())
+            .filter((id: string) => id)
+        )
+      );
+      const classByModelId = new Map<string, string>();
+      if (modelIds.length) {
+        const { data: models, error: cmErr } = await supabase.from('car_models').select('id, class').in('id', modelIds);
+        if (cmErr) {
+          console.warn('Failed to fetch car_models for class:', cmErr);
+        } else {
+          for (const m of models || []) {
+            const id = String((m as any).id || '').trim();
+            const cls = String((m as any).class || '').trim();
+            if (id && cls) classByModelId.set(id, cls);
+          }
+        }
+      }
+
       // Fetch mechanic names
       const requestsWithMechanics = await Promise.all((extraWork || []).map(async (req: any) => {
         const { data: mechanic } = await supabase
@@ -330,7 +415,26 @@ export default function ExtraWorkApprovalsPage() {
         const savedOes = Number((req as any).oes_price);
         const savedLabour = Number((req as any).labour_price);
 
-        const master = masterByName.get(normalizeName(String(req.description || ''))) || { oem: 0, oes: 0, labour: 0 };
+        const fuelRaw = String(req?.service_leads?.vehicle_fuel_type || '').trim().toUpperCase();
+        const fuel = fuelRaw === 'DIESEL' ? 'DIESEL' : fuelRaw === 'CNG' ? 'CNG' : fuelRaw ? 'PETROL' : '';
+        const modelId = String(req?.service_leads?.model_id || '').trim();
+        const vehicleClass = modelId ? (classByModelId.get(modelId) || null) : null;
+
+        const master = masterByName.get(normalizeName(String(req.description || ''))) || {
+          id: '',
+          oem: 0,
+          oes: 0,
+          labour: 0,
+          workshop_id: null,
+        };
+
+        // Matrix lookup: if (job + fuel + class) rate exists, override master labour; else fallback to default master labour
+        let masterLabour = master.labour;
+        if (master.id && fuel && vehicleClass) {
+          const k = `${fuel}::${vehicleClass.toLowerCase()}`;
+          const v = labourRatesByJobId.get(master.id)?.get(k);
+          if (typeof v === 'number') masterLabour = v;
+        }
 
         return {
           id: req.id,
@@ -338,6 +442,9 @@ export default function ExtraWorkApprovalsPage() {
           lead_number: req.service_leads.lead_number,
           customer_name: req.service_leads.customer_name,
           vehicle_number: req.service_leads.vehicle_number,
+          vehicle_fuel_type: req.service_leads.vehicle_fuel_type ?? null,
+          vehicle_class: vehicleClass,
+          customer_public_enabled: Boolean((req.service_leads as any)?.customer_public_enabled),
           mechanic_name: mechanic?.full_name || 'Unknown',
           description: req.description,
           reason: req.reason,
@@ -351,7 +458,7 @@ export default function ExtraWorkApprovalsPage() {
           rejection_reason: (req as any).rejection_reason,
           master_oem_price: master.oem,
           master_oes_price: master.oes,
-          master_labour_price: master.labour,
+          master_labour_price: masterLabour,
           category: req.category,
           is_urgent: req.is_urgent,
           created_at: req.created_at,
@@ -882,34 +989,62 @@ export default function ExtraWorkApprovalsPage() {
                                   const publicPath = `/customer/track/${group.lead_id}`;
                                   const publicUrl =
                                     typeof window !== 'undefined' ? `${window.location.origin}${publicPath}` : publicPath;
+                                  const enabled =
+                                    group.items.some((it: any) => Boolean((it as any)?.customer_public_enabled)) || false;
+                                  const busy = Boolean(publicLinkBusyByLeadId[group.lead_id]);
                                   return (
                                     <>
-                                      <a
-                                        href={publicPath}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-[10px] sm:text-xs text-blue-700 hover:text-blue-800 font-semibold"
-                                        title="Open customer public page"
-                                      >
-                                        <ExternalLink className="w-3.5 h-3.5" />
-                                        <span className="hidden sm:inline">Public</span>
-                                      </a>
-                                      <button
-                                        type="button"
-                                        className="inline-flex items-center gap-1 text-[10px] sm:text-xs text-gray-600 hover:text-gray-800"
-                                        title="Copy public URL"
-                                        onClick={async () => {
-                                          try {
-                                            await navigator.clipboard.writeText(publicUrl);
-                                            toast.success('Public URL copied');
-                                          } catch {
-                                            toast.error('Failed to copy URL');
-                                          }
-                                        }}
-                                      >
-                                        <Copy className="w-3.5 h-3.5" />
-                                        <span className="hidden md:inline">Copy</span>
-                                      </button>
+                                      {!enabled ? (
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center gap-1 text-[10px] sm:text-xs text-orange-700 hover:text-orange-800 font-semibold"
+                                          disabled={busy}
+                                          title="Enable public link for customer"
+                                          onClick={() => setLeadPublicLinkEnabled(group.lead_id, true)}
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                          <span className="hidden sm:inline">{busy ? 'Enabling…' : 'Enable Public'}</span>
+                                        </button>
+                                      ) : (
+                                        <>
+                                          <a
+                                            href={publicPath}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-[10px] sm:text-xs text-blue-700 hover:text-blue-800 font-semibold"
+                                            title="Open customer public page"
+                                          >
+                                            <ExternalLink className="w-3.5 h-3.5" />
+                                            <span className="hidden sm:inline">Public</span>
+                                          </a>
+                                          <button
+                                            type="button"
+                                            className="inline-flex items-center gap-1 text-[10px] sm:text-xs text-red-700 hover:text-red-800"
+                                            disabled={busy}
+                                            title="Disable public link"
+                                            onClick={() => setLeadPublicLinkEnabled(group.lead_id, false)}
+                                          >
+                                            <XCircle className="w-3.5 h-3.5" />
+                                            <span className="hidden sm:inline">{busy ? 'Disabling…' : 'Disable'}</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="inline-flex items-center gap-1 text-[10px] sm:text-xs text-gray-600 hover:text-gray-800"
+                                            title="Copy public URL"
+                                            onClick={async () => {
+                                              try {
+                                                await navigator.clipboard.writeText(publicUrl);
+                                                toast.success('Public URL copied');
+                                              } catch {
+                                                toast.error('Failed to copy URL');
+                                              }
+                                            }}
+                                          >
+                                            <Copy className="w-3.5 h-3.5" />
+                                            <span className="hidden md:inline">Copy</span>
+                                          </button>
+                                        </>
+                                      )}
                                       <code className="hidden lg:inline text-[10px] text-gray-500 bg-gray-50 border px-2 py-0.5 rounded max-w-[280px] truncate">
                                         {publicUrl}
                                       </code>

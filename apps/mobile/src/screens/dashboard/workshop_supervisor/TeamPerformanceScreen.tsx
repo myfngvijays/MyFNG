@@ -11,15 +11,17 @@ import {
   ScrollView,
   RefreshControl,
   Dimensions,
+  BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
+import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
 export default function TeamPerformanceScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
 
   // Handle hardware back button
   useEffect(() => {
@@ -132,7 +134,11 @@ export default function TeamPerformanceScreen() {
       }
 
       // Filter only mechanics
-      const mechanics = mechanicsData?.filter(m => m.role?.role_code === 'WORKSHOP_MECHANIC') || [];
+      const mechanics =
+        mechanicsData?.filter((m: any) => {
+          const roleObj = Array.isArray(m.role) ? m.role[0] : m.role;
+          return roleObj?.role_code === 'WORKSHOP_MECHANIC';
+        }) || [];
       console.log('👨‍🔧 Found', mechanics.length, 'mechanics');
 
       // Get jobs data for last 30 days
@@ -213,7 +219,8 @@ export default function TeamPerformanceScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchPerformanceData(workshopId);
+    if (workshopId) fetchPerformanceData(workshopId);
+    else setRefreshing(false);
   };
 
   return (

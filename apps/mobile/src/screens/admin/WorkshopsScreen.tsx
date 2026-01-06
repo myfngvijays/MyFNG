@@ -4,8 +4,8 @@ import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { formatDateDMY } from "@/lib/dateFormat";
 
-export default function WorkshopsScreen({ onBack }) {
-  const [workshops, setWorkshops] = useState([]);
+export default function WorkshopsScreen({ onBack }: { onBack?: () => void }) {
+  const [workshops, setWorkshops] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +35,7 @@ export default function WorkshopsScreen({ onBack }) {
     setRefreshing(false);
   };
 
-  const renderWorkshop = ({ item }) => (
+  const renderWorkshop = ({ item }: { item: any }) => (
     <View style={styles.workshopCard}>
       <View style={styles.workshopHeader}>
         <View style={styles.workshopIcon}>
@@ -105,7 +105,7 @@ export default function WorkshopsScreen({ onBack }) {
       <FlatList
         data={workshops}
         renderItem={renderWorkshop}
-        keyExtractor={item => item.id}
+        keyExtractor={(item: any) => item.id}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />

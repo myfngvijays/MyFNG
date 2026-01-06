@@ -18,6 +18,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
+import { ENV } from '../../../config/environment';
 
 export default function InvoiceReviewScreen({ route, navigation }: any) {
   const { invoiceId } = route.params;
@@ -77,9 +78,13 @@ export default function InvoiceReviewScreen({ route, navigation }: any) {
 
     setReviewing(true);
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'}/api/billing/invoices/${invoiceId}/approve`, {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch(`${ENV.API_URL}/api/billing/invoices/${invoiceId}/approve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           review_notes: reviewNotes || 'Invoice verified and approved',
           items_verified: itemsVerified,
@@ -109,10 +114,15 @@ export default function InvoiceReviewScreen({ route, navigation }: any) {
 
     setReviewing(true);
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'}/api/billing/invoices/${invoiceId}/reject`, {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch(`${ENV.API_URL}/api/billing/invoices/${invoiceId}/reject`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
+          rejection_reason: reviewNotes,
           review_notes: reviewNotes,
           items_verified: false,
           taxes_verified: false,

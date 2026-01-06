@@ -388,7 +388,7 @@ export default function QCCheckScreen({ navigation }: any) {
         <TouchableOpacity
           style={[
             styles.qcButton,
-            item.qc_status && styles.qcButtonDisabled,
+            !!item.qc_status && styles.qcButtonDisabled,
           ]}
           onPress={() => openQCModal(item)}
           disabled={!!item.qc_status}

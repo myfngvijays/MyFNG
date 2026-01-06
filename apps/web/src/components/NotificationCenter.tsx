@@ -4,14 +4,17 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Bell, Check, CheckCheck, Trash2, X, ExternalLink } from 'lucide-react';
-import { Notification } from '@/shared/types/notifications';
+import type { Notification as NotificationRow } from '@/shared/types/notifications';
 import { formatDateDMY } from "@/lib/utils";
+import toast from 'react-hot-toast';
+import { ensureWebPushSubscribed } from '@/lib/push/registerWebPush';
 
 export default function NotificationCenter() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [desktopPermission, setDesktopPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
 
   const {
     notifications,
@@ -33,6 +36,50 @@ export default function NotificationCenter() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Track browser notification permission
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        setDesktopPermission(Notification.permission);
+      } else {
+        setDesktopPermission('unsupported');
+      }
+    } catch {
+      setDesktopPermission('unsupported');
+    }
+  }, []);
+
+  const requestDesktopPermission = async () => {
+    try {
+      if (typeof window === 'undefined' || !('Notification' in window)) {
+        toast.error('Desktop notifications not supported in this browser');
+        return;
+      }
+      if (Notification.permission === 'denied') {
+        toast.error('Desktop notifications are blocked in browser settings');
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      setDesktopPermission(permission);
+      if (permission === 'granted') {
+        // Phase B: true web push subscription (best-effort)
+        try {
+          const subRes = await ensureWebPushSubscribed();
+          if (!subRes.ok && subRes.reason !== 'no_push_manager') {
+            console.warn('Web push subscribe skipped:', subRes.reason);
+          }
+        } catch (e) {
+          console.warn('Web push subscribe failed:', e);
+        }
+        toast.success('Desktop notifications enabled');
+      }
+      else if (permission === 'denied') toast.error('Desktop notifications blocked in browser settings');
+      else toast('Desktop notifications not enabled');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to enable desktop notifications');
+    }
+  };
 
   const filteredNotifications = filter === 'unread'
     ? notifications.filter(n => !n.is_read)
@@ -79,7 +126,7 @@ export default function NotificationCenter() {
     return icons[type] || '📬';
   };
 
-  const handleNotificationClick = async (notification: Notification) => {
+  const handleNotificationClick = async (notification: NotificationRow) => {
     // Mark as read
     if (!notification.is_read) {
       await markAsRead(notification.id);
@@ -163,6 +210,30 @@ export default function NotificationCenter() {
                 </button>
               </div>
 
+              <div className="flex items-center gap-2">
+                {/* Ask to enable desktop notifications when not enabled */}
+                {desktopPermission !== 'unsupported' && desktopPermission !== 'granted' && (
+                  desktopPermission === 'denied' ? (
+                    <button
+                      type="button"
+                      onClick={() => toast.error('Alerts are blocked. Enable notifications for this site in browser settings.')}
+                      className="text-xs text-red-600 hover:text-red-700 font-semibold"
+                      title="Desktop notifications are blocked"
+                    >
+                      Alerts blocked
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={requestDesktopPermission}
+                      className="text-xs text-gray-700 hover:text-gray-900 font-semibold"
+                      title="Enable desktop notifications"
+                    >
+                      Enable alerts
+                    </button>
+                  )
+                )}
+
               {/* Mark All Read Button */}
               {unreadCount > 0 && (
                 <button
@@ -173,6 +244,7 @@ export default function NotificationCenter() {
                   Mark all read
                 </button>
               )}
+              </div>
             </div>
           </div>
 

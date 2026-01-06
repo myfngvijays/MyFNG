@@ -125,9 +125,9 @@ export default function WorkshopAdminDashboard() {
   const renderScreen = () => {
     switch (currentScreen) {
       case 'staff':
-        return <WorkshopStaffScreen workshopId={userProfile?.workshop_id} />;
+        return React.createElement(WorkshopStaffScreen as any, { workshopId: userProfile?.workshop_id });
       case 'leads':
-        return <WorkshopLeadsScreen workshopId={userProfile?.workshop_id} />;
+        return React.createElement(WorkshopLeadsScreen as any, { onBack: () => setCurrentScreen('dashboard') });
       case 'profile':
         return <WorkshopProfileScreen workshopId={userProfile?.workshop_id} />;
       default:

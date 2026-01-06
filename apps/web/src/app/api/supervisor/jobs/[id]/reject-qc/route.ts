@@ -1,6 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyQCDecision } from '@/lib/notifications';
+import { notifyQCDecision, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -213,9 +213,23 @@ export async function POST(
       },
     ]);
 
-    // TODO: Send notification to mechanic (job needs rework)
-    // TODO: Send notification to workshop admin
+    // Workshop Admin visibility (final)
     try {
+      if (lead.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: lead.workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN'],
+          type: 'QC_REJECTED',
+          title: 'QC Failed — Rework required',
+          message: `QC failed for lead ${lead.lead_number || leadId}. Rework required before delivery.`,
+          priority: 'HIGH',
+          leadId,
+          leadNumber: lead.lead_number || leadId,
+          actionUrl: `/dashboard/workshop_admin/leads/pending`,
+          metadata: { reason, failed_checklist_items: failed_checklist_items || null },
+        });
+      }
+
       if (lead.assigned_mechanic_id) {
         await notifyQCDecision(
           leadId,

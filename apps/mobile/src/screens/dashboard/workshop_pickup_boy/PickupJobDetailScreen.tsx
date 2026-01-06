@@ -16,23 +16,24 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/t
 import type { PickupTracking, ServiceLead } from '../../../../../shared/types';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useNavigation } from '@react-navigation/native';
+import { ENV } from '../../../config/environment';
 
 export default function PickupJobDetailScreen(props: any) {
   const navigation = useNavigation();
   const route = (props as any)?.route;
   const leadId: string = (props as any)?.leadId || route?.params?.taskId || route?.params?.leadId;
   const onBack = (props as any)?.onBack || (() => (navigation as any).goBack?.());
-  const onStartPickup = (props as any)?.onStartPickup || (() => {});
-  const onVerifyOTP = (props as any)?.onVerifyOTP || (() => {});
-  const onUploadPhotos =
-    (props as any)?.onUploadPhotos ||
-    (() => (navigation as any).navigate?.('PickupPhotoUpload', { leadId, photoCategory: 'DROP' }));
-  const onMarkPicked = (props as any)?.onMarkPicked || (() => {});
-  const onNavigate = (props as any)?.onNavigate || (() => {});
-  const onReportIncident = (props as any)?.onReportIncident || (() => {});
+  // Default handlers (can be overridden by parent props if needed)
+  const onStartPickup = (props as any)?.onStartPickup;
+  const onVerifyOTP = (props as any)?.onVerifyOTP;
+  const onUploadPhotos = (props as any)?.onUploadPhotos;
+  const onMarkPicked = (props as any)?.onMarkPicked;
+  const onNavigate = (props as any)?.onNavigate;
+  const onReportIncident = (props as any)?.onReportIncident;
   const [lead, setLead] = useState<ServiceLead | null>(null);
   const [tracking, setTracking] = useState<PickupTracking | null>(null);
-  const [photoCount, setPhotoCount] = useState(0);
+  const [pickupPhotoCount, setPickupPhotoCount] = useState(0);
+  const [dropPhotoCount, setDropPhotoCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
   // Handle hardware back button
@@ -101,10 +102,14 @@ export default function PickupJobDetailScreen(props: any) {
         .from('pickup_tracking')
         .select('*')
         .eq('lead_id', leadId)
-        .single();
+        .maybeSingle();
 
-      if (trackingError) throw trackingError;
-      setTracking(trackingData);
+      // Tracking may not exist yet (especially in edge flows); treat as optional.
+      if (!trackingError) {
+        setTracking(trackingData as any);
+      } else {
+        setTracking(null);
+      }
     } catch (error: any) {
       Alert.alert('Error', 'Failed to fetch lead details');
     }
@@ -112,13 +117,20 @@ export default function PickupJobDetailScreen(props: any) {
 
   const fetchPhotoCount = async () => {
     if (!leadId) return;
-    const { count } = await supabase
+    const { count: pickupCount } = await supabase
       .from('vehicle_condition_photos')
       .select('*', { count: 'exact', head: true })
       .eq('lead_id', leadId)
       .like('photo_type', 'PICKUP_%');
 
-    setPhotoCount(count || 0);
+    const { count: dropCount } = await supabase
+      .from('vehicle_condition_photos')
+      .select('*', { count: 'exact', head: true })
+      .eq('lead_id', leadId)
+      .like('photo_type', 'DROP_%');
+
+    setPickupPhotoCount(pickupCount || 0);
+    setDropPhotoCount(dropCount || 0);
   };
 
   const onRefresh = async () => {
@@ -141,6 +153,70 @@ export default function PickupJobDetailScreen(props: any) {
     } else if (tracking?.pickup_address) {
       const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tracking.pickup_address)}`;
       Linking.openURL(url);
+    }
+  };
+
+  const isDeliveryLead = (ld: any) => ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(String(ld?.status || '').toUpperCase());
+
+  const getAccessToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error('Not authenticated');
+    return token;
+  };
+
+  const postJson = async (path: string, body?: any) => {
+    const token = await getAccessToken();
+    const res = await fetch(`${ENV.API_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body || {}),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.error || 'Request failed');
+    return json;
+  };
+
+  const handleStartNavigateFlow = async () => {
+    try {
+      await postJson(`/api/pickup/${leadId}/navigate`, {});
+      Alert.alert('Success', 'Started. OTP generated (if applicable).');
+      await fetchLeadDetails();
+      await fetchPhotoCount();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to start');
+    }
+  };
+
+  const handleMarkPicked = async () => {
+    try {
+      await postJson(`/api/pickup/${leadId}/mark-picked`, {});
+      Alert.alert('Success', 'Marked as picked.');
+      await fetchLeadDetails();
+      await fetchPhotoCount();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to mark picked');
+    }
+  };
+
+  const handleArrivedAtWorkshop = async () => {
+    try {
+      await postJson(`/api/pickup/tasks/${leadId}/arrived`, {});
+      Alert.alert('Success', 'Marked as arrived at workshop.');
+      await fetchLeadDetails();
+      await fetchPhotoCount();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to mark arrived');
+    }
+  };
+
+  const handleCompleteDelivery = async () => {
+    try {
+      await postJson(`/api/pickup/${leadId}/drop/complete`, {});
+      Alert.alert('Success', 'Delivery completed.');
+      await fetchLeadDetails();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to complete delivery');
     }
   };
 
@@ -172,60 +248,118 @@ export default function PickupJobDetailScreen(props: any) {
   };
 
   const renderActionButton = () => {
-    if (!tracking) return null;
+    if (!lead) return null;
 
-    switch (tracking.pickup_status) {
-      case 'NOT_ASSIGNED':
-      case 'PENDING':
-        return (
+    const isDelivery = isDeliveryLead(lead);
+    const otpVerified = isDelivery ? !!(tracking as any)?.drop_otp_verified_at : !!(tracking as any)?.pickup_otp_verified_at;
+    const minPhotosOk = isDelivery ? dropPhotoCount >= 3 : pickupPhotoCount >= 4;
+
+    // Delivery flow (READY_FOR_DELIVERY / COD_PENDING)
+    if (isDelivery) {
+      return (
+        <>
+          {!((tracking as any)?.drop_status) && (
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
+              onPress={onNavigate || handleStartNavigateFlow}
+            >
+              <Text style={styles.actionButtonText}>🚚 Start Delivery</Text>
+            </TouchableOpacity>
+          )}
+
+          {!!((tracking as any)?.drop_status) && !otpVerified && (
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: COLORS.info }]}
+              onPress={
+                onVerifyOTP ||
+                (() => (navigation as any).navigate?.('PickupOtp', { leadId, otpType: 'DROP' }))
+              }
+            >
+              <Text style={styles.actionButtonText}>🔐 Verify Delivery OTP</Text>
+            </TouchableOpacity>
+          )}
+
+          {otpVerified && (
+            <>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: COLORS.secondary }]}
+                onPress={
+                  onUploadPhotos ||
+                  (() => (navigation as any).navigate?.('PickupPhotoUpload', { leadId, photoCategory: 'DROP' }))
+                }
+              >
+                <Text style={styles.actionButtonText}>📸 Upload Delivery Photos ({dropPhotoCount}/3 min)</Text>
+              </TouchableOpacity>
+              {minPhotosOk && (
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: COLORS.success }]}
+                  onPress={handleCompleteDelivery}
+                >
+                  <Text style={styles.actionButtonText}>✅ Complete Delivery</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </>
+      );
+    }
+
+    // Pickup flow
+    return (
+      <>
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
+          onPress={onStartPickup || handleStartNavigateFlow}
+        >
+          <Text style={styles.actionButtonText}>🚗 Start / Navigate</Text>
+        </TouchableOpacity>
+
+        {!otpVerified && (
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
-            onPress={onStartPickup}
+            style={[styles.actionButton, { backgroundColor: COLORS.info }]}
+            onPress={
+              onVerifyOTP || (() => (navigation as any).navigate?.('PickupOtp', { leadId, otpType: 'PICKUP' }))
+            }
           >
-            <Text style={styles.actionButtonText}>🚗 Start Pickup</Text>
+            <Text style={styles.actionButtonText}>🔐 Verify Pickup OTP</Text>
           </TouchableOpacity>
-        );
+        )}
 
-      case 'OTP_VERIFIED':
-        return (
+        {otpVerified && (
           <>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: COLORS.secondary }]}
-              onPress={onUploadPhotos}
+              onPress={
+                onUploadPhotos ||
+                (() => (navigation as any).navigate?.('PickupPhotoUpload', { leadId, photoCategory: 'PICKUP' }))
+              }
             >
-              <Text style={styles.actionButtonText}>
-                📸 Upload Photos ({photoCount}/4 minimum)
-              </Text>
+              <Text style={styles.actionButtonText}>📸 Upload Pickup Photos ({pickupPhotoCount}/4 min)</Text>
             </TouchableOpacity>
-            {photoCount >= 4 && (
+            {minPhotosOk && (
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: COLORS.success }]}
-                onPress={onMarkPicked}
+                onPress={onMarkPicked || handleMarkPicked}
               >
                 <Text style={styles.actionButtonText}>✅ Mark Vehicle Picked</Text>
               </TouchableOpacity>
             )}
           </>
-        );
+        )}
 
-      case 'PICKED':
-        return (
+        {String((lead as any)?.status || '').toUpperCase() === 'VEHICLE_IN_TRANSIT' && (
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
-            onPress={() => {
-              Alert.alert('In Transit', 'Vehicle is being transported to workshop');
-            }}
+            onPress={handleArrivedAtWorkshop}
           >
-            <Text style={styles.actionButtonText}>🚗 In Transit to Workshop</Text>
+            <Text style={styles.actionButtonText}>🏁 Mark Arrived at Workshop</Text>
           </TouchableOpacity>
-        );
-
-      default:
-        return null;
-    }
+        )}
+      </>
+    );
   };
 
-  if (!leadId || !lead || !tracking) {
+  if (!leadId || !lead) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -238,6 +372,11 @@ export default function PickupJobDetailScreen(props: any) {
     );
   }
 
+  const deliveryMode = isDeliveryLead(lead as any);
+  const statusForUi = deliveryMode
+    ? String((tracking as any)?.drop_status || (lead as any)?.status || '')
+    : String((tracking as any)?.pickup_status || (lead as any)?.status || '');
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -245,7 +384,7 @@ export default function PickupJobDetailScreen(props: any) {
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Pickup Details</Text>
+        <Text style={styles.headerTitle}>{deliveryMode ? 'Delivery Details' : 'Pickup Details'}</Text>
       </View>
 
       <ScrollView
@@ -261,11 +400,11 @@ export default function PickupJobDetailScreen(props: any) {
             <View
               style={[
                 styles.statusBadge,
-                { backgroundColor: getStatusColor(tracking.pickup_status) },
+                { backgroundColor: getStatusColor(statusForUi) },
               ]}
             >
               <Text style={styles.statusText}>
-                {getStatusLabel(tracking.pickup_status)}
+                {getStatusLabel(statusForUi)}
               </Text>
             </View>
           </View>
@@ -319,33 +458,33 @@ export default function PickupJobDetailScreen(props: any) {
 
         {/* Pickup Information */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>📍 Pickup Information</Text>
+          <Text style={styles.sectionTitle}>📍 {deliveryMode ? 'Customer Location' : 'Pickup Information'}</Text>
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Address:</Text>
-            <Text style={styles.detailValue}>{tracking.pickup_address}</Text>
+            <Text style={styles.detailValue}>{(tracking as any)?.pickup_address || (lead as any)?.customer_address || '-'}</Text>
           </View>
-          {tracking.pickup_distance && (
+          {!!(tracking as any)?.pickup_distance && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Distance:</Text>
               <Text style={styles.detailValue}>
-                {tracking.pickup_distance.toFixed(1)} km
+                {(tracking as any).pickup_distance.toFixed(1)} km
               </Text>
             </View>
           )}
-          {tracking.pickup_time_window_start && (
+          {!!(tracking as any)?.pickup_time_window_start && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Pickup Window:</Text>
               <Text style={styles.detailValue}>
-                {formatTime12h(tracking.pickup_time_window_start)} -{' '}
-                {formatTime12h(tracking.pickup_time_window_end!)}
+                {formatTime12h((tracking as any).pickup_time_window_start)} -{' '}
+                {formatTime12h((tracking as any).pickup_time_window_end!)}
               </Text>
             </View>
           )}
-          {tracking.pickup_customer_instructions && (
+          {!!(tracking as any)?.pickup_customer_instructions && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Instructions:</Text>
               <Text style={styles.detailValue}>
-                {tracking.pickup_customer_instructions}
+                {(tracking as any).pickup_customer_instructions}
               </Text>
             </View>
           )}
@@ -359,38 +498,25 @@ export default function PickupJobDetailScreen(props: any) {
           </TouchableOpacity>
         </View>
 
-        {/* OTP Section */}
-        {tracking.pickup_status === 'PENDING' && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>🔐 OTP Verification</Text>
-            <Text style={styles.infoText}>
-              Ask customer for the pickup OTP to proceed
-            </Text>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.info }]}
-              onPress={onVerifyOTP}
-            >
-              <Text style={styles.actionButtonText}>Enter OTP</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {/* Status Timeline */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>📋 Status Timeline</Text>
+          {!tracking ? (
+            <Text style={styles.infoText}>No tracking yet. Tap “Start / Navigate” to begin.</Text>
+          ) : (
           <View style={styles.timeline}>
             <View
               style={[
                 styles.timelineItem,
-                tracking.pickup_assigned_at && styles.timelineItemCompleted,
+                (tracking as any).pickup_assigned_at && styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineTitle}>Assigned</Text>
-                {tracking.pickup_assigned_at && (
+                {(tracking as any).pickup_assigned_at && (
                   <Text style={styles.timelineTime}>
-                    {formatDateTime(tracking.pickup_assigned_at)}
+                    {formatDateTime((tracking as any).pickup_assigned_at)}
                   </Text>
                 )}
               </View>
@@ -399,15 +525,15 @@ export default function PickupJobDetailScreen(props: any) {
             <View
               style={[
                 styles.timelineItem,
-                tracking.pickup_start_time && styles.timelineItemCompleted,
+                (tracking as any).pickup_start_time && styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineTitle}>Pickup Started</Text>
-                {tracking.pickup_start_time && (
+                {(tracking as any).pickup_start_time && (
                   <Text style={styles.timelineTime}>
-                    {formatDateTime(tracking.pickup_start_time)}
+                    {formatDateTime((tracking as any).pickup_start_time)}
                   </Text>
                 )}
               </View>
@@ -416,15 +542,15 @@ export default function PickupJobDetailScreen(props: any) {
             <View
               style={[
                 styles.timelineItem,
-                tracking.pickup_otp_verified_at && styles.timelineItemCompleted,
+                ((tracking as any).pickup_otp_verified_at || (tracking as any).drop_otp_verified_at) && styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineTitle}>OTP Verified</Text>
-                {tracking.pickup_otp_verified_at && (
+                {((tracking as any).pickup_otp_verified_at || (tracking as any).drop_otp_verified_at) && (
                   <Text style={styles.timelineTime}>
-                    {formatDateTime(tracking.pickup_otp_verified_at)}
+                    {formatDateTime(((tracking as any).drop_otp_verified_at || (tracking as any).pickup_otp_verified_at) as any)}
                   </Text>
                 )}
               </View>
@@ -433,15 +559,15 @@ export default function PickupJobDetailScreen(props: any) {
             <View
               style={[
                 styles.timelineItem,
-                tracking.pickup_picked_time && styles.timelineItemCompleted,
+                (tracking as any).pickup_picked_time && styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineTitle}>Vehicle Picked</Text>
-                {tracking.pickup_picked_time && (
+                {(tracking as any).pickup_picked_time && (
                   <Text style={styles.timelineTime}>
-                    {formatDateTime(tracking.pickup_picked_time)}
+                    {formatDateTime((tracking as any).pickup_picked_time)}
                   </Text>
                 )}
               </View>
@@ -450,20 +576,21 @@ export default function PickupJobDetailScreen(props: any) {
             <View
               style={[
                 styles.timelineItem,
-                tracking.pickup_arrival_time && styles.timelineItemCompleted,
+                (tracking as any).pickup_arrival_time && styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineTitle}>Arrived at Workshop</Text>
-                {tracking.pickup_arrival_time && (
+                {(tracking as any).pickup_arrival_time && (
                   <Text style={styles.timelineTime}>
-                    {formatDateTime(tracking.pickup_arrival_time)}
+                    {formatDateTime((tracking as any).pickup_arrival_time)}
                   </Text>
                 )}
               </View>
             </View>
           </View>
+          )}
         </View>
 
         {/* Action Buttons */}
@@ -472,7 +599,7 @@ export default function PickupJobDetailScreen(props: any) {
         {/* Report Incident Button */}
         <TouchableOpacity
           style={[styles.secondaryButton, { backgroundColor: COLORS.danger }]}
-          onPress={onReportIncident}
+          onPress={onReportIncident || (() => (navigation as any).navigate?.('PickupIncident', { leadId }))}
         >
           <Text style={[styles.secondaryButtonText, { color: COLORS.white }]}>
             ⚠️ Report Incident

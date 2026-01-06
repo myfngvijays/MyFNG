@@ -11,8 +11,8 @@
     "kb:ingest-faqs": "node scripts/ingestFaqTxtToKb.mjs"
   },
   "dependencies": {
-    "@hookform/resolvers": "^3.3.0",
     "@fontsource/poppins": "^5.2.6",
+    "@hookform/resolvers": "^3.3.0",
     "@langchain/openai": "^0.6.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.1.0",
@@ -23,8 +23,8 @@
     "caniuse-lite": "^1.0.30001755",
     "clsx": "^2.1.0",
     "date-fns": "^4.1.0",
-    "lucide-react": "^0.344.0",
     "langchain": "^0.3.0",
+    "lucide-react": "^0.344.0",
     "next": "^14.2.0",
     "qrcode": "^1.5.4",
     "razorpay": "^2.9.6",
@@ -38,6 +38,7 @@
     "styled-jsx": "^5.1.1",
     "tailwind-merge": "^2.2.0",
     "tinymce": "^8.3.1",
+    "web-push": "^3.6.7",
     "zod": "^3.22.0",
     "zustand": "^4.5.0"
   },

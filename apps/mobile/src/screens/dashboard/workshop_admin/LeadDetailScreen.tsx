@@ -42,7 +42,7 @@ interface LeadDetail {
 
 export default function LeadDetailScreen() {
   const route = useRoute();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { leadId } = route.params as { leadId: string };
 
   const [lead, setLead] = useState<LeadDetail | null>(null);

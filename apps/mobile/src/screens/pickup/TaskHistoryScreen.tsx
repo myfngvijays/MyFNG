@@ -14,10 +14,10 @@ import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-export default function TaskHistoryScreen({ userId }) {
-  const [tasks, setTasks] = useState([]);
+export default function TaskHistoryScreen({ userId }: { userId?: string }) {
+  const [tasks, setTasks] = useState<any[]>([]);
   const [filter, setFilter] = useState('all'); // all, completed, cancelled
-  const [filteredTasks, setFilteredTasks] = useState([]);
+  const [filteredTasks, setFilteredTasks] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -172,7 +172,7 @@ export default function TaskHistoryScreen({ userId }) {
     return status === 'COMPLETED' ? COLORS.success : COLORS.danger;
   };
 
-  const renderTask = ({ item }) => (
+  const renderTask = ({ item }: { item: any }) => (
     <View style={styles.taskCard}>
       <View style={styles.taskHeader}>
         <View style={styles.taskTypeContainer}>

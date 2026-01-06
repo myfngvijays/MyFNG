@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyTeamAssignment } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -342,8 +343,25 @@ export async function POST(
       }
     }
     
-    // TODO: Send notifications to mechanic, supervisor, pickup boy
-    // TODO: Generate OTP if pickup required
+    // In-app notifications (Phase A): mechanic/supervisor/pickup boy
+    try {
+      await notifyTeamAssignment(
+        leadId,
+        (lead as any)?.lead_number || updatedLead?.lead_number || leadId,
+        mechanic_id || undefined,
+        supervisor_id || undefined,
+        pickup_boy_id || undefined,
+        (userProfile as any)?.full_name || 'Workshop',
+        {
+          vehicleNumber: (lead as any)?.vehicle_number || null,
+          vehicleModel: (lead as any)?.vehicle_model || null,
+          serviceType: (lead as any)?.service_type || (lead as any)?.serviceType || null,
+          bay: (lead as any)?.bay_number || (lead as any)?.bay || null,
+        }
+      );
+    } catch (e) {
+      console.warn('Team assignment notifications failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

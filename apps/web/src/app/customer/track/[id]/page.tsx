@@ -67,6 +67,10 @@ export default function TrackLeadPage() {
         setLead(null);
         setEvents([]);
         setMedia([]);
+        if (data?.error === 'PUBLIC_LINK_DISABLED') {
+          setLoadError(String(data?.message || 'This public link is not active yet. Please ask your service advisor to enable it.'));
+          return;
+        }
         const parts = [
           data?.error ? String(data.error) : 'Failed to load service request',
           data?.details ? `details: ${String(data.details)}` : null,
@@ -225,6 +229,25 @@ export default function TrackLeadPage() {
     if (status === 'REJECTED') return byCustomer ? 'REJECTED • Customer' : 'REJECTED • Advisor';
     if (status === 'APPROVED') return byCustomer ? `APPROVED • Customer (${choice})` : `APPROVED • Advisor (${choice})`;
     return 'PENDING';
+  };
+
+  // Public link rule:
+  // - If OEM or OES amount is 0, do NOT show that option to customer.
+  // - If only one option is available, it stays selected by default (customer can't toggle; can still reject).
+  const getCustomerPartChoice = (req: any) => {
+    const oem = Number(req?.oem_price ?? 0);
+    const oes = Number(req?.oes_price ?? 0);
+    const canOem = oem > 0;
+    const canOes = oes > 0;
+
+    // When only one (or none) option exists, lock choice
+    const locked = !(canOem && canOes);
+    const forcedChoice: 'OEM' | 'OES' = canOes && !canOem ? 'OES' : 'OEM';
+    const serverChoice: 'OEM' | 'OES' = req?.part_price_type === 'OES' ? 'OES' : 'OEM';
+    const uiChoice: 'OEM' | 'OES' = (decisionByRequestId[req?.id] as any) || serverChoice;
+    const choice: 'OEM' | 'OES' = locked ? forcedChoice : uiChoice;
+
+    return { choice, locked, canOem, canOes, oem, oes };
   };
 
   return (
@@ -582,10 +605,8 @@ export default function TrackLeadPage() {
                       {extraWork.map((req) => {
                         const status = String(req.status || 'PENDING');
                         const decisionLabel = getExtraWorkDecisionLabel(req);
-                        const oem = Number(req.oem_price ?? 0);
-                        const oes = Number(req.oes_price ?? 0);
+                        const { choice, locked, canOem, canOes, oem, oes } = getCustomerPartChoice(req);
                         const labour = Number(req.labour_price ?? 0);
-                        const choice = decisionByRequestId[req.id] || (req.part_price_type === 'OES' ? 'OES' : 'OEM');
                         const total = (choice === 'OES' ? oes : oem) + labour;
                         const acting = Boolean(actingByRequestId[req.id]);
                         const isHigh = Boolean(req.is_urgent);
@@ -617,30 +638,42 @@ export default function TrackLeadPage() {
                             <td className="py-3 px-3 text-right font-bold text-gray-900">₹{total.toFixed(2)}</td>
                             <td className="py-3 px-3">
                               {status === 'PENDING' ? (
-                                <div className="flex items-center gap-3">
-                                  <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
-                                    <input
-                                      type="radio"
-                                      name={`choice-desktop-${req.id}`}
-                                      className="h-4 w-4"
-                                      checked={choice === 'OEM'}
-                                      onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OEM' }))}
-                                      aria-label="Approve choice OEM"
-                                    />
-                                    OEM
-                                  </label>
-                                  <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
-                                    <input
-                                      type="radio"
-                                      name={`choice-desktop-${req.id}`}
-                                      className="h-4 w-4"
-                                      checked={choice === 'OES'}
-                                      onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OES' }))}
-                                      aria-label="Approve choice OES"
-                                    />
-                                    OES
-                                  </label>
-                                </div>
+                                canOem && canOes ? (
+                                  <div className="flex items-center gap-3">
+                                    <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
+                                      <input
+                                        type="radio"
+                                        name={`choice-desktop-${req.id}`}
+                                        className="h-4 w-4"
+                                        checked={choice === 'OEM'}
+                                        onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OEM' }))}
+                                        aria-label="Approve choice OEM"
+                                      />
+                                      OEM
+                                    </label>
+                                    <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
+                                      <input
+                                        type="radio"
+                                        name={`choice-desktop-${req.id}`}
+                                        className="h-4 w-4"
+                                        checked={choice === 'OES'}
+                                        onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OES' }))}
+                                        aria-label="Approve choice OES"
+                                      />
+                                      OES
+                                    </label>
+                                  </div>
+                                ) : (
+                                  <div className="inline-flex items-center gap-2">
+                                    <span className="text-xs text-gray-500">Selected</span>
+                                    <span className="px-2 py-1 rounded text-xs font-semibold bg-blue-50 text-blue-700">
+                                      {choice}
+                                    </span>
+                                    {locked && (
+                                      <span className="text-[11px] text-gray-500">(fixed)</span>
+                                    )}
+                                  </div>
+                                )
                               ) : (
                                 <span
                                   className={`px-2 py-1 rounded text-xs font-semibold ${
@@ -748,10 +781,8 @@ export default function TrackLeadPage() {
                   {extraWork.map((req) => {
                     const status = String(req.status || 'PENDING');
                     const decisionLabel = getExtraWorkDecisionLabel(req);
-                    const oem = Number(req.oem_price ?? 0);
-                    const oes = Number(req.oes_price ?? 0);
+                    const { choice, locked, canOem, canOes, oem, oes } = getCustomerPartChoice(req);
                     const labour = Number(req.labour_price ?? 0);
-                    const choice = decisionByRequestId[req.id] || (req.part_price_type === 'OES' ? 'OES' : 'OEM');
                     const total = (choice === 'OES' ? oes : oem) + labour;
                     const acting = Boolean(actingByRequestId[req.id]);
                     const isHigh = Boolean(req.is_urgent);
@@ -812,30 +843,42 @@ export default function TrackLeadPage() {
 
                         {status === 'PENDING' && (
                           <div className="mt-3 space-y-3">
-                            <div className="flex items-center gap-4">
-                              <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
-                                <input
-                                  type="radio"
-                                  name={`choice-mobile-${req.id}`}
-                                  className="h-4 w-4"
-                                  checked={choice === 'OEM'}
-                                  onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OEM' }))}
-                                  aria-label="Approve choice OEM"
-                                />
-                                OEM
-                              </label>
-                              <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
-                                <input
-                                  type="radio"
-                                  name={`choice-mobile-${req.id}`}
-                                  className="h-4 w-4"
-                                  checked={choice === 'OES'}
-                                  onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OES' }))}
-                                  aria-label="Approve choice OES"
-                                />
-                                OES
-                              </label>
-                            </div>
+                            {canOem && canOes ? (
+                              <div className="flex items-center gap-4">
+                                <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+                                  <input
+                                    type="radio"
+                                    name={`choice-mobile-${req.id}`}
+                                    className="h-4 w-4"
+                                    checked={choice === 'OEM'}
+                                    onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OEM' }))}
+                                    aria-label="Approve choice OEM"
+                                  />
+                                  OEM
+                                </label>
+                                <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+                                  <input
+                                    type="radio"
+                                    name={`choice-mobile-${req.id}`}
+                                    className="h-4 w-4"
+                                    checked={choice === 'OES'}
+                                    onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OES' }))}
+                                    aria-label="Approve choice OES"
+                                  />
+                                  OES
+                                </label>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm text-gray-600">Selected</div>
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2 py-1 rounded text-xs font-semibold bg-blue-50 text-blue-700">
+                                    {choice}
+                                  </span>
+                                  {locked && <span className="text-xs text-gray-500">(fixed)</span>}
+                                </div>
+                              </div>
+                            )}
 
                             <div className="flex flex-col gap-2">
                               <button

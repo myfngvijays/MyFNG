@@ -819,7 +819,7 @@ function getStatusColor(status: string): string {
     case 'ACCEPTED': return COLORS.green;
     case 'REJECTED': return COLORS.red;
     case 'IN_PROGRESS': return COLORS.orange;
-    default: return COLORS.gray;
+    default: return COLORS.gray[500];
   }
 }
 
@@ -828,7 +828,7 @@ function getPriorityColor(priority: string): string {
     case 'URGENT': return COLORS.red;
     case 'HIGH': return COLORS.orange;
     case 'NORMAL': return COLORS.blue;
-    default: return COLORS.gray;
+    default: return COLORS.gray[500];
   }
 }
 
@@ -836,7 +836,7 @@ function getCallStatusColor(status: string): string {
   switch (status) {
     case 'ANSWERED': return COLORS.green;
     case 'NO_ANSWER': return COLORS.orange;
-    default: return COLORS.gray;
+    default: return COLORS.gray[500];
   }
 }
 

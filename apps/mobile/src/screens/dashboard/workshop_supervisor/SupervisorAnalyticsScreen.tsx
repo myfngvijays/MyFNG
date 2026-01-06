@@ -46,7 +46,7 @@ interface DailyStats {
 }
 
 export default function SupervisorAnalyticsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [analytics, setAnalytics] = useState<Analytics>({
     totalJobs: 0,
     completedJobs: 0,
@@ -303,9 +303,11 @@ export default function SupervisorAnalyticsScreen() {
       .eq('workshop_id', workshopId)
       .eq('is_active', true);
 
-    const filteredMechanics = mechanics?.filter(
-      (m) => m.role?.role_code === 'WORKSHOP_MECHANIC'
-    ) || [];
+    const filteredMechanics =
+      mechanics?.filter((m: any) => {
+        const roleObj = Array.isArray(m.role) ? m.role[0] : m.role;
+        return roleObj?.role_code === 'WORKSHOP_MECHANIC';
+      }) || [];
 
     const performance = await Promise.all(
       filteredMechanics.map(async (mech) => {

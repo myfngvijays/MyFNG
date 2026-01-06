@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
 
 interface FlagLeadRequest {
   flag_reason: string; // FRAUD_SUSPECTED, IMAGE_MANIPULATION, OVERCHARGING, POOR_SERVICE, OTHER
@@ -178,6 +179,61 @@ export async function POST(
 
         await supabase.from('notifications').insert(notifications);
       }
+    }
+
+    // Notify workshop admin/supervisor (audit failed/flagged)
+    try {
+      if ((lead as any)?.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: (lead as any).workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'SYSTEM_ALERT',
+          title: `Audit Flagged (${body.severity})`,
+          message: `Lead ${lead.lead_number} flagged by auditor: ${body.flag_reason}. ${body.action_required ? `Action: ${body.action_required}` : ''}`.trim(),
+          priority: body.severity === 'CRITICAL' ? 'URGENT' : 'HIGH',
+          leadId,
+          leadNumber: lead.lead_number,
+          actionUrl: `/dashboard/workshop_admin/leads/${leadId}`,
+          metadata: {
+            kind: 'AUDIT_FLAGGED',
+            flag_reason: body.flag_reason,
+            severity: body.severity,
+            description: body.description,
+            action_required: body.action_required,
+            auditor_id: userProfile.id,
+            auditor_name: userProfile.full_name,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('Workshop audit-flag notification failed (non-blocking):', e);
+    }
+
+    // Notify assigned mechanic (mechanic-focused observation)
+    try {
+      const mechanicId = (lead as any)?.assigned_mechanic_id as string | null | undefined;
+      if (mechanicId) {
+        await createNotification({
+          userId: mechanicId,
+          type: 'AUDIT_FLAGGED',
+          title: 'Audit Observation Added',
+          message: `Lead ${lead.lead_number || leadId}: ${body.flag_reason}. Review remarks and follow supervisor guidance.`,
+          priority: body.severity === 'CRITICAL' ? 'URGENT' : 'HIGH',
+          leadId,
+          leadNumber: lead.lead_number || leadId,
+          actionUrl: `/dashboard/workshop_mechanic/jobs/${leadId}/manage`,
+          metadata: {
+            kind: 'MECHANIC_AUDIT_OBSERVATION',
+            flag_reason: body.flag_reason,
+            severity: body.severity,
+            description: body.description,
+            auditor_id: userProfile.id,
+            auditor_name: userProfile.full_name,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('Mechanic audit observation notification failed (non-blocking):', e);
     }
 
     return NextResponse.json({

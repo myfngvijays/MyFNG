@@ -7,6 +7,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { CreateComplaintInput, ComplaintsResponse } from '@/shared/types/complaints-fraud';
+import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
 
 /**
  * GET /api/complaints
@@ -120,6 +121,96 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Error creating complaint:', error);
       return NextResponse.json({ error: 'Failed to create complaint' }, { status: 500 });
+    }
+
+    // Notify Workshop Admin/Supervisor if complaint is tied to a workshop
+    try {
+      const workshopId = (complaint as any)?.workshop_id as string | null | undefined;
+      if (workshopId) {
+        const leadId = (complaint as any)?.lead_id as string | null | undefined;
+        let leadNumber: string | undefined;
+        if (leadId) {
+          const { data: lead } = await supabase
+            .from('service_leads')
+            .select('lead_number')
+            .eq('id', leadId)
+            .maybeSingle();
+          leadNumber = (lead as any)?.lead_number || leadId;
+        }
+
+        const complaintNumber = (complaint as any)?.complaint_number || 'Complaint';
+        const complaintType = (complaint as any)?.complaint_type || 'Complaint';
+        const severity = (complaint as any)?.severity || 'MEDIUM';
+
+        await notifyWorkshopRoles({
+          workshopId,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'SYSTEM_ALERT',
+          title: `Customer Complaint Raised (${severity})`,
+          message: leadNumber
+            ? `${complaintNumber}: ${complaintType} for lead ${leadNumber}. Please review and act.`
+            : `${complaintNumber}: ${complaintType}. Please review and act.`,
+          priority: severity === 'CRITICAL' || severity === 'HIGH' ? 'URGENT' : 'HIGH',
+          leadId: leadId || undefined,
+          leadNumber,
+          actionUrl: leadId ? `/dashboard/workshop_admin/leads/${leadId}` : '/dashboard/workshop_admin',
+          metadata: {
+            kind: 'CUSTOMER_COMPLAINT',
+            complaint_id: (complaint as any)?.id,
+            complaint_number: complaintNumber,
+            complaint_type: complaintType,
+            severity,
+            priority: (complaint as any)?.priority,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('Workshop complaint notification failed (non-blocking):', e);
+    }
+
+    // Notify assigned mechanic (mechanic-focused)
+    try {
+      const complaintNumber = (complaint as any)?.complaint_number || 'Complaint';
+      const complaintType = (complaint as any)?.complaint_type || 'Complaint';
+      const severity = (complaint as any)?.severity || 'MEDIUM';
+
+      const leadId = (complaint as any)?.lead_id as string | null | undefined;
+      let leadNumber: string | undefined;
+      let mechanicId = (complaint as any)?.mechanic_id as string | null | undefined;
+
+      if (leadId) {
+        const { data: lead } = await supabase
+          .from('service_leads')
+          .select('lead_number, assigned_mechanic_id')
+          .eq('id', leadId)
+          .maybeSingle();
+        leadNumber = (lead as any)?.lead_number || leadId;
+        mechanicId = mechanicId || (lead as any)?.assigned_mechanic_id || null;
+      }
+
+      if (mechanicId) {
+        await createNotification({
+          userId: mechanicId,
+          type: 'CUSTOMER_COMPLAINT',
+          title: `Customer Complaint Logged (${severity})`,
+          message: leadNumber
+            ? `${complaintNumber}: ${complaintType} for lead ${leadNumber}. Await supervisor instructions.`
+            : `${complaintNumber}: ${complaintType}. Await supervisor instructions.`,
+          priority: severity === 'CRITICAL' || severity === 'HIGH' ? 'URGENT' : 'HIGH',
+          leadId: leadId || undefined,
+          leadNumber,
+          actionUrl: leadId ? `/dashboard/workshop_mechanic/jobs/${leadId}/manage` : undefined,
+          metadata: {
+            kind: 'MECHANIC_COMPLAINT',
+            complaint_id: (complaint as any)?.id,
+            complaint_number: complaintNumber,
+            complaint_type: complaintType,
+            severity,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('Mechanic complaint notification failed (non-blocking):', e);
     }
 
     return NextResponse.json({ success: true, complaint }, { status: 201 });

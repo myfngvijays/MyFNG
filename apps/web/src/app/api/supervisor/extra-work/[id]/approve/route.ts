@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyExtraWorkDecision, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ export async function POST(
     // Get user profile with role (users_login is mapped by email/phone; not always same as auth user.id)
     const email = (user.email || '').trim();
     const phone = (user.phone || '').trim();
-    const selectProfile = 'id, email, phone, workshop_id, role_id, roles!inner(role_code)';
+    const selectProfile = 'id, email, phone, full_name, workshop_id, role_id, roles!inner(role_code)';
 
     const { data: userProfileByEmail, error: profileErrorByEmail } = email
       ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
@@ -79,7 +80,7 @@ export async function POST(
     // Get additional job request details
     const { data: extraWork, error: extraWorkError } = await supabase
       .from('lead_extra_charges')
-      .select('*, service_leads!inner(workshop_id, assigned_mechanic_id)')
+      .select('*, service_leads!inner(workshop_id, assigned_mechanic_id, lead_number)')
       .eq('id', extraWorkId)
       .single();
 
@@ -194,8 +195,40 @@ export async function POST(
     // NOTE: supervisor_actions is auto-logged by a DB trigger on lead_extra_charges updates.
     // We intentionally avoid inserting here to prevent duplicates and RLS errors.
 
-    // TODO: Send notification to mechanic (approval confirmed)
-    // TODO: Send notification to workshop admin
+    // In-app notifications (Phase A)
+    try {
+      const leadNumber = (extraWork as any)?.service_leads?.lead_number || extraWork.lead_id;
+      const mechanicId = (extraWork as any)?.service_leads?.assigned_mechanic_id;
+      const supervisorName = (userProfile as any)?.full_name || 'Supervisor';
+
+      if (mechanicId) {
+        await notifyExtraWorkDecision(
+          extraWork.lead_id,
+          leadNumber,
+          mechanicId,
+          true,
+          finalAmount,
+          supervisorName
+        );
+      }
+
+      if (userProfile.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: userProfile.workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN'],
+          type: 'EXTRA_WORK_APPROVED',
+          title: 'Extra work approved',
+          message: `Extra work approved for lead ${leadNumber}. Amount: ₹${finalAmount}`,
+          priority: 'LOW',
+          leadId: extraWork.lead_id,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_admin/leads/pending`,
+          metadata: { extra_work_id: extraWorkId, amount: finalAmount },
+        });
+      }
+    } catch (e) {
+      console.warn('Extra work approval notifications failed (non-blocking):', e);
+    }
     // TODO: Update estimated cost for lead
 
     return NextResponse.json({

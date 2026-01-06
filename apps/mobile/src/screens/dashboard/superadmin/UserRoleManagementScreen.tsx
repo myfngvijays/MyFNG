@@ -29,7 +29,7 @@ const AVAILABLE_ROLES = [
   { code: 'RSA_MANAGER', name: 'RSA Manager', icon: 'car-emergency', color: COLORS.red },
   { code: 'AUDITOR', name: 'Quality Auditor', icon: 'shield-check', color: COLORS.indigo },
   { code: 'DIGITAL_MARKETING', name: 'Digital Marketing', icon: 'bullhorn', color: COLORS.purple },
-  { code: 'CUSTOMER', name: 'Customer', icon: 'account', color: COLORS.gray },
+  { code: 'CUSTOMER', name: 'Customer', icon: 'account', color: COLORS.gray[500] },
 ];
 
 const SUB_ADMIN_DEPARTMENTS = [
@@ -242,7 +242,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
 
   const getRoleColor = (roleCode: string) => {
     const role = AVAILABLE_ROLES.find(r => r.code === roleCode);
-    return role?.color || COLORS.gray;
+    return role?.color || COLORS.gray[500];
   };
 
   const renderUserCard = ({ item }: { item: any }) => {
@@ -820,7 +820,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: COLORS.gray + '40',
+    borderColor: COLORS.gray[500] + '40',
     borderRadius: 8,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -861,7 +861,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: SPACING.md,
     borderRadius: 12,
-    backgroundColor: COLORS.gray + '20',
+    backgroundColor: COLORS.gray[500] + '20',
     alignItems: 'center',
   },
   modalCancelText: {

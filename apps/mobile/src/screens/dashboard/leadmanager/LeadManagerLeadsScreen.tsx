@@ -289,7 +289,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
       case 'URGENT': return COLORS.red;
       case 'HIGH': return COLORS.orange;
       case 'NORMAL': return COLORS.blue;
-      default: return COLORS.gray;
+      default: return COLORS.gray[500];
     }
   };
 
@@ -301,7 +301,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
       case 'REJECTED': return COLORS.red;
       case 'IN_PROGRESS': return COLORS.orange;
       case 'FOLLOW_UP': return COLORS.purple;
-      default: return COLORS.gray;
+      default: return COLORS.gray[500];
     }
   };
 

@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -143,6 +144,29 @@ export async function POST(
           { error: 'Failed to reject audit', details: updateError?.message },
           { status: 500 }
         );
+      }
+
+      // Notify workshop admin/supervisor (audit failed / rejected)
+      try {
+        await notifyWorkshopRoles({
+          workshopId: currentAudit.workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'SYSTEM_ALERT',
+          title: 'Audit Rejected (Action Required)',
+          message: `Workshop audit was rejected: ${rejection_reason}. Please address issues and prepare for follow-up.`,
+          priority: 'HIGH',
+          actionUrl: '/dashboard/workshop_admin/settings',
+          metadata: {
+            kind: 'AUDIT_REJECTED',
+            audit_id: auditId,
+            rejection_reason,
+            audit_type: currentAudit.audit_type,
+            score_percentage: currentAudit.score_percentage,
+            audit_grade: currentAudit.audit_grade,
+          },
+        });
+      } catch (e) {
+        console.warn('Audit rejected notification failed (non-blocking):', e);
       }
 
       // Log action

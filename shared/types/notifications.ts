@@ -22,7 +22,12 @@ export type NotificationType =
   | 'FOLLOW_UP_SCHEDULED'
   | 'LEAD_CLOSED'
   | 'SLA_WARNING'
-  | 'SLA_BREACH';
+  | 'SLA_BREACH'
+  // Generic system-level notification types (used for role-specific alerts and summaries)
+  | 'SYSTEM_ALERT'
+  | 'AUDIT_FLAGGED'
+  | 'CUSTOMER_COMPLAINT'
+  | 'DAILY_SUMMARY';
 
 export type NotificationPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 

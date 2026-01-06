@@ -1,5 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -171,9 +172,53 @@ export async function POST(
         }
       });
 
-    // TODO: Send notification to mechanic (vehicle ready)
-    // TODO: Send notification to workshop admin
-    // TODO: Send notification to customer (vehicle received)
+    // In-app notifications (Phase A)
+    try {
+      const leadNumber = (lead as any)?.lead_number || leadId;
+      const msg = `Vehicle delivered to workshop for lead ${leadNumber}. Ready for service.`;
+
+      if ((lead as any)?.assigned_mechanic_id) {
+        await createNotification({
+          userId: (lead as any).assigned_mechanic_id,
+          type: 'PICKUP_COMPLETED',
+          title: 'Vehicle dropped at workshop',
+          message: msg,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_mechanic/jobs/${leadId}/manage`,
+        });
+      }
+
+      if ((lead as any)?.assigned_supervisor_id) {
+        await createNotification({
+          userId: (lead as any).assigned_supervisor_id,
+          type: 'PICKUP_COMPLETED',
+          title: 'Vehicle dropped at workshop',
+          message: msg,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`,
+        });
+      }
+
+      if ((lead as any)?.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: (lead as any).workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN'],
+          type: 'PICKUP_COMPLETED',
+          title: 'Vehicle dropped at workshop',
+          message: msg,
+          priority: 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_admin/leads/pending`,
+        });
+      }
+    } catch (e) {
+      console.warn('Pickup completed notifications failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

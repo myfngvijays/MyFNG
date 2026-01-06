@@ -10,7 +10,7 @@ import { sendSMS } from '@/lib/services/smsService';
 import { sendInvoiceViaWhatsApp } from '@/lib/services/whatsappService';
 import { createShortUrl } from '@/lib/services/urlShortener';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
-import { createNotification, notifyWorkshopAdmin } from '@/lib/notifications';
+import { createNotification, notifyTelecallerTeamlead, notifyWorkshopRoles } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -419,12 +419,18 @@ export async function POST(
       try {
         const lead = invoice.lead as any;
         if (lead?.workshop_id) {
-          await notifyWorkshopAdmin(
-            lead.workshop_id,
-            invoice.lead_id,
-            lead.lead_number || invoice.lead_id,
-            userProfile.name || 'Billing'
-          );
+          await notifyWorkshopRoles({
+            workshopId: lead.workshop_id,
+            roleCodes: ['WORKSHOP_ADMIN'],
+            type: 'INVOICE_SENT',
+            title: 'Invoice sent to customer',
+            message: `Invoice ${invoice.invoice_number} sent to customer. Status: AWAITING_PAYMENT.`,
+            priority: 'LOW',
+            leadId: invoice.lead_id,
+            leadNumber: lead.lead_number || invoice.lead_id,
+            actionUrl: `/dashboard/workshop_admin/leads/pending`,
+            metadata: { invoice_id: invoiceId, methods },
+          });
         }
         if (lead?.assigned_supervisor_id) {
           await createNotification({
@@ -436,6 +442,33 @@ export async function POST(
             leadId: invoice.lead_id,
             leadNumber: lead?.lead_number,
             actionUrl: `/dashboard/workshop_supervisor/jobs/${invoice.lead_id}`,
+            metadata: { invoice_id: invoiceId, methods },
+          });
+        }
+
+        if (lead?.assigned_telecaller_id) {
+          const telecallerId = String(lead.assigned_telecaller_id);
+          const leadNumber = lead.lead_number || invoice.lead_id;
+          await createNotification({
+            userId: telecallerId,
+            type: 'INVOICE_SENT',
+            title: 'Invoice sent to customer',
+            message: `Invoice ${invoice.invoice_number} sent to customer for lead ${leadNumber}.`,
+            priority: 'LOW',
+            leadId: invoice.lead_id,
+            leadNumber,
+            actionUrl: `/dashboard/telecaller/leads/${invoice.lead_id}`,
+            metadata: { invoice_id: invoiceId, methods },
+          });
+
+          await notifyTelecallerTeamlead({
+            telecallerId,
+            leadId: invoice.lead_id,
+            leadNumber,
+            type: 'INVOICE_SENT',
+            title: 'Invoice sent to customer',
+            message: `Invoice ${invoice.invoice_number} sent to customer for lead ${leadNumber}.`,
+            priority: 'LOW',
             metadata: { invoice_id: invoiceId, methods },
           });
         }

@@ -1,6 +1,29 @@
 // Notification utility functions
 import { createClient } from '@/lib/supabase/server';
 import { NotificationType, NotificationPriority } from '@/shared/types/notifications';
+import { dispatchPushToUser } from '@/lib/push/dispatchPush';
+
+/**
+ * ============================================================
+ * Notification routing conventions (Phase A - web app open)
+ * ============================================================
+ * We store notifications in `public.notifications` and rely on:
+ * - `NotificationContext` (client) to subscribe to INSERT via Supabase realtime
+ * - UI (`NotificationCenter` / `NotificationBell`) to show in-app list
+ *
+ * Role-wise routing (requested):
+ * - TELECALLER: lead assigned/reassigned, followup/escalations, lead lifecycle changes impacting telecaller
+ * - Teamlead: SUB_ADMIN + department='TELECALLER': escalations, workshop accept/reject/major status changes for their team
+ * - Workshop roles: admin/supervisor/mechanic/pickup boy via existing helpers below
+ *
+ * Action URL conventions (web):
+ * - Telecaller lead: `/dashboard/telecaller/leads/{leadId}`
+ * - Teamlead dashboard: `/dashboard/sub_admin/telecaller`
+ * - Workshop admin pending leads: `/dashboard/workshop_admin/leads/pending`
+ * - Workshop supervisor job: `/dashboard/workshop_supervisor/jobs/{leadId}`
+ * - Workshop mechanic manage: `/dashboard/workshop_mechanic/jobs/{leadId}/manage`
+ * - Pickup tasks: `/dashboard/workshop_pickup_boy/tasks/{leadId}`
+ */
 
 interface CreateNotificationParams {
   userId: string;
@@ -45,6 +68,11 @@ export async function createNotification(params: CreateNotificationParams) {
       return null;
     }
 
+    // Final: fan-out push (best-effort, non-blocking)
+    if (data?.id && params.userId) {
+      void dispatchPushToUser(params.userId, data as any);
+    }
+
     return data;
   } catch (error) {
     console.error('Unexpected error creating notification:', error);
@@ -82,11 +110,102 @@ export async function createBulkNotifications(notifications: CreateNotificationP
       return [];
     }
 
+    // Final: push fan-out (best-effort)
+    try {
+      const rows = (data || []) as any[];
+      for (const row of rows) {
+        const userId = String(row.user_id || '');
+        if (userId) void dispatchPushToUser(userId, row as any);
+      }
+    } catch (e) {
+      console.warn('Bulk push fan-out failed (non-blocking):', e);
+    }
+
     return data;
   } catch (error) {
     console.error('Unexpected error creating bulk notifications:', error);
     return [];
   }
+}
+
+async function getTelecallerTeamleadsForTelecaller(telecallerId: string) {
+  const supabase = await createClient();
+
+  // Teamlead model: SUB_ADMIN with department='TELECALLER' who has the telecaller in their team
+  const { data, error } = await supabase
+    .from('subadmin_team_assignments')
+    .select('subadmin_id')
+    .eq('team_member_id', telecallerId)
+    .eq('department', 'TELECALLER')
+    .eq('is_active', true);
+
+  if (error) {
+    console.warn('Failed to fetch telecaller teamleads:', error);
+    return [];
+  }
+
+  const ids = Array.from(new Set((data || []).map((r: any) => r.subadmin_id).filter(Boolean)));
+  return ids as string[];
+}
+
+export async function notifyTelecallerAssignedToLead(params: {
+  leadId: string;
+  leadNumber: string;
+  telecallerId: string;
+  assignedByName?: string;
+  isReassignment?: boolean;
+  notes?: string;
+}) {
+  const { leadId, leadNumber, telecallerId, assignedByName, isReassignment, notes } = params;
+
+  const title = isReassignment ? 'Lead reassigned to you' : 'New lead assigned';
+  const message = [
+    `${leadNumber} assigned to you${assignedByName ? ` by ${assignedByName}` : ''}.`,
+    notes ? `Notes: ${notes}` : null,
+  ].filter(Boolean).join(' ');
+
+  await createNotification({
+    userId: telecallerId,
+    type: 'LEAD_ASSIGNED',
+    title,
+    message,
+    priority: 'HIGH',
+    leadId,
+    leadNumber,
+    relatedUserName: assignedByName,
+    actionUrl: `/dashboard/telecaller/leads/${leadId}`,
+    metadata: { is_reassignment: Boolean(isReassignment) },
+  });
+}
+
+export async function notifyTelecallerTeamlead(params: {
+  telecallerId: string;
+  leadId: string;
+  leadNumber: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  priority?: NotificationPriority;
+  actionUrl?: string;
+  metadata?: Record<string, any>;
+}) {
+  const { telecallerId, leadId, leadNumber, type, title, message, priority, actionUrl, metadata } = params;
+  const teamleadIds = await getTelecallerTeamleadsForTelecaller(telecallerId);
+  if (teamleadIds.length === 0) return;
+
+  await createBulkNotifications(
+    teamleadIds.map((id) => ({
+      userId: id,
+      type,
+      title,
+      message,
+      priority: priority || 'MEDIUM',
+      leadId,
+      leadNumber,
+      actionUrl: actionUrl || `/dashboard/sub_admin/telecaller`,
+      metadata: { ...(metadata || {}), telecaller_id: telecallerId },
+    }))
+  );
 }
 
 // Helper function to notify team members when a lead is assigned
@@ -96,16 +215,31 @@ export async function notifyTeamAssignment(
   mechanicId?: string,
   supervisorId?: string,
   pickupBoyId?: string,
-  assignedBy?: string
+  assignedBy?: string,
+  leadMeta?: {
+    vehicleNumber?: string | null;
+    vehicleModel?: string | null;
+    serviceType?: string | null;
+    bay?: string | null;
+  }
 ) {
   const notifications: CreateNotificationParams[] = [];
 
   if (mechanicId) {
+    const parts = [
+      `Lead: ${leadNumber}`,
+      leadMeta?.vehicleNumber ? `Vehicle: ${leadMeta.vehicleNumber}` : null,
+      leadMeta?.vehicleModel ? `Model: ${leadMeta.vehicleModel}` : null,
+      leadMeta?.serviceType ? `Service: ${leadMeta.serviceType}` : null,
+      leadMeta?.bay ? `Bay: ${leadMeta.bay}` : null,
+      'Action: Start inspection',
+    ].filter(Boolean);
+
     notifications.push({
       userId: mechanicId,
       type: 'TEAM_ASSIGNED',
       title: 'New Job Assigned',
-      message: `You have been assigned to work on lead ${leadNumber}`,
+      message: parts.length > 0 ? parts.join(' • ') : `You have been assigned to work on lead ${leadNumber}`,
       priority: 'HIGH',
       leadId,
       leadNumber,
@@ -283,6 +417,37 @@ async function getUsersInWorkshopByRoleCodes(workshopId: string, roleCodes: stri
     .eq('is_active', true);
 
   return (data || []) as Array<{ id: string; full_name?: string }>;
+}
+
+export async function notifyWorkshopRoles(params: {
+  workshopId: string;
+  roleCodes: string[];
+  type: NotificationType;
+  title: string;
+  message: string;
+  priority?: NotificationPriority;
+  leadId?: string;
+  leadNumber?: string;
+  actionUrl?: string;
+  metadata?: Record<string, any>;
+}) {
+  const { workshopId, roleCodes, type, title, message, priority, leadId, leadNumber, actionUrl, metadata } = params;
+  const users = await getUsersInWorkshopByRoleCodes(workshopId, roleCodes);
+  if (users.length === 0) return;
+
+  await createBulkNotifications(
+    users.map(u => ({
+      userId: u.id,
+      type,
+      title,
+      message,
+      priority: priority || 'MEDIUM',
+      leadId,
+      leadNumber,
+      actionUrl,
+      metadata,
+    }))
+  );
 }
 
 export async function notifyReadyForQC(

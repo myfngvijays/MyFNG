@@ -11,7 +11,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 
-export default function PickupBoyProfileScreen({ userId }) {
+export default function PickupBoyProfileScreen({ userId }: { userId?: string }) {
   const [profile, setProfile] = useState<any>(null);
   const [stats, setStats] = useState({
     totalTasks: 0,

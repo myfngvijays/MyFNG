@@ -119,13 +119,16 @@ export default function LeadManagerWorkshopDetailScreen() {
       .eq('workshop_id', workshopId)
       .eq('status', 'COMPLETED');
 
-    const acceptanceRate = totalLeads > 0 ? (acceptedLeads / totalLeads) * 100 : 0;
-    const completionRate = acceptedLeads > 0 ? (completedLeads / acceptedLeads) * 100 : 0;
+    const total = totalLeads ?? 0;
+    const accepted = acceptedLeads ?? 0;
+    const completed = completedLeads ?? 0;
+    const acceptanceRate = total > 0 ? (accepted / total) * 100 : 0;
+    const completionRate = accepted > 0 ? (completed / accepted) * 100 : 0;
 
     setStats({
-      total_leads: totalLeads || 0,
-      accepted_leads: acceptedLeads || 0,
-      completed_leads: completedLeads || 0,
+      total_leads: total,
+      accepted_leads: accepted,
+      completed_leads: completed,
       acceptance_rate: parseFloat(acceptanceRate.toFixed(2)),
       completion_rate: parseFloat(completionRate.toFixed(2)),
     });

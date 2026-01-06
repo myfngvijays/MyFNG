@@ -363,7 +363,7 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
       >
         {followUps.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Icon name="calendar-check" size={64} color={COLORS.gray} />
+            <Icon name="calendar-check" size={64} color={COLORS.gray[500]} />
             <Text style={styles.emptyTitle}>No Follow-ups</Text>
             <Text style={styles.emptyText}>
               {filter === 'pending'
@@ -384,7 +384,7 @@ function getStatusColor(status: string): string {
     case 'PENDING': return COLORS.orange + '30';
     case 'COMPLETED': return COLORS.green + '30';
     case 'MISSED': return COLORS.red + '30';
-    default: return COLORS.gray + '30';
+    default: return COLORS.gray[500] + '30';
   }
 }
 
@@ -392,7 +392,7 @@ function getPriorityColor(priority: string): string {
   switch (priority) {
     case 'URGENT': return COLORS.red + '20';
     case 'HIGH': return COLORS.orange + '20';
-    default: return COLORS.gray + '20';
+    default: return COLORS.gray[500] + '20';
   }
 }
 
@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray + '30',
+    borderBottomColor: COLORS.gray[500] + '30',
   },
   filterTab: {
     paddingHorizontal: SPACING.lg,
@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 1,
-    backgroundColor: COLORS.gray + '30',
+    backgroundColor: COLORS.gray[500] + '30',
   },
   statValue: {
     fontSize: 24,
@@ -600,7 +600,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: COLORS.gray + '20',
+    borderTopColor: COLORS.gray[500] + '20',
   },
   completedText: {
     fontSize: 12,

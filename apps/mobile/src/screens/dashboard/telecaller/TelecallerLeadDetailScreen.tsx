@@ -272,7 +272,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
         >
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Lead Details</Text>
+        <Text style={styles.headerBarTitle}>Lead Details</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -602,7 +602,7 @@ function getStatusColor(status: string): string {
     case 'ASSIGNED': return COLORS.indigo + '30';
     case 'ACCEPTED': return COLORS.green + '30';
     case 'REJECTED': return COLORS.red + '30';
-    default: return COLORS.gray + '30';
+    default: return COLORS.gray[500] + '30';
   }
 }
 
@@ -610,7 +610,7 @@ function getCallStatusColor(status: string): string {
   switch (status) {
     case 'ANSWERED': return COLORS.green + '30';
     case 'NO_ANSWER': return COLORS.orange + '30';
-    default: return COLORS.gray + '30';
+    default: return COLORS.gray[500] + '30';
   }
 }
 
@@ -618,7 +618,7 @@ function getPriorityColor(priority: string): string {
   switch (priority) {
     case 'URGENT': return COLORS.red + '30';
     case 'HIGH': return COLORS.orange + '30';
-    default: return COLORS.gray + '30';
+    default: return COLORS.gray[500] + '30';
   }
 }
 
@@ -645,7 +645,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 20,
   },
-  headerTitle: {
+  headerBarTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
@@ -752,7 +752,7 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 1,
-    backgroundColor: COLORS.gray + '30',
+    backgroundColor: COLORS.gray[500] + '30',
   },
   statValue: {
     fontSize: 18,
@@ -839,7 +839,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: COLORS.gray + '40',
+    borderColor: COLORS.gray[500] + '40',
     borderRadius: 8,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -864,7 +864,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   formButtonSecondary: {
-    backgroundColor: COLORS.gray + '30',
+    backgroundColor: COLORS.gray[500] + '30',
   },
   formButtonTextPrimary: {
     color: '#fff',
@@ -876,7 +876,7 @@ const styles = StyleSheet.create({
   },
   logCard: {
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray + '20',
+    borderBottomColor: COLORS.gray[500] + '20',
     paddingBottom: SPACING.sm,
     marginBottom: SPACING.sm,
   },

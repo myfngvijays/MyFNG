@@ -7,6 +7,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
+import { notifyWorkshopRoles } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -333,6 +334,32 @@ export async function POST(
 
     // Send delivery confirmation to customer
     // TODO: Send SMS/Email/WhatsApp notification
+
+    // Workshop Admin notification (final)
+    try {
+      if ((lead as any)?.workshop_id) {
+        const leadNumber = (lead as any)?.lead_number || leadId;
+        const title = damage_reported ? 'Delivered (damage reported)' : 'Vehicle delivered successfully';
+        const msg = damage_reported
+          ? `Lead ${leadNumber} delivered. Damage reported; ticket created.`
+          : `Lead ${leadNumber} delivered successfully.`;
+
+        await notifyWorkshopRoles({
+          workshopId: (lead as any).workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'SYSTEM_ALERT',
+          title,
+          message: msg,
+          priority: damage_reported ? 'HIGH' : 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_supervisor/pickup-delivery`,
+          metadata: { kind: 'DELIVERY_COMPLETED', damage_reported: Boolean(damage_reported), support_ticket_id: supportTicketId },
+        });
+      }
+    } catch (e) {
+      console.warn('Delivery API notification failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

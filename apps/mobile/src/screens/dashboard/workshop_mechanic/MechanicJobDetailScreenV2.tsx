@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
+import { ENV } from '../../../config/environment';
 
 interface JobDetail {
   id: string;
@@ -194,7 +195,7 @@ export default function MechanicJobDetailScreen({ route }: any) {
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/mechanic/jobs/${jobId}/status`, {
+      const response = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${jobId}/status`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -224,7 +225,7 @@ export default function MechanicJobDetailScreen({ route }: any) {
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/mechanic/jobs/${jobId}/checklist`, {
+      const response = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${jobId}/checklist`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -330,7 +331,7 @@ export default function MechanicJobDetailScreen({ route }: any) {
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
 
-      const apiResponse = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/mechanic/jobs/${jobId}/media`, {
+      const apiResponse = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${jobId}/media`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -365,7 +366,7 @@ export default function MechanicJobDetailScreen({ route }: any) {
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/mechanic/jobs/${jobId}/notes`, {
+      const response = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${jobId}/notes`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

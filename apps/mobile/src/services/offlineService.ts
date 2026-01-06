@@ -227,7 +227,7 @@ export async function getLastSyncTime(): Promise<Date | null> {
  * Setup network listener
  */
 export function setupNetworkListener(onOnline: () => void, onOffline: () => void) {
-  return NetInfo.addEventListener((state) => {
+  return NetInfo.addEventListener((state: any) => {
     if (state.isConnected) {
       console.log('[OFFLINE] Connection restored');
       onOnline();

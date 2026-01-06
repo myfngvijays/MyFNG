@@ -118,7 +118,11 @@ export default function TeamPerformanceScreen() {
       }
 
       // Filter only mechanics
-      const mechanics = mechanicsData?.filter(m => m.role?.role_code === 'WORKSHOP_MECHANIC') || [];
+      const mechanics =
+        mechanicsData?.filter((m: any) => {
+          const roleObj = Array.isArray(m.role) ? m.role[0] : m.role;
+          return roleObj?.role_code === 'WORKSHOP_MECHANIC';
+        }) || [];
       console.log('👨‍🔧 Found', mechanics.length, 'mechanics');
 
       // Get jobs data for last 30 days
@@ -199,7 +203,8 @@ export default function TeamPerformanceScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchPerformanceData(workshopId);
+    if (workshopId) fetchPerformanceData(workshopId);
+    else setRefreshing(false);
   };
 
   return (

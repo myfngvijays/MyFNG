@@ -4,19 +4,64 @@ import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
 import NotificationBell from './NotificationBell';
 
 interface DashboardHeaderProps {
-  name: string;
-  role: string;
-  onLogout: () => void;
+  // Default (dashboard) mode
+  name?: string;
+  role?: string;
+  onLogout?: () => void;
   onNotificationPress?: () => void;
+
+  // Simple header mode (used by some role sub-screens)
+  title?: string;
+  onBack?: () => void;
+
+  // Legacy aliases used by some dashboards
+  userName?: string;
+  userRole?: string;
+  userProfile?: any;
+  subtitle?: string;
 }
 
-export default function DashboardHeader({ name, role, onLogout, onNotificationPress }: DashboardHeaderProps) {
+export default function DashboardHeader({
+  name,
+  role,
+  onLogout,
+  onNotificationPress,
+  title,
+  onBack,
+  userName,
+  userRole,
+  userProfile,
+  subtitle,
+}: DashboardHeaderProps) {
+  // Simple header: back + title (no welcome, no logout)
+  if (title) {
+    return (
+      <View style={styles.header}>
+        <View style={styles.leftSection}>
+          <View style={styles.simpleRow}>
+            {onBack && (
+              <TouchableOpacity onPress={onBack} style={styles.backButton}>
+                <Text style={styles.backText}>←</Text>
+              </TouchableOpacity>
+            )}
+            <Text style={styles.simpleTitle}>{title}</Text>
+          </View>
+        </View>
+        <View style={styles.rightSection}>
+          {onNotificationPress && (
+            <NotificationBell onPress={onNotificationPress} size={22} color={COLORS.white} />
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.header}>
       <View style={styles.leftSection}>
         <Text style={styles.greeting}>Welcome back,</Text>
-        <Text style={styles.name}>{name || 'User'}</Text>
-        <Text style={styles.role}>{role}</Text>
+        <Text style={styles.name}>{name || userName || userProfile?.full_name || 'User'}</Text>
+        <Text style={styles.role}>{role || userRole || userProfile?.role?.role_name || subtitle || ''}</Text>
       </View>
       <View style={styles.rightSection}>
         {onNotificationPress && (
@@ -26,9 +71,11 @@ export default function DashboardHeader({ name, role, onLogout, onNotificationPr
             color={COLORS.white}
           />
         )}
-        <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+        {onLogout && (
+          <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -50,6 +97,30 @@ const styles = StyleSheet.create({
   },
   leftSection: {
     flex: 1,
+  },
+  simpleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+  },
+  simpleTitle: {
+    fontSize: FONT_SIZES.lg,
+    color: COLORS.white,
+    fontWeight: '700',
+    fontFamily: 'Poppins',
   },
   rightSection: {
     flexDirection: 'row',

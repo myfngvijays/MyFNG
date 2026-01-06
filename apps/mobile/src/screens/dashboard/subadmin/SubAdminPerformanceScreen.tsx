@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { ENV } from '../../../config/environment';
 
 export default function SubAdminPerformanceScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);

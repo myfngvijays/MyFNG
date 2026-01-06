@@ -109,6 +109,13 @@ export default function MechanicAssignmentModal({
       setLoading(true);
       setError(null);
 
+      const mechanicName = mechanics.find((m) => m.id === selectedMechanicId)?.full_name || 'selected mechanic';
+      const ok = confirm(`Assign this lead to mechanic: ${mechanicName}?`);
+      if (!ok) {
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch(`/api/leads/${leadId}/assign-mechanic`, {
         method: 'POST',
         headers: {

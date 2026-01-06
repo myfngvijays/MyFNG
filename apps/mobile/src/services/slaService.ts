@@ -210,3 +210,31 @@ export function calculateLeadSLAStatus(lead: {
   return 'ON_TIME';
 }
 
+/**
+ * Legacy helpers (some older screens expect these names)
+ */
+export function getSLAStatusColor(status: SLAStatus): string {
+  return getSLAColor(status);
+}
+
+export function calculateSLA(
+  createdAt: string,
+  status: string,
+  leadType: 'NORMAL' | 'RSA' | 'HOME_SERVICE' = 'NORMAL'
+): { timeRemaining: SLATimeRemaining | null; slaStatus: SLAStatus } {
+  // For a simple mobile badge, we treat "createdAt + accept SLA" as the main deadline.
+  const created = new Date(createdAt);
+  const cfg = SLA_CONFIG[leadType] || SLA_CONFIG.NORMAL;
+  const deadline = new Date(created.getTime() + cfg.accept * 60_000);
+  const timeRemaining = getTimeRemaining(deadline, leadType);
+
+  // If lead is completed/cancelled, SLA is considered on time for display (unless explicitly breached elsewhere).
+  const normalizedStatus = String(status || '').toUpperCase();
+  const slaStatus: SLAStatus =
+    normalizedStatus === 'COMPLETED' || normalizedStatus === 'CANCELLED'
+      ? 'ON_TIME'
+      : checkSLAStatus(deadline);
+
+  return { timeRemaining, slaStatus };
+}
+

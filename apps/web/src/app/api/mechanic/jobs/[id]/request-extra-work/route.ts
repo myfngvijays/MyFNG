@@ -1,12 +1,13 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -18,7 +19,7 @@ export async function POST(
     const email = (user.email || '').trim();
     const phone = (user.phone || '').trim();
 
-    const selectProfile = 'id, email, phone, workshop_id, role_id, roles!inner(role_code)';
+    const selectProfile = 'id, email, phone, full_name, workshop_id, role_id, roles!inner(role_code)';
 
     const { data: byEmail, error: byEmailError } = email
       ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
@@ -268,9 +269,45 @@ export async function POST(
       console.error('Failed to set HOLD after additional job request:', e);
     }
 
-    // TODO: Send notification to supervisor (if assigned)
-    // TODO: Send notification to workshop admin
-    // TODO: If urgent, send SMS/WhatsApp alert
+    // In-app notifications (Phase A)
+    try {
+      const leadNumber = (lead as any)?.lead_number || leadId;
+      const mechanicName = (userProfile as any)?.full_name || 'Mechanic';
+      const priority = is_urgent ? 'HIGH' : 'MEDIUM';
+      const msg = `Extra work requested for lead ${leadNumber}: ${description} (₹${costNum}).`;
+
+      if ((lead as any)?.assigned_supervisor_id) {
+        await createNotification({
+          userId: (lead as any).assigned_supervisor_id,
+          type: 'EXTRA_WORK_REQUESTED',
+          title: 'Extra work requested',
+          message: msg,
+          priority,
+          leadId,
+          leadNumber,
+          relatedUserName: mechanicName,
+          actionUrl: `/dashboard/workshop_supervisor/extra-work`,
+          metadata: { extra_work_id: extraWorkRequest.id, amount: costNum, is_urgent: Boolean(is_urgent) },
+        });
+      }
+
+      if ((lead as any)?.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: (lead as any).workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN'],
+          type: 'EXTRA_WORK_REQUESTED',
+          title: 'Extra work requested',
+          message: msg,
+          priority: is_urgent ? 'HIGH' : 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_admin/leads/pending`,
+          metadata: { extra_work_id: extraWorkRequest.id, amount: costNum, is_urgent: Boolean(is_urgent) },
+        });
+      }
+    } catch (e) {
+      console.warn('Extra work request notifications failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

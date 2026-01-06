@@ -13,7 +13,6 @@ import {
   User,
   FileText,
   Settings,
-  Bell,
   Building2,
   TrendingUp,
   Shield,
@@ -36,6 +35,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
+import NotificationBell from '@/components/NotificationBell';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -261,10 +261,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
-            <button className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg relative" aria-label="Notifications">
-              <Bell className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" />
-              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></span>
-            </button>
+            <NotificationBell />
             
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="text-right hidden md:block">

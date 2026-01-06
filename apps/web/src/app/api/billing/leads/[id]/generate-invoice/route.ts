@@ -9,7 +9,7 @@ import {
   roundOff,
 } from '@/lib/utils/invoiceUtils';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
-import { createNotification, notifyWorkshopAdmin } from '@/lib/notifications';
+import { createNotification, notifyTelecallerTeamlead, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -825,16 +825,24 @@ export async function POST(
 
     // TODO: Generate PDF invoice
     // TODO: Send invoice to customer (Email/WhatsApp)
-    // TODO: Send notification to workshop admin
+    // In-app notifications (Phase A)
     try {
+      const leadNumber = lead.lead_number || leadId;
+
       // Notify workshop admin(s)
       if (lead.workshop_id) {
-        await notifyWorkshopAdmin(
-          lead.workshop_id,
+        await notifyWorkshopRoles({
+          workshopId: lead.workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN'],
+          type: 'INVOICE_GENERATED',
+          title: 'Invoice generated',
+          message: `Invoice ${invoiceNumber} generated for lead ${leadNumber}.`,
+          priority: 'LOW',
           leadId,
-          lead.lead_number || leadId,
-          'Billing System'
-        );
+          leadNumber,
+          actionUrl: `/dashboard/workshop_admin/leads/pending`,
+          metadata: { invoice_id: invoice.id, invoice_number: invoiceNumber },
+        });
       }
 
       // Notify supervisor (if assigned)
@@ -848,6 +856,33 @@ export async function POST(
           leadId,
           leadNumber: lead.lead_number,
           actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`,
+          metadata: { invoice_id: invoice.id, invoice_number: invoiceNumber },
+        });
+      }
+
+      // Notify telecaller + teamlead (if telecaller assigned)
+      if ((lead as any)?.assigned_telecaller_id) {
+        const telecallerId = (lead as any).assigned_telecaller_id as string;
+        await createNotification({
+          userId: telecallerId,
+          type: 'INVOICE_GENERATED',
+          title: 'Invoice generated',
+          message: `Invoice ${invoiceNumber} generated for lead ${leadNumber}.`,
+          priority: 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/telecaller/leads/${leadId}`,
+          metadata: { invoice_id: invoice.id, invoice_number: invoiceNumber },
+        });
+
+        await notifyTelecallerTeamlead({
+          telecallerId,
+          leadId,
+          leadNumber,
+          type: 'INVOICE_GENERATED',
+          title: 'Invoice generated',
+          message: `Invoice ${invoiceNumber} generated for lead ${leadNumber}.`,
+          priority: 'LOW',
           metadata: { invoice_id: invoice.id, invoice_number: invoiceNumber },
         });
       }

@@ -5,7 +5,9 @@ import { Icon } from './Icon';
 
 interface BottomNavProps {
   activeTab: string;
-  onTabChange: (tab: string) => void;
+  onTabChange?: (tab: string) => void;
+  // Legacy prop name used by some screens
+  onTabPress?: (tab: string) => void;
   tabs: Array<{
     id: string;
     label: string;
@@ -13,14 +15,17 @@ interface BottomNavProps {
   }>;
 }
 
-export default function BottomNav({ activeTab, onTabChange, tabs }: BottomNavProps) {
+export default function BottomNav({ activeTab, onTabChange, onTabPress, tabs }: BottomNavProps) {
+  const handlePress = (tabId: string) => {
+    (onTabChange || onTabPress)?.(tabId);
+  };
   return (
     <View style={styles.container}>
       {tabs.map((tab) => (
         <TouchableOpacity
           key={tab.id}
           style={[styles.tab, activeTab === tab.id && styles.activeTab]}
-          onPress={() => onTabChange(tab.id)}
+          onPress={() => handlePress(tab.id)}
         >
           <Icon
             name={tab.icon}

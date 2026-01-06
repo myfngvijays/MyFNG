@@ -4,8 +4,8 @@ import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { formatDateDMY, formatTime12h } from "@/lib/dateFormat";
 
-export default function ViewLeadsScreen({ onBack }) {
-  const [leads, setLeads] = useState([]);
+export default function ViewLeadsScreen({ onBack }: { onBack?: () => void }) {
+  const [leads, setLeads] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -37,7 +37,7 @@ export default function ViewLeadsScreen({ onBack }) {
     setRefreshing(false);
   };
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: any) => {
     switch(status?.toUpperCase()) {
       case 'NEW': return COLORS.primary;
       case 'ASSIGNED': return COLORS.secondary;
@@ -52,17 +52,17 @@ export default function ViewLeadsScreen({ onBack }) {
 
   const filteredLeads = filter === 'all' 
     ? leads 
-    : leads.filter(lead => lead.lead_status?.toUpperCase() === filter.toUpperCase());
+    : leads.filter((lead: any) => lead.status?.toUpperCase() === filter.toUpperCase());
 
-  const renderLead = ({ item }) => (
+  const renderLead = ({ item }: { item: any }) => (
     <View style={styles.leadCard}>
       <View style={styles.leadHeader}>
         <View style={styles.leadIdContainer}>
           <Text style={styles.leadIdLabel}>Lead ID</Text>
           <Text style={styles.leadId}>#{item.id.slice(0, 8)}</Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.lead_status) }]}>
-          <Text style={styles.statusText}>{item.lead_status || 'NEW'}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+          <Text style={styles.statusText}>{item.status || 'NEW'}</Text>
         </View>
       </View>
 
@@ -70,7 +70,7 @@ export default function ViewLeadsScreen({ onBack }) {
         <Text style={styles.customerName}>{item.customer_name || 'Unknown Customer'}</Text>
         <Text style={styles.leadDetail}>📞 {item.customer_phone || 'N/A'}</Text>
         <Text style={styles.leadDetail}>🚗 {item.vehicle_model || 'N/A'}</Text>
-        <Text style={styles.leadDetail}>📍 {item.service_city || 'N/A'}</Text>
+        <Text style={styles.leadDetail}>📍 {item.city || item.location || 'N/A'}</Text>
         <Text style={styles.leadType}>{item.lead_type || 'NORMAL'} Service</Text>
       </View>
 
@@ -109,15 +109,15 @@ export default function ViewLeadsScreen({ onBack }) {
           <Text style={styles.statLabel}>Total</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={styles.statValue}>{leads.filter(l => l.lead_status === 'NEW').length}</Text>
+          <Text style={styles.statValue}>{leads.filter(l => l.status === 'NEW').length}</Text>
           <Text style={styles.statLabel}>New</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={styles.statValue}>{leads.filter(l => l.lead_status === 'IN_PROGRESS').length}</Text>
+          <Text style={styles.statValue}>{leads.filter(l => l.status === 'IN_PROGRESS').length}</Text>
           <Text style={styles.statLabel}>Active</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={styles.statValue}>{leads.filter(l => l.lead_status === 'COMPLETED').length}</Text>
+          <Text style={styles.statValue}>{leads.filter(l => l.status === 'COMPLETED').length}</Text>
           <Text style={styles.statLabel}>Done</Text>
         </View>
       </View>
@@ -125,7 +125,7 @@ export default function ViewLeadsScreen({ onBack }) {
       <FlatList
         data={filteredLeads}
         renderItem={renderLead}
-        keyExtractor={item => item.id}
+        keyExtractor={(item: any) => item.id}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />

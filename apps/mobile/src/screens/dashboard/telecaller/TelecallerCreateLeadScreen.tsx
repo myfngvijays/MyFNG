@@ -247,7 +247,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Customer Name *</Text>
         <TextInput
-          style={[styles.input, errors.customer_name && styles.inputError]}
+          style={[styles.input, !!errors.customer_name && styles.inputError]}
           value={formData.customer_name}
           onChangeText={(value) => updateField('customer_name', value)}
           placeholder="Enter customer name"
@@ -259,7 +259,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Phone Number *</Text>
         <TextInput
-          style={[styles.input, errors.customer_phone && styles.inputError]}
+          style={[styles.input, !!errors.customer_phone && styles.inputError]}
           value={formData.customer_phone}
           onChangeText={(value) => updateField('customer_phone', value)}
           placeholder="10-digit phone number"
@@ -312,7 +312,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       <View style={styles.inputGroup}>
         <Text style={styles.label}>City *</Text>
         <TextInput
-          style={[styles.input, errors.city && styles.inputError]}
+          style={[styles.input, !!errors.city && styles.inputError]}
           value={formData.city}
           onChangeText={(value) => updateField('city', value)}
           placeholder="City name"
@@ -343,7 +343,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Vehicle Registration Number *</Text>
         <TextInput
-          style={[styles.input, errors.vehicle_number && styles.inputError]}
+          style={[styles.input, !!errors.vehicle_number && styles.inputError]}
           value={formData.vehicle_number}
           onChangeText={(value) => updateField('vehicle_number', value.toUpperCase())}
           placeholder="MH12AB1234"
@@ -359,7 +359,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Vehicle Make / Brand *</Text>
         <TextInput
-          style={[styles.input, errors.vehicle_make && styles.inputError]}
+          style={[styles.input, !!errors.vehicle_make && styles.inputError]}
           value={formData.vehicle_make}
           onChangeText={(value) => updateField('vehicle_make', value)}
           placeholder="e.g., Maruti, Hyundai"
@@ -371,7 +371,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Vehicle Model *</Text>
         <TextInput
-          style={[styles.input, errors.vehicle_model && styles.inputError]}
+          style={[styles.input, !!errors.vehicle_model && styles.inputError]}
           value={formData.vehicle_model}
           onChangeText={(value) => updateField('vehicle_model', value)}
           placeholder="e.g., Swift, Creta"
@@ -522,7 +522,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Pickup Address</Text>
             <TextInput
-              style={[styles.input, styles.textArea, errors.pickup_address && styles.inputError]}
+              style={[styles.input, styles.textArea, !!errors.pickup_address && styles.inputError]}
               value={formData.pickup_address}
               onChangeText={(value) => updateField('pickup_address', value)}
               placeholder="Enter pickup address or leave empty to use customer address"
@@ -725,7 +725,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: COLORS.gray + '30',
+    backgroundColor: COLORS.gray[500] + '30',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -743,7 +743,7 @@ const styles = StyleSheet.create({
   progressLine: {
     width: 40,
     height: 2,
-    backgroundColor: COLORS.gray + '30',
+    backgroundColor: COLORS.gray[500] + '30',
     marginHorizontal: 4,
   },
   progressLineActive: {
@@ -940,7 +940,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   buttonSecondary: {
-    backgroundColor: COLORS.gray + '20',
+    backgroundColor: COLORS.gray[500] + '20',
   },
   buttonSecondaryText: {
     color: COLORS.textPrimary,

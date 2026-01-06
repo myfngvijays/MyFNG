@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
+import { ENV } from '../../../config/environment';
 
 interface Props {
   leadId: string;
@@ -78,7 +79,7 @@ export default function OTPVerificationScreen({
       }
 
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/api/pickup/${leadId}/verify-otp`,
+        `${ENV.API_URL}/api/pickup/${leadId}/verify-otp`,
         {
           method: 'POST',
           headers: {

@@ -135,7 +135,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     </TouchableOpacity>
   );
 
-  const screenOptions = {
+  const screenOptions: any = {
     headerRight: () => <LogoutButton />,
     headerShown: false, // Hide React Navigation header
     headerStyle: {
@@ -143,7 +143,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     },
     headerTintColor: '#fff',
     headerTitleStyle: {
-      fontWeight: 'bold',
+      fontWeight: 'bold' as const,
       fontFamily: 'Poppins',
     },
     gestureEnabled: true, // Enable swipe back gesture
@@ -661,10 +661,20 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={require('../screens/dashboard/workshop_pickup_boy/PickupJobDetailScreen').default}
           options={{ title: 'Task Details' }}
         />
+        <Stack.Screen
+          name="PickupOtp"
+          component={require('../screens/dashboard/workshop_pickup_boy/PickupOtpWrapperScreen').default}
+          options={{ title: 'Verify OTP' }}
+        />
         <Stack.Screen 
           name="PickupPhotoUpload"
           component={require('../screens/dashboard/workshop_pickup_boy/PickupPhotoUploadWrapperScreen').default}
           options={{ title: 'Upload Photos' }}
+        />
+        <Stack.Screen
+          name="PickupIncident"
+          component={require('../screens/dashboard/workshop_pickup_boy/PickupIncidentWrapperScreen').default}
+          options={{ title: 'Report Incident' }}
         />
         <Stack.Screen 
           name="PickupBoyProfile" 

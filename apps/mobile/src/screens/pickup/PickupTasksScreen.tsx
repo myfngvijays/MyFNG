@@ -15,9 +15,9 @@ import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-export default function PickupTasksScreen({ userId }) {
-  const [tasks, setTasks] = useState([]);
-  const [filteredTasks, setFilteredTasks] = useState([]);
+export default function PickupTasksScreen({ userId }: { userId?: string }) {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [filteredTasks, setFilteredTasks] = useState<any[]>([]);
   const [filter, setFilter] = useState('all'); // all, pickup, delivery, assigned, in_transit
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -234,7 +234,7 @@ export default function PickupTasksScreen({ userId }) {
     }
   };
 
-  const renderTask = ({ item }) => {
+  const renderTask = ({ item }: { item: any }) => {
     const taskInfo = `${item.customer_name}\n${item.task_type}`;
     const address = item.task_type === 'PICKUP' ? item.pickup_address : item.delivery_address;
     

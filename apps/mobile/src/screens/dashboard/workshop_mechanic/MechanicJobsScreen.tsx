@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
+import { useNotifications } from '../../../context/NotificationContext';
 
 interface Job {
   id: string;
@@ -42,6 +43,7 @@ export default function MechanicJobsScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  const { jobRefreshTick } = useNotifications();
 
   const filters = ['ALL', 'ASSIGNED', 'IN_PROGRESS', 'HOLD', 'COMPLETED'];
 
@@ -102,6 +104,13 @@ export default function MechanicJobsScreen({ navigation }: any) {
       };
     }
   }, [user?.id]);
+
+  // Refresh jobs when a job-impacting notification arrives (push/realtime safety net)
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchJobs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobRefreshTick]);
 
   useEffect(() => {
     filterJobs();

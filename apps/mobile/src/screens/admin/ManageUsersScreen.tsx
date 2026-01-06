@@ -16,11 +16,11 @@ import {
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 
-export default function ManageUsersScreen({ onBack }) {
-  const [users, setUsers] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [workshops, setWorkshops] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
+export default function ManageUsersScreen({ onBack }: { onBack?: () => void }) {
+  const [users, setUsers] = useState<any[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
+  const [workshops, setWorkshops] = useState<any[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -29,7 +29,7 @@ export default function ManageUsersScreen({ onBack }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   
   // Form data
@@ -303,7 +303,7 @@ export default function ManageUsersScreen({ onBack }) {
     }
   };
 
-  const renderUser = ({ item }) => (
+  const renderUser = ({ item }: { item: any }) => (
     <View style={styles.userCard}>
       <View style={styles.userHeader}>
         <View style={styles.userAvatar}>

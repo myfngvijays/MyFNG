@@ -31,7 +31,7 @@ interface PickupTask {
 }
 
 export default function PickupTrackingScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [pickups, setPickups] = useState<PickupTask[]>([]);
   const [filteredPickups, setFilteredPickups] = useState<PickupTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,7 +107,7 @@ export default function PickupTrackingScreen() {
 
       if (error) throw error;
 
-      const formattedData = (data || []).map(item => ({
+      const formattedData = (data || []).map((item: any) => ({
         id: item.id,
         lead_number: item.lead_number,
         customer_name: item.customer_name,
@@ -117,7 +117,7 @@ export default function PickupTrackingScreen() {
         pickup_status: item.pickup_status || 'PENDING',
         pickup_type: item.pickup_type || 'PICKUP',
         scheduled_time: item.pickup_scheduled_time,
-        pickup_boy_id: item.pickup_boy_id,
+        pickup_boy_id: Array.isArray(item.pickup_boy_id) ? item.pickup_boy_id[0] : item.pickup_boy_id,
         created_at: item.created_at,
       }));
 

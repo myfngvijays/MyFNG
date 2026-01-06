@@ -223,7 +223,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
                 ? COLORS.green + '20'
                 : item.is_blacklisted
                 ? COLORS.red + '20'
-                : COLORS.gray + '20'
+                : COLORS.gray[500] + '20'
             }
           ]}>
             <Text style={[
@@ -233,7 +233,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
                   ? COLORS.green
                   : item.is_blacklisted
                   ? COLORS.red
-                  : COLORS.gray
+                  : COLORS.gray[500]
               }
             ]}>
               {item.is_blacklisted ? 'BLACKLISTED' : item.is_active ? 'ACTIVE' : 'INACTIVE'}

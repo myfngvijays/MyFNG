@@ -1,0 +1,21 @@
+import React from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import IncidentReportScreen from './IncidentReportScreen';
+
+export default function PickupIncidentWrapperScreen() {
+  const navigation = useNavigation();
+  const route = useRoute<any>();
+
+  const leadId = route?.params?.leadId as string | undefined;
+  if (!leadId) return null as any;
+
+  return (
+    <IncidentReportScreen
+      leadId={leadId}
+      onBack={() => (navigation as any).goBack?.()}
+      onSuccess={() => (navigation as any).goBack?.()}
+    />
+  );
+}
+
+

@@ -37,6 +37,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
         status,
         created_at,
         workshop_id,
+        customer_public_enabled,
+        customer_public_enabled_at,
         customer_name,
         customer_phone,
         customer_address,
@@ -66,6 +68,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
         status,
         created_at,
         workshop_id,
+        customer_public_enabled,
+        customer_public_enabled_at,
         customer_name,
         customer_address,
         address,
@@ -94,6 +98,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
         status,
         created_at,
         workshop_id,
+        customer_public_enabled,
+        customer_public_enabled_at,
         vehicle_make,
         vehicle_model,
         vehicle_number,
@@ -148,6 +154,18 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
     if (!lead) {
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
+    }
+
+    // Gate: public page should not be active until advisor enables it
+    // If column doesn't exist in older DBs, it will be missing => treat as disabled to be safe.
+    if (!(lead as any)?.customer_public_enabled) {
+      return NextResponse.json(
+        {
+          error: 'PUBLIC_LINK_DISABLED',
+          message: 'This public link is not active yet. Please ask your service advisor to enable it.',
+        },
+        { status: 403 }
+      );
     }
 
     // Assigned advisor (best-effort)

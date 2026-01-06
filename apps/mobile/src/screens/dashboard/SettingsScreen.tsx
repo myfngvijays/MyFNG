@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { Bell, Shield, HelpCircle, LogOut, ChevronRight } from 'lucide-react-native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES } from '../../constants/theme';
+import { Icon } from '../../components/Icon';
 
 export default function SettingsScreen() {
   const { logout } = useAuth();
@@ -33,7 +33,7 @@ export default function SettingsScreen() {
         <Text style={styles.settingTitle}>{title}</Text>
         {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
       </View>
-      {showArrow && <ChevronRight color={COLORS.textGray} size={20} />}
+      {showArrow && <Icon name="chevron-right" color={COLORS.textGray} size={20} />}
     </TouchableOpacity>
   );
 
@@ -44,14 +44,14 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>General</Text>
         
         <SettingItem
-          icon={<Bell color={COLORS.primary} size={24} />}
+          icon={<Icon name="bell" color={COLORS.primary} size={24} />}
           title="Notifications"
           subtitle="Manage notification preferences"
           onPress={() => {/* Handle navigation */}}
         />
         
         <SettingItem
-          icon={<Shield color={COLORS.primary} size={24} />}
+          icon={<Icon name="shield" color={COLORS.primary} size={24} />}
           title="Privacy & Security"
           subtitle="Control your privacy settings"
           onPress={() => {/* Handle navigation */}}
@@ -63,7 +63,7 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>Support</Text>
         
         <SettingItem
-          icon={<HelpCircle color={COLORS.primary} size={24} />}
+          icon={<Icon name="help" color={COLORS.primary} size={24} />}
           title="Help & Support"
           subtitle="Get help or contact us"
           onPress={() => {/* Handle navigation */}}
@@ -90,7 +90,7 @@ export default function SettingsScreen() {
       {/* Logout */}
       <View style={styles.section}>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <LogOut color={COLORS.error} size={24} />
+          <Icon name="logout" color={COLORS.error} size={24} />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>

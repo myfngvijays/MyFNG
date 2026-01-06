@@ -1,5 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -139,6 +140,57 @@ export async function POST(
           arrived_at: now
         }
       });
+
+    // In-app notifications (Phase A)
+    try {
+      const leadNumber = (lead as any)?.lead_number || leadId;
+      const msg = `Vehicle arrived at workshop for lead ${leadNumber}. Begin inspection.`;
+
+      if ((lead as any)?.assigned_mechanic_id) {
+        await createNotification({
+          userId: (lead as any).assigned_mechanic_id,
+          type: 'SYSTEM_ALERT',
+          title: 'Vehicle ready for service',
+          message: msg,
+          priority: 'HIGH',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_mechanic/jobs/${leadId}/manage`,
+          metadata: { kind: 'VEHICLE_READY' },
+        });
+      }
+
+      if ((lead as any)?.assigned_supervisor_id) {
+        await createNotification({
+          userId: (lead as any).assigned_supervisor_id,
+          type: 'SYSTEM_ALERT',
+          title: 'Vehicle arrived at workshop',
+          message: msg,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`,
+          metadata: { kind: 'VEHICLE_READY' },
+        });
+      }
+
+      if ((lead as any)?.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: (lead as any).workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN'],
+          type: 'SYSTEM_ALERT',
+          title: 'Vehicle arrived at workshop',
+          message: msg,
+          priority: 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_admin/leads/${leadId}`,
+          metadata: { kind: 'VEHICLE_READY' },
+        });
+      }
+    } catch (e) {
+      console.warn('Vehicle arrived notifications failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

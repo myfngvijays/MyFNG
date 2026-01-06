@@ -13,7 +13,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 
-export default function WorkshopProfileScreen({ workshopId }) {
+export default function WorkshopProfileScreen({ workshopId }: { workshopId?: string | null }) {
   const [workshop, setWorkshop] = useState<any>(null);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);

@@ -2,11 +2,12 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Notification } from '@/shared/types/notifications';
+import type { Notification as NotificationRow } from '@/shared/types/notifications';
 import toast from 'react-hot-toast';
+import { ensureWebPushSubscribed } from '@/lib/push/registerWebPush';
 
 interface NotificationContextType {
-  notifications: Notification[];
+  notifications: NotificationRow[];
   unreadCount: number;
   loading: boolean;
   markAsRead: (notificationId: string) => Promise<void>;
@@ -18,27 +19,146 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
 
   const supabase = createClient();
 
+  // Ask once (per browser) to enable desktop notifications on app open
+  useEffect(() => {
+    if (!userId) return;
+    if (typeof window === 'undefined') return;
+    const BrowserNotification = (window as any).Notification as (typeof Notification | undefined);
+    if (!BrowserNotification) return;
+
+    const key = 'myfng_desktop_notif_prompt_v1';
+    try {
+      if (window.localStorage.getItem(key) === '1') return;
+    } catch {
+      // ignore storage errors
+    }
+
+    const perm = BrowserNotification.permission;
+    if (perm === 'granted') return;
+
+    // Show a one-time prompt (user can still enable later from the bell dropdown)
+    toast.custom(
+      (t) => (
+        <div className="bg-white border border-gray-200 shadow-lg rounded-lg p-4 w-[360px]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-gray-900">Enable desktop alerts?</div>
+              <div className="text-xs text-gray-600 mt-1">
+                Get notified instantly for lead updates while the app is open.
+              </div>
+              {perm === 'denied' && (
+                <div className="text-xs text-red-600 mt-2">
+                  Alerts are blocked in browser settings. Please allow notifications for this site.
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="text-gray-400 hover:text-gray-600"
+              onClick={() => {
+                toast.dismiss(t.id);
+                try {
+                  window.localStorage.setItem(key, '1');
+                } catch {
+                  // ignore
+                }
+              }}
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 mt-3">
+            <button
+              type="button"
+              className="text-xs px-3 py-1.5 rounded border border-gray-200 text-gray-700 hover:bg-gray-50"
+              onClick={() => {
+                toast.dismiss(t.id);
+                try {
+                  window.localStorage.setItem(key, '1');
+                } catch {
+                  // ignore
+                }
+              }}
+            >
+              Later
+            </button>
+            <button
+              type="button"
+              disabled={perm === 'denied'}
+              className={`text-xs px-3 py-1.5 rounded text-white ${
+                perm === 'denied'
+                  ? 'bg-gray-300 cursor-not-allowed'
+                  : 'bg-brand-primary hover:bg-brand-secondary'
+              }`}
+              onClick={async () => {
+                try {
+                  const p = await BrowserNotification.requestPermission();
+                  if (p === 'granted') {
+                    // Phase B: true web push subscription (best-effort)
+                    try {
+                      await ensureWebPushSubscribed();
+                    } catch (e) {
+                      console.warn('Web push subscribe failed:', e);
+                    }
+                    toast.success('Desktop notifications enabled');
+                  }
+                  else if (p === 'denied') toast.error('Desktop notifications blocked in browser settings');
+                  else toast('Desktop notifications not enabled');
+                } catch (e: any) {
+                  toast.error(e?.message || 'Failed to enable desktop notifications');
+                } finally {
+                  toast.dismiss(t.id);
+                  try {
+                    window.localStorage.setItem(key, '1');
+                  } catch {
+                    // ignore
+                  }
+                }
+              }}
+            >
+              Enable
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: Infinity }
+    );
+  }, [userId]);
+
   // Fetch user ID
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: userProfile } = await supabase
+        // Prefer users_login.id == auth.user.id (most reliable), then fallback to email/phone.
+        const email = (user.email || '').trim();
+        const phone = (user.phone || '').trim();
+
+        const { data: byId } = await supabase
           .from('users_login')
           .select('id')
-          .eq('email', user.email)
-          .single();
-        
-        if (userProfile) {
-          setUserId(userProfile.id);
-        }
+          .eq('id', user.id)
+          .maybeSingle();
+
+        const { data: byEmail } = !byId && email
+          ? await supabase.from('users_login').select('id').ilike('email', email).maybeSingle()
+          : { data: null as any };
+
+        const { data: byPhone } = !byId && !byEmail && phone
+          ? await supabase.from('users_login').select('id').eq('phone', phone).maybeSingle()
+          : { data: null as any };
+
+        const profile = byId || byEmail || byPhone;
+        if (profile?.id) setUserId(profile.id);
       }
     };
 
@@ -93,7 +213,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           filter: `user_id=eq.${userId}`
         },
         (payload) => {
-          const newNotification = payload.new as Notification;
+          const newNotification = payload.new as NotificationRow;
           
           // Add to notifications list
           setNotifications(prev => [newNotification, ...prev]);
@@ -115,6 +235,31 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               duration: 3000
             });
           }
+
+          // Phase A: Desktop notification (only when app is open & permission granted)
+          try {
+            if (typeof window !== 'undefined') {
+              const BrowserNotification = (window as any).Notification as (typeof Notification | undefined);
+              if (BrowserNotification && BrowserNotification.permission === 'granted') {
+                const n = new BrowserNotification(newNotification.title, {
+                  body: newNotification.message,
+                  icon: '/icon.png',
+                });
+                n.onclick = () => {
+                  try {
+                    window.focus();
+                    if (newNotification.action_url) {
+                      window.location.href = newNotification.action_url;
+                    }
+                  } catch {
+                    // ignore
+                  }
+                };
+              }
+            }
+          } catch {
+            // ignore (desktop notifications are best-effort)
+          }
         }
       )
       .on(
@@ -126,7 +271,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           filter: `user_id=eq.${userId}`
         },
         (payload) => {
-          const updatedNotification = payload.new as Notification;
+          const updatedNotification = payload.new as NotificationRow;
           
           setNotifications(prev => 
             prev.map(n => n.id === updatedNotification.id ? updatedNotification : n)

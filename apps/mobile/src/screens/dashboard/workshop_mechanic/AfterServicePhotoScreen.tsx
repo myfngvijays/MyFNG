@@ -18,8 +18,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
-import Icon from '../../../components/Icon';
+import { Icon } from '../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
+import { ENV } from '../../../config/environment';
 
 interface PhotoState {
   type: string;
@@ -253,7 +254,7 @@ export default function AfterServicePhotoScreen({ route }: Props) {
       }
 
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/api/mechanic/jobs/${leadId}/upload-photos`,
+        `${ENV.API_URL}/api/mechanic/jobs/${leadId}/upload-photos`,
         {
           method: 'POST',
           headers: {
@@ -324,7 +325,7 @@ export default function AfterServicePhotoScreen({ route }: Props) {
 
       // Complete the job
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/api/mechanic/jobs/${leadId}/status`,
+        `${ENV.API_URL}/api/mechanic/jobs/${leadId}/status`,
         {
           method: 'POST',
           headers: {

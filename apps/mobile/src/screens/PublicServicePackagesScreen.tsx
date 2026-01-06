@@ -120,7 +120,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
 
         const serviceTypeName: string = String(st?.name || selectedServiceName);
         const title: string | null = tpl?.title ? String(tpl.title) : null;
-        const points: number | null = Number.isFinite(Number(tpl?.points)) ? Number(tpl.points) : null;
+        const points: number | null = Number.isFinite(Number(tpl?.points)) ? Number(tpl?.points) : null;
         const itemsRaw = (tpl?.checklist_items || []) as any[];
 
         setChecklistTemplate({

@@ -123,6 +123,17 @@ export default function AssignTeamPage() {
       return;
     }
 
+    const mechanicName = mechanics.find((m) => m.id === selectedMechanic)?.name || 'selected mechanic';
+    const pickupName = lead?.pickup_required
+      ? (pickupBoys.find((p) => p.id === selectedPickupBoy)?.name || 'selected pickup boy')
+      : '';
+    const ok = confirm(
+      lead?.pickup_required
+        ? `Confirm assignment:\n\nMechanic: ${mechanicName}\nPickup Boy: ${pickupName}\n\nProceed?`
+        : `Confirm assignment:\n\nMechanic: ${mechanicName}\n\nProceed?`
+    );
+    if (!ok) return;
+
     setSubmitting(true);
 
     try {

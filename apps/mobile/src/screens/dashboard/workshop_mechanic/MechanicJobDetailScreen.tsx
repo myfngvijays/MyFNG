@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { ENV } from '../../../config/environment';
 
 interface JobDetail {
   id: string;
@@ -53,7 +54,7 @@ interface ChecklistItem {
 }
 
 export default function MechanicJobDetailScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const route = useRoute();
   const { jobId } = route.params as { jobId: string };
   const [job, setJob] = useState<JobDetail | null>(null);
@@ -282,8 +283,7 @@ export default function MechanicJobDetailScreen() {
         return;
       }
 
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://myfng.astric.ai';
-      const response = await fetch(`${apiUrl}/api/mechanic/jobs/${jobId}/checklist`, {
+      const response = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${jobId}/checklist`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

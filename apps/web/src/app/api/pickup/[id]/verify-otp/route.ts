@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -169,6 +170,40 @@ export async function POST(
       description: `${otp_type} OTP verified successfully`,
       metadata: { otp_type },
     });
+
+    // Workshop Admin notification (final)
+    try {
+      // Pull workshop context for routing
+      const { data: fullLead } = await supabase
+        .from('service_leads')
+        .select('id, lead_number, workshop_id')
+        .eq('id', leadId)
+        .maybeSingle();
+
+      if (fullLead?.workshop_id) {
+        const leadNumber = (fullLead as any)?.lead_number || leadId;
+        const title = otp_type === 'DROP' ? 'Delivery OTP verified' : 'Vehicle picked up (OTP verified)';
+        const msg =
+          otp_type === 'DROP'
+            ? `Delivery OTP verified for lead ${leadNumber}.`
+            : `Pickup OTP verified for lead ${leadNumber}. Vehicle is in transit to workshop.`;
+
+        await notifyWorkshopRoles({
+          workshopId: fullLead.workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'OTP_VERIFIED',
+          title,
+          message: msg,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_admin/pending-leads`,
+          metadata: { otp_type },
+        });
+      }
+    } catch (e) {
+      console.warn('OTP verified notifications failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

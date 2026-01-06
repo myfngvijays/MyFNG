@@ -35,7 +35,7 @@ interface JobHistoryItem {
 }
 
 export default function MechanicJobHistoryScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [jobs, setJobs] = useState<JobHistoryItem[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<JobHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);

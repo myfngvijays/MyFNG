@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -248,6 +249,38 @@ export async function POST(request: Request) {
         scheduled_date: scheduled_date,
       },
     });
+
+    // Notify workshop admin/supervisor
+    try {
+      const { data: workshop } = await supabase
+        .from('workshops')
+        .select('name')
+        .eq('id', workshop_id)
+        .maybeSingle();
+
+      const dateStr = scheduled_date ? String(scheduled_date) : '';
+      const timeStr = scheduled_time ? ` ${String(scheduled_time)}` : '';
+      const workshopName = (workshop as any)?.name ? ` (${(workshop as any).name})` : '';
+
+      await notifyWorkshopRoles({
+        workshopId: workshop_id,
+        roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+        type: 'SYSTEM_ALERT',
+        title: 'Audit Scheduled',
+        message: `${audit_type} audit scheduled on ${dateStr}${timeStr}${workshopName}. Keep documents and facility ready.`,
+        priority: 'MEDIUM',
+        actionUrl: '/dashboard/workshop_admin/settings',
+        metadata: {
+          kind: 'AUDIT_SCHEDULED',
+          audit_id: newAudit.id,
+          audit_type,
+          scheduled_date,
+          scheduled_time: scheduled_time || null,
+        },
+      });
+    } catch (e) {
+      console.warn('Audit scheduled notification failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

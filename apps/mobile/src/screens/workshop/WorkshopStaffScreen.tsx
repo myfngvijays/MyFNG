@@ -16,10 +16,10 @@ import {
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 
-export default function WorkshopStaffScreen({ workshopId }) {
-  const [staff, setStaff] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [filteredStaff, setFilteredStaff] = useState([]);
+export default function WorkshopStaffScreen({ workshopId }: { workshopId?: string | null }) {
+  const [staff, setStaff] = useState<any[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
+  const [filteredStaff, setFilteredStaff] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -29,7 +29,7 @@ export default function WorkshopStaffScreen({ workshopId }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [selectedStaff, setSelectedStaff] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   
   // Form data
@@ -51,7 +51,7 @@ export default function WorkshopStaffScreen({ workshopId }) {
 
   useEffect(() => {
     if (searchQuery) {
-      const filtered = staff.filter(member => 
+      const filtered = staff.filter((member: any) => 
         member.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         member.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         member.role?.role_name?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -89,9 +89,9 @@ export default function WorkshopStaffScreen({ workshopId }) {
         .eq('is_active', true)
         .order('role_name');
 
-      setStaff(staffData || []);
-      setFilteredStaff(staffData || []);
-      setRoles(rolesData || []);
+      setStaff((staffData as any[]) || []);
+      setFilteredStaff((staffData as any[]) || []);
+      setRoles((rolesData as any[]) || []);
     } catch (error) {
       console.error('Error fetching staff:', error);
       Alert.alert('Error', 'Failed to load staff');
@@ -196,6 +196,10 @@ export default function WorkshopStaffScreen({ workshopId }) {
           updated_at: new Date().toISOString()
         };
 
+        if (!selectedStaff?.id) {
+          throw new Error('No staff selected');
+        }
+
         const { error } = await supabase
           .from('users_login')
           .update(updateData)
@@ -291,6 +295,11 @@ export default function WorkshopStaffScreen({ workshopId }) {
       return;
     }
 
+    if (!selectedStaff?.id) {
+      Alert.alert('Error', 'No staff selected');
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -322,7 +331,7 @@ export default function WorkshopStaffScreen({ workshopId }) {
     }
   };
 
-  const renderStaff = ({ item }) => (
+  const renderStaff = ({ item }: { item: any }) => (
     <View style={styles.staffCard}>
       <View style={styles.staffHeader}>
         <View style={styles.staffAvatar}>

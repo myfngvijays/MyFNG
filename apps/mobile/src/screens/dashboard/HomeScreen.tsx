@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Activity, FileText, CheckCircle, Clock } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 import StatCard from '../../components/StatCard';
 import LeadCard from '../../components/LeadCard';
 import { COLORS, SIZES } from '../../constants/theme';
+import { Icon } from '../../components/Icon';
 
 export default function HomeScreen() {
   const { userProfile } = useAuth();
@@ -38,13 +38,13 @@ export default function HomeScreen() {
           <StatCard
             title="Pending"
             value="5"
-            icon={<Clock color={COLORS.warning} size={32} />}
+            icon={<Icon name="clock" color={COLORS.warning} size={32} />}
             color={COLORS.warning}
           />
           <StatCard
             title="Active"
             value="12"
-            icon={<Activity color={COLORS.info} size={32} />}
+            icon={<Icon name="wrench" color={COLORS.info} size={32} />}
             color={COLORS.info}
           />
         </View>
@@ -83,13 +83,13 @@ export default function HomeScreen() {
           <StatCard
             title="Active Jobs"
             value="8"
-            icon={<Activity color={COLORS.primary} size={32} />}
+            icon={<Icon name="wrench" color={COLORS.primary} size={32} />}
             color={COLORS.primary}
           />
           <StatCard
             title="Team"
             value="12"
-            icon={<CheckCircle color={COLORS.success} size={32} />}
+            icon={<Icon name="check-circle" color={COLORS.success} size={32} />}
             color={COLORS.success}
           />
         </View>
@@ -121,13 +121,13 @@ export default function HomeScreen() {
           <StatCard
             title="Assigned"
             value="5"
-            icon={<FileText color={COLORS.primary} size={32} />}
+            icon={<Icon name="file" color={COLORS.primary} size={32} />}
             color={COLORS.primary}
           />
           <StatCard
             title="In Progress"
             value="2"
-            icon={<Activity color={COLORS.info} size={32} />}
+            icon={<Icon name="wrench" color={COLORS.info} size={32} />}
             color={COLORS.info}
           />
         </View>
@@ -153,13 +153,13 @@ export default function HomeScreen() {
           <StatCard
             title="Pickups"
             value="3"
-            icon={<Clock color={COLORS.warning} size={32} />}
+            icon={<Icon name="clock" color={COLORS.warning} size={32} />}
             color={COLORS.warning}
           />
           <StatCard
             title="In Transit"
             value="1"
-            icon={<Activity color={COLORS.success} size={32} />}
+            icon={<Icon name="navigation" color={COLORS.success} size={32} />}
             color={COLORS.success}
           />
         </View>
@@ -185,13 +185,13 @@ export default function HomeScreen() {
           <StatCard
             title="New Leads"
             value="23"
-            icon={<FileText color={COLORS.primary} size={32} />}
+            icon={<Icon name="file" color={COLORS.primary} size={32} />}
             color={COLORS.primary}
           />
           <StatCard
             title="Assigned"
             value="45"
-            icon={<CheckCircle color={COLORS.success} size={32} />}
+            icon={<Icon name="check-circle" color={COLORS.success} size={32} />}
             color={COLORS.success}
           />
         </View>

@@ -12,7 +12,7 @@ import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function CVTProfileScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
   const [stats, setStats] = useState({

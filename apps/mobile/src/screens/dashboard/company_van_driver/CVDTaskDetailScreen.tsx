@@ -14,7 +14,7 @@ import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function CVDTaskDetailScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const route = useRoute();
   const { taskId } = route.params as any;
   const [loading, setLoading] = useState(true);

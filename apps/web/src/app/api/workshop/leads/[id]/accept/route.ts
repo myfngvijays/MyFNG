@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createNotification, notifyTelecallerTeamlead } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -17,7 +18,7 @@ export async function POST(
     // Get user profile
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, role_id, workshop_id')
+      .select('id, role_id, workshop_id, full_name')
       .eq('id', user.id)
       .single();
 
@@ -134,6 +135,57 @@ export async function POST(
           accepted_at: new Date().toISOString()
         }
       });
+
+    // In-app notifications (Phase A)
+    try {
+      const leadNumber = (lead as any)?.lead_number || leadId;
+      const actorName = userProfile.full_name || (isSupervisor ? 'Workshop Supervisor' : 'Workshop Admin');
+
+      // Notify Lead Manager (if present on lead)
+      const leadManagerId = (lead as any)?.lead_manager_assigned_id;
+      if (leadManagerId) {
+        await createNotification({
+          userId: leadManagerId,
+          type: 'LEAD_ACCEPTED',
+          title: 'Workshop accepted lead',
+          message: `Lead ${leadNumber} was accepted by ${actorName}.`,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          relatedUserName: actorName,
+          actionUrl: `/dashboard/lead_manager/leads/${leadId}`,
+        });
+      }
+
+      // Notify Telecaller + Teamlead (if telecaller assigned)
+      const telecallerId = (lead as any)?.assigned_telecaller_id;
+      if (telecallerId) {
+        await createNotification({
+          userId: telecallerId,
+          type: 'LEAD_ACCEPTED',
+          title: 'Workshop accepted lead',
+          message: `Lead ${leadNumber} has been accepted by workshop.`,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/telecaller/leads/${leadId}`,
+          metadata: { new_status: 'ACCEPTED' },
+        });
+
+        await notifyTelecallerTeamlead({
+          telecallerId,
+          leadId,
+          leadNumber,
+          type: 'LEAD_ACCEPTED',
+          title: 'Workshop accepted lead',
+          message: `Lead ${leadNumber} has been accepted by workshop.`,
+          priority: 'MEDIUM',
+          metadata: { new_status: 'ACCEPTED' },
+        });
+      }
+    } catch (e) {
+      console.warn('Accept lead notifications failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

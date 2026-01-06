@@ -106,7 +106,7 @@ export default function TelecallerScriptsScreen({ navigation }: any) {
       case 'CLOSING': return COLORS.green;
       case 'FOLLOW_UP': return COLORS.orange;
       case 'REJECTION_HANDLING': return COLORS.red;
-      default: return COLORS.gray;
+      default: return COLORS.gray[500];
     }
   };
 
@@ -276,7 +276,7 @@ export default function TelecallerScriptsScreen({ navigation }: any) {
       >
         {scripts.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Icon name="script-text-outline" size={64} color={COLORS.gray} />
+            <Icon name="script-text-outline" size={64} color={COLORS.gray[500]} />
             <Text style={styles.emptyTitle}>No Scripts Found</Text>
             <Text style={styles.emptyText}>
               {searchQuery
@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: COLORS.gray + '20',
+    backgroundColor: COLORS.gray[500] + '20',
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
     borderRadius: 8,
@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
   },
   actionsContainer: {
     borderTopWidth: 1,
-    borderTopColor: COLORS.gray + '20',
+    borderTopColor: COLORS.gray[500] + '20',
     paddingTop: SPACING.sm,
     flexDirection: 'row',
     gap: SPACING.sm,

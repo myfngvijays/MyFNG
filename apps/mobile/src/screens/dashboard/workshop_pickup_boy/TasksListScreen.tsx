@@ -24,24 +24,27 @@ interface PickupTask {
   customer_phone: string;
   customer_address: string;
   vehicle_number: string;
-  pickup_status: string;
-  pickup_type: string;
+  status: string;
+  pickup_required?: boolean;
   pickup_scheduled_time: string;
 }
 
+type FilterValue = 'ALL' | 'SCHEDULED' | 'IN_TRANSIT' | 'DELIVERY_READY' | 'COMPLETED' | 'FAILED';
+
 export default function TasksListScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [tasks, setTasks] = useState<PickupTask[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<PickupTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<string>('ALL');
+  const [activeFilter, setActiveFilter] = useState<FilterValue>('ALL');
   const [userId, setUserId] = useState<string | null>(null);
 
   const [stats, setStats] = useState({
     pending: 0,
     inTransit: 0,
+    deliveryReady: 0,
     completed: 0,
     failed: 0,
   });
@@ -133,7 +136,6 @@ export default function TasksListScreen() {
         .from('service_leads')
         .select('*')
         .eq('assigned_pickup_boy_id', userId)
-        .eq('pickup_required', true)
         .not('status', 'in', '(REJECTED,CANCELLED)')
         .order('created_at', { ascending: false });
 
@@ -148,20 +150,21 @@ export default function TasksListScreen() {
         customer_phone: item.customer_phone,
         customer_address: item.customer_address,
         vehicle_number: item.vehicle_number,
-        pickup_status: item.pickup_status || 'PENDING',
-        pickup_type: item.pickup_type || 'PICKUP',
+        status: item.status || 'PENDING',
+        pickup_required: !!item.pickup_required,
         pickup_scheduled_time: item.pickup_scheduled_time,
       }));
 
       setTasks(formattedTasks);
 
-      // Calculate stats
-      const pending = formattedTasks.filter(t => t.pickup_status === 'PENDING').length;
-      const inTransit = formattedTasks.filter(t => t.pickup_status === 'IN_TRANSIT').length;
-      const completed = formattedTasks.filter(t => t.pickup_status === 'COMPLETED').length;
-      const failed = formattedTasks.filter(t => t.pickup_status === 'FAILED').length;
+      // Calculate stats (mirror web buckets)
+      const pending = formattedTasks.filter(t => ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP'].includes(t.status)).length;
+      const inTransit = formattedTasks.filter(t => ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS'].includes(t.status)).length;
+      const deliveryReady = formattedTasks.filter(t => ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(t.status)).length;
+      const completed = formattedTasks.filter(t => ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'CLOSED'].includes(t.status)).length;
+      const failed = formattedTasks.filter(t => ['FAILED', 'FAILED_PICKUP'].includes(t.status)).length;
 
-      setStats({ pending, inTransit, completed, failed });
+      setStats({ pending, inTransit, deliveryReady, completed, failed });
     } catch (error) {
       // Error handled silently
     } finally {
@@ -174,8 +177,14 @@ export default function TasksListScreen() {
     let filtered = [...tasks];
 
     // Apply status filter
-    if (activeFilter !== 'ALL') {
-      filtered = filtered.filter(task => task.pickup_status === activeFilter);
+    if (activeFilter === 'SCHEDULED') {
+      filtered = filtered.filter(task => ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP'].includes(task.status));
+    } else if (activeFilter === 'IN_TRANSIT') {
+      filtered = filtered.filter(task => ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS'].includes(task.status));
+    } else if (activeFilter === 'DELIVERY_READY') {
+      filtered = filtered.filter(task => ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(task.status));
+    } else if (activeFilter === 'COMPLETED') {
+      filtered = filtered.filter(task => ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'CLOSED'].includes(task.status));
     }
 
     // Apply search
@@ -199,10 +208,18 @@ export default function TasksListScreen() {
 
   const getStatusColor = (status: string) => {
     const colors: any = {
-      PENDING: '#f59e0b',
-      IN_TRANSIT: '#3b82f6',
+      ACCEPTED: '#f59e0b',
+      ASSIGNED_TO_WORKSHOP: '#f59e0b',
+      ON_THE_WAY: '#3b82f6',
+      VEHICLE_IN_TRANSIT: '#3b82f6',
+      VEHICLE_DROPPED_AT_WORKSHOP: '#10b981',
+      IN_PROGRESS: '#3b82f6',
+      READY_FOR_DELIVERY: '#10b981',
+      COD_PENDING: '#f59e0b',
+      DELIVERED_TO_CUSTOMER: '#10b981',
       COMPLETED: '#10b981',
       FAILED: '#ef4444',
+      FAILED_PICKUP: '#ef4444',
     };
     return colors[status] || '#6b7280';
   };
@@ -227,13 +244,15 @@ export default function TasksListScreen() {
           <Text style={styles.customerName}>{item.customer_name}</Text>
           <Text style={styles.vehicle}>{item.vehicle_number}</Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.pickup_status) }]}>
-          <Text style={styles.statusText}>{item.pickup_status}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+          <Text style={styles.statusText}>{item.status}</Text>
         </View>
       </View>
 
       <View style={styles.typeTag}>
-        <Text style={styles.typeText}>{item.pickup_type}</Text>
+        <Text style={styles.typeText}>
+          {['READY_FOR_DELIVERY', 'COD_PENDING'].includes(item.status) ? 'DELIVERY' : 'PICKUP'}
+        </Text>
       </View>
 
       {item.customer_address && (
@@ -269,10 +288,11 @@ export default function TasksListScreen() {
     </TouchableOpacity>
   );
 
-  const filters = [
+  const filters: { label: string; value: FilterValue; count: number }[] = [
     { label: 'All', value: 'ALL', count: tasks.length },
-    { label: 'Pending', value: 'PENDING', count: stats.pending },
+    { label: 'Scheduled', value: 'SCHEDULED', count: stats.pending },
     { label: 'In Transit', value: 'IN_TRANSIT', count: stats.inTransit },
+    { label: 'Delivery Ready', value: 'DELIVERY_READY', count: stats.deliveryReady },
     { label: 'Completed', value: 'COMPLETED', count: stats.completed },
     { label: 'Failed', value: 'FAILED', count: stats.failed },
   ];

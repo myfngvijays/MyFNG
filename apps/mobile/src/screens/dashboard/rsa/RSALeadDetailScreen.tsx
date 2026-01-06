@@ -448,7 +448,7 @@ export default function RSALeadDetailScreen({ navigation, route }: any) {
         {lead.assigned_manager_id === userProfile?.id && (
           <>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.gray }]}
+              style={[styles.actionButton, { backgroundColor: COLORS.gray[500] }]}
               onPress={() => setShowUpdateStatus(true)}
             >
               <Text style={styles.actionButtonText}>Update Status</Text>

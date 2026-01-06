@@ -357,7 +357,7 @@ export default function DayPlanningScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>📅 Day Planning</Text>
         <Text style={styles.subtitle}>
-          {formatDateDMY()}
+          {formatDateDMY(new Date().toISOString())}
         </Text>
         <Text style={styles.jobCount}>{jobs.length} jobs to manage</Text>
       </View>

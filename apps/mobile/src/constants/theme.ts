@@ -12,6 +12,11 @@ export const COLORS = {
   
   // Text Colors (MyFNG Brand)
   text: '#3A3F45',          // Body text
+  // Common aliases (used by some older screens)
+  textPrimary: '#3A3F45',
+  textGray: '#6B7280',
+  bodyText: '#3A3F45',
+  heading: '#023D95',
   textHeading: '#023D95',   // Dark Blue for headings
   textBody: '#3A3F45',      // Body text
   textSecondary: '#6B7280',
@@ -20,10 +25,12 @@ export const COLORS = {
   
   // UI Colors
   border: '#E5E7EB',
+  accent: '#14B8A6',
   
   // Status Colors
   success: '#10B981',
   warning: '#F59E0B',
+  yellow: '#F59E0B',
   danger: '#EF4444',
   error: '#EF4444',
   info: '#0088E8',
@@ -75,6 +82,7 @@ export const FONT_SIZES = {
 
 // Alias for SIZES (used in newer screens)
 export const SIZES = {
+  base: 16,
   xs: 12,
   sm: 14,
   md: 16,
@@ -82,6 +90,8 @@ export const SIZES = {
   xl: 20,
   xxl: 24,
   xxxl: 32,
+  radiusSm: 4,
+  radiusMd: 8,
 };
 
 export const BORDER_RADIUS = {
@@ -90,6 +100,31 @@ export const BORDER_RADIUS = {
   lg: 12,
   xl: 16,
   full: 999,
+};
+
+// Basic shadow presets (some legacy screens expect this export)
+export const SHADOWS = {
+  small: {
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  medium: {
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  large: {
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 8,
+  },
 };
 
 export const FONTS = {

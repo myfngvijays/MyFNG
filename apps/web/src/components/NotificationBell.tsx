@@ -5,11 +5,14 @@ import { useRouter } from 'next/navigation';
 import { Bell, X, Check, CheckCheck, Trash2, Clock } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { formatDateDMY } from "@/lib/utils";
+import toast from 'react-hot-toast';
+import { ensureWebPushSubscribed } from '@/lib/push/registerWebPush';
 
 export default function NotificationBell() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [desktopPermission, setDesktopPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
   
   const { 
     notifications, 
@@ -31,6 +34,51 @@ export default function NotificationBell() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Track browser notification permission
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        setDesktopPermission(Notification.permission);
+      } else {
+        setDesktopPermission('unsupported');
+      }
+    } catch {
+      setDesktopPermission('unsupported');
+    }
+  }, []);
+
+  const requestDesktopPermission = async () => {
+    try {
+      if (typeof window === 'undefined' || !('Notification' in window)) {
+        toast.error('Desktop notifications not supported in this browser');
+        return;
+      }
+      if (Notification.permission === 'denied') {
+        toast.error('Desktop notifications are blocked in browser settings');
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      setDesktopPermission(permission);
+      if (permission === 'granted') {
+        // Phase B: true web push subscription (best-effort)
+        try {
+          const subRes = await ensureWebPushSubscribed();
+          if (!subRes.ok && subRes.reason !== 'no_push_manager') {
+            // don't spam; just log
+            console.warn('Web push subscribe skipped:', subRes.reason);
+          }
+        } catch (e) {
+          console.warn('Web push subscribe failed:', e);
+        }
+        toast.success('Desktop notifications enabled');
+      }
+      else if (permission === 'denied') toast.error('Desktop notifications blocked in browser settings');
+      else toast('Desktop notifications not enabled');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to enable desktop notifications');
+    }
+  };
 
   const getPriorityColor = (priority: string) => {
     const colors: Record<string, string> = {
@@ -110,6 +158,27 @@ export default function NotificationBell() {
               )}
             </h3>
             <div className="flex items-center gap-2">
+              {desktopPermission !== 'unsupported' && desktopPermission !== 'granted' && (
+                desktopPermission === 'denied' ? (
+                  <button
+                    type="button"
+                    onClick={() => toast.error('Alerts are blocked. Enable notifications for this site in browser settings.')}
+                    className="text-sm text-red-600 px-2 py-1 rounded hover:bg-red-50"
+                    title="Desktop notifications are blocked"
+                  >
+                    Alerts blocked
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={requestDesktopPermission}
+                    className="text-sm text-gray-600 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-100"
+                    title="Enable desktop notifications"
+                  >
+                    Enable alerts
+                  </button>
+                )
+              )}
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyWorkshopRoles } from '@/lib/notifications';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -113,8 +114,35 @@ export async function POST(
       metadata: { incident_id: incident.id, incident_type, severity },
     });
 
-    // TODO: Send notifications to admin/supervisor
-    // This would integrate with your notification system
+    // Notify workshop admin/supervisor (final)
+    try {
+      const sev = String(severity || '').toUpperCase();
+      const priority = sev === 'CRITICAL' ? 'URGENT' : sev === 'HIGH' ? 'HIGH' : 'MEDIUM';
+      const leadNumber = (lead as any)?.lead_number || leadId;
+      const title = 'Pickup/Drop issue reported';
+      const msg = `Lead ${leadNumber}: ${incident_type}. ${String(description || '').trim()}`;
+
+      if (lead.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: lead.workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'SYSTEM_ALERT',
+          title,
+          message: msg,
+          priority: priority as any,
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_supervisor/pickup-delivery`,
+          metadata: {
+            incident_id: incident.id,
+            incident_type,
+            severity,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('Incident notification failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

@@ -4,7 +4,7 @@ import DashboardHeader from '../../components/DashboardHeader';
 import { COLORS, SPACING } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
-export default function DefaultDashboard({ userProfile, onLogout }) {
+export default function DefaultDashboard({ userProfile, onLogout }: { userProfile: any; onLogout?: () => void }) {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     if (onLogout) onLogout();

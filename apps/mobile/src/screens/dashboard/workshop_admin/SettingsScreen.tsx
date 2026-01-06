@@ -32,7 +32,7 @@ interface WorkshopSettings {
 }
 
 export default function SettingsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [workshopId, setWorkshopId] = useState<string | null>(null);
@@ -181,20 +181,20 @@ export default function SettingsScreen() {
             <InputField
               label="Workshop Name"
               value={settings.name}
-              onChangeText={(value) => updateSetting('name', value)}
+              onChangeText={(value: string) => updateSetting('name', value)}
               placeholder="Enter workshop name"
             />
             <InputField
               label="Phone"
               value={settings.phone}
-              onChangeText={(value) => updateSetting('phone', value)}
+              onChangeText={(value: string) => updateSetting('phone', value)}
               placeholder="Enter phone number"
               keyboardType="phone-pad"
             />
             <InputField
               label="Email"
               value={settings.email}
-              onChangeText={(value) => updateSetting('email', value)}
+              onChangeText={(value: string) => updateSetting('email', value)}
               placeholder="Enter email"
               keyboardType="email-address"
             />
@@ -208,20 +208,20 @@ export default function SettingsScreen() {
             <InputField
               label="Address"
               value={settings.address}
-              onChangeText={(value) => updateSetting('address', value)}
+              onChangeText={(value: string) => updateSetting('address', value)}
               placeholder="Enter full address"
               multiline
             />
             <InputField
               label="City"
               value={settings.city}
-              onChangeText={(value) => updateSetting('city', value)}
+              onChangeText={(value: string) => updateSetting('city', value)}
               placeholder="Enter city"
             />
             <InputField
               label="Pincode"
               value={settings.pincode}
-              onChangeText={(value) => updateSetting('pincode', value)}
+              onChangeText={(value: string) => updateSetting('pincode', value)}
               placeholder="Enter pincode"
               keyboardType="numeric"
             />
@@ -235,13 +235,13 @@ export default function SettingsScreen() {
             <InputField
               label="Start Time"
               value={settings.operating_hours_start || '09:00'}
-              onChangeText={(value) => updateSetting('operating_hours_start', value)}
+              onChangeText={(value: string) => updateSetting('operating_hours_start', value)}
               placeholder="09:00"
             />
             <InputField
               label="End Time"
               value={settings.operating_hours_end || '18:00'}
-              onChangeText={(value) => updateSetting('operating_hours_end', value)}
+              onChangeText={(value: string) => updateSetting('operating_hours_end', value)}
               placeholder="18:00"
             />
           </View>
@@ -254,7 +254,7 @@ export default function SettingsScreen() {
             <InputField
               label="Maximum Concurrent Jobs"
               value={settings.capacity?.toString() || '10'}
-              onChangeText={(value) => updateSetting('capacity', parseInt(value) || 0)}
+              onChangeText={(value: string) => updateSetting('capacity', parseInt(value, 10) || 0)}
               placeholder="10"
               keyboardType="numeric"
             />
@@ -268,12 +268,12 @@ export default function SettingsScreen() {
             <SwitchField
               label="Accept Pickup Services"
               value={settings.accepts_pickup || false}
-              onValueChange={(value) => updateSetting('accepts_pickup', value)}
+              onValueChange={(value: boolean) => updateSetting('accepts_pickup', value)}
             />
             <SwitchField
               label="Accept Dropoff Services"
               value={settings.accepts_dropoff || false}
-              onValueChange={(value) => updateSetting('accepts_dropoff', value)}
+              onValueChange={(value: boolean) => updateSetting('accepts_dropoff', value)}
             />
           </View>
         </View>

@@ -36,7 +36,7 @@ interface JobMonitor {
 }
 
 export default function JobMonitoringScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const [jobs, setJobs] = useState<JobMonitor[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<JobMonitor[]>([]);
   const [filter, setFilter] = useState('ACTIVE');

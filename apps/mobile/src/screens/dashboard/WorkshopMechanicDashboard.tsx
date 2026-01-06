@@ -11,8 +11,10 @@ import MechanicJobsScreen from './workshop_mechanic/MechanicJobsScreen';
 import MechanicJobHistoryScreen from './workshop_mechanic/MechanicJobHistoryScreen';
 import MechanicProfileScreen from './workshop_mechanic/MechanicProfileScreen';
 import { formatDateDMY } from "@/lib/dateFormat";
+import { useNotifications } from '../../context/NotificationContext';
 
 export default function WorkshopMechanicDashboard({ navigation }: any) {
+  const { jobRefreshTick } = useNotifications();
   const [userProfile, setUserProfile] = React.useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [stats, setStats] = useState({
@@ -201,6 +203,13 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
     }
   }, [userProfile]);
 
+  // If a new job-impacting notification arrives, refresh the mechanic dashboard data.
+  useEffect(() => {
+    if (!userProfile?.id) return;
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobRefreshTick]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -221,7 +230,7 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
     return (
       <View style={styles.container}>
         <View style={{ flex: 1 }}>
-          <MechanicJobsScreen navigation={navigation} />
+          {React.createElement(MechanicJobsScreen as any, { navigation })}
         </View>
         <BottomNav
           activeTab={currentScreen}
@@ -236,7 +245,7 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
     return (
       <View style={styles.container}>
         <View style={{ flex: 1 }}>
-          <MechanicJobHistoryScreen navigation={navigation} />
+          {React.createElement(MechanicJobHistoryScreen as any, { navigation })}
         </View>
         <BottomNav
           activeTab={currentScreen}
@@ -251,7 +260,7 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
     return (
       <View style={styles.container}>
         <View style={{ flex: 1 }}>
-          <MechanicProfileScreen navigation={navigation} />
+          {React.createElement(MechanicProfileScreen as any, { navigation })}
         </View>
         <BottomNav
           activeTab={currentScreen}

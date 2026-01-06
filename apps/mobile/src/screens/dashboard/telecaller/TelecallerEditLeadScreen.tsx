@@ -373,7 +373,7 @@ export default function TelecallerEditLeadScreen() {
           <Text style={styles.sectionTitle}>👤 Customer Details</Text>
           
           <TextInput
-            style={[styles.input, errors.customer_name && styles.inputError]}
+            style={[styles.input, !!errors.customer_name && styles.inputError]}
             placeholder="Customer Name *"
             value={formData.customer_name}
             onChangeText={(v) => handleChange('customer_name', v)}
@@ -381,7 +381,7 @@ export default function TelecallerEditLeadScreen() {
           {errors.customer_name && <Text style={styles.errorText}>{errors.customer_name}</Text>}
 
           <TextInput
-            style={[styles.input, errors.customer_phone && styles.inputError]}
+            style={[styles.input, !!errors.customer_phone && styles.inputError]}
             placeholder="Phone Number *"
             value={formData.customer_phone}
             onChangeText={(v) => handleChange('customer_phone', v)}
@@ -408,7 +408,7 @@ export default function TelecallerEditLeadScreen() {
           />
 
           <TextInput
-            style={[styles.input, styles.textArea, errors.customer_address && styles.inputError]}
+            style={[styles.input, styles.textArea, !!errors.customer_address && styles.inputError]}
             placeholder="Address *"
             value={formData.customer_address}
             onChangeText={(v) => handleChange('customer_address', v)}
@@ -442,7 +442,7 @@ export default function TelecallerEditLeadScreen() {
           <Text style={styles.sectionTitle}>🚗 Vehicle Details</Text>
 
           <TextInput
-            style={[styles.input, errors.vehicle_number && styles.inputError]}
+            style={[styles.input, !!errors.vehicle_number && styles.inputError]}
             placeholder="Vehicle Number (e.g., MH 01 AB 1234) *"
             value={formData.vehicle_number}
             onChangeText={(v) => handleChange('vehicle_number', v.toUpperCase())}
@@ -572,7 +572,7 @@ export default function TelecallerEditLeadScreen() {
           </View>
 
           <TextInput
-            style={[styles.input, styles.textArea, errors.problem_description && styles.inputError]}
+            style={[styles.input, styles.textArea, !!errors.problem_description && styles.inputError]}
             placeholder="Problem Description *"
             value={formData.problem_description}
             onChangeText={(v) => handleChange('problem_description', v)}
@@ -601,7 +601,7 @@ export default function TelecallerEditLeadScreen() {
           {formData.pickup_required && (
             <>
               <TextInput
-                style={[styles.input, styles.textArea, errors.pickup_address && styles.inputError]}
+                style={[styles.input, styles.textArea, !!errors.pickup_address && styles.inputError]}
                 placeholder="Pickup Address (Leave empty to use customer address)"
                 value={formData.pickup_address}
                 onChangeText={(v) => handleChange('pickup_address', v)}
@@ -611,7 +611,7 @@ export default function TelecallerEditLeadScreen() {
               {errors.pickup_address && <Text style={styles.errorText}>{errors.pickup_address}</Text>}
 
               <TextInput
-                style={[styles.input, errors.preferred_slot_start && styles.inputError]}
+                style={[styles.input, !!errors.preferred_slot_start && styles.inputError]}
                 placeholder="Preferred Pickup Time (e.g., 10:00 AM) *"
                 value={formData.preferred_slot_start}
                 onChangeText={(v) => handleChange('preferred_slot_start', v)}

@@ -118,11 +118,13 @@ export default function LeadManagerReportsScreen() {
       .gte('created_at', dateRange.start)
       .lte('created_at', dateRange.end);
 
-    const validationRate = totalLeads > 0 ? (validatedLeads / totalLeads) * 100 : 0;
+    const total = totalLeads ?? 0;
+    const validated = validatedLeads ?? 0;
+    const validationRate = total > 0 ? (validated / total) * 100 : 0;
 
     setStats({
-      total_leads: totalLeads || 0,
-      validated_leads: validatedLeads || 0,
+      total_leads: total,
+      validated_leads: validated,
       incomplete_leads: incompleteLeads || 0,
       assigned_leads: assignedLeads || 0,
       validation_rate: parseFloat(validationRate.toFixed(2)),

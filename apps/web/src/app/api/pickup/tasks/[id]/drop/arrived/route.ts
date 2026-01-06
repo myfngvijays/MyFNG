@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -7,9 +7,9 @@ export const dynamic = 'force-dynamic';
  * POST /api/pickup/tasks/[id]/drop/arrived
  * Mark that pickup boy arrived at customer location for delivery.
  */
-export async function POST(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

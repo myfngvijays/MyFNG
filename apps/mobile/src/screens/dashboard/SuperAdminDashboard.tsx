@@ -200,7 +200,10 @@ export default function SuperAdminDashboard() {
         dailyRevenue: Math.round(dailyRevenue)
       });
 
-      const pendingWorkshops = totalWorkshopsResult.count - workshopsResult.count - inactiveWorkshopsResult.count;
+      const totalWs = totalWorkshopsResult.count ?? 0;
+      const activeWs = workshopsResult.count ?? 0;
+      const inactiveWs = inactiveWorkshopsResult.count ?? 0;
+      const pendingWorkshops = totalWs - activeWs - inactiveWs;
 
       setGlobalMetrics({
         totalLeadsToday: totalLeadsResult.count || 0,
@@ -209,9 +212,9 @@ export default function SuperAdminDashboard() {
         slaBreaches: slaBreachedResult.count || 0,
         totalRevenue: Math.round(totalRevenue),
         dailyRevenue: Math.round(dailyRevenue),
-        activeWorkshops: workshopsResult.count || 0,
-        inactiveWorkshops: inactiveWorkshopsResult.count || 0,
-        totalWorkshops: totalWorkshopsResult.count || 0,
+        activeWorkshops: activeWs,
+        inactiveWorkshops: inactiveWs,
+        totalWorkshops: totalWs,
         pendingWorkshops: Math.max(0, pendingWorkshops || 0), // Calculated: Total - Active - Inactive
         totalCustomers: customersResult.count || 0,
         avgWorkshopRating: Math.round(avgRating * 10) / 10,
@@ -429,7 +432,8 @@ export default function SuperAdminDashboard() {
   }
 
   if (currentScreen === 'LeadsManagement') {
-    return <LeadsManagementScreen navigation={navigationObj} route={{ params: {} }} />;
+    const Screen: any = LeadsManagementScreen;
+    return <Screen navigation={navigationObj} route={{ params: {} }} />;
   }
 
   if (currentScreen === 'ReportsAnalytics') {
@@ -445,11 +449,13 @@ export default function SuperAdminDashboard() {
   }
 
   if (currentScreen === 'FraudDetection') {
-    return <FraudDetectionScreen navigation={navigationObj} route={{ params: {} }} />;
+    const Screen: any = FraudDetectionScreen;
+    return <Screen navigation={navigationObj} route={{ params: {} }} />;
   }
 
   if (currentScreen === 'AuditLogs') {
-    return <AuditLogsScreen navigation={navigationObj} route={{ params: {} }} />;
+    const Screen: any = AuditLogsScreen;
+    return <Screen navigation={navigationObj} route={{ params: {} }} />;
   }
 
   if (currentScreen === 'InventoryProducts') {
