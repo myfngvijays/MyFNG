@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { createNotification, notifyTelecallerTeamlead } from '@/lib/notifications';
+import { createNotification, notifyTelecallerTeamlead, notifyWorkshopRoles } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -140,24 +140,75 @@ export async function POST(
     try {
       const leadNumber = (lead as any)?.lead_number || leadId;
       const actorName = userProfile.full_name || (isSupervisor ? 'Workshop Supervisor' : 'Workshop Admin');
+      const workshopId = userProfile.workshop_id;
 
-      // Notify Lead Manager (if present on lead)
-      const leadManagerId = (lead as any)?.lead_manager_assigned_id;
-      if (leadManagerId) {
-        await createNotification({
-          userId: leadManagerId,
-          type: 'LEAD_ACCEPTED',
-          title: 'Workshop accepted lead',
-          message: `Lead ${leadNumber} was accepted by ${actorName}.`,
-          priority: 'MEDIUM',
-          leadId,
-          leadNumber,
-          relatedUserName: actorName,
-          actionUrl: `/dashboard/lead_manager/leads/${leadId}`,
-        });
+      // If Supervisor (Advisor) accepts → Notify Owner (WORKSHOP_ADMIN) + Lead Manager
+      if (isSupervisor) {
+        // Notify all Workshop Admins (Owners) in the workshop
+        if (workshopId) {
+          await notifyWorkshopRoles({
+            workshopId,
+            roleCodes: ['WORKSHOP_ADMIN'],
+            type: 'LEAD_ACCEPTED',
+            title: 'Lead accepted by supervisor',
+            message: `Lead ${leadNumber} was accepted by ${actorName} (Supervisor).`,
+            priority: 'MEDIUM',
+            leadId,
+            leadNumber,
+            actionUrl: `/dashboard/workshop_admin/leads/${leadId}`,
+            metadata: {
+              kind: 'LEAD_ACCEPTED_BY_SUPERVISOR',
+              accepted_by: userProfile.id,
+              accepted_by_name: actorName,
+            },
+          });
+        }
+
+        // Notify Lead Manager
+        const leadManagerId = (lead as any)?.lead_manager_assigned_id;
+        if (leadManagerId) {
+          await createNotification({
+            userId: leadManagerId,
+            type: 'LEAD_ACCEPTED',
+            title: 'Workshop accepted lead',
+            message: `Lead ${leadNumber} was accepted by ${actorName} (Supervisor).`,
+            priority: 'MEDIUM',
+            leadId,
+            leadNumber,
+            relatedUserName: actorName,
+            actionUrl: `/dashboard/lead_manager/leads/${leadId}`,
+            metadata: {
+              kind: 'LEAD_ACCEPTED_BY_SUPERVISOR',
+              accepted_by_role: 'WORKSHOP_SUPERVISOR',
+            },
+          });
+        }
       }
 
-      // Notify Telecaller + Teamlead (if telecaller assigned)
+      // If Admin (Owner) accepts → Notify Lead Manager only
+      if (isWorkshopAdmin) {
+        // Notify Lead Manager
+        const leadManagerId = (lead as any)?.lead_manager_assigned_id;
+        if (leadManagerId) {
+          await createNotification({
+            userId: leadManagerId,
+            type: 'LEAD_ACCEPTED',
+            title: 'Workshop accepted lead',
+            message: `Lead ${leadNumber} was accepted by ${actorName} (Owner).`,
+            priority: 'MEDIUM',
+            leadId,
+            leadNumber,
+            relatedUserName: actorName,
+            actionUrl: `/dashboard/lead_manager/leads/${leadId}`,
+            metadata: {
+              kind: 'LEAD_ACCEPTED_BY_OWNER',
+              accepted_by_role: 'WORKSHOP_ADMIN',
+            },
+          });
+        }
+      }
+
+      // Notify Telecaller + Teamlead (if telecaller assigned) - for both cases
       const telecallerId = (lead as any)?.assigned_telecaller_id;
       if (telecallerId) {
         await createNotification({
@@ -183,8 +234,12 @@ export async function POST(
           metadata: { new_status: 'ACCEPTED' },
         });
       }
-    } catch (e) {
-      console.warn('Accept lead notifications failed (non-blocking):', e);
+    } catch (e: any) {
+      console.error('[Accept Lead] Notification failed:', {
+        error: e?.message,
+        stack: e?.stack,
+        details: e
+      });
     }
 
     return NextResponse.json({

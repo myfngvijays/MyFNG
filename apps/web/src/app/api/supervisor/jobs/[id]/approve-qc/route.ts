@@ -1,6 +1,6 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyQCDecision, notifyAccountsTeam, notifyWorkshopRoles } from '@/lib/notifications';
+import { notifyQCDecision, notifyAccountsTeam, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
 
 export const dynamic = 'force-dynamic';
@@ -575,6 +575,22 @@ export async function POST(
         );
       }
 
+      // Notify workshop admin about QC approval
+      if (userProfile.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: userProfile.workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN'],
+          type: 'QC_APPROVED',
+          title: 'QC approved',
+          message: `Quality check approved for lead ${lead.lead_number || leadId}. Ready for billing.`,
+          priority: 'LOW',
+          leadId,
+          leadNumber: lead.lead_number || leadId,
+          actionUrl: `/dashboard/workshop_admin/jobs`,
+          metadata: { kind: 'QC_APPROVED_ADMIN', quality_score },
+        });
+      }
+
       // Notify accounts team when order summary is ready (no audit)
       if (finalLeadStatus === 'PAYMENT_AWAITING') {
         await notifyAccountsTeam(
@@ -586,6 +602,20 @@ export async function POST(
           `/dashboard/billing/leads/${leadId}`,
           'HIGH'
         );
+      }
+
+      // Notify telecaller if supervisor added notes/observations
+      if (notes && notes.trim().length > 0) {
+        const notesPreview = notes.length > 100 ? notes.substring(0, 100) + '...' : notes;
+        await notifyTelecallerForLead({
+          leadId,
+          leadNumber: lead.lead_number || leadId,
+          type: 'SUPERVISOR_OBSERVATION_ADDED',
+          title: 'Supervisor observation added',
+          message: `Supervisor added observation for lead ${lead.lead_number || leadId}: ${notesPreview}`,
+          priority: 'MEDIUM',
+          metadata: { qc_status: 'PASSED', notes_length: notes.length },
+        });
       }
     } catch (e) {
       console.warn('Notification dispatch failed (non-blocking):', e);

@@ -8,6 +8,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyTelecallerAssignedToLead, createNotification } from '@/lib/notifications';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
     // Get user details to verify role
     const { data: userData, error: userError } = await supabase
       .from('users_login')
-      .select('role_id')
+      .select('role_id, full_name')
       .eq('id', user.id)
       .single();
 
@@ -183,6 +184,70 @@ export async function POST(request: NextRequest) {
     } catch (historyError) {
       console.error('Failed to log status history:', historyError);
       // Don't fail the request if history logging fails
+    }
+
+    // Notify telecaller about validation result (non-blocking)
+    try {
+      const leadNumber = (lead as any)?.lead_number || lead_id;
+      const telecallerId = (lead as any)?.assigned_telecaller_id || (lead as any)?.created_by_id;
+      
+      console.log('[Validate Lead] Notification check:', {
+        leadNumber,
+        telecallerId,
+        assigned_telecaller_id: (lead as any)?.assigned_telecaller_id,
+        created_by_id: (lead as any)?.created_by_id,
+        is_valid
+      });
+      
+      if (telecallerId) {
+        const notificationResult = is_valid
+          ? await createNotification({
+              userId: telecallerId,
+              type: 'LEAD_ACCEPTED',
+              title: 'Lead validated',
+              message: `Lead ${leadNumber} has been validated and is ready for workshop assignment.`,
+              priority: 'MEDIUM',
+              leadId: lead_id,
+              leadNumber,
+              relatedUserName: userData?.full_name || 'Lead Manager',
+              actionUrl: `/dashboard/telecaller/leads/${lead_id}`,
+              metadata: {
+                kind: 'LEAD_VALIDATED',
+                validation_notes: validation_notes || null,
+              },
+            })
+          : await createNotification({
+              userId: telecallerId,
+              type: 'LEAD_REJECTED',
+              title: 'Lead requires correction',
+              message: `Lead ${leadNumber} marked as incomplete. ${validation_notes || 'Please review and update lead details.'}`,
+              priority: 'HIGH',
+              leadId: lead_id,
+              leadNumber,
+              relatedUserName: userData?.full_name || 'Lead Manager',
+              actionUrl: `/dashboard/telecaller/leads/${lead_id}/edit`,
+              metadata: {
+                kind: 'LEAD_INCOMPLETE',
+                validation_notes: validation_notes || null,
+                incomplete_reason: validation_notes || 'Validation failed',
+              },
+            });
+        
+        if (notificationResult) {
+          console.log('[Validate Lead] Notification created successfully:', notificationResult.id);
+        } else {
+          console.warn('[Validate Lead] Notification creation returned null');
+        }
+      } else {
+        console.warn('[Validate Lead] No telecaller ID found - skipping notification');
+      }
+    } catch (notifError: any) {
+      console.error('[Validate Lead] Notification failed:', {
+        error: notifError?.message,
+        stack: notifError?.stack,
+        details: notifError
+      });
+      // Don't fail the request if notification fails
     }
 
     return NextResponse.json({

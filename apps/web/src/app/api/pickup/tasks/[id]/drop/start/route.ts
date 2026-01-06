@@ -1,6 +1,6 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyWorkshopRoles } from '@/lib/notifications';
+import { notifyPickupBoy, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -116,6 +116,19 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
       if (fullLead?.workshop_id) {
         const leadNumber = (fullLead as any)?.lead_number || leadId;
+
+        // Pickup boy confirmation
+        await notifyPickupBoy({
+          pickupBoyId: userProfile.id,
+          type: 'DELIVERY_ASSIGNED',
+          title: 'Delivery started',
+          message: `Lead ${leadNumber}: Delivery started. Navigate to customer and verify delivery OTP.`,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          metadata: { kind: 'DELIVERY_OUT_FOR_DELIVERY' },
+        });
+
         await notifyWorkshopRoles({
           workshopId: fullLead.workshop_id,
           roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],

@@ -10,8 +10,10 @@ import PickupBoyProfileScreen from '../pickup/PickupBoyProfileScreen';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { formatDateTime } from "@/lib/dateFormat";
+import { useNotifications } from '../../context/NotificationContext';
 
 export default function WorkshopPickupBoyDashboard() {
+  const { pickupRefreshTick } = useNotifications();
   const [userProfile, setUserProfile] = React.useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [stats, setStats] = useState({
@@ -173,6 +175,14 @@ export default function WorkshopPickupBoyDashboard() {
       };
     }
   }, [userProfile]);
+
+  // If a pickup-impacting notification arrives, refetch dashboard counts.
+  useEffect(() => {
+    if (userProfile?.id) {
+      fetchDashboardData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupRefreshTick]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

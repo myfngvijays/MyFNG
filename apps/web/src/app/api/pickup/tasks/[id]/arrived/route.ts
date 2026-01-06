@@ -1,6 +1,6 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
+import { createNotification, notifyPickupBoy, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -145,6 +145,18 @@ export async function POST(
     try {
       const leadNumber = (lead as any)?.lead_number || leadId;
       const msg = `Vehicle arrived at workshop for lead ${leadNumber}. Begin inspection.`;
+
+      // Pickup boy confirmation / next action
+      await notifyPickupBoy({
+        pickupBoyId: userProfile.id,
+        type: 'HANDOVER_PENDING',
+        title: 'Vehicle delivered to workshop',
+        message: `Lead ${leadNumber}: Vehicle delivered. Complete handover checklist to close pickup.`,
+        priority: 'MEDIUM',
+        leadId,
+        leadNumber,
+        metadata: { kind: 'HANDOVER_PENDING' },
+      });
 
       if ((lead as any)?.assigned_mechanic_id) {
         await createNotification({

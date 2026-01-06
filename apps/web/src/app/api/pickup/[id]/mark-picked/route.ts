@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyPickupBoy, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,31 @@ export async function POST(
     const leadId = params.id;
     const body = await request.json();
     const { notes, latitude, longitude } = body;
+
+    // Observation gating (per-lead). Backwards compatible if column not yet migrated.
+    try {
+      let obsRequired = false;
+      let obsText: string | null = null;
+      const { data: leadObs, error: leadObsError } = await supabase
+        .from('service_leads')
+        .select('id, pickup_observation, pickup_observation_required')
+        .eq('id', leadId)
+        .single();
+
+      if (!leadObsError && leadObs) {
+        obsRequired = !!(leadObs as any).pickup_observation_required;
+        obsText = (leadObs as any).pickup_observation || null;
+      }
+
+      if (obsRequired && !String(obsText || '').trim()) {
+        return NextResponse.json(
+          { error: 'Observation report pending', hint: 'Submit observation report to continue' },
+          { status: 400 }
+        );
+      }
+    } catch {
+      // If column doesn't exist yet, treat as not required.
+    }
 
     // Check if minimum photos are uploaded
     const { count: photoCount, error: photoCountError } = await supabase
@@ -90,6 +116,45 @@ export async function POST(
       description: 'Vehicle picked up by pickup boy',
       metadata: { notes, latitude, longitude },
     });
+
+    // Notifications (final)
+    try {
+      const { data: fullLead } = await supabase
+        .from('service_leads')
+        .select('id, lead_number, workshop_id')
+        .eq('id', leadId)
+        .maybeSingle();
+
+      const leadNumber = (fullLead as any)?.lead_number || leadId;
+
+      await notifyPickupBoy({
+        pickupBoyId: user.id,
+        type: 'PICKUP_COMPLETED',
+        title: 'Pickup completed',
+        message: `Lead ${leadNumber}: Pickup completed. Proceed to workshop and mark vehicle arrived.`,
+        priority: 'MEDIUM',
+        leadId,
+        leadNumber,
+        metadata: { kind: 'PICKUP_COMPLETED' },
+      });
+
+      if ((fullLead as any)?.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: (fullLead as any).workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'PICKUP_COMPLETED',
+          title: 'Vehicle picked up',
+          message: `Lead ${leadNumber}: Vehicle picked up by pickup boy. In transit to workshop.`,
+          priority: 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_supervisor/pickup-delivery`,
+          metadata: { kind: 'PICKUP_COMPLETED' },
+        });
+      }
+    } catch (e) {
+      console.warn('Pickup completed notifications failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

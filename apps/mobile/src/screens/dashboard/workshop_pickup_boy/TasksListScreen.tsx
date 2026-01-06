@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { useNotifications } from '../../../context/NotificationContext';
 
 interface PickupTask {
   id: string;
@@ -33,6 +34,7 @@ type FilterValue = 'ALL' | 'SCHEDULED' | 'IN_TRANSIT' | 'DELIVERY_READY' | 'COMP
 
 export default function TasksListScreen() {
   const navigation = useNavigation<any>();
+  const { pickupRefreshTick } = useNotifications();
   const [tasks, setTasks] = useState<PickupTask[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<PickupTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +107,12 @@ export default function TasksListScreen() {
   useEffect(() => {
     filterTasks();
   }, [tasks, searchQuery, activeFilter]);
+
+  // If a pickup-impacting notification arrives, refetch tasks.
+  useEffect(() => {
+    if (userId) fetchTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupRefreshTick]);
 
   const fetchUserId = async () => {
     try {

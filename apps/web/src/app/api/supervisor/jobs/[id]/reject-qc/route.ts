@@ -1,6 +1,6 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyQCDecision, notifyWorkshopRoles } from '@/lib/notifications';
+import { notifyQCDecision, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -239,6 +239,23 @@ export async function POST(
           userProfile.full_name || 'Supervisor',
           reason
         );
+      }
+
+      // Notify telecaller if supervisor added notes/observations
+      const supervisorNotes = notes || reason;
+      if (supervisorNotes && supervisorNotes.trim().length > 0) {
+        const notesPreview = supervisorNotes.length > 100 
+          ? supervisorNotes.substring(0, 100) + '...' 
+          : supervisorNotes;
+        await notifyTelecallerForLead({
+          leadId,
+          leadNumber: lead.lead_number || leadId,
+          type: 'SUPERVISOR_OBSERVATION_ADDED',
+          title: 'Supervisor observation added',
+          message: `Supervisor added observation for lead ${lead.lead_number || leadId}: ${notesPreview}`,
+          priority: 'MEDIUM',
+          metadata: { qc_status: 'FAILED', notes_length: supervisorNotes.length },
+        });
       }
     } catch (e) {
       console.warn('Notification dispatch failed (non-blocking):', e);

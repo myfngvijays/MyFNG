@@ -17,6 +17,8 @@ CREATE TABLE public.notifications (
     action_url TEXT,
     lead_number VARCHAR(50),
     lead_id UUID REFERENCES public.service_leads(id) ON DELETE SET NULL,
+    related_user_id uuid REFERENCES public.users_login(id) ON DELETE SET NULL,
+    related_user_name text,
     metadata JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -28,6 +30,7 @@ CREATE INDEX idx_notifications_is_read ON public.notifications(is_read);
 CREATE INDEX idx_notifications_created_at ON public.notifications(created_at DESC);
 CREATE INDEX idx_notifications_user_unread ON public.notifications(user_id, is_read) WHERE is_read = FALSE;
 CREATE INDEX idx_notifications_lead_id ON public.notifications(lead_id);
+CREATE INDEX idx_notifications_related_user_id ON public.notifications(related_user_id);
 
 -- Enable Row Level Security
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;

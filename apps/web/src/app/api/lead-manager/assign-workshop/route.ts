@@ -222,6 +222,13 @@ export async function POST(request: NextRequest) {
         `Action: Accept/Reject within SLA.`,
       ].filter(Boolean);
 
+      console.log('[Assign Workshop] Sending notification:', {
+        workshopId: workshop_id,
+        leadNumber,
+        roleCodes: ['WORKSHOP_ADMIN'],
+        isReassignment
+      });
+
       await notifyWorkshopRoles({
         workshopId: workshop_id,
         roleCodes: ['WORKSHOP_ADMIN'],
@@ -240,8 +247,14 @@ export async function POST(request: NextRequest) {
           previous_workshop_id: isReassignment ? lead.workshop_id : null,
         },
       });
-    } catch (e) {
-      console.warn('Workshop assignment notification failed (non-blocking):', e);
+
+      console.log('[Assign Workshop] Notification sent successfully');
+    } catch (e: any) {
+      console.error('[Assign Workshop] Notification failed:', {
+        error: e?.message,
+        stack: e?.stack,
+        details: e
+      });
     }
 
     return NextResponse.json({

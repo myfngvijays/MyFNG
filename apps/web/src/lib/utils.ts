@@ -37,6 +37,40 @@ export function formatDateTime(date: string | number | Date | null | undefined):
   return `${formatDateDMY(d)} ${formatTime12h(d)}`;
 }
 
+/**
+ * Format date/time for a specific timezone (defaults to IST - Asia/Kolkata)
+ * Output example: 07-01-2026 09:25 AM
+ */
+export function formatDateTimeIST(
+  date: string | number | Date | null | undefined,
+  timeZone: string = 'Asia/Kolkata'
+): string {
+  const d = toValidDate(date);
+  if (!d) return '';
+
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  // Build "DD-MM-YYYY HH:MM AM/PM" from parts to avoid locale punctuation
+  const parts = formatter.formatToParts(d);
+  const get = (type: string) => parts.find(p => p.type === type)?.value || '';
+  const day = get('day');
+  const month = get('month');
+  const year = get('year');
+  const hour = get('hour');
+  const minute = get('minute');
+  const dayPeriod = get('dayPeriod') || '';
+
+  return `${day}-${month}-${year} ${hour}:${minute} ${dayPeriod.toUpperCase()}`;
+}
+
 // Backward-compatible alias used across the app
 export function formatDate(date: string | number | Date | null | undefined): string {
   return formatDateTime(date);

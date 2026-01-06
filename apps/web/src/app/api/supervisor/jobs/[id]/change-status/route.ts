@@ -5,7 +5,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { createNotification } from '@/lib/notifications';
+import { createNotification, notifyTelecallerForLead } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -271,8 +271,34 @@ export async function POST(
           });
         }
       }
+
+      // Notify telecaller when status changes to IN_PROGRESS or IN_SERVICE
+      if (new_status === 'IN_PROGRESS' || new_status === 'IN_SERVICE') {
+        await notifyTelecallerForLead({
+          leadId,
+          leadNumber,
+          type: 'LEAD_IN_SERVICE',
+          title: 'Lead in service',
+          message: `Lead ${leadNumber} is now ${new_status === 'IN_PROGRESS' ? 'in progress' : 'in service'}.`,
+          priority: 'MEDIUM',
+          metadata: { new_status, previous_status: currentStatus },
+        });
+      }
+
+      // Notify telecaller when status changes to READY_FOR_DELIVERY
+      if (new_status === 'READY_FOR_DELIVERY') {
+        await notifyTelecallerForLead({
+          leadId,
+          leadNumber,
+          type: 'SYSTEM_ALERT',
+          title: 'Vehicle ready for delivery',
+          message: `Lead ${leadNumber} is ready for customer delivery. Coordinate with customer for pickup.`,
+          priority: 'HIGH',
+          metadata: { new_status, previous_status: currentStatus, kind: 'READY_FOR_DELIVERY' },
+        });
+      }
     } catch (e) {
-      console.warn('Mechanic status-change notification failed (non-blocking):', e);
+      console.warn('Status-change notification failed (non-blocking):', e);
     }
 
     return NextResponse.json({

@@ -177,15 +177,17 @@ export async function POST(request: NextRequest) {
       const leadId = (complaint as any)?.lead_id as string | null | undefined;
       let leadNumber: string | undefined;
       let mechanicId = (complaint as any)?.mechanic_id as string | null | undefined;
+      let pickupBoyId = (complaint as any)?.pickup_boy_id as string | null | undefined;
 
       if (leadId) {
         const { data: lead } = await supabase
           .from('service_leads')
-          .select('lead_number, assigned_mechanic_id')
+          .select('lead_number, assigned_mechanic_id, assigned_pickup_boy_id')
           .eq('id', leadId)
           .maybeSingle();
         leadNumber = (lead as any)?.lead_number || leadId;
         mechanicId = mechanicId || (lead as any)?.assigned_mechanic_id || null;
+        pickupBoyId = pickupBoyId || (lead as any)?.assigned_pickup_boy_id || null;
       }
 
       if (mechanicId) {
@@ -209,8 +211,31 @@ export async function POST(request: NextRequest) {
           },
         });
       }
+
+      // Notify pickup boy if complaint is related to pickup/delivery
+      if (pickupBoyId) {
+        await createNotification({
+          userId: pickupBoyId,
+          type: 'CUSTOMER_COMPLAINT',
+          title: `Customer Complaint Logged (${severity})`,
+          message: leadNumber
+            ? `${complaintNumber}: ${complaintType} for lead ${leadNumber}. Await supervisor instructions.`
+            : `${complaintNumber}: ${complaintType}. Await supervisor instructions.`,
+          priority: severity === 'CRITICAL' || severity === 'HIGH' ? 'URGENT' : 'HIGH',
+          leadId: leadId || undefined,
+          leadNumber,
+          actionUrl: leadId ? `/dashboard/workshop_pickup_boy/tasks/${leadId}` : undefined,
+          metadata: {
+            kind: 'PICKUP_BOY_COMPLAINT',
+            complaint_id: (complaint as any)?.id,
+            complaint_number: complaintNumber,
+            complaint_type: complaintType,
+            severity,
+          },
+        });
+      }
     } catch (e) {
-      console.warn('Mechanic complaint notification failed (non-blocking):', e);
+      console.warn('Mechanic/Pickup Boy complaint notification failed (non-blocking):', e);
     }
 
     return NextResponse.json({ success: true, complaint }, { status: 201 });

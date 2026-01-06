@@ -4,6 +4,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -16,19 +17,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, role')
-      .eq('email', user.email)
-      .single();
+    // Resolve users_login profile robustly (email -> phone -> id) + role_code via roles table
+    const email = (user.email || '').trim();
+    const phone = (user.phone || '').trim();
+    const selectProfile = 'id, email, phone, role_id, roles!inner(role_code)';
 
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    const { data: byEmail, error: byEmailError } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+      : { data: null as any, error: null as any };
+    const { data: byPhone, error: byPhoneError } = !byEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null as any, error: null as any };
+    const { data: byId, error: byIdError } = !byEmail && !byPhone
+      ? await supabase.from('users_login').select(selectProfile).eq('id', user.id).maybeSingle()
+      : { data: null as any, error: null as any };
+
+    const userProfile = byEmail || byPhone || byId;
+    if (!userProfile) {
+      return NextResponse.json(
+        {
+          error: 'User profile not found',
+          user_email: email || null,
+          user_phone: phone || null,
+          profile_lookup_errors: [byEmailError?.message, byPhoneError?.message, byIdError?.message].filter(Boolean),
+        },
+        { status: 404 }
+      );
     }
 
-    // Verify user is telecaller
-    if (userProfile.role !== 'telecaller' && userProfile.role !== 'super_admin') {
+    const roleCode = (userProfile.roles as any)?.role_code || null;
+    const allowed = new Set(['TELECALLER', 'SUPER_ADMIN', 'LEAD_MANAGER', 'SUB_ADMIN']);
+    if (!allowed.has(String(roleCode || ''))) {
       return NextResponse.json({ error: 'Forbidden: Telecaller only' }, { status: 403 });
     }
 
@@ -55,15 +74,19 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString();
 
+    // Prefer service-role client (bypasses RLS), fallback to user client
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const db = supabaseAdmin ?? supabase;
+
     // Create call log
-    const { data: callLog, error: callError } = await supabase
+    const { data: callLog, error: callError } = await db
       .from('telecaller_call_logs')
       .insert({
         lead_id: lead_id,
         telecaller_id: userProfile.id,
         call_type: call_type,
         call_status: call_status,
-        call_duration: call_duration,
+        call_duration: call_duration ?? null,
         outcome: outcome,
         customer_response: customer_response,
         notes: notes,

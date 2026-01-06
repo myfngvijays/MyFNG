@@ -1,6 +1,6 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
+import { createNotification, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -305,6 +305,17 @@ export async function POST(
           metadata: { extra_work_id: extraWorkRequest.id, amount: costNum, is_urgent: Boolean(is_urgent) },
         });
       }
+
+      // Notify telecaller about extra work request
+      await notifyTelecallerForLead({
+        leadId,
+        leadNumber,
+        type: 'EXTRA_WORK_REQUESTED',
+        title: 'Extra work requested',
+        message: `Additional work requested for lead ${leadNumber}: ${description} (₹${costNum})${is_urgent ? ' [URGENT]' : ''}.`,
+        priority: is_urgent ? 'HIGH' : 'MEDIUM',
+        metadata: { extra_work_id: extraWorkRequest.id, amount: costNum, is_urgent: Boolean(is_urgent) },
+      });
     } catch (e) {
       console.warn('Extra work request notifications failed (non-blocking):', e);
     }

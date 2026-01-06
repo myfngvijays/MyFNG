@@ -167,9 +167,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   // Fetch notifications
   const fetchNotifications = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) {
+      console.log('[NotificationContext] No userId, skipping fetch');
+      setLoading(false);
+      return;
+    }
 
     try {
+      console.log('[NotificationContext] Fetching notifications for userId:', userId);
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
@@ -178,14 +183,25 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .limit(50);
 
       if (error) {
-        console.error('Error fetching notifications:', error);
+        console.error('[NotificationContext] Error fetching notifications:', {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          userId
+        });
         return;
       }
 
+      console.log('[NotificationContext] Fetched notifications:', { count: data?.length || 0, userId });
       setNotifications(data || []);
       setUnreadCount(data?.filter(n => !n.is_read).length || 0);
-    } catch (error) {
-      console.error('Error:', error);
+    } catch (error: any) {
+      console.error('[NotificationContext] Unexpected error:', {
+        error: error?.message,
+        stack: error?.stack,
+        userId
+      });
     } finally {
       setLoading(false);
     }

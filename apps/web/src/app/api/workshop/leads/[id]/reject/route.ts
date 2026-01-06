@@ -145,7 +145,7 @@ export async function POST(
 
         await createNotification({
           userId: telecallerId,
-          type: 'LEAD_REJECTED',
+          type: 'LEAD_REJECTED_BY_WORKSHOP',
           title: 'Workshop rejected lead',
           message: msg,
           priority: 'HIGH',
@@ -159,7 +159,7 @@ export async function POST(
           telecallerId,
           leadId,
           leadNumber,
-          type: 'LEAD_REJECTED',
+          type: 'LEAD_REJECTED_BY_WORKSHOP',
           title: 'Workshop rejected lead',
           message: msg,
           priority: 'HIGH',

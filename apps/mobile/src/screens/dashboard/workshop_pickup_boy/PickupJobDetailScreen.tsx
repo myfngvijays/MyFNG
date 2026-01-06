@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   Alert,
   Linking,
   RefreshControl,
@@ -17,9 +18,12 @@ import type { PickupTracking, ServiceLead } from '../../../../../shared/types';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useNavigation } from '@react-navigation/native';
 import { ENV } from '../../../config/environment';
+import * as Location from 'expo-location';
+import { useNotifications } from '../../../context/NotificationContext';
 
 export default function PickupJobDetailScreen(props: any) {
   const navigation = useNavigation();
+  const { pickupRefreshTick } = useNotifications();
   const route = (props as any)?.route;
   const leadId: string = (props as any)?.leadId || route?.params?.taskId || route?.params?.leadId;
   const onBack = (props as any)?.onBack || (() => (navigation as any).goBack?.());
@@ -35,6 +39,9 @@ export default function PickupJobDetailScreen(props: any) {
   const [pickupPhotoCount, setPickupPhotoCount] = useState(0);
   const [dropPhotoCount, setDropPhotoCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [locationPermGranted, setLocationPermGranted] = useState<boolean>(false);
+  const [observationText, setObservationText] = useState('');
+  const [savingObservation, setSavingObservation] = useState(false);
 
   // Handle hardware back button
   useEffect(() => {
@@ -83,6 +90,76 @@ export default function PickupJobDetailScreen(props: any) {
       }
     };
   }, [leadId]);
+
+  // If a pickup-impacting notification arrives, refetch this lead.
+  useEffect(() => {
+    if (leadId) {
+      fetchLeadDetails();
+      fetchPhotoCount();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupRefreshTick]);
+
+  // Foreground GPS pings for route deviation/delay detection (Pickup/Workshop/Drop legs)
+  useEffect(() => {
+    let interval: any = null;
+    let cancelled = false;
+
+    const ensurePerm = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (cancelled) return;
+        setLocationPermGranted(status === 'granted');
+      } catch {
+        if (!cancelled) setLocationPermGranted(false);
+      }
+    };
+
+    ensurePerm();
+
+    const tick = async () => {
+      try {
+        if (!leadId || !locationPermGranted) return;
+        if (!lead || !tracking) return;
+
+        const isDelivery = isDeliveryLead(lead);
+        const pickupStatus = String((tracking as any)?.pickup_status || (lead as any)?.pickup_status || '').toUpperCase();
+        const dropStatus = String((tracking as any)?.drop_status || '').toUpperCase();
+
+        const movingPickup = ['ON_THE_WAY', 'IN_TRANSIT', 'VEHICLE_IN_TRANSIT'].includes(pickupStatus);
+        const movingDrop = ['OUT_FOR_DELIVERY', 'IN_TRANSIT', 'MOVING_TO_DROP'].includes(dropStatus);
+        const shouldTrack = isDelivery ? movingDrop : movingPickup;
+        if (!shouldTrack) return;
+
+        const mode = isDelivery ? 'DROP' : pickupStatus === 'VEHICLE_IN_TRANSIT' ? 'WORKSHOP' : 'PICKUP';
+
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        await postJson(`/api/pickup/${leadId}/location`, {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          speed: pos.coords.speed,
+          heading: pos.coords.heading,
+          mode,
+        });
+      } catch {
+        // ignore (best-effort)
+      }
+    };
+
+    // Start periodic pings
+    interval = setInterval(() => void tick(), 20000);
+    void tick();
+
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId, locationPermGranted, (lead as any)?.status, (tracking as any)?.pickup_status, (tracking as any)?.drop_status]);
 
   const fetchLeadDetails = async () => {
     try {
@@ -175,6 +252,25 @@ export default function PickupJobDetailScreen(props: any) {
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.error || 'Request failed');
     return json;
+  };
+
+  const submitObservation = async () => {
+    const text = String(observationText || '').trim();
+    if (!text) {
+      Alert.alert('Observation required', 'Please enter observation before submitting.');
+      return;
+    }
+    setSavingObservation(true);
+    try {
+      await postJson(`/api/pickup/tasks/${leadId}/observation`, { observation: text });
+      Alert.alert('Saved', 'Observation submitted.');
+      setObservationText('');
+      await fetchLeadDetails();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to submit observation');
+    } finally {
+      setSavingObservation(false);
+    }
   };
 
   const handleStartNavigateFlow = async () => {
@@ -376,6 +472,9 @@ export default function PickupJobDetailScreen(props: any) {
   const statusForUi = deliveryMode
     ? String((tracking as any)?.drop_status || (lead as any)?.status || '')
     : String((tracking as any)?.pickup_status || (lead as any)?.status || '');
+
+  const observationRequired = !deliveryMode && !!(lead as any)?.pickup_observation_required;
+  const observationDone = !!String((lead as any)?.pickup_observation || '').trim();
 
   return (
     <View style={styles.container}>
@@ -594,6 +693,36 @@ export default function PickupJobDetailScreen(props: any) {
         </View>
 
         {/* Action Buttons */}
+        {observationRequired && !observationDone && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>📝 Observation (Required)</Text>
+            <Text style={{ color: COLORS.gray[700], marginBottom: SPACING.sm }}>
+              Submit observation report to continue.
+            </Text>
+            <TextInput
+              style={styles.observationInput}
+              value={observationText}
+              onChangeText={setObservationText}
+              placeholder="Write observation (vehicle condition, issues, notes)..."
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { backgroundColor: COLORS.primary, marginTop: SPACING.sm },
+                savingObservation && { opacity: 0.7 },
+              ]}
+              onPress={submitObservation}
+              disabled={savingObservation}
+            >
+              <Text style={styles.actionButtonText}>
+                {savingObservation ? 'Saving...' : 'Submit Observation'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <View style={styles.actionsContainer}>{renderActionButton()}</View>
 
         {/* Report Incident Button */}
@@ -749,6 +878,16 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.white,
+  },
+  observationInput: {
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    backgroundColor: COLORS.white,
+    minHeight: 90,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.heading,
   },
   secondaryButton: {
     padding: SPACING.md,

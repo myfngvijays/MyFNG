@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyExtraWorkDecision, notifyWorkshopRoles } from '@/lib/notifications';
+import { notifyExtraWorkDecision, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -178,6 +178,17 @@ export async function POST(request: NextRequest) {
         leadId: reqRow.lead_id,
         leadNumber,
         actionUrl: `/dashboard/workshop_admin/leads/pending`,
+        metadata: { extra_work_id: id, amount: computedTotal },
+      });
+
+      // Notify telecaller about extra work approval
+      await notifyTelecallerForLead({
+        leadId: reqRow.lead_id,
+        leadNumber,
+        type: 'EXTRA_WORK_APPROVED',
+        title: 'Extra work approved',
+        message: `Additional work approved for lead ${leadNumber}. Amount: ₹${computedTotal}.`,
+        priority: 'MEDIUM',
         metadata: { extra_work_id: id, amount: computedTotal },
       });
     } catch (e) {

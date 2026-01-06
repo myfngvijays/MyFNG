@@ -1,33 +1,75 @@
 // Notification Types for MyFNG System
 
 export type NotificationType = 
+  // Lead lifecycle
   | 'LEAD_ASSIGNED'
   | 'LEAD_ACCEPTED'
   | 'LEAD_REJECTED'
   | 'TEAM_ASSIGNED'
+  | 'LEAD_CLOSED'
+
+  // Mechanic / workshop floor
   | 'JOB_STARTED'
   | 'JOB_COMPLETED'
+  | 'JOB_REOPENED'
   | 'EXTRA_WORK_REQUESTED'
   | 'EXTRA_WORK_APPROVED'
   | 'EXTRA_WORK_REJECTED'
   | 'QC_APPROVED'
   | 'QC_REJECTED'
+
+  // Pickup / Delivery (legacy + shared)
   | 'PICKUP_SCHEDULED'
   | 'PICKUP_STARTED'
   | 'PICKUP_COMPLETED'
   | 'OTP_VERIFIED'
+  | 'DELIVERY_ASSIGNED'
+  | 'DELIVERY_COMPLETED'
+  | 'DELIVERY_FAILED'
+
+  // Pickup Boy (role-specific, operational)
+  | 'PICKUP_TASK_ASSIGNED'
+  | 'PICKUP_ACCEPTANCE_PENDING'
+  | 'PICKUP_REASSIGNED'
+  | 'PICKUP_NAV_REMINDER'
+  | 'PICKUP_ARRIVED'
+  | 'PICKUP_OTP_INVALID'
+  | 'PICKUP_OBSERVATION_REQUIRED'
+  | 'PICKUP_OBSERVATION_PENDING'
+  | 'PICKUP_DOCUMENTS_REQUIRED'
+  | 'HANDOVER_PENDING'
+  | 'ROUTE_DEVIATION'
+  | 'ROUTE_DELAY'
+  | 'SOS_ACTIVATED'
+
+  // Billing / customer ops
   | 'INVOICE_GENERATED'
   | 'INVOICE_SENT'
   | 'PAYMENT_RECEIVED'
   | 'FOLLOW_UP_SCHEDULED'
-  | 'LEAD_CLOSED'
+  | 'FOLLOW_UP_DUE'
+
+  // Audit
+  | 'AUDIT_SCHEDULED'
+  | 'AUDIT_REJECTED'
+  | 'AUDIT_FLAGGED'
+  | 'AUDIT_ESCALATION'
+  | 'REAUDIT_REQUESTED'
+
+  // SLA / summaries / system-level
   | 'SLA_WARNING'
   | 'SLA_BREACH'
-  // Generic system-level notification types (used for role-specific alerts and summaries)
   | 'SYSTEM_ALERT'
-  | 'AUDIT_FLAGGED'
   | 'CUSTOMER_COMPLAINT'
-  | 'DAILY_SUMMARY';
+  | 'DAILY_SUMMARY'
+
+  // Telecaller-specific notifications
+  | 'LEAD_REJECTED_BY_WORKSHOP'
+  | 'LEAD_IN_SERVICE'
+  | 'WORKSHOP_SLA_BREACH'
+  | 'WORKSHOP_SLA_WARNING'
+  | 'PICKUP_OBSERVATION_ADDED'
+  | 'SUPERVISOR_OBSERVATION_ADDED';
 
 export type NotificationPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 

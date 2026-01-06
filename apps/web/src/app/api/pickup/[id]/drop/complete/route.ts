@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyPickupBoy, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -240,6 +241,56 @@ export async function POST(
       description: 'Vehicle delivered to customer',
       metadata: { notes, latitude, longitude, payment_mode, payment_amount },
     });
+
+    // Notifications (final)
+    try {
+      const { data: fullLead } = await supabase
+        .from('service_leads')
+        .select('id, lead_number, workshop_id')
+        .eq('id', leadId)
+        .maybeSingle();
+
+      const leadNumber = (fullLead as any)?.lead_number || leadId;
+
+      await notifyPickupBoy({
+        pickupBoyId: user.id,
+        type: 'DELIVERY_COMPLETED',
+        title: 'Delivery completed',
+        message: `Lead ${leadNumber}: Delivery completed successfully.`,
+        priority: 'MEDIUM',
+        leadId,
+        leadNumber,
+        metadata: { kind: 'DELIVERY_COMPLETED' },
+      });
+
+      if ((fullLead as any)?.workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: (fullLead as any).workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
+          type: 'DELIVERY_COMPLETED',
+          title: 'Vehicle delivered to customer',
+          message: `Lead ${leadNumber}: Delivery completed by pickup boy.`,
+          priority: 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_supervisor/pickup-delivery`,
+          metadata: { kind: 'DELIVERY_COMPLETED' },
+        });
+      }
+
+      // Notify telecaller that vehicle has been delivered
+      await notifyTelecallerForLead({
+        leadId,
+        leadNumber,
+        type: 'DELIVERY_COMPLETED',
+        title: 'Vehicle delivered to customer',
+        message: `Lead ${leadNumber} has been successfully delivered to the customer.`,
+        priority: 'MEDIUM',
+        metadata: { kind: 'VEHICLE_DELIVERED', delivered_at: deliveredAt },
+      });
+    } catch (e) {
+      console.warn('Delivery completed notifications failed (non-blocking):', e);
+    }
 
     return NextResponse.json({
       success: true,

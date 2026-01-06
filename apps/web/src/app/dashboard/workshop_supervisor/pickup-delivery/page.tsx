@@ -254,40 +254,23 @@ export default function PickupDeliveryCoordinationPage() {
 
   async function assignPickupBoy(jobId: string, pickupBoyId: string) {
     try {
-      const supabase = createClient();
-      
-      const { error } = await supabase
-        .from('service_leads')
-        .update({
-          assigned_pickup_boy_id: pickupBoyId,
-          pickup_status: 'ASSIGNED',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', jobId);
+      // IMPORTANT: use the server API so notification + push fan-out happens
+      const res = await fetch(`/api/workshop/leads/${jobId}/assign-team`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          pickup_boy_id: pickupBoyId,
+        }),
+      });
 
-      if (error) throw error;
-
-      // Create supervisor action
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: userProfile } = await supabase
-          .from('users_login')
-          .select('id')
-          .eq('email', user.email)
-          .single();
-
-        await supabase
-          .from('supervisor_actions')
-          .insert({
-            supervisor_id: userProfile?.id,
-            lead_id: jobId,
-            action_type: 'PICKUP_BOY_ASSIGNED',
-            action_description: 'Assigned pickup boy for vehicle collection'
-          });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.error || `Failed to assign pickup boy (HTTP ${res.status})`);
       }
 
       alert('Pickup boy assigned successfully');
-      fetchData();
+      fetchData({ silent: true });
     } catch (error) {
       console.error('Error assigning pickup boy:', error);
       alert('Failed to assign pickup boy');

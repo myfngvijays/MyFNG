@@ -85,6 +85,38 @@ export default function NotificationsScreen({ navigation }: any) {
     const kind = (notification as any)?.metadata?.kind;
     const type = String((notification as any)?.type || '');
 
+    // Pickup Boy deep-link: open pickup task detail.
+    if (
+      leadId &&
+      (String(actionUrl).includes('workshop_pickup_boy') ||
+        String(kind || '').startsWith('PICKUP_') ||
+        new Set([
+          'PICKUP_TASK_ASSIGNED',
+          'PICKUP_ACCEPTANCE_PENDING',
+          'PICKUP_REASSIGNED',
+          'PICKUP_NAV_REMINDER',
+          'OTP_VERIFIED',
+          'PICKUP_COMPLETED',
+          'HANDOVER_PENDING',
+          'DELIVERY_ASSIGNED',
+          'DELIVERY_COMPLETED',
+          'DELIVERY_FAILED',
+          'ROUTE_DEVIATION',
+          'ROUTE_DELAY',
+          'PICKUP_OBSERVATION_REQUIRED',
+          'PICKUP_OBSERVATION_PENDING',
+          'PICKUP_DOCUMENTS_REQUIRED',
+          'SOS_ACTIVATED',
+        ]).has(type))
+    ) {
+      try {
+        navigation.navigate('PickupJobDetail', { leadId });
+        return;
+      } catch {
+        // fallthrough
+      }
+    }
+
     if (
       leadId &&
       (String(actionUrl).includes('workshop_mechanic') ||

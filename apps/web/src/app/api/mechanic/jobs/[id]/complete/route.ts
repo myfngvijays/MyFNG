@@ -1,6 +1,6 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyReadyForQC } from '@/lib/notifications';
+import { notifyReadyForQC, createNotification, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -188,6 +188,24 @@ export async function POST(
     }
 
     if (missing.length > 0) {
+      // Send notification to mechanic about missing photos
+      try {
+        const leadNumber = (lead as any)?.lead_number || leadId;
+        await createNotification({
+          userId: userProfile.id,
+          type: 'SYSTEM_ALERT',
+          title: 'After-Service Photos Required',
+          message: `Cannot complete lead ${leadNumber}. Missing photos: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '...' : ''}`,
+          priority: 'HIGH',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_mechanic/jobs/${leadId}/manage`,
+          metadata: { kind: 'AFTER_SERVICE_MEDIA_PENDING', missing_count: missing.length, missing_types: missing },
+        });
+      } catch (e) {
+        console.error('Failed to send media pending notification:', e);
+      }
+
       return NextResponse.json(
         {
           error: 'Required photos are missing',
@@ -354,9 +372,56 @@ export async function POST(
         .eq('id', mechanicJob.id);
     }
 
-    // TODO: Send notification to workshop admin
-    // TODO: Send notification to customer
-    await notifyReadyForQC(leadId, updatedLead.lead_number || lead.lead_number || leadId, lead.assigned_supervisor_id, lead.workshop_id);
+    // Notifications (non-blocking)
+    try {
+      const leadNumber = updatedLead.lead_number || lead.lead_number || leadId;
+      const mechanicName = (userProfile as any)?.full_name || 'Mechanic';
+
+      // 1. Notify supervisor (ready for QC)
+      await notifyReadyForQC(leadId, leadNumber, lead.assigned_supervisor_id, lead.workshop_id);
+
+      // 2. Confirm to mechanic that job was submitted
+      await createNotification({
+        userId: userProfile.id,
+        type: 'JOB_COMPLETED',
+        title: 'Job submitted for QC',
+        message: `Your work on lead ${leadNumber} has been submitted for quality check.`,
+        priority: 'MEDIUM',
+        leadId,
+        leadNumber,
+        actionUrl: `/dashboard/workshop_mechanic/jobs/${leadId}/manage`,
+        metadata: { kind: 'JOB_COMPLETED_CONFIRMATION' },
+      });
+
+      // 3. Notify workshop admin
+      if ((lead as any).workshop_id) {
+        await notifyWorkshopRoles({
+          workshopId: (lead as any).workshop_id,
+          roleCodes: ['WORKSHOP_ADMIN'],
+          type: 'JOB_COMPLETED',
+          title: 'Job completed',
+          message: `${mechanicName} completed work on lead ${leadNumber}. Awaiting QC.`,
+          priority: 'LOW',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_admin/jobs`,
+          metadata: { kind: 'JOB_COMPLETED_ADMIN' },
+        });
+      }
+
+      // 4. Notify telecaller
+      await notifyTelecallerForLead({
+        leadId,
+        leadNumber,
+        type: 'JOB_COMPLETED',
+        title: 'Job completed',
+        message: `Work completed for lead ${leadNumber}. Awaiting quality check.`,
+        priority: 'MEDIUM',
+        metadata: { kind: 'JOB_COMPLETED_TELECALLER' },
+      });
+    } catch (notifError) {
+      console.error('Job completion notifications failed (non-blocking):', notifError);
+    }
 
     return NextResponse.json({
       success: true,

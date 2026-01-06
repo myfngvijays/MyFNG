@@ -1,5 +1,5 @@
 // Notification utility functions
-import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { NotificationType, NotificationPriority } from '@/shared/types/notifications';
 import { dispatchPushToUser } from '@/lib/push/dispatchPush';
 
@@ -40,10 +40,15 @@ interface CreateNotificationParams {
 }
 
 export async function createNotification(params: CreateNotificationParams) {
-  const supabase = await createClient();
+  const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+
+  if (adminError || !supabaseAdmin) {
+    console.error('Failed to get Supabase admin client for notifications:', adminError);
+    return null;
+  }
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('notifications')
       .insert({
         user_id: params.userId,
@@ -81,7 +86,12 @@ export async function createNotification(params: CreateNotificationParams) {
 }
 
 export async function createBulkNotifications(notifications: CreateNotificationParams[]) {
-  const supabase = await createClient();
+  const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+
+  if (adminError || !supabaseAdmin) {
+    console.error('Failed to get Supabase admin client for bulk notifications:', adminError);
+    return [];
+  }
 
   try {
     const notificationsData = notifications.map(params => ({
@@ -100,7 +110,7 @@ export async function createBulkNotifications(notifications: CreateNotificationP
       created_at: new Date().toISOString()
     }));
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('notifications')
       .insert(notificationsData)
       .select();
@@ -129,10 +139,11 @@ export async function createBulkNotifications(notifications: CreateNotificationP
 }
 
 async function getTelecallerTeamleadsForTelecaller(telecallerId: string) {
-  const supabase = await createClient();
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return [];
 
   // Teamlead model: SUB_ADMIN with department='TELECALLER' who has the telecaller in their team
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('subadmin_team_assignments')
     .select('subadmin_id')
     .eq('team_member_id', telecallerId)
@@ -146,6 +157,73 @@ async function getTelecallerTeamleadsForTelecaller(telecallerId: string) {
 
   const ids = Array.from(new Set((data || []).map((r: any) => r.subadmin_id).filter(Boolean)));
   return ids as string[];
+}
+
+/**
+ * Notify telecaller assigned to a lead about lead updates
+ * Also notifies the telecaller's team lead
+ */
+export async function notifyTelecallerForLead(params: {
+  leadId: string;
+  leadNumber: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  priority?: NotificationPriority;
+  actionUrl?: string;
+  metadata?: Record<string, any>;
+}) {
+  const { leadId, leadNumber, type, title, message, priority, actionUrl, metadata } = params;
+  
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    console.error('[notifyTelecallerForLead] Failed to get Supabase admin client');
+    return;
+  }
+
+  // Get lead to find assigned telecaller
+  const { data: lead, error: leadError } = await supabaseAdmin
+    .from('service_leads')
+    .select('assigned_telecaller_id')
+    .eq('id', leadId)
+    .single();
+
+  if (leadError || !lead) {
+    console.warn('[notifyTelecallerForLead] Lead not found or error:', leadError);
+    return;
+  }
+
+  const telecallerId = lead.assigned_telecaller_id;
+  if (!telecallerId) {
+    console.warn('[notifyTelecallerForLead] No telecaller assigned to lead:', leadId);
+    return;
+  }
+
+  // Notify telecaller
+  await createNotification({
+    userId: telecallerId,
+    type,
+    title,
+    message,
+    priority: priority || 'MEDIUM',
+    leadId,
+    leadNumber,
+    actionUrl: actionUrl || `/dashboard/telecaller/leads/${leadId}`,
+    metadata,
+  });
+
+  // Also notify team lead
+  await notifyTelecallerTeamlead({
+    telecallerId,
+    leadId,
+    leadNumber,
+    type,
+    title,
+    message,
+    priority,
+    actionUrl: actionUrl || `/dashboard/telecaller/leads/${leadId}`,
+    metadata,
+  });
 }
 
 export async function notifyTelecallerAssignedToLead(params: {
@@ -221,6 +299,10 @@ export async function notifyTeamAssignment(
     vehicleModel?: string | null;
     serviceType?: string | null;
     bay?: string | null;
+    customerName?: string | null;
+    pickupScheduledTime?: string | null;
+    pickupAddress?: string | null;
+    pickupDistanceKm?: number | null;
   }
 ) {
   const notifications: CreateNotificationParams[] = [];
@@ -263,11 +345,20 @@ export async function notifyTeamAssignment(
   }
 
   if (pickupBoyId) {
+    const parts = [
+      `Lead: ${leadNumber}`,
+      leadMeta?.customerName ? `Customer: ${leadMeta.customerName}` : null,
+      leadMeta?.pickupScheduledTime ? `Pickup time: ${leadMeta.pickupScheduledTime}` : null,
+      leadMeta?.pickupDistanceKm != null ? `Distance: ${leadMeta.pickupDistanceKm} km` : null,
+      leadMeta?.pickupAddress ? `Location: ${leadMeta.pickupAddress}` : null,
+      'Action: Start pickup',
+    ].filter(Boolean);
+
     notifications.push({
       userId: pickupBoyId,
-      type: 'PICKUP_SCHEDULED',
-      title: 'New Pickup Task',
-      message: `You have been assigned a pickup task for lead ${leadNumber}`,
+      type: 'PICKUP_TASK_ASSIGNED',
+      title: 'New Pickup Assigned',
+      message: parts.length > 0 ? parts.join(' • ') : `Lead ${leadNumber} assigned. Action: Start pickup.`,
       priority: 'HIGH',
       leadId,
       leadNumber,
@@ -279,6 +370,34 @@ export async function notifyTeamAssignment(
   if (notifications.length > 0) {
     await createBulkNotifications(notifications);
   }
+}
+
+export async function notifyPickupBoy(params: {
+  pickupBoyId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  priority?: NotificationPriority;
+  leadId?: string;
+  leadNumber?: string;
+  actionUrl?: string;
+  metadata?: Record<string, any>;
+}) {
+  const { pickupBoyId, type, title, message, priority, leadId, leadNumber, actionUrl, metadata } = params;
+  const resolvedActionUrl =
+    actionUrl || (leadId ? `/dashboard/workshop_pickup_boy/tasks/${leadId}` : undefined);
+
+  return await createNotification({
+    userId: pickupBoyId,
+    type,
+    title,
+    message,
+    priority: priority || 'MEDIUM',
+    leadId,
+    leadNumber,
+    actionUrl: resolvedActionUrl,
+    metadata,
+  });
 }
 
 // Helper function to notify about QC approval/rejection
@@ -338,10 +457,11 @@ export async function notifyWorkshopAdmin(
   leadNumber: string,
   leadManagerName?: string
 ) {
-  const supabase = await createClient();
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return;
 
   // Get all workshop admins for this workshop (role-based)
-  const { data: roles } = await supabase
+  const { data: roles } = await supabaseAdmin
     .from('roles')
     .select('id')
     .eq('role_code', 'WORKSHOP_ADMIN');
@@ -349,7 +469,7 @@ export async function notifyWorkshopAdmin(
   const roleId = roles?.[0]?.id;
   if (!roleId) return;
 
-  const { data: admins } = await supabase
+  const { data: admins } = await supabaseAdmin
     .from('users_login')
     .select('id')
     .eq('workshop_id', workshopId)
@@ -357,7 +477,7 @@ export async function notifyWorkshopAdmin(
     .eq('is_active', true);
 
   if (admins && admins.length > 0) {
-    const notifications = admins.map(admin => ({
+    const notifications = admins.map((admin: { id: string }) => ({
       userId: admin.id,
       type: 'LEAD_ASSIGNED' as NotificationType,
       title: 'New Lead Assigned to Workshop',
@@ -396,8 +516,9 @@ export async function notifySLAWarning(
 }
 
 async function getRoleIds(roleCodes: string[]) {
-  const supabase = await createClient();
-  const { data } = await supabase
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return [];
+  const { data } = await supabaseAdmin
     .from('roles')
     .select('id, role_code')
     .in('role_code', roleCodes);
@@ -405,11 +526,12 @@ async function getRoleIds(roleCodes: string[]) {
 }
 
 async function getUsersInWorkshopByRoleCodes(workshopId: string, roleCodes: string[]) {
-  const supabase = await createClient();
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return [];
   const roleIds = await getRoleIds(roleCodes);
   if (roleIds.length === 0) return [];
 
-  const { data } = await supabase
+  const { data } = await supabaseAdmin
     .from('users_login')
     .select('id, full_name')
     .eq('workshop_id', workshopId)
@@ -432,22 +554,37 @@ export async function notifyWorkshopRoles(params: {
   metadata?: Record<string, any>;
 }) {
   const { workshopId, roleCodes, type, title, message, priority, leadId, leadNumber, actionUrl, metadata } = params;
+  
+  console.log('[notifyWorkshopRoles] Starting:', { workshopId, roleCodes, leadNumber });
+  
   const users = await getUsersInWorkshopByRoleCodes(workshopId, roleCodes);
-  if (users.length === 0) return;
+  
+  console.log('[notifyWorkshopRoles] Found users:', { count: users.length, userIds: users.map(u => u.id) });
+  
+  if (users.length === 0) {
+    console.warn('[notifyWorkshopRoles] No users found for workshop/roles:', { workshopId, roleCodes });
+    return;
+  }
 
-  await createBulkNotifications(
-    users.map(u => ({
-      userId: u.id,
-      type,
-      title,
-      message,
-      priority: priority || 'MEDIUM',
-      leadId,
-      leadNumber,
-      actionUrl,
-      metadata,
-    }))
-  );
+  const notifications = users.map(u => ({
+    userId: u.id,
+    type,
+    title,
+    message,
+    priority: priority || 'MEDIUM',
+    leadId,
+    leadNumber,
+    actionUrl,
+    metadata,
+  }));
+
+  console.log('[notifyWorkshopRoles] Creating notifications:', { count: notifications.length });
+  
+  const result = await createBulkNotifications(notifications);
+  
+  console.log('[notifyWorkshopRoles] Result:', { created: result?.length || 0 });
+  
+  return result;
 }
 
 export async function notifyReadyForQC(
@@ -515,11 +652,13 @@ export async function notifyCSETeam(
   priority: NotificationPriority = 'MEDIUM',
   actionUrl: string = `/dashboard/cse/leads/${leadId}`
 ) {
-  const supabase = await createClient();
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return;
+
   const roleIds = await getRoleIds(['CUSTOMER_SERVICE_EXECUTIVE', 'CSE']);
   if (roleIds.length === 0) return;
 
-  const { data: users } = await supabase
+  const { data: users } = await supabaseAdmin
     .from('users_login')
     .select('id')
     .in('role_id', roleIds)

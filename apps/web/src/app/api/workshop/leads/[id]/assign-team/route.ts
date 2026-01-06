@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyTeamAssignment } from '@/lib/notifications';
+import { notifyPickupBoy, notifyTeamAssignment } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
@@ -345,9 +345,28 @@ export async function POST(
     
     // In-app notifications (Phase A): mechanic/supervisor/pickup boy
     try {
+      const leadNumber = (lead as any)?.lead_number || updatedLead?.lead_number || leadId;
+      const prevPickupBoyId = (lead as any)?.assigned_pickup_boy_id || null;
+      const nextPickupBoyId = pickup_boy_id || null;
+
+      // If pickup boy changed/removed, inform previous pickup boy (so they don't keep waiting)
+      if (prevPickupBoyId && prevPickupBoyId !== nextPickupBoyId) {
+        await notifyPickupBoy({
+          pickupBoyId: prevPickupBoyId,
+          type: 'PICKUP_REASSIGNED',
+          title: 'Pickup reassigned',
+          message: `Lead ${leadNumber} pickup task removed (reassigned).`,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+          actionUrl: `/dashboard/workshop_pickup_boy/tasks`,
+          metadata: { kind: 'PICKUP_REASSIGNED', prev_pickup_boy_id: prevPickupBoyId, next_pickup_boy_id: nextPickupBoyId },
+        });
+      }
+
       await notifyTeamAssignment(
         leadId,
-        (lead as any)?.lead_number || updatedLead?.lead_number || leadId,
+        leadNumber,
         mechanic_id || undefined,
         supervisor_id || undefined,
         pickup_boy_id || undefined,
@@ -357,6 +376,10 @@ export async function POST(
           vehicleModel: (lead as any)?.vehicle_model || null,
           serviceType: (lead as any)?.service_type || (lead as any)?.serviceType || null,
           bay: (lead as any)?.bay_number || (lead as any)?.bay || null,
+          customerName: (lead as any)?.customer_name || null,
+          pickupScheduledTime: (lead as any)?.pickup_scheduled_time || (lead as any)?.pickup_time_slot || null,
+          pickupAddress: (lead as any)?.pickup_address || (lead as any)?.customer_address || null,
+          pickupDistanceKm: null,
         }
       );
     } catch (e) {

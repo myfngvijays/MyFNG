@@ -30,6 +30,8 @@ interface NotificationContextType {
   loading: boolean;
   // Increments when a lead/job impacting notification arrives; consumers can refetch job lists.
   jobRefreshTick: number;
+  // Increments when pickup/delivery impacting notification arrives; pickup boy screens can refetch task lists.
+  pickupRefreshTick: number;
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   deleteNotification: (notificationId: string) => Promise<void>;
@@ -44,6 +46,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [jobRefreshTick, setJobRefreshTick] = useState(0);
+  const [pickupRefreshTick, setPickupRefreshTick] = useState(0);
 
   // Fetch user ID from auth
   useEffect(() => {
@@ -189,6 +192,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
               ]);
               const isJobImpacting = Boolean(leadId) && (jobTypes.has(type) || String(kind || '').startsWith('MECH_') || String(kind || '').startsWith('MECHANIC_'));
               if (isJobImpacting) setJobRefreshTick((t) => t + 1);
+
+              const pickupTypes = new Set([
+                'PICKUP_TASK_ASSIGNED',
+                'PICKUP_ACCEPTANCE_PENDING',
+                'PICKUP_REASSIGNED',
+                'PICKUP_NAV_REMINDER',
+                'PICKUP_ARRIVED',
+                'OTP_VERIFIED',
+                'PICKUP_COMPLETED',
+                'HANDOVER_PENDING',
+                'DELIVERY_ASSIGNED',
+                'DELIVERY_COMPLETED',
+                'DELIVERY_FAILED',
+                'ROUTE_DEVIATION',
+                'ROUTE_DELAY',
+                'PICKUP_OBSERVATION_REQUIRED',
+                'PICKUP_OBSERVATION_PENDING',
+                'PICKUP_DOCUMENTS_REQUIRED',
+                'SOS_ACTIVATED',
+              ]);
+              const isPickupImpacting = Boolean(leadId) && (pickupTypes.has(type) || String(kind || '').startsWith('PICKUP_'));
+              if (isPickupImpacting) setPickupRefreshTick((t) => t + 1);
             } catch {
               // ignore
             }
@@ -330,6 +355,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         unreadCount,
         loading,
         jobRefreshTick,
+        pickupRefreshTick,
         markAsRead,
         markAllAsRead,
         deleteNotification,

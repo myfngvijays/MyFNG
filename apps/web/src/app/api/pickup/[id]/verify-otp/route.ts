@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyWorkshopRoles } from '@/lib/notifications';
+import { notifyPickupBoy, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -180,8 +180,26 @@ export async function POST(
         .eq('id', leadId)
         .maybeSingle();
 
+      const leadNumber = (fullLead as any)?.lead_number || leadId;
+      const pickupBoyTitle = otp_type === 'DROP' ? 'Delivery OTP verified' : 'Pickup OTP verified';
+      const pickupBoyMsg =
+        otp_type === 'DROP'
+          ? `Lead ${leadNumber}: Delivery OTP verified. Upload delivery photos and complete delivery.`
+          : `Lead ${leadNumber}: Pickup OTP verified. Upload pickup photos, submit observation (if required), then mark vehicle picked.`;
+
+      // Pickup boy confirmation (in-app + push)
+      await notifyPickupBoy({
+        pickupBoyId: user.id,
+        type: 'OTP_VERIFIED',
+        title: pickupBoyTitle,
+        message: pickupBoyMsg,
+        priority: 'MEDIUM',
+        leadId,
+        leadNumber,
+        metadata: { otp_type },
+      });
+
       if (fullLead?.workshop_id) {
-        const leadNumber = (fullLead as any)?.lead_number || leadId;
         const title = otp_type === 'DROP' ? 'Delivery OTP verified' : 'Vehicle picked up (OTP verified)';
         const msg =
           otp_type === 'DROP'

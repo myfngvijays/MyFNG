@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyExtraWorkDecision, notifyWorkshopRoles } from '@/lib/notifications';
+import { notifyExtraWorkDecision, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -213,6 +213,17 @@ export async function POST(
           metadata: { extra_work_id: extraWorkId, reason },
         });
       }
+
+      // Notify telecaller about extra work rejection
+      await notifyTelecallerForLead({
+        leadId: extraWork.lead_id,
+        leadNumber,
+        type: 'EXTRA_WORK_REJECTED',
+        title: 'Extra work rejected',
+        message: `Additional work rejected for lead ${leadNumber}. Reason: ${reason}.`,
+        priority: 'MEDIUM',
+        metadata: { extra_work_id: extraWorkId, reason },
+      });
     } catch (e) {
       console.warn('Extra work rejection notifications failed (non-blocking):', e);
     }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, formatDateTimeIST } from '@/lib/utils';
 import {
   Phone, Mail, MapPin, Car, Calendar, Clock, FileText,
   User, Building2, PhoneCall, MessageSquare, Edit, ArrowLeft,
@@ -105,13 +105,17 @@ export default function LeadDetailPage() {
       }
 
       // Fetch call logs
-      const { data: callsData } = await supabase
-        .from('telecaller_call_logs')
-        .select('*, telecaller:telecaller_id(full_name)')
-        .eq('lead_id', leadId)
-        .order('created_at', { ascending: false });
-
-      setCallLogs(callsData || []);
+      try {
+        const res = await fetch(`/api/telecaller/calls/${leadId}`, { method: 'GET' });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json?.call_logs) {
+          setCallLogs(json.call_logs || []);
+        } else {
+          setCallLogs([]);
+        }
+      } catch {
+        setCallLogs([]);
+      }
 
       // Fetch follow-ups
       const { data: followUpsData } = await supabase
@@ -130,40 +134,35 @@ export default function LeadDetailPage() {
   }
 
   async function handleAddCallLog() {
-    const supabase = createClient();
-
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
-
-      const { error } = await supabase
-        .from('telecaller_call_logs')
-        .insert([{
+      const res = await fetch('/api/telecaller/calls/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           lead_id: leadId,
-          telecaller_id: userProfile?.id,
           call_type: 'OUTBOUND',
           call_status: callLogData.call_status,
           call_duration: callLogData.call_duration ? parseInt(callLogData.call_duration) : null,
           outcome: callLogData.outcome,
           notes: callLogData.notes,
-          phone_number: lead?.customer_phone
-        }]);
+          phone_number: lead?.customer_phone,
+        }),
+      });
 
-      if (!error) {
-        // Update lead's last_call_at and total_calls
-        await supabase
-          .from('service_leads')
-          .update({
-            last_call_at: new Date().toISOString(),
-            total_calls: (lead?.total_calls || 0) + 1
-          })
-          .eq('id', leadId);
+      if (res.ok) {
+        // Update lead's last_call_at and total_calls (best-effort)
+        try {
+          const supabase = createClient();
+          await supabase
+            .from('service_leads')
+            .update({
+              last_call_at: new Date().toISOString(),
+              total_calls: (lead?.total_calls || 0) + 1
+            })
+            .eq('id', leadId);
+        } catch {
+          // ignore
+        }
 
         setCallLogData({
           call_status: 'ANSWERED',
@@ -174,6 +173,10 @@ export default function LeadDetailPage() {
         setShowCallLogForm(false);
         fetchLeadDetails();
         alert('Call log added successfully!');
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        console.error('Call log API error:', errJson);
+        alert(errJson?.error || 'Failed to add call log');
       }
     } catch (error) {
       console.error('Error adding call log:', error);
@@ -188,11 +191,29 @@ export default function LeadDetailPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
+      // Resolve users_login profile robustly (email -> phone -> id)
+      const email = (user.email || '').trim();
+      const phone = (user.phone || '').trim();
+      const selectCols = 'id';
+
+      const { data: byEmail } = email
+        ? await supabase.from('users_login').select(selectCols).ilike('email', email).maybeSingle()
+        : { data: null as any };
+      const { data: byPhone } = !byEmail && phone
+        ? await supabase.from('users_login').select(selectCols).eq('phone', phone).maybeSingle()
+        : { data: null as any };
+      const { data: byId } = !byEmail && !byPhone
+        ? await supabase.from('users_login').select(selectCols).eq('id', user.id).maybeSingle()
+        : { data: null as any };
+      const userProfile = byEmail || byPhone || byId;
+
+      // Convert datetime-local -> ISO UTC for consistent storage
+      // datetime-local gives "YYYY-MM-DDTHH:mm" (no timezone, treated as browser's local time)
+      // new Date() interprets it as local time, toISOString() converts to UTC automatically
+      const scheduledLocal = followUpData.scheduled_time;
+      const scheduledIso = scheduledLocal 
+        ? new Date(scheduledLocal).toISOString()
+        : null;
 
       const { error } = await supabase
         .from('telecaller_follow_ups')
@@ -200,7 +221,7 @@ export default function LeadDetailPage() {
           lead_id: leadId,
           telecaller_id: userProfile?.id,
           follow_up_type: followUpData.follow_up_type,
-          scheduled_time: followUpData.scheduled_time,
+          scheduled_time: scheduledIso,
           reason: followUpData.reason,
           priority: followUpData.priority,
           status: 'PENDING'
@@ -212,7 +233,7 @@ export default function LeadDetailPage() {
           .from('service_leads')
           .update({
             follow_up_required: true,
-            next_follow_up_at: followUpData.scheduled_time
+            next_follow_up_at: scheduledIso
           })
           .eq('id', leadId);
 
@@ -667,7 +688,7 @@ export default function LeadDetailPage() {
                       </div>
                       <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">{fu.reason}</p>
                       <p className="text-[10px] sm:text-xs text-gray-500">
-                        {formatDateTime(fu.scheduled_time)}
+                        {formatDateTimeIST(fu.scheduled_time)}
                       </p>
                     </div>
                   ))

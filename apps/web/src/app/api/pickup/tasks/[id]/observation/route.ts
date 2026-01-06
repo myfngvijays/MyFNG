@@ -1,5 +1,6 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyTelecallerForLead } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,6 +103,32 @@ export async function POST(
       } as any);
     } catch {
       // ignore
+    }
+
+    // Notify telecaller about pickup observation
+    try {
+      const { data: leadForNotif } = await supabase
+        .from('service_leads')
+        .select('lead_number')
+        .eq('id', leadId)
+        .single();
+
+      const leadNumber = (leadForNotif as any)?.lead_number || leadId;
+      const observationPreview = observation.length > 100 
+        ? observation.substring(0, 100) + '...' 
+        : observation;
+
+      await notifyTelecallerForLead({
+        leadId,
+        leadNumber,
+        type: 'PICKUP_OBSERVATION_ADDED',
+        title: 'Pickup observation added',
+        message: `Pickup observation added for lead ${leadNumber}: ${observationPreview}`,
+        priority: 'MEDIUM',
+        metadata: { observation_length: observation.length },
+      });
+    } catch (e) {
+      console.warn('Pickup observation notification failed (non-blocking):', e);
     }
 
     return NextResponse.json({ success: true }, { status: 200 });

@@ -3,6 +3,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
@@ -20,11 +21,44 @@ export async function GET(
 
     const leadId = params.lead_id;
 
-    const { data: callLogs, error: logsError } = await supabase
+    // Resolve users_login profile robustly (email -> phone -> id) + role_code
+    const email = (user.email || '').trim();
+    const phone = (user.phone || '').trim();
+    const selectProfile = 'id, email, phone, roles!inner(role_code)';
+
+    const { data: byEmail } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+      : { data: null as any };
+    const { data: byPhone } = !byEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null as any };
+    const { data: byId } = !byEmail && !byPhone
+      ? await supabase.from('users_login').select(selectProfile).eq('id', user.id).maybeSingle()
+      : { data: null as any };
+    const userProfile = byEmail || byPhone || byId;
+    const roleCode = (userProfile?.roles as any)?.role_code || null;
+
+    // Prefer service-role client for reading call logs (avoids RLS mismatch)
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const db = supabaseAdmin ?? supabase;
+
+    // Authorization: telecaller can only read call logs for their own assigned lead
+    if (roleCode === 'TELECALLER') {
+      const { data: leadRow } = await db
+        .from('service_leads')
+        .select('id, assigned_telecaller_id')
+        .eq('id', leadId)
+        .maybeSingle();
+      if (!leadRow || String((leadRow as any).assigned_telecaller_id || '') !== String(userProfile?.id || '')) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+
+    const { data: callLogs, error: logsError } = await db
       .from('telecaller_call_logs')
       .select(`
         *,
-        telecaller:users_login!telecaller_id(id, full_name, role)
+        telecaller:users_login!telecaller_id(id, full_name)
       `)
       .eq('lead_id', leadId)
       .order('created_at', { ascending: false });

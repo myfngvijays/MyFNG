@@ -763,6 +763,603 @@ async function runMechanicDailySummaryCron(opts: { dayStartIso: string; dayEndIs
   return { ok: true, mechanics: (mechanics || []).length, notified };
 }
 
+async function runPickupBoySlaCron() {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { ok: false, error: 'Supabase admin client not available' };
+
+  const nowIso = new Date().toISOString();
+  const nowTs = Date.now();
+
+  const ACCEPT_WARN_AFTER_MIN = 5;
+  const AUTO_REASSIGN_AFTER_MIN = 10;
+  const NAV_REMIND_AFTER_MIN = 5;
+  const OBS_REMIND_AFTER_MIN = 10;
+  const DOCS_REMIND_AFTER_MIN = 10;
+
+  // Candidates: pickup assigned but not started
+  const { data: assignedLeads } = await supabaseAdmin
+    .from('service_leads')
+    .select('id, lead_number, workshop_id, pickup_required, assigned_pickup_boy_id, pickup_assigned_at, pickup_status')
+    .not('assigned_pickup_boy_id', 'is', null)
+    .eq('pickup_required', true as any)
+    .in('pickup_status', ['ASSIGNED', 'PENDING'] as any)
+    .limit(1000);
+
+  const rowsToInsert: any[] = [];
+  let autoReassigned = 0;
+
+  for (const lead of assignedLeads || []) {
+    const leadId = String((lead as any).id || '');
+    const pickupBoyId = String((lead as any).assigned_pickup_boy_id || '');
+    const workshopId = String((lead as any).workshop_id || '');
+    const leadNumber = String((lead as any).lead_number || leadId);
+    const assignedAtIso = (lead as any).pickup_assigned_at as string | null | undefined;
+    const assignedAtTs = assignedAtIso ? new Date(assignedAtIso).getTime() : null;
+    if (!leadId || !pickupBoyId || !assignedAtTs) continue;
+
+    const minsSinceAssign = Math.floor((nowTs - assignedAtTs) / 60_000);
+
+    // #2 Acceptance SLA warning (Start Pickup = Accept)
+    if (minsSinceAssign >= ACCEPT_WARN_AFTER_MIN && minsSinceAssign < AUTO_REASSIGN_AFTER_MIN) {
+      const sinceIso = isoMinutesAgo(60);
+      const already = await alreadyNotifiedForUser({
+        userId: pickupBoyId,
+        kind: 'PICKUP_ACCEPTANCE_PENDING',
+        sinceIso,
+        title: 'Pickup acceptance pending',
+      });
+      if (!already) {
+        rowsToInsert.push({
+          user_id: pickupBoyId,
+          type: 'PICKUP_ACCEPTANCE_PENDING',
+          title: 'Pickup acceptance pending',
+          message: `Lead ${leadNumber}: start pickup now.`,
+          priority: 'URGENT',
+          lead_id: leadId,
+          lead_number: leadNumber,
+          action_url: `/dashboard/workshop_pickup_boy/tasks/${leadId}`,
+          metadata: { kind: 'PICKUP_ACCEPTANCE_PENDING', pickup_assigned_at: assignedAtIso, minutes_since_assign: minsSinceAssign },
+          is_read: false,
+          created_at: nowIso,
+        });
+      }
+    }
+
+    // #3 Auto-reassign (missed)
+    if (minsSinceAssign >= AUTO_REASSIGN_AFTER_MIN) {
+      const already = await alreadyNotified({ leadId, kind: 'PICKUP_AUTO_REASSIGNED', withinMinutes: 12 * 60 });
+      if (already) continue;
+
+      // Unassign (auto-action) and notify
+      try {
+        await supabaseAdmin
+          .from('service_leads')
+          .update({
+            assigned_pickup_boy_id: null,
+            pickup_assigned_at: null,
+            pickup_status: 'PENDING',
+            updated_at: nowIso,
+          } as any)
+          .eq('id', leadId);
+
+        // Best-effort tracking cleanup if exists
+        await supabaseAdmin
+          .from('pickup_tracking')
+          .update({ pickup_assigned_to: null, pickup_status: 'PENDING', updated_at: nowIso } as any)
+          .eq('lead_id', leadId);
+
+        await supabaseAdmin.from('lead_activities').insert({
+          lead_id: leadId,
+          user_id: pickupBoyId,
+          activity_type: 'PICKUP_AUTO_REASSIGNED',
+          description: 'Pickup auto-reassigned due to no response',
+          metadata: { minutes_since_assign: minsSinceAssign },
+        } as any);
+      } catch {
+        // even if update fails, we still try to notify about SLA risk
+      }
+
+      rowsToInsert.push({
+        user_id: pickupBoyId,
+        type: 'PICKUP_REASSIGNED',
+        title: 'Pickup reassigned',
+        message: `Lead ${leadNumber}: pickup removed due to no response.`,
+        priority: 'MEDIUM',
+        lead_id: leadId,
+        lead_number: leadNumber,
+        action_url: `/dashboard/workshop_pickup_boy/tasks`,
+        metadata: { kind: 'PICKUP_AUTO_REASSIGNED', pickup_assigned_at: assignedAtIso, minutes_since_assign: minsSinceAssign },
+        is_read: false,
+        created_at: nowIso,
+      });
+
+      if (workshopId) {
+        const workshopUsers = await getUsersInWorkshopByRoleCodes(workshopId, ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR']);
+        for (const uid of workshopUsers) {
+          rowsToInsert.push({
+            user_id: uid,
+            type: 'SYSTEM_ALERT',
+            title: 'Pickup auto-reassigned',
+            message: `Lead ${leadNumber}: pickup auto-reassigned (no response). Please assign pickup boy again.`,
+            priority: 'HIGH',
+            lead_id: leadId,
+            lead_number: leadNumber,
+            action_url: `/dashboard/workshop_supervisor/pickup-delivery`,
+            metadata: { kind: 'PICKUP_AUTO_REASSIGNED', pickup_boy_id: pickupBoyId },
+            is_read: false,
+            created_at: nowIso,
+          });
+        }
+      }
+
+      autoReassigned += 1;
+    }
+  }
+
+  // #4 Navigation start reminder (start pickup done but ON_THE_WAY not started)
+  const { data: trackingToNudge } = await supabaseAdmin
+    .from('pickup_tracking')
+    .select('lead_id, pickup_assigned_to, pickup_status, pickup_start_time, pickup_on_the_way_at')
+    .eq('pickup_status', 'IN_TRANSIT' as any)
+    .not('pickup_assigned_to', 'is', null)
+    .is('pickup_on_the_way_at', null)
+    .not('pickup_start_time', 'is', null)
+    .limit(500);
+
+  const leadIdsForTrack = Array.from(new Set((trackingToNudge || []).map((t: any) => String(t.lead_id || '')).filter(Boolean)));
+  const leadNumMap = new Map<string, any>();
+  if (leadIdsForTrack.length > 0) {
+    const { data: leads } = await supabaseAdmin
+      .from('service_leads')
+      .select('id, lead_number')
+      .in('id', leadIdsForTrack as any)
+      .limit(1000);
+    for (const l of leads || []) leadNumMap.set(String((l as any).id), l);
+  }
+
+  for (const t of trackingToNudge || []) {
+    const leadId = String((t as any).lead_id || '');
+    const pickupBoyId = String((t as any).pickup_assigned_to || '');
+    const startedAtIso = String((t as any).pickup_start_time || '');
+    if (!leadId || !pickupBoyId || !startedAtIso) continue;
+    const startedAtTs = new Date(startedAtIso).getTime();
+    if (!Number.isFinite(startedAtTs)) continue;
+    const mins = Math.floor((nowTs - startedAtTs) / 60_000);
+    if (mins < NAV_REMIND_AFTER_MIN) continue;
+
+    const leadNumber = String((leadNumMap.get(leadId) as any)?.lead_number || leadId);
+    if (await alreadyNotified({ leadId, kind: 'PICKUP_NAV_REMINDER', withinMinutes: 60 })) continue;
+
+    rowsToInsert.push({
+      user_id: pickupBoyId,
+      type: 'PICKUP_NAV_REMINDER',
+      title: 'Start navigation',
+      message: `Lead ${leadNumber}: start navigation to the location.`,
+      priority: 'HIGH',
+      lead_id: leadId,
+      lead_number: leadNumber,
+      action_url: `/dashboard/workshop_pickup_boy/tasks/${leadId}`,
+      metadata: { kind: 'PICKUP_NAV_REMINDER', pickup_start_time: startedAtIso },
+      is_read: false,
+      created_at: nowIso,
+    });
+  }
+
+  // #8 Observation pending reminder + #18 Documents pending reminder after OTP verified
+  const { data: otpVerifiedTrack } = await supabaseAdmin
+    .from('pickup_tracking')
+    .select('lead_id, pickup_assigned_to, pickup_otp_verified_at')
+    .not('pickup_assigned_to', 'is', null)
+    .not('pickup_otp_verified_at', 'is', null)
+    .limit(1000);
+
+  const leadIdsOtp = Array.from(new Set((otpVerifiedTrack || []).map((r: any) => String(r.lead_id || '')).filter(Boolean)));
+  const leadInfoMap = new Map<string, any>();
+  if (leadIdsOtp.length > 0) {
+    const { data: leads } = await supabaseAdmin
+      .from('service_leads')
+      .select('id, lead_number, pickup_observation_required, pickup_observation')
+      .in('id', leadIdsOtp as any)
+      .limit(1000);
+    for (const l of leads || []) leadInfoMap.set(String((l as any).id), l);
+  }
+
+  for (const r of otpVerifiedTrack || []) {
+    const leadId = String((r as any).lead_id || '');
+    const pickupBoyId = String((r as any).pickup_assigned_to || '');
+    const otpAtIso = String((r as any).pickup_otp_verified_at || '');
+    if (!leadId || !pickupBoyId || !otpAtIso) continue;
+    const otpAtTs = new Date(otpAtIso).getTime();
+    if (!Number.isFinite(otpAtTs)) continue;
+    const mins = Math.floor((nowTs - otpAtTs) / 60_000);
+
+    const lead = leadInfoMap.get(leadId);
+    const leadNumber = String((lead as any)?.lead_number || leadId);
+
+    const obsRequired = !!(lead as any)?.pickup_observation_required;
+    const obsText = String((lead as any)?.pickup_observation || '').trim();
+    if (obsRequired && !obsText && mins >= OBS_REMIND_AFTER_MIN) {
+      if (!(await alreadyNotified({ leadId, kind: 'PICKUP_OBSERVATION_PENDING', withinMinutes: 90 }))) {
+        rowsToInsert.push({
+          user_id: pickupBoyId,
+          type: 'PICKUP_OBSERVATION_PENDING',
+          title: 'Observation report pending',
+          message: `Lead ${leadNumber}: submit observation report to continue.`,
+          priority: 'URGENT',
+          lead_id: leadId,
+          lead_number: leadNumber,
+          action_url: `/dashboard/workshop_pickup_boy/tasks/${leadId}`,
+          metadata: { kind: 'PICKUP_OBSERVATION_PENDING', pickup_otp_verified_at: otpAtIso },
+          is_read: false,
+          created_at: nowIso,
+        });
+      }
+    }
+
+    if (mins >= DOCS_REMIND_AFTER_MIN) {
+      // Check pickup photos count (vehicle_condition_photos table)
+      const { count: pickupPhotos } = await supabaseAdmin
+        .from('vehicle_condition_photos')
+        .select('id', { count: 'exact', head: true })
+        .eq('lead_id', leadId)
+        .like('photo_type', 'PICKUP_%');
+      if ((pickupPhotos || 0) < 4) {
+        if (!(await alreadyNotified({ leadId, kind: 'PICKUP_DOCUMENTS_REQUIRED', withinMinutes: 90 }))) {
+          rowsToInsert.push({
+            user_id: pickupBoyId,
+            type: 'PICKUP_DOCUMENTS_REQUIRED',
+            title: 'Upload required documents',
+            message: `Lead ${leadNumber}: upload pickup photos to continue.`,
+            priority: 'URGENT',
+            lead_id: leadId,
+            lead_number: leadNumber,
+            action_url: `/dashboard/workshop_pickup_boy/tasks/${leadId}`,
+            metadata: { kind: 'PICKUP_DOCUMENTS_REQUIRED', pickup_photos: pickupPhotos || 0 },
+            is_read: false,
+            created_at: nowIso,
+          });
+        }
+      }
+    }
+  }
+
+  if (rowsToInsert.length > 0) {
+    await createNotificationsAdmin(rowsToInsert);
+  }
+
+  return { ok: true, created: rowsToInsert.length, autoReassigned };
+}
+
+async function runPickupBoyDailySummaryCron(opts: { dayStartIso: string; dayEndIso: string; dateLabel: string }) {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { ok: false, error: 'Supabase admin client not available' };
+
+  const [roleId] = await getRoleIds(['WORKSHOP_PICKUP_BOY']);
+  if (!roleId) return { ok: true, pickup_boys: 0, notified: 0, note: 'No WORKSHOP_PICKUP_BOY role found' };
+
+  const { data: boys, error: boysErr } = await supabaseAdmin
+    .from('users_login')
+    .select('id')
+    .eq('role_id', roleId as any)
+    .eq('is_active', true)
+    .limit(5000);
+  if (boysErr) return { ok: false, error: 'Failed to load pickup boys' };
+
+  let notified = 0;
+  const nowIso = new Date().toISOString();
+
+  for (const b of boys || []) {
+    const pickupBoyId = String((b as any).id || '');
+    if (!pickupBoyId) continue;
+
+    const title = `Today's Tasks (${opts.dateLabel})`;
+    const already = await alreadyNotifiedForUser({ userId: pickupBoyId, kind: 'PICKUP_DAILY_SUMMARY', sinceIso: opts.dayStartIso, title });
+    if (already) continue;
+
+    const { count: pickupsAssigned } = await supabaseAdmin
+      .from('service_leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('assigned_pickup_boy_id', pickupBoyId as any)
+      .eq('pickup_required', true as any);
+
+    const { count: pickupsCompletedToday } = await supabaseAdmin
+      .from('pickup_tracking')
+      .select('id', { count: 'exact', head: true })
+      .eq('pickup_assigned_to', pickupBoyId as any)
+      .not('pickup_handover_to_workshop_at', 'is', null)
+      .gte('pickup_handover_to_workshop_at', opts.dayStartIso)
+      .lt('pickup_handover_to_workshop_at', opts.dayEndIso);
+
+    const { count: deliveriesCompletedToday } = await supabaseAdmin
+      .from('pickup_tracking')
+      .select('id', { count: 'exact', head: true })
+      .eq('drop_assigned_to', pickupBoyId as any)
+      .not('drop_completed_time', 'is', null)
+      .gte('drop_completed_time', opts.dayStartIso)
+      .lt('drop_completed_time', opts.dayEndIso);
+
+    const message = `Pickups: ${pickupsAssigned || 0} • Completed today: ${(pickupsCompletedToday || 0) + (deliveriesCompletedToday || 0)}`;
+
+    await createNotificationsAdmin([
+      {
+        user_id: pickupBoyId,
+        type: 'DAILY_SUMMARY',
+        title,
+        message,
+        priority: 'LOW',
+        action_url: `/dashboard/workshop_pickup_boy`,
+        metadata: {
+          kind: 'PICKUP_DAILY_SUMMARY',
+          date: opts.dateLabel,
+          pickups: pickupsAssigned || 0,
+          pickups_completed_today: pickupsCompletedToday || 0,
+          deliveries_completed_today: deliveriesCompletedToday || 0,
+          day_start: opts.dayStartIso,
+          day_end: opts.dayEndIso,
+        },
+        is_read: false,
+        created_at: nowIso,
+      },
+    ]);
+    notified += 1;
+  }
+
+  return { ok: true, pickup_boys: (boys || []).length, notified };
+}
+
+/**
+ * Followup Reminder Cron
+ * Checks for followups scheduled 15 minutes from now and sends notifications
+ */
+async function runFollowupReminderCron() {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    return { ok: false, error: 'Supabase admin client not available' };
+  }
+
+  try {
+    const now = new Date();
+    const in15Minutes = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes from now
+    const in16Minutes = new Date(now.getTime() + 16 * 60 * 1000); // 16 minutes from now (window)
+
+    // Find followups scheduled between 15-16 minutes from now that haven't been reminded
+    const { data: followups, error: followupError } = await supabaseAdmin
+      .from('telecaller_follow_ups')
+      .select(`
+        id,
+        lead_id,
+        telecaller_id,
+        scheduled_time,
+        follow_up_type,
+        reason,
+        lead:service_leads(lead_number, customer_name, customer_phone)
+      `)
+      .eq('status', 'PENDING')
+      .eq('reminder_sent', false)
+      .gte('scheduled_time', in15Minutes.toISOString())
+      .lt('scheduled_time', in16Minutes.toISOString());
+
+    if (followupError) {
+      console.error('[Followup Reminder] Error fetching followups:', followupError);
+      return { ok: false, error: followupError.message };
+    }
+
+    if (!followups || followups.length === 0) {
+      return { ok: true, notified: 0, message: 'No followups due in 15 minutes' };
+    }
+
+    let notified = 0;
+    const notifications: any[] = [];
+
+    for (const followup of followups) {
+      const lead = followup.lead as any;
+      const leadNumber = lead?.lead_number || followup.lead_id;
+      const customerName = lead?.customer_name || 'Customer';
+      const scheduledTime = new Date(followup.scheduled_time);
+      const timeStr = scheduledTime.toLocaleTimeString('en-IN', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+
+      // Check if already notified (deduplication)
+      const since = new Date(now.getTime() - 5 * 60 * 1000).toISOString(); // Last 5 minutes
+      const alreadyNotified = await alreadyNotifiedForUser({
+        userId: followup.telecaller_id,
+        kind: 'FOLLOWUP_REMINDER',
+        sinceIso: since,
+        title: `Follow-up reminder: ${leadNumber}`,
+      });
+
+      if (alreadyNotified) {
+        console.log(`[Followup Reminder] Already notified telecaller ${followup.telecaller_id} for followup ${followup.id}`);
+        continue;
+      }
+
+      // Determine priority based on followup type
+      let priority: NotificationPriority = 'MEDIUM';
+      if (followup.follow_up_type === 'URGENT' || followup.follow_up_type === 'HIGH') {
+        priority = 'HIGH';
+      }
+
+      // Create notification
+      notifications.push({
+        user_id: followup.telecaller_id,
+        type: 'FOLLOW_UP_DUE' as NotificationType,
+        title: 'Follow-up reminder',
+        message: `Follow-up for ${leadNumber} (${customerName}) scheduled at ${timeStr}. Reason: ${followup.reason || 'Callback'}`,
+        priority,
+        lead_id: followup.lead_id,
+        lead_number: leadNumber,
+        action_url: `/dashboard/telecaller/leads/${followup.lead_id}`,
+        metadata: {
+          kind: 'FOLLOWUP_REMINDER',
+          followup_id: followup.id,
+          scheduled_time: followup.scheduled_time,
+          follow_up_type: followup.follow_up_type,
+          minutes_until: 15,
+        },
+        is_read: false,
+        created_at: now.toISOString(),
+      });
+
+      // Mark reminder as sent
+      await supabaseAdmin
+        .from('telecaller_follow_ups')
+        .update({
+          reminder_sent: true,
+          reminder_sent_at: now.toISOString(),
+        })
+        .eq('id', followup.id);
+
+      notified += 1;
+    }
+
+    // Bulk insert notifications
+    if (notifications.length > 0) {
+      const { error: notifError } = await supabaseAdmin
+        .from('notifications')
+        .insert(notifications);
+
+      if (notifError) {
+        console.error('[Followup Reminder] Error creating notifications:', notifError);
+        return { ok: false, error: notifError.message, notified: 0 };
+      }
+
+      // Dispatch push notifications (best-effort)
+      for (const notif of notifications) {
+        void dispatchPushToUser(notif.user_id, notif as any);
+      }
+    }
+
+    return { ok: true, notified, total_followups: followups.length };
+  } catch (error: any) {
+    console.error('[Followup Reminder] Unexpected error:', error);
+    return { ok: false, error: error?.message || 'Unknown error' };
+  }
+}
+
+/**
+ * Workshop SLA Breach/Warning Cron
+ * Checks for SLA breaches/warnings from workshop and notifies telecallers
+ */
+async function runWorkshopSlaCron() {
+  try {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return { ok: false, error: 'Supabase admin client not available' };
+    }
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    let notified = 0;
+    const notifications: any[] = [];
+
+    // Check for leads with SLA breaches/warnings that have assigned telecallers
+    const { data: leadsWithSla, error: leadsError } = await supabaseAdmin
+      .from('service_leads')
+      .select('id, lead_number, assigned_telecaller_id, sla_status, sla_expires_at, sla_type, workshop_id, status')
+      .not('assigned_telecaller_id', 'is', null)
+      .in('sla_status', ['BREACHED', 'AT_RISK'])
+      .limit(500);
+
+    if (leadsError) {
+      console.error('[Workshop SLA] Error fetching leads:', leadsError);
+      return { ok: false, error: leadsError.message };
+    }
+
+    for (const lead of leadsWithSla || []) {
+      const leadId = (lead as any).id as string;
+      const telecallerId = (lead as any).assigned_telecaller_id as string;
+      const leadNumber = (lead as any).lead_number || leadId;
+      const slaStatus = (lead as any).sla_status as string;
+      const slaExpiresAt = (lead as any).sla_expires_at as string | null;
+      const slaType = (lead as any).sla_type as string | null;
+
+      if (!telecallerId) continue;
+
+      // Check if we've already notified within the last 30 minutes (deduplication)
+      const { data: recentNotif } = await supabaseAdmin
+        .from('notifications')
+        .select('id')
+        .eq('user_id', telecallerId)
+        .eq('lead_id', leadId)
+        .in('type', ['WORKSHOP_SLA_BREACH', 'WORKSHOP_SLA_WARNING'])
+        .gte('created_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
+        .limit(1);
+
+      if (recentNotif && recentNotif.length > 0) continue;
+
+      const slaTypeLabel = slaType || 'SLA';
+      let notificationType: NotificationType;
+      let title: string;
+      let message: string;
+      let priority: NotificationPriority;
+
+      if (slaStatus === 'BREACHED') {
+        notificationType = 'WORKSHOP_SLA_BREACH';
+        title = 'Workshop SLA Breached';
+        message = `Workshop has breached ${slaTypeLabel} for lead ${leadNumber}. Please follow up with the workshop.`;
+        priority = 'URGENT';
+      } else {
+        notificationType = 'WORKSHOP_SLA_WARNING';
+        title = 'Workshop SLA Warning';
+        const expiresAt = slaExpiresAt ? new Date(slaExpiresAt) : null;
+        const minutesRemaining = expiresAt 
+          ? Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / (60 * 1000)))
+          : null;
+        const timeText = minutesRemaining !== null 
+          ? `${minutesRemaining} minutes remaining`
+          : 'at risk';
+        message = `Workshop ${slaTypeLabel} is at risk for lead ${leadNumber} (${timeText}). Please monitor.`;
+        priority = 'HIGH';
+      }
+
+      notifications.push({
+        user_id: telecallerId,
+        type: notificationType,
+        title,
+        message,
+        priority,
+        lead_id: leadId,
+        lead_number: leadNumber,
+        action_url: `/dashboard/telecaller/leads/${leadId}`,
+        metadata: {
+          sla_status: slaStatus,
+          sla_type: slaType,
+          sla_expires_at: slaExpiresAt,
+        },
+        is_read: false,
+        created_at: nowIso,
+      });
+
+      notified += 1;
+    }
+
+    // Bulk insert notifications
+    if (notifications.length > 0) {
+      const { error: notifError } = await supabaseAdmin
+        .from('notifications')
+        .insert(notifications);
+
+      if (notifError) {
+        console.error('[Workshop SLA] Error creating notifications:', notifError);
+        return { ok: false, error: notifError.message, notified: 0 };
+      }
+
+      // Dispatch push notifications (best-effort)
+      for (const notif of notifications) {
+        void dispatchPushToUser(notif.user_id, notif as any);
+      }
+    }
+
+    return { ok: true, notified, total_leads: leadsWithSla?.length || 0 };
+  } catch (error: any) {
+    console.error('[Workshop SLA] Unexpected error:', error);
+    return { ok: false, error: error?.message || 'Unknown error' };
+  }
+}
+
 export async function POST(req: NextRequest) {
   const authErr = assertCronAuth(req);
   if (authErr) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 500 });
@@ -826,6 +1423,51 @@ export async function POST(req: NextRequest) {
 
     const res = await runMechanicDailySummaryCron({ dayStartIso, dayEndIso, dateLabel });
     return NextResponse.json({ ...res, task }, { status: res.ok ? 200 : 500 });
+  }
+
+  if (task === 'pickup_sla') {
+    const res = await runPickupBoySlaCron();
+    return NextResponse.json({ ...res, task }, { status: res.ok ? 200 : 500 });
+  }
+
+  if (task === 'daily_summary_pickup') {
+    const dayStartIso = String((body as any)?.dayStartIso || '');
+    const dayEndIso = String((body as any)?.dayEndIso || '');
+    const dateLabel = String((body as any)?.dateLabel || '');
+
+    if (!dayStartIso || !dayEndIso || !dateLabel) {
+      return NextResponse.json(
+        {
+          error: 'Missing dayStartIso/dayEndIso/dateLabel',
+          example: {
+            task: 'daily_summary_pickup',
+            dayStartIso: '2026-01-06T00:00:00.000Z',
+            dayEndIso: '2026-01-07T00:00:00.000Z',
+            dateLabel: '2026-01-06',
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    const res = await runPickupBoyDailySummaryCron({ dayStartIso, dayEndIso, dateLabel });
+    return NextResponse.json({ ...res, task }, { status: res.ok ? 200 : 500 });
+  }
+
+  if (task === 'followup_reminder') {
+    const res = await runFollowupReminderCron();
+    return NextResponse.json({ ...res, task }, { status: res.ok ? 200 : 500 });
+  }
+
+  if (task === 'workshop_sla') {
+    const res = await runWorkshopSlaCron();
+    return NextResponse.json({ ...res, task }, { status: res.ok ? 200 : 500 });
+  }
+
+  // For localhost testing: allow running without auth in development
+  if (process.env.NODE_ENV === 'development' && task === 'test_followup_reminder') {
+    const res = await runFollowupReminderCron();
+    return NextResponse.json({ ...res, task, note: 'Development mode - no auth required' }, { status: res.ok ? 200 : 500 });
   }
 
   return NextResponse.json({ error: 'Unknown task', task }, { status: 400 });

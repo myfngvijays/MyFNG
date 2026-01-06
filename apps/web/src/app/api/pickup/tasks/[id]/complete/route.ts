@@ -92,6 +92,20 @@ export async function POST(
       }, { status: 400 });
     }
 
+    // Observation gating (per-lead). Backwards compatible if columns not yet migrated.
+    try {
+      const obsRequired = !!(lead as any)?.pickup_observation_required;
+      const obsText = String((lead as any)?.pickup_observation || '').trim();
+      if (obsRequired && !obsText) {
+        return NextResponse.json(
+          { error: 'Observation report pending', hint: 'Submit observation report to continue' },
+          { status: 400 }
+        );
+      }
+    } catch {
+      // ignore
+    }
+
     // Check if before images are uploaded
     const { count: beforeImages } = await supabase
       .from('lead_media')
