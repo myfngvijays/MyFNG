@@ -241,6 +241,7 @@ export async function POST(
     // Update lead with delivery completion (workflow-aligned)
     const updateData: any = {
       status: 'DELIVERED_TO_CUSTOMER',
+      pickup_status: 'DELIVERED',
       delivered_at: now,
       delivered_by: userProfile.id,
       updated_at: now,
@@ -260,10 +261,15 @@ export async function POST(
     updateData.cse_followup_due = true;
     updateData.cse_followup_due_at = followUpDueDate.toISOString();
 
-    await supabase
+    const { error: updateLeadError } = await supabase
       .from('service_leads')
       .update(updateData)
       .eq('id', leadId);
+
+    if (updateLeadError) {
+      console.error('Error updating lead status to DELIVERED_TO_CUSTOMER:', updateLeadError);
+      return NextResponse.json({ error: 'Failed to update lead status', details: updateLeadError.message }, { status: 500 });
+    }
 
     // Log status change
     await supabase

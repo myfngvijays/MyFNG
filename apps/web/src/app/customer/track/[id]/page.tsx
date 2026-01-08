@@ -639,30 +639,30 @@ export default function TrackLeadPage() {
                             <td className="py-3 px-3">
                               {status === 'PENDING' ? (
                                 canOem && canOes ? (
-                                  <div className="flex items-center gap-3">
-                                    <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
-                                      <input
-                                        type="radio"
-                                        name={`choice-desktop-${req.id}`}
-                                        className="h-4 w-4"
-                                        checked={choice === 'OEM'}
-                                        onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OEM' }))}
-                                        aria-label="Approve choice OEM"
-                                      />
-                                      OEM
-                                    </label>
-                                    <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
-                                      <input
-                                        type="radio"
-                                        name={`choice-desktop-${req.id}`}
-                                        className="h-4 w-4"
-                                        checked={choice === 'OES'}
-                                        onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OES' }))}
-                                        aria-label="Approve choice OES"
-                                      />
-                                      OES
-                                    </label>
-                                  </div>
+                                <div className="flex items-center gap-3">
+                                  <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
+                                    <input
+                                      type="radio"
+                                      name={`choice-desktop-${req.id}`}
+                                      className="h-4 w-4"
+                                      checked={choice === 'OEM'}
+                                      onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OEM' }))}
+                                      aria-label="Approve choice OEM"
+                                    />
+                                    OEM
+                                  </label>
+                                  <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
+                                    <input
+                                      type="radio"
+                                      name={`choice-desktop-${req.id}`}
+                                      className="h-4 w-4"
+                                      checked={choice === 'OES'}
+                                      onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OES' }))}
+                                      aria-label="Approve choice OES"
+                                    />
+                                    OES
+                                  </label>
+                                </div>
                                 ) : (
                                   <div className="inline-flex items-center gap-2">
                                     <span className="text-xs text-gray-500">Selected</span>
@@ -844,30 +844,30 @@ export default function TrackLeadPage() {
                         {status === 'PENDING' && (
                           <div className="mt-3 space-y-3">
                             {canOem && canOes ? (
-                              <div className="flex items-center gap-4">
-                                <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
-                                  <input
-                                    type="radio"
-                                    name={`choice-mobile-${req.id}`}
-                                    className="h-4 w-4"
-                                    checked={choice === 'OEM'}
-                                    onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OEM' }))}
-                                    aria-label="Approve choice OEM"
-                                  />
-                                  OEM
-                                </label>
-                                <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
-                                  <input
-                                    type="radio"
-                                    name={`choice-mobile-${req.id}`}
-                                    className="h-4 w-4"
-                                    checked={choice === 'OES'}
-                                    onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OES' }))}
-                                    aria-label="Approve choice OES"
-                                  />
-                                  OES
-                                </label>
-                              </div>
+                            <div className="flex items-center gap-4">
+                              <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+                                <input
+                                  type="radio"
+                                  name={`choice-mobile-${req.id}`}
+                                  className="h-4 w-4"
+                                  checked={choice === 'OEM'}
+                                  onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OEM' }))}
+                                  aria-label="Approve choice OEM"
+                                />
+                                OEM
+                              </label>
+                              <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+                                <input
+                                  type="radio"
+                                  name={`choice-mobile-${req.id}`}
+                                  className="h-4 w-4"
+                                  checked={choice === 'OES'}
+                                  onChange={() => setDecisionByRequestId((p) => ({ ...p, [req.id]: 'OES' }))}
+                                  aria-label="Approve choice OES"
+                                />
+                                OES
+                              </label>
+                            </div>
                             ) : (
                               <div className="flex items-center justify-between">
                                 <div className="text-sm text-gray-600">Selected</div>

@@ -23,13 +23,18 @@ interface HistoryTask {
   city: string;
   pincode: string;
   status: string;
-  preferred_date: string;
+  preferred_date: string | null;
   created_at: string;
-  completed_at: string;
-  cancelled_at: string;
-  notes_internal: string;
+  updated_at?: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  delivered_at?: string | null;
+  drop_completed_time?: string | null;
+  notes_internal: string | null;
   pickup_required: boolean;
-  pickup_otp_verified_at: string;
+  pickup_otp_verified_at: string | null;
+  pickup_status?: string | null;
+  drop_status?: string | null;
 }
 
 export default function PickupBoyHistoryPage() {
@@ -77,12 +82,14 @@ export default function PickupBoyHistoryPage() {
       }
 
       // Fetch completed tasks from service_leads
+      // Include all statuses that indicate completed work (pickup or delivery)
+      // Also include tasks where pickup was completed even if main status is different
       const { data, error } = await supabase
         .from('service_leads')
         .select('*')
         .eq('assigned_pickup_boy_id', userProfile.id)
-        .in('status', ['COMPLETED', 'CANCELLED'])
-        .order('completed_at', { ascending: false, nullsFirst: false });
+        .or(`status.in.(COMPLETED,CANCELLED,DELIVERED_TO_CUSTOMER,DELIVERED,CLOSED,VEHICLE_DROPPED_AT_WORKSHOP),pickup_status.in.(VEHICLE_DROPPED_AT_WORKSHOP,DROPPED,ARRIVED_AT_WORKSHOP)`)
+        .order('updated_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching history:', error);
@@ -90,13 +97,74 @@ export default function PickupBoyHistoryPage() {
         return;
       }
 
-      setHistory(data || []);
+      // Also fetch from pickup_tracking for completed pickups/deliveries
+      let trackingData = null;
+      try {
+        const { data: trackingData1 } = await supabase
+          .from('pickup_tracking')
+          .select(`
+            *,
+            lead:service_leads!inner(*)
+          `)
+          .eq('pickup_assigned_to', userProfile.id)
+          .in('pickup_status', ['ARRIVED_AT_WORKSHOP', 'DROPPED', 'VEHICLE_DROPPED_AT_WORKSHOP']);
 
-      // Calculate stats
-      const completed = data?.filter(t => t.status === 'COMPLETED').length || 0;
-      const cancelled = data?.filter(t => t.status === 'CANCELLED').length || 0;
-      const withPickup = data?.filter(t => t.pickup_required && t.status === 'COMPLETED').length || 0;
-      const delivered = data?.filter(t => t.pickup_otp_verified_at && t.status === 'COMPLETED').length || 0;
+        const { data: trackingData2 } = await supabase
+          .from('pickup_tracking')
+          .select(`
+            *,
+            lead:service_leads!inner(*)
+          `)
+          .eq('drop_assigned_to', userProfile.id)
+          .eq('drop_status', 'DELIVERED');
+
+        trackingData = [...(trackingData1 || []), ...(trackingData2 || [])];
+      } catch (trackingError) {
+        console.warn('Error fetching tracking data:', trackingError);
+        // Continue without tracking data
+      }
+
+      // Combine and deduplicate
+      const allTasks = [...(data || [])];
+      const leadIds = new Set(allTasks.map(t => t.id));
+      
+      // Add tracking leads that might not be in main query
+      if (trackingData) {
+        trackingData.forEach(tracking => {
+          const lead = (tracking as any)?.lead;
+          if (lead && !leadIds.has(lead.id)) {
+            // Merge tracking data into lead
+            allTasks.push({
+              ...lead,
+              drop_completed_time: (tracking as any)?.drop_completed_time,
+              pickup_arrival_time: (tracking as any)?.pickup_arrival_time,
+            });
+            leadIds.add(lead.id);
+          }
+        });
+      }
+
+      // Sort by most recent completion/delivery/cancellation
+      allTasks.sort((a, b) => {
+        const aDate = new Date(a.delivered_at || a.drop_completed_time || a.completed_at || a.cancelled_at || a.updated_at || 0).getTime();
+        const bDate = new Date(b.delivered_at || b.drop_completed_time || b.completed_at || b.cancelled_at || b.updated_at || 0).getTime();
+        return bDate - aDate; // Latest first
+      });
+
+      setHistory(allTasks);
+
+      // Calculate stats - consider all completed statuses
+      const completedStatuses = ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'CLOSED', 'VEHICLE_DROPPED_AT_WORKSHOP'];
+      const completed = allTasks?.filter(t => completedStatuses.includes(t.status) || t.pickup_status === 'VEHICLE_DROPPED_AT_WORKSHOP' || t.pickup_status === 'DROPPED').length || 0;
+      const cancelled = allTasks?.filter(t => t.status === 'CANCELLED').length || 0;
+      const withPickup = allTasks?.filter(t => 
+        t.pickup_required && 
+        (completedStatuses.includes(t.status) || t.pickup_status === 'VEHICLE_DROPPED_AT_WORKSHOP' || t.pickup_status === 'DROPPED')
+      ).length || 0;
+      const delivered = allTasks?.filter(t => 
+        (t.status === 'DELIVERED_TO_CUSTOMER' || t.status === 'DELIVERED' || t.drop_status === 'DELIVERED') &&
+        completedStatuses.includes(t.status)
+      ).length || 0;
 
       setStats({
         totalCompleted: completed,
@@ -122,26 +190,28 @@ export default function PickupBoyHistoryPage() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       filtered = filtered.filter(task => {
-        const taskDate = new Date(task.completed_at || task.cancelled_at);
-        return taskDate >= today;
+                            const taskDate = new Date(task.delivered_at || task.drop_completed_time || task.completed_at || task.cancelled_at || task.updated_at || task.created_at || 0);
+                            return taskDate.getTime() > 0 && taskDate >= today;
       });
     } else if (dateFilter === 'week') {
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       filtered = filtered.filter(task => {
-        const taskDate = new Date(task.completed_at || task.cancelled_at);
-        return taskDate >= weekAgo;
+                            const taskDate = new Date(task.delivered_at || task.drop_completed_time || task.completed_at || task.cancelled_at || task.updated_at || task.created_at || 0);
+                            return taskDate.getTime() > 0 && taskDate >= weekAgo;
       });
     } else if (dateFilter === 'month') {
       const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       filtered = filtered.filter(task => {
-        const taskDate = new Date(task.completed_at || task.cancelled_at);
-        return taskDate >= monthAgo;
+                            const taskDate = new Date(task.delivered_at || task.drop_completed_time || task.completed_at || task.cancelled_at || task.updated_at || task.created_at || 0);
+                            return taskDate.getTime() > 0 && taskDate >= monthAgo;
       });
     }
+    // 'all' filter doesn't need date filtering - show all tasks
 
     // Status filter
+    const completedStatuses = ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'CLOSED', 'VEHICLE_DROPPED_AT_WORKSHOP'];
     if (statusFilter === 'completed') {
-      filtered = filtered.filter(task => task.status === 'COMPLETED');
+      filtered = filtered.filter(task => completedStatuses.includes(task.status));
     } else if (statusFilter === 'cancelled') {
       filtered = filtered.filter(task => task.status === 'CANCELLED');
     }
@@ -326,126 +396,150 @@ export default function PickupBoyHistoryPage() {
           </div>
         </div>
 
-        {/* History List */}
-        <div className="space-y-3 sm:space-y-4">
-          {filteredHistory.length === 0 ? (
-            <div className="card text-center py-8 sm:py-10 md:py-12">
-              <Calendar className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
-              <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">No History Found</h3>
-              <p className="text-gray-500 text-sm sm:text-base">
-                {statusFilter !== 'all' 
-                  ? `No ${statusFilter} tasks found for the selected period.`
-                  : 'No tasks found for the selected period.'
-                }
-              </p>
-            </div>
-          ) : (
-            filteredHistory.map((task) => (
-              <div key={task.id} className="card hover:shadow-lg transition-shadow">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                    <div className="text-2xl sm:text-3xl md:text-4xl flex-shrink-0">{getTaskTypeIcon(task)}</div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                        <h3 className="text-base sm:text-lg font-bold text-text-heading truncate">
-                          {task.lead_number}
-                        </h3>
+        {/* History Table */}
+        {filteredHistory.length === 0 ? (
+          <div className="card text-center py-8 sm:py-10 md:py-12">
+            <Calendar className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">No History Found</h3>
+            <p className="text-gray-500 text-sm sm:text-base">
+              {statusFilter !== 'all' 
+                ? `No ${statusFilter} tasks found for the selected period.`
+                : 'No tasks found for the selected period.'
+              }
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead #</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completed/Cancelled</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredHistory.map((task) => (
+                    <tr key={task.id} className="hover:bg-gray-50">
+                      {/* Lead Number */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="text-xl flex-shrink-0">{getTaskTypeIcon(task)}</div>
+                          <div className="text-sm font-medium text-blue-600">#{task.lead_number}</div>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {task.pickup_required ? 'Pickup & Delivery' : 'Service Task'}
+                        </div>
+                      </td>
+
+                      {/* Customer */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                          {task.customer_name}
+                        </div>
+                      </td>
+
+                      {/* Vehicle */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex items-center gap-2">
+                          <Car className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                              {task.vehicle_number}
+                            </div>
+                            <div className="text-xs text-gray-500 truncate max-w-[150px]">
+                              {task.vehicle_make} {task.vehicle_model}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Address */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        {task.address ? (
+                          <div className="flex items-start gap-2">
+                            <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <div className="text-sm text-gray-900 truncate max-w-[200px]">
+                                {task.address}
+                              </div>
+                              {(task.city || task.pincode) && (
+                                <div className="text-xs text-gray-500 truncate max-w-[200px]">
+                                  {task.city}{task.pincode ? `, ${task.pincode}` : ''}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">Not provided</span>
+                        )}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
                         {getStatusBadge(task.status)}
-                      </div>
-                      <p className="text-xs sm:text-sm text-gray-600">
-                        {task.pickup_required ? 'Pickup & Delivery Task' : 'Service Task'}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
-                    className="btn bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2 w-full sm:w-auto"
-                  >
-                    <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    View Details
-                  </button>
-                </div>
+                        {task.pickup_otp_verified_at && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <CheckCircle className="w-3 h-3 text-green-500" />
+                            <span className="text-xs text-green-600">OTP Verified</span>
+                          </div>
+                        )}
+                      </td>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
-                  {/* Customer Info */}
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
-                      <Car className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
-                      <span className="font-semibold truncate">{task.vehicle_number}</span>
-                      <span className="text-gray-600 truncate">
-                        {task.vehicle_make} {task.vehicle_model}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
-                      <span className="font-semibold text-gray-700 truncate">{task.customer_name}</span>
-                    </div>
-                  </div>
+                      {/* Completed/Cancelled Date */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        {(task.completed_at || task.delivered_at || task.drop_completed_time) ? (
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                            <div className="text-xs sm:text-sm">
+                              <div className="font-medium text-green-600">
+                                {formatDateTime(task.delivered_at || task.drop_completed_time || task.completed_at)}
+                              </div>
+                            </div>
+                          </div>
+                        ) : task.cancelled_at ? (
+                          <div className="flex items-center gap-1.5">
+                            <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                            <div className="text-xs sm:text-sm">
+                              <div className="font-medium text-red-600">
+                                {formatDateTime(task.cancelled_at)}
+                              </div>
+                            </div>
+                          </div>
+                        ) : task.preferred_date ? (
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                            <div className="text-xs sm:text-sm text-gray-600">
+                              Preferred: {formatDateDMY(task.preferred_date)}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
 
-                  {/* Timing */}
-                  <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
-                    {task.preferred_date && (
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
-                        <span className="text-gray-600">Preferred:</span>
-                        <span className="font-medium">
-                          {formatDateDMY(task.preferred_date)}
-                        </span>
-                      </div>
-                    )}
-                    {task.completed_at && (
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 flex-shrink-0" />
-                        <span className="text-gray-600">Completed:</span>
-                        <span className="font-medium text-green-600">
-                          {formatDateTime(task.completed_at)}
-                        </span>
-                      </div>
-                    )}
-                    {task.cancelled_at && (
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />
-                        <span className="text-gray-600">Cancelled:</span>
-                        <span className="font-medium text-red-600">
-                          {formatDateTime(task.cancelled_at)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Address */}
-                <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
-                  {task.address && (
-                    <div className="flex items-start gap-1.5 sm:gap-2">
-                      <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <span className="text-gray-600 font-medium">Address: </span>
-                        <span className="text-gray-700">{task.address}</span>
-                        {task.city && <span className="text-gray-600">, {task.city}</span>}
-                        {task.pincode && <span className="text-gray-600"> - {task.pincode}</span>}
-                      </div>
-                    </div>
-                  )}
-                  {task.pickup_otp_verified_at && (
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 flex-shrink-0" />
-                      <span className="text-xs sm:text-sm text-green-600">OTP Verified</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Notes */}
-                {task.notes_internal && (
-                  <div className="mt-3 sm:mt-4 p-2.5 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                    <p className="text-xs sm:text-sm text-gray-700">
-                      <span className="font-semibold">Notes:</span> {task.notes_internal}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
+                      {/* Actions */}
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm font-medium">
+                        <button
+                          onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
+                          className="btn btn-outline text-xs px-3 py-1.5 flex items-center justify-center gap-1.5"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Summary Footer */}
         {filteredHistory.length > 0 && (

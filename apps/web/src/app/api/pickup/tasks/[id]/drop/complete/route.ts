@@ -134,16 +134,22 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       .eq('lead_id', leadId);
 
     // Update lead to delivered
-    await supabase
+    const { error: updateLeadError } = await supabase
       .from('service_leads')
       .update({
         status: 'DELIVERED_TO_CUSTOMER',
+        pickup_status: 'DELIVERED',
         delivered_at: now,
         delivered_by: userProfile.id,
         read_only: true,
         updated_at: now,
       } as any)
       .eq('id', leadId);
+
+    if (updateLeadError) {
+      console.error('Error updating lead status to DELIVERED_TO_CUSTOMER:', updateLeadError);
+      return NextResponse.json({ error: 'Failed to update lead status', details: updateLeadError.message }, { status: 500 });
+    }
 
     await supabase.from('lead_status_history').insert({
       lead_id: leadId,

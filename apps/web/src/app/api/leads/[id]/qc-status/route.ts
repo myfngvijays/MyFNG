@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 /**
  * POST /api/leads/[id]/qc-status
@@ -230,19 +231,59 @@ export async function GET(
 
     const leadId = params.id;
 
+    // Gate by workshop ownership (avoid leaking cross-workshop data when using service_role)
+    const { data: lead, error: leadError } = await supabase
+      .from('service_leads')
+      .select('id, workshop_id')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !lead) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    }
+
+    const { data: userProfile, error: profileError } = await supabase
+      .from('users_login')
+      .select('id, workshop_id, roles!inner(role_code)')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !userProfile) {
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    }
+
+    if ((userProfile as any).workshop_id !== (lead as any).workshop_id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Prefer service_role client for read (bypasses RLS) but only after we validate workshop ownership above.
+    const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
+
+    const db = supabaseAdmin || supabase;
+
     // Fetch QC check
-    const { data: qcCheck, error: qcError } = await supabase
+    const { data: qcCheck, error: qcError } = await db
       .from('qc_checks')
-      .select(`
+      .select(
+        `
         *,
         supervisor:supervisor_id(full_name, profile_image)
-      `)
+      `
+      )
       .eq('lead_id', leadId)
       .single();
 
     if (qcError && qcError.code !== 'PGRST116') {
       console.error('Error fetching QC check:', qcError);
-      return NextResponse.json({ error: 'Failed to fetch QC check' }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: 'Failed to fetch QC check',
+          details: qcError.message,
+          using: supabaseAdmin ? 'service_role' : 'anon',
+          serviceRoleError: adminErr || null,
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({

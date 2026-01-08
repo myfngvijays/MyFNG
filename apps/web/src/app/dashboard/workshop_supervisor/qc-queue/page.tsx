@@ -418,7 +418,7 @@ export default function QCQueuePage() {
           </div>
         </div>
 
-        {/* Jobs List */}
+        {/* Jobs Table */}
         {jobs.length === 0 ? (
           <div className="card text-center py-8 sm:py-10 md:py-12">
             <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-green-500 mx-auto mb-3 sm:mb-4" />
@@ -426,85 +426,120 @@ export default function QCQueuePage() {
             <p className="text-gray-500 text-sm sm:text-base">No jobs pending quality check.</p>
           </div>
         ) : (
-          <div className="space-y-3 sm:space-y-4">
-            {jobs.map((job) => (
-              <div key={job.id} className="card hover:shadow-xl transition-shadow border-l-4 border-yellow-500">
-                <div className="space-y-3 sm:space-y-4">
-                  {/* Header */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
-                    <div className="min-w-0 flex-1">
-                      <span className="badge-blue text-sm sm:text-base md:text-lg">{job.lead_number}</span>
-                      <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
-                        Completed: {formatDateTime(job.mechanic_completed_at)}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 w-full sm:w-auto">
-                      <button
-                        onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
-                        className="btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex-1 sm:flex-initial"
-                      >
-                        <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        Review
-                      </button>
-                    </div>
-                  </div>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead #</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mechanic</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Images</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completed</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work Summary</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {jobs.map((job) => (
+                    <tr key={job.id} className="hover:bg-gray-50">
+                      {/* Lead Number */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="text-sm font-medium text-blue-600">#{job.lead_number}</div>
+                      </td>
 
-                  {/* Details Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                    <div className="space-y-1.5 sm:space-y-2">
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
-                        <span className="font-semibold text-sm sm:text-base truncate">{job.customer_name}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <Car className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
-                        <span className="text-xs sm:text-sm truncate">{job.vehicle_make} {job.vehicle_model} - {job.vehicle_number}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5 sm:space-y-2">
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600">Mechanic:</p>
-                        <p className="font-semibold text-sm sm:text-base truncate">{job.mechanic_name}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-3 sm:gap-4 text-xs sm:text-sm">
-                        <div className={`flex items-center gap-1 ${
-                          job.before_images_count > 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                          Before: {job.before_images_count}
+                      {/* Customer */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <span className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                            {job.customer_name}
+                          </span>
                         </div>
-                        <div className={`flex items-center gap-1 ${
-                          job.after_images_count > 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                          After: {job.after_images_count}
+                      </td>
+
+                      {/* Vehicle */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex items-center gap-2">
+                          <Car className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                              {job.vehicle_number}
+                            </div>
+                            <div className="text-xs text-gray-500 truncate max-w-[150px]">
+                              {job.vehicle_make} {job.vehicle_model}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </div>
+                      </td>
 
-                  {/* Work Summary */}
-                  {job.work_summary && (
-                    <div className="bg-gray-50 p-2.5 sm:p-3 rounded">
-                      <p className="text-xs sm:text-sm font-medium text-gray-700 mb-0.5 sm:mb-1">Work Summary:</p>
-                      <p className="text-xs sm:text-sm text-gray-600">{job.work_summary}</p>
-                    </div>
-                  )}
+                      {/* Mechanic */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="text-sm text-gray-900 truncate max-w-[120px]">
+                          {job.mechanic_name}
+                        </div>
+                      </td>
 
-                  {/* Quick Actions */}
-                  <div className="flex gap-2 pt-2 border-t">
-                    <button
-                      onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
-                      className="btn-primary flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                    >
-                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      Review
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+                      {/* Images */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            {job.before_images_count > 0 ? (
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <Camera className="w-4 h-4 text-red-500" />
+                            )}
+                            <span className={`text-xs font-medium ${
+                              job.before_images_count > 0 ? 'text-green-700' : 'text-red-700'
+                            }`}>
+                              Before: {job.before_images_count}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {job.after_images_count > 0 ? (
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <Camera className="w-4 h-4 text-red-500" />
+                            )}
+                            <span className={`text-xs font-medium ${
+                              job.after_images_count > 0 ? 'text-green-700' : 'text-red-700'
+                            }`}>
+                              After: {job.after_images_count}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Completed At */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="text-xs sm:text-sm text-gray-700">
+                          {job.mechanic_completed_at ? formatDateTime(job.mechanic_completed_at) : 'N/A'}
+                        </div>
+                      </td>
+
+                      {/* Work Summary */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="text-xs sm:text-sm text-gray-700 truncate max-w-[200px]" title={job.work_summary}>
+                          {job.work_summary || '—'}
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm font-medium">
+                        <button
+                          onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
+                          className="btn btn-primary flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                        >
+                          <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          Review
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

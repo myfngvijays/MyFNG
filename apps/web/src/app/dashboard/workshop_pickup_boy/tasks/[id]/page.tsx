@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { formatDateDMY, formatTime12h } from '@/lib/utils';
+import { formatDateDMY, formatTime12h, formatDateTime } from '@/lib/utils';
 import {
   PlayCircle, CheckCircle, Camera, ArrowLeft, User, Car, 
   MapPin, Phone, Clock, Shield, Navigation, AlertCircle, FileText
@@ -548,86 +548,108 @@ export default function PickupTaskDetailPage() {
           </div>
         </div>
 
-        {/* Task Details */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
-          {/* Customer Info */}
-          <div className="card p-3 sm:p-4 md:p-5">
-            <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-              <User className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
-              Customer Information
-            </h3>
-            <div className="space-y-2 sm:space-y-3">
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Name</p>
-                <p className="font-semibold text-sm sm:text-base">{task.customer_name}</p>
+        {/* Task Details Table */}
+        <div className="card">
+          <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Task Details</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-gray-200">
+                {/* Customer Name */}
+                <tr className="hover:bg-gray-50">
+                  <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500 w-1/3">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-gray-400" />
+                      Customer Name
               </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Phone</p>
-                <a href={`tel:${task.customer_phone}`} className="font-semibold text-brand-primary hover:underline text-sm sm:text-base">
+                  </td>
+                  <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm text-gray-900">
+                    {task.customer_name}
+                  </td>
+                </tr>
+
+                {/* Phone */}
+                <tr className="hover:bg-gray-50">
+                  <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-gray-400" />
+                      Phone
+                    </div>
+                  </td>
+                  <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
+                    <a href={`tel:${task.customer_phone}`} className="text-brand-primary hover:underline font-medium">
                   {task.customer_phone}
                 </a>
-              </div>
               {task.customer_alternate_phone && (
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-600">Alternate Phone</p>
-                  <a href={`tel:${task.customer_alternate_phone}`} className="font-semibold text-brand-primary hover:underline text-sm sm:text-base">
-                    {task.customer_alternate_phone}
-                  </a>
-                </div>
+                      <span className="text-gray-500 ml-2">
+                        / <a href={`tel:${task.customer_alternate_phone}`} className="text-brand-primary hover:underline">{task.customer_alternate_phone}</a>
+                      </span>
               )}
-            </div>
-          </div>
+                  </td>
+                </tr>
 
-          {/* Vehicle Info */}
-          <div className="card p-3 sm:p-4 md:p-5">
-            <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-              <Car className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
-              Vehicle Information
-            </h3>
-            <div className="space-y-2 sm:space-y-3">
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Number</p>
-                <p className="font-semibold text-lg sm:text-xl">{task.vehicle_number}</p>
+                {/* Vehicle Number */}
+                <tr className="hover:bg-gray-50">
+                  <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                    <div className="flex items-center gap-2">
+                      <Car className="w-4 h-4 text-gray-400" />
+                      Vehicle Number
               </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Make/Model</p>
-                <p className="font-semibold text-sm sm:text-base">{task.vehicle_make} {task.vehicle_model}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+                  </td>
+                  <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm font-semibold text-gray-900">
+                    {task.vehicle_number}
+                  </td>
+                </tr>
+
+                {/* Make/Model */}
+                <tr className="hover:bg-gray-50">
+                  <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                    Make/Model
+                  </td>
+                  <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm text-gray-900">
+                    {task.vehicle_make} {task.vehicle_model}
+                  </td>
+                </tr>
 
         {/* Pickup Location */}
-        <div className="card p-3 sm:p-4 md:p-5">
-          <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-            <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
+                <tr className="hover:bg-gray-50">
+                  <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-gray-400" />
             Pickup Location
-          </h3>
-          <div className="space-y-2 sm:space-y-3">
-            <div>
-              <p className="font-semibold text-sm sm:text-base">{task.address || task.customer_address || task.pickup_address || 'Address not provided'}</p>
-              <p className="text-gray-600 text-xs sm:text-sm">{task.city || ''}{task.pincode ? `, ${task.pincode}` : ''}</p>
             </div>
+                  </td>
+                  <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
+                    <div className="flex flex-col gap-1">
+                      <span className="font-medium text-gray-900">
+                        {task.address || task.customer_address || task.pickup_address || 'Address not provided'}
+                      </span>
+                      {(task.city || task.pincode) && (
+                        <span className="text-gray-600">
+                          {task.city || ''}{task.pincode ? `, ${task.pincode}` : ''}
+                        </span>
+                      )}
             <button
               onClick={openGoogleMaps}
-              className="btn-secondary bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
+                        className="btn-secondary bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-1.5 text-xs px-3 py-1 rounded w-fit mt-1"
             >
-              <Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Open in Google Maps</span>
-              <span className="sm:hidden">Open Maps</span>
+                        <Navigation className="w-3 h-3" />
+                        Open in Google Maps
             </button>
           </div>
-        </div>
+                  </td>
+                </tr>
 
         {/* Schedule */}
-        <div className="card p-3 sm:p-4 md:p-5">
-          <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-            <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
+                <tr className="hover:bg-gray-50">
+                  <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-gray-400" />
             Schedule
-          </h3>
-          <div className="space-y-2 sm:space-y-3">
+                    </div>
+                  </td>
+                  <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
             {(() => {
-              // Priority 1: Check pickup_tracking.pickup_time_slot (formatted text like "10:00 AM - 12:00 PM")
+                      // Priority 1: Check pickup_tracking.pickup_time_slot
               if (task.pickup_time_slot) {
                 const date = task.preferred_date 
                   ? new Date(task.preferred_date) 
@@ -636,22 +658,18 @@ export default function PickupTaskDetailPage() {
                     : new Date();
                 
                 return (
-                  <>
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600">Preferred Date</p>
-                      <p className="font-semibold text-sm sm:text-base">
-                        {formatDateDMY(date)}
-                      </p>
+                          <div className="flex flex-col gap-1">
+                            <span className="font-medium text-gray-900">
+                              Date: {formatDateDMY(date)}
+                            </span>
+                            <span className="text-gray-600">
+                              Time: {task.pickup_time_slot}
+                            </span>
                     </div>
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600">Time Slot</p>
-                      <p className="font-semibold text-sm sm:text-base">{task.pickup_time_slot}</p>
-                    </div>
-                  </>
                 );
               }
               
-              // Priority 2: Check preferred_time_slot (formatted text)
+                      // Priority 2: Check preferred_time_slot
               if (task.preferred_time_slot) {
                 const date = task.preferred_date 
                   ? new Date(task.preferred_date) 
@@ -660,69 +678,112 @@ export default function PickupTaskDetailPage() {
                     : new Date();
                 
                 return (
-                  <>
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600">Preferred Date</p>
-                      <p className="font-semibold text-sm sm:text-base">
-                        {formatDateDMY(date)}
-                      </p>
+                          <div className="flex flex-col gap-1">
+                            <span className="font-medium text-gray-900">
+                              Date: {formatDateDMY(date)}
+                            </span>
+                            <span className="text-gray-600">
+                              Time: {task.preferred_time_slot}
+                            </span>
                     </div>
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600">Time Slot</p>
-                        <p className="font-semibold text-sm sm:text-base">{task.preferred_time_slot}</p>
-                      </div>
-                  </>
                 );
               }
               
-              // Priority 3: Check for preferred_slot_start (TIMESTAMP column) - Convert UTC to IST properly
+                      // Priority 3: Check preferred_slot_start
               if (task.preferred_slot_start) {
-                // Convert UTC to IST (UTC+5:30)
                 const startDate = new Date(task.preferred_slot_start);
                 const endDate = task.preferred_slot_end ? new Date(task.preferred_slot_end) : null;
                 
-                // Format in IST timezone
                 const formatTimeIST = (date: Date) => {
                   return formatTime12h(date);
                 };
                 
                 return (
-                  <>
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600">Preferred Date</p>
-                      <p className="font-semibold text-sm sm:text-base">
-                        {formatDateDMY(startDate)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600">Time Slot</p>
-                      <p className="font-semibold text-sm sm:text-base">
-                        {formatTimeIST(startDate)}
+                          <div className="flex flex-col gap-1">
+                            <span className="font-medium text-gray-900">
+                              Date: {formatDateDMY(startDate)}
+                            </span>
+                            <span className="text-gray-600">
+                              Time: {formatTimeIST(startDate)}
                         {endDate && ` - ${formatTimeIST(endDate)}`}
-                      </p>
+                            </span>
                     </div>
-                  </>
                 );
               }
               
-              // Priority 4: Check for preferred_date only
+                      // Priority 4: Check preferred_date only
               if (task.preferred_date) {
                 const date = new Date(task.preferred_date);
                 return (
-                  <>
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600">Preferred Date</p>
-                      <p className="font-semibold text-sm sm:text-base">
-                        {formatDateDMY(date)}
-                      </p>
-                    </div>
-                  </>
+                          <span className="font-medium text-gray-900">
+                            Date: {formatDateDMY(date)}
+                          </span>
                 );
               }
               
-              // No preferred date/time found
-              return <p className="text-xs sm:text-sm text-gray-500">No schedule information available</p>;
+                      return <span className="text-gray-500">No schedule information available</span>;
             })()}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Observations Section */}
+        <div className="card">
+          <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Observations</h3>
+          
+          {/* Pickup Boy Observation */}
+          <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <p className="text-xs sm:text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-700" />
+                Your Observation
+              </p>
+              {canWriteObservation && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setObservationText(String((task as any)?.pickup_observation || ''));
+                    setShowObservationModal(true);
+                  }}
+                  className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                >
+                  {String((task as any)?.pickup_observation || '').trim() ? 'Edit' : 'Add'}
+                </button>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-gray-700 whitespace-pre-wrap break-words">
+                {String((task as any)?.pickup_observation || '').trim() ? (task as any).pickup_observation : 'No observation added yet.'}
+              </p>
+              {(task as any)?.pickup_observation_updated_at && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Last updated: {formatDateTime((task as any).pickup_observation_updated_at)}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Supervisor Observation (Read-only for pickup boy) */}
+          <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <p className="text-xs sm:text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-orange-700" />
+                Supervisor/Advisor Observation
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-gray-700 whitespace-pre-wrap break-words">
+                {String((task as any)?.supervisor_observation || '').trim() ? (task as any).supervisor_observation : 'No observation from supervisor yet.'}
+              </p>
+              {(task as any)?.supervisor_observation_updated_at && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Last updated: {formatDateTime((task as any).supervisor_observation_updated_at)}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -926,9 +987,11 @@ export default function PickupTaskDetailPage() {
         {showObservationModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
             <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
-              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-slate-700">Pickup Observation</h3>
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-slate-700">
+                {observationText.trim() ? 'Edit Your Observation' : 'Add Your Observation'}
+              </h3>
               <p className="text-xs sm:text-sm text-gray-600 mb-3">
-                Add notes/observations (e.g. scratches, dents, missing items, fuel level, etc.).
+                Add notes/observations (e.g. scratches, dents, missing items, fuel level, etc.). This is separate from supervisor observation.
               </p>
               <textarea
                 value={observationText}

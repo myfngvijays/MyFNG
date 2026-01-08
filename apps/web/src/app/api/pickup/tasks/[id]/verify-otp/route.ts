@@ -198,7 +198,7 @@ export async function POST(
       })
       .eq('lead_id', leadId);
     } else {
-      // DROP OTP verification: record on tracking but do NOT change lead.status (it stays READY_FOR_DELIVERY / COD_PENDING)
+      // DROP OTP verification: update tracking and lead status to reflect delivery progress
       await supabase
         .from('pickup_tracking')
         .upsert(
@@ -212,6 +212,33 @@ export async function POST(
           } as any,
           { onConflict: 'lead_id' }
         );
+
+      // Update lead pickup_status to reflect delivery OTP verification
+      const { error: updateLeadError } = await supabase
+        .from('service_leads')
+        .update({
+          pickup_status: 'OUT_FOR_DELIVERY',
+          updated_at: now,
+        })
+        .eq('id', leadId);
+
+      if (updateLeadError) {
+        console.error('Error updating lead pickup_status:', updateLeadError);
+        // Don't fail the request, but log the error
+      }
+
+      // Log status change for delivery OTP verification
+      await supabase
+        .from('lead_status_history')
+        .insert({
+          lead_id: leadId,
+          old_status: lead.status,
+          new_status: lead.status, // Keep main status, but pickup_status changed
+          changed_by: userProfile.id,
+          changed_at: now,
+          reason: 'Delivery OTP verified - Arrived at customer location',
+          notes: 'Delivery OTP verified successfully',
+        });
     }
 
     if (otpType === 'PICKUP') {

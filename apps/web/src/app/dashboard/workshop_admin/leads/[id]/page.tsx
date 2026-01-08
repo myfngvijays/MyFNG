@@ -64,6 +64,8 @@ export default function LeadDetailPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [rejectNotes, setRejectNotes] = useState('');
   const [showReassignModal, setShowReassignModal] = useState(false);
+  const [showQCDetailsModal, setShowQCDetailsModal] = useState(false);
+  const [qcPerformedBy, setQcPerformedBy] = useState<any>(null);
 
   useEffect(() => {
     if (leadId) {
@@ -131,6 +133,16 @@ export default function LeadDetailPage() {
       }
 
       if (data) {
+        // Fetch QC performed by user details if QC is performed
+        if (data.qc_performed_by) {
+          const { data: qcUser } = await supabase
+            .from('users_login')
+            .select('id, full_name, email')
+            .eq('id', data.qc_performed_by)
+            .single();
+          setQcPerformedBy(qcUser);
+        }
+
         // Fetch service type names
         let serviceTypeIds = data.service_type_ids;
         if (typeof serviceTypeIds === 'string') {
@@ -766,6 +778,30 @@ export default function LeadDetailPage() {
           <AuditSection lead={lead} onUpdate={fetchLeadDetails} />
         )}
 
+        {/* QC Details Button - Show when QC is approved */}
+        {lead.qc_status === 'PASSED' && lead.qc_performed_at && (
+          <div className="card bg-green-50 border-green-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-green-800 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5" />
+                  QC Approved
+                </h3>
+                <p className="text-sm text-green-700 mt-1">
+                  Quality check completed on {formatDateTime(lead.qc_performed_at)}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowQCDetailsModal(true)}
+                className="btn bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                View QC Details
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Section 12: Invoice (keep visible after invoice generation too) */}
         {[
           'READY_FOR_BILLING',
@@ -790,6 +826,86 @@ export default function LeadDetailPage() {
         <ServiceHistory lead={lead} />
       </div>
 
+
+      {/* QC Details Modal */}
+      {showQCDetailsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                QC Details
+              </h3>
+              <button
+                onClick={() => setShowQCDetailsModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* QC Status */}
+              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                  <span className="font-semibold text-green-800">QC Status: PASSED</span>
+                </div>
+              </div>
+
+              {/* QC Performed By */}
+              {qcPerformedBy && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Performed By</label>
+                  <p className="text-gray-900 font-semibold">{qcPerformedBy.full_name}</p>
+                  {qcPerformedBy.email && (
+                    <p className="text-sm text-gray-600">{qcPerformedBy.email}</p>
+                  )}
+                </div>
+              )}
+
+              {/* QC Performed At */}
+              {lead.qc_performed_at && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Performed At</label>
+                  <p className="text-gray-900">{formatDateTime(lead.qc_performed_at)}</p>
+                </div>
+              )}
+
+              {/* QC Notes */}
+              {lead.qc_notes && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Notes</label>
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-gray-900 whitespace-pre-wrap">{lead.qc_notes}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* QC Score */}
+              {lead.qc_score !== null && lead.qc_score !== undefined && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Score</label>
+                  <p className="text-2xl font-bold text-gray-900">{lead.qc_score}/100</p>
+                </div>
+              )}
+
+              {!lead.qc_notes && !lead.qc_score && (
+                <p className="text-gray-500 text-center py-4">No additional QC details available</p>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowQCDetailsModal(false)}
+                className="btn btn-outline"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reject Modal */}
       {showRejectModal && (

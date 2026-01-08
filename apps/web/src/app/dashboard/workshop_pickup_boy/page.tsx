@@ -158,43 +158,31 @@ export default function WorkshopPickupBoyDashboard() {
           ))}
         </div>
 
-        {/* Recent Tasks */}
+        {/* Active Tasks Table */}
         <div className="card">
           <h2 className="text-lg sm:text-xl font-semibold text-text-heading mb-3 sm:mb-4">Active Tasks</h2>
           {tasks.length > 0 ? (
-            <div className="space-y-2 sm:space-y-3">
-              {tasks.map((task) => (
-                <div key={task.id} className="p-3 sm:p-4 border border-gray-200 rounded-lg hover:shadow-md transition">
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-2 sm:gap-3 mb-2 sm:mb-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-text-heading text-base sm:text-lg truncate">{task.lead_number}</p>
-                      <p className="text-xs sm:text-sm text-text-body truncate">{task.customer_name} - {task.vehicle_number}</p>
-                      <div className="mt-1.5 sm:mt-2 space-y-1">
-                        {task.pickup_address && (
-                          <p className="text-[10px] sm:text-xs text-gray-500 flex items-start gap-1">
-                            <MapPin className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex-shrink-0 mt-0.5" />
-                            <span className="truncate">Pickup: {task.pickup_address}</span>
-                          </p>
-                        )}
-                        {task.address && (
-                          <p className="text-[10px] sm:text-xs text-gray-500 flex items-start gap-1">
-                            <MapPin className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex-shrink-0 mt-0.5" />
-                            <span className="truncate">Address: {task.address}</span>
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 sm:ml-4 ${
-                      task.status === 'IN_PROGRESS' ? 'bg-green-100 text-green-700' : 
-                      task.status === 'ACCEPTED' ? 'bg-blue-100 text-blue-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {task.status.replace('_', ' ')}
-                    </span>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <button 
-                      onClick={async () => {
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead #</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {tasks.map((task) => {
+                    const getStatusColor = () => {
+                      if (task.status === 'IN_PROGRESS') return 'bg-green-100 text-green-700';
+                      if (task.status === 'ACCEPTED') return 'bg-blue-100 text-blue-700';
+                      return 'bg-yellow-100 text-yellow-700';
+                    };
+
+                    const handleNavigate = async () => {
                         console.log('Navigate button clicked for task:', task.id, task.lead_number);
                         
                         // Open Google Maps - use coordinates if available, otherwise use address
@@ -249,21 +237,78 @@ export default function WorkshopPickupBoyDashboard() {
                           console.error('Navigate API error:', error);
                           toast.error('Failed to update status: ' + (error.message || 'Unknown error'));
                         }
-                      }}
-                      className="btn btn-outline text-xs sm:text-sm flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2 sm:py-2.5"
-                    >
-                      <Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    };
+
+                    return (
+                      <tr key={task.id} className="hover:bg-gray-50">
+                        {/* Lead # */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <span className="text-xs sm:text-sm font-medium text-gray-900">#{task.lead_number}</span>
+                        </td>
+
+                        {/* Customer */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                            {task.customer_name || 'N/A'}
+                          </div>
+                        </td>
+
+                        {/* Vehicle */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="text-xs sm:text-sm text-gray-900 truncate max-w-[120px]">
+                            {task.vehicle_number || 'N/A'}
+                          </div>
+                        </td>
+
+                        {/* Address */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="flex items-start gap-1">
+                            <MapPin className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                            <div className="min-w-0">
+                              {task.pickup_address && (
+                                <div className="text-[10px] sm:text-xs text-gray-600 truncate max-w-[150px]">
+                                  Pickup: {task.pickup_address}
+                                </div>
+                              )}
+                              {task.address && (
+                                <div className="text-[10px] sm:text-xs text-gray-600 truncate max-w-[150px]">
+                                  {task.pickup_address ? task.address : `Address: ${task.address}`}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold ${getStatusColor()}`}>
+                            {task.status.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="flex flex-col gap-1">
+                            <button 
+                              onClick={handleNavigate}
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded font-medium transition-colors flex items-center justify-center gap-1"
+                            >
+                              <Navigation className="w-3 h-3" />
                       Navigate
                     </button>
                     <button 
                       onClick={() => window.location.href = `/dashboard/workshop_pickup_boy/tasks/${task.id}`}
-                      className="btn btn-primary text-xs sm:text-sm flex-1 py-2 sm:py-2.5"
+                              className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded font-medium transition-colors"
                     >
                       View Details
                     </button>
                   </div>
-                </div>
-              ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           ) : (
             <p className="text-gray-500 text-center py-6 sm:py-8 text-sm sm:text-base">No active tasks</p>

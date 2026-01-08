@@ -29,6 +29,9 @@ interface PickupDeliveryJob {
   is_invoice_ready: boolean;
   is_car_washed: boolean;
   paperwork_complete: boolean;
+  delivery_invoice_ready: boolean | null;
+  delivery_car_washed: boolean | null;
+  delivery_paperwork_complete: boolean | null;
 }
 
 export default function PickupDeliveryCoordinationPage() {
@@ -41,6 +44,12 @@ export default function PickupDeliveryCoordinationPage() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'ready_for_pickup' | 'ready_for_delivery'>('all');
   const [instructionsEdit, setInstructionsEdit] = useState<Record<string, string>>({});
   const [savingInstructions, setSavingInstructions] = useState<Record<string, boolean>>({});
+  const [checklistState, setChecklistState] = useState<Record<string, {
+    delivery_invoice_ready: boolean;
+    delivery_car_washed: boolean;
+    delivery_paperwork_complete: boolean;
+  }>>({});
+  const [savingChecklist, setSavingChecklist] = useState<Record<string, boolean>>({});
   const [workshopId, setWorkshopId] = useState<string | null>(null);
   const refreshTimer = useRef<number | null>(null);
 
@@ -163,6 +172,9 @@ export default function PickupDeliveryCoordinationPage() {
           status,
           pickup_required,
           customer_special_notes,
+          delivery_invoice_ready,
+          delivery_car_washed,
+          delivery_paperwork_complete,
           pickup_boy:assigned_pickup_boy_id(id, full_name, phone, profile_image),
           mechanic:assigned_mechanic_id(id, full_name)
         `)
@@ -188,6 +200,11 @@ export default function PickupDeliveryCoordinationPage() {
             .eq('lead_id', job.id)
             .eq('media_type', 'DOCUMENT');
 
+          // Use database checklist values if available, otherwise fall back to computed values
+          const deliveryInvoiceReady = job.delivery_invoice_ready !== null ? job.delivery_invoice_ready : (invoiceData?.status === 'PAID' || invoiceData?.status === 'GENERATED');
+          const deliveryCarWashed = job.delivery_car_washed !== null ? job.delivery_car_washed : (job.status === 'READY_FOR_DELIVERY');
+          const deliveryPaperworkComplete = job.delivery_paperwork_complete !== null ? job.delivery_paperwork_complete : ((documentsData?.length || 0) > 0);
+
           return {
             ...job,
             job_status: job.status,
@@ -197,9 +214,12 @@ export default function PickupDeliveryCoordinationPage() {
             pickup_scheduled_time: null,
             delivery_scheduled_time: null,
             special_instructions: job.customer_special_notes,
-            is_invoice_ready: invoiceData?.status === 'PAID' || invoiceData?.status === 'GENERATED',
-            paperwork_complete: (documentsData?.length || 0) > 0,
-            is_car_washed: job.status === 'READY_FOR_DELIVERY' // Assume washed if ready
+            is_invoice_ready: deliveryInvoiceReady,
+            is_car_washed: deliveryCarWashed,
+            paperwork_complete: deliveryPaperworkComplete,
+            delivery_invoice_ready: job.delivery_invoice_ready,
+            delivery_car_washed: job.delivery_car_washed,
+            delivery_paperwork_complete: job.delivery_paperwork_complete,
           };
         })
       );
@@ -207,6 +227,21 @@ export default function PickupDeliveryCoordinationPage() {
       // Keep both: all jobs for counts + filtered jobs for list rendering
       setAllJobs(enhancedJobs);
       setJobs(applyFilter(enhancedJobs));
+
+      // Initialize checklist state from loaded jobs
+      const initialChecklistState: Record<string, {
+        delivery_invoice_ready: boolean;
+        delivery_car_washed: boolean;
+        delivery_paperwork_complete: boolean;
+      }> = {};
+      enhancedJobs.forEach(job => {
+        initialChecklistState[job.id] = {
+          delivery_invoice_ready: job.is_invoice_ready,
+          delivery_car_washed: job.is_car_washed,
+          delivery_paperwork_complete: job.paperwork_complete,
+        };
+      });
+      setChecklistState(prev => ({ ...prev, ...initialChecklistState }));
 
       // Fetch pickup boys
       const { data: pickupBoysData } = await supabase
@@ -316,6 +351,42 @@ export default function PickupDeliveryCoordinationPage() {
     } catch (error) {
       console.error('Error marking ready:', error);
       alert('Failed to mark as ready');
+    }
+  }
+
+  async function updateDeliveryChecklist(jobId: string, field: 'delivery_invoice_ready' | 'delivery_car_washed' | 'delivery_paperwork_complete', value: boolean) {
+    try {
+      setSavingChecklist(prev => ({ ...prev, [jobId]: true }));
+
+      const response = await fetch(`/api/workshop/leads/${jobId}/delivery-checklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ [field]: value }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update checklist');
+      }
+
+      // Update local state
+      setChecklistState(prev => ({
+        ...prev,
+        [jobId]: {
+          ...prev[jobId],
+          [field]: value,
+        },
+      }));
+
+      // Refresh data to get updated values
+      fetchData({ silent: true });
+    } catch (error: any) {
+      console.error('Error updating checklist:', error);
+      alert(`Failed to update checklist: ${error.message}`);
+    } finally {
+      setSavingChecklist(prev => ({ ...prev, [jobId]: false }));
     }
   }
 
@@ -570,30 +641,88 @@ export default function PickupDeliveryCoordinationPage() {
                 <div>
                   <p className="text-[10px] sm:text-xs text-gray-600 mb-2 sm:mb-3 font-semibold">Delivery Checklist</p>
                   <div className="space-y-1.5 sm:space-y-2">
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      {job.is_invoice_ready ? (
-                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
-                      ) : (
-                        <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600 flex-shrink-0" />
-                      )}
+                    <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checklistState[job.id]?.delivery_invoice_ready ?? job.is_invoice_ready}
+                        onChange={(e) => {
+                          const newValue = e.target.checked;
+                          // Update local state immediately for better UX
+                          setChecklistState(prev => ({
+                            ...prev,
+                            [job.id]: {
+                              ...(prev[job.id] || {
+                                delivery_invoice_ready: job.is_invoice_ready,
+                                delivery_car_washed: job.is_car_washed,
+                                delivery_paperwork_complete: job.paperwork_complete,
+                              }),
+                              delivery_invoice_ready: newValue,
+                            },
+                          }));
+                          updateDeliveryChecklist(job.id, 'delivery_invoice_ready', newValue);
+                        }}
+                        disabled={savingChecklist[job.id]}
+                        className="w-4 h-4 text-brand-primary border-gray-300 rounded focus:ring-brand-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
                       <span className="text-xs sm:text-sm">Invoice Ready</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      {job.is_car_washed ? (
-                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
-                      ) : (
-                        <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600 flex-shrink-0" />
+                      {savingChecklist[job.id] && (
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-brand-primary"></div>
                       )}
+                    </label>
+                    <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checklistState[job.id]?.delivery_car_washed ?? job.is_car_washed}
+                        onChange={(e) => {
+                          const newValue = e.target.checked;
+                          setChecklistState(prev => ({
+                            ...prev,
+                            [job.id]: {
+                              ...(prev[job.id] || {
+                                delivery_invoice_ready: job.is_invoice_ready,
+                                delivery_car_washed: job.is_car_washed,
+                                delivery_paperwork_complete: job.paperwork_complete,
+                              }),
+                              delivery_car_washed: newValue,
+                            },
+                          }));
+                          updateDeliveryChecklist(job.id, 'delivery_car_washed', newValue);
+                        }}
+                        disabled={savingChecklist[job.id]}
+                        className="w-4 h-4 text-brand-primary border-gray-300 rounded focus:ring-brand-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
                       <span className="text-xs sm:text-sm">Car Washed</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      {job.paperwork_complete ? (
-                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
-                      ) : (
-                        <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600 flex-shrink-0" />
+                      {savingChecklist[job.id] && (
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-brand-primary"></div>
                       )}
+                    </label>
+                    <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checklistState[job.id]?.delivery_paperwork_complete ?? job.paperwork_complete}
+                        onChange={(e) => {
+                          const newValue = e.target.checked;
+                          setChecklistState(prev => ({
+                            ...prev,
+                            [job.id]: {
+                              ...(prev[job.id] || {
+                                delivery_invoice_ready: job.is_invoice_ready,
+                                delivery_car_washed: job.is_car_washed,
+                                delivery_paperwork_complete: job.paperwork_complete,
+                              }),
+                              delivery_paperwork_complete: newValue,
+                            },
+                          }));
+                          updateDeliveryChecklist(job.id, 'delivery_paperwork_complete', newValue);
+                        }}
+                        disabled={savingChecklist[job.id]}
+                        className="w-4 h-4 text-brand-primary border-gray-300 rounded focus:ring-brand-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
                       <span className="text-xs sm:text-sm">Paperwork Complete</span>
-                    </div>
+                      {savingChecklist[job.id] && (
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-brand-primary"></div>
+                      )}
+                    </label>
                   </div>
                 </div>
 

@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import JobCard from '@/components/supervisor/JobCard';
 import JobFilters, { FilterState } from '@/components/supervisor/JobFilters';
 import { RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -312,16 +311,236 @@ function SupervisorJobsContent() {
           </div>
         )}
 
-        {/* Jobs List */}
+        {/* Jobs Table */}
         {jobs.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 sm:gap-4">
-            {jobs.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                onQuickAction={handleQuickAction}
-              />
-            ))}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead #</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mechanic</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Images</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SLA</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {jobs.map((job) => {
+                    const getStatusColor = () => {
+                      switch (job.status) {
+                        case 'NEW': return 'bg-blue-100 text-blue-700';
+                        case 'INCOMPLETE': return 'bg-yellow-100 text-yellow-700';
+                        case 'VALIDATED': return 'bg-cyan-100 text-cyan-700';
+                        case 'ASSIGNED_TO_WORKSHOP': return 'bg-purple-100 text-purple-700';
+                        case 'ACCEPTED': return 'bg-indigo-100 text-indigo-700';
+                        case 'IN_PROGRESS': return 'bg-green-100 text-green-700';
+                        case 'HOLD':
+                        case 'ON_HOLD': return 'bg-orange-100 text-orange-700';
+                        case 'COMPLETED':
+                        case 'WORK_COMPLETED': return 'bg-teal-100 text-teal-700';
+                        case 'QC_PENDING': return 'bg-purple-100 text-purple-700';
+                        case 'READY_FOR_DELIVERY': return 'bg-emerald-100 text-emerald-700';
+                        case 'DELIVERED': return 'bg-lime-100 text-lime-700';
+                        case 'CANCELLED': return 'bg-red-100 text-red-700';
+                        case 'REJECTED': return 'bg-rose-100 text-rose-700';
+                        default: return 'bg-gray-100 text-gray-700';
+                      }
+                    };
+
+                    const getPriorityBadge = () => {
+                      const colors = {
+                        LOW: 'bg-gray-100 text-gray-600',
+                        MEDIUM: 'bg-blue-100 text-blue-600',
+                        HIGH: 'bg-orange-100 text-orange-600',
+                        URGENT: 'bg-red-100 text-red-600'
+                      };
+                      return colors[job.priority as keyof typeof colors] || colors.MEDIUM;
+                    };
+
+                    const getSLAColor = () => {
+                      switch (job.sla_status) {
+                        case 'ON_TIME': return 'bg-green-100 text-green-700';
+                        case 'AT_RISK': return 'bg-yellow-100 text-yellow-700';
+                        case 'BREACHED': return 'bg-red-100 text-red-700';
+                        default: return 'bg-gray-100 text-gray-700';
+                      }
+                    };
+
+                    const getStatusDisplay = () => {
+                      if (job.status === 'ON_HOLD') return 'HOLD';
+                      return job.status.replace(/_/g, ' ');
+                    };
+
+                    return (
+                      <tr key={job.id} className="hover:bg-gray-50">
+                        {/* Lead Number */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs sm:text-sm font-medium text-gray-900">#{job.lead_number}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold w-fit ${getPriorityBadge()}`}>
+                              {job.priority}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Service */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="text-xs sm:text-sm text-gray-900 truncate max-w-[150px]">
+                            {job.service_type}
+                          </div>
+                          {job.extra_work_pending && (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-semibold">
+                              Extra Work
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Customer */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div>
+                            <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[120px]">
+                              {job.customer_name}
+                            </div>
+                            <div className="text-[10px] sm:text-xs text-gray-500 truncate">
+                              {job.customer_phone_masked}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Vehicle */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div>
+                            <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[120px]">
+                              {job.vehicle_number}
+                            </div>
+                            <div className="text-[10px] sm:text-xs text-gray-500 truncate">
+                              {job.vehicle_make} {job.vehicle_model}
+                            </div>
+                            {job.pickup_required && (
+                              <span className="inline-block mt-0.5 px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded text-[10px] font-semibold">
+                                🚗 Pickup
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="flex flex-col gap-1">
+                            <span className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-semibold w-fit ${getStatusColor()}`}>
+                              {getStatusDisplay()}
+                            </span>
+                            {job.qc_status === 'PENDING' && (job.status === 'COMPLETED' || job.status === 'QC_PENDING' || job.status === 'WORK_COMPLETED') && (
+                              <span className="text-[10px] px-2 py-0.5 bg-purple-100 text-purple-700 rounded w-fit">
+                                QC Required
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Mechanic */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          {job.mechanic ? (
+                            <div className="text-xs sm:text-sm text-gray-900 truncate max-w-[120px]">
+                              {job.mechanic.name}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-orange-600 font-medium">Not Assigned</span>
+                          )}
+                          {job.pickup_boy && (
+                            <div className="text-[10px] text-gray-500 mt-0.5 truncate">
+                              Pickup: {job.pickup_boy.name}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Images */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-0.5">
+                              {job.images.before ? (
+                                <span className="text-green-600 text-xs">✓</span>
+                              ) : (
+                                <span className="text-gray-300 text-xs">✗</span>
+                              )}
+                              <span className="text-[10px] text-gray-600">B</span>
+                            </div>
+                            <div className="flex items-center gap-0.5">
+                              {job.images.progress ? (
+                                <span className="text-green-600 text-xs">✓</span>
+                              ) : (
+                                <span className="text-gray-300 text-xs">✗</span>
+                              )}
+                              <span className="text-[10px] text-gray-600">P</span>
+                            </div>
+                            <div className="flex items-center gap-0.5">
+                              {job.images.after ? (
+                                <span className="text-green-600 text-xs">✓</span>
+                              ) : (
+                                <span className="text-gray-300 text-xs">✗</span>
+                              )}
+                              <span className="text-[10px] text-gray-600">A</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* SLA */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          {job.time_remaining ? (
+                            <div className={`text-[10px] sm:text-xs px-2 py-0.5 rounded font-semibold w-fit ${getSLAColor()}`}>
+                              {job.time_remaining}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">N/A</span>
+                          )}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="flex flex-col gap-1">
+                            <button
+                              onClick={() => window.location.href = `/dashboard/workshop_supervisor/jobs/${job.id}`}
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded font-medium transition-colors"
+                            >
+                              View
+                            </button>
+                            {!job.mechanic && job.status === 'ASSIGNED' && (
+                              <button
+                                onClick={() => handleQuickAction('assign', job.id)}
+                                className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded font-medium transition-colors"
+                              >
+                                Assign
+                              </button>
+                            )}
+                            {job.mechanic && job.status !== 'COMPLETED' && job.status !== 'WORK_COMPLETED' && job.status !== 'DELIVERED' && job.status !== 'CLOSED' && (
+                              <button
+                                onClick={() => handleQuickAction('reassign', job.id)}
+                                className="px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white text-xs rounded font-medium transition-colors"
+                              >
+                                Reassign
+                              </button>
+                            )}
+                            {(job.status === 'COMPLETED' || job.status === 'WORK_COMPLETED' || job.status === 'QC_PENDING') && job.qc_status === 'PENDING' && (
+                              <button
+                                onClick={() => window.location.href = `/dashboard/workshop_supervisor/jobs/${job.id}/review`}
+                                className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded font-medium transition-colors"
+                              >
+                                QC Review
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : (
           <div className="card text-center py-8 sm:py-10 md:py-12">

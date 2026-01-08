@@ -30,12 +30,36 @@ type MasterPartSuggestion = {
   part_number: string | null;
 };
 
+const ADVISOR_QC_ITEMS: Array<{ serial: number; question: string }> = [
+  { serial: 15, question: 'Is the Engine Compartment washed properly?' },
+  { serial: 16, question: 'Are there any signs of oil or coolant leakage in the Engine Compartment?' },
+  { serial: 17, question: 'Are all the Wheel Arcs washed properly?' },
+  { serial: 18, question: 'Are there any signs of dust in the cabin?' },
+  { serial: 19, question: 'Is the dashboard and the door trims polished properly?' },
+  { serial: 20, question: 'Do the door trims or seats have any marks of grease or oil left by technicians?' },
+  { serial: 21, question: 'Are the floor mats washed properly?' },
+  { serial: 22, question: 'Have the floor carpets, the seats and door crevices vacuumed properly?' },
+  { serial: 23, question: 'Has the Glove Box been vacuumed properly?' },
+  { serial: 24, question: 'Have all the glasses been wiped properly inside and outside?' },
+  { serial: 25, question: 'Are there any signs of oil or grease on the car exterior?' },
+  { serial: 26, question: 'Have the tyres been polished? (Only for Premium & Platinum Service)' },
+  { serial: 27, question: 'Are all the wheel caps in place and washed properly?' },
+  { serial: 28, question: 'Is the AC Disinfectant sprayed? (Only for Premium & Platinum Service)' },
+  { serial: 29, question: 'Has the Battery Terminal Spray been applied? (Only for Premium & Platinum Service)' },
+  { serial: 30, question: 'Has the Next Service Due sticker been put on the door sleeve and with proper figures?' },
+  { serial: 31, question: 'Has the SERVICE CENTER sticker been put on the rear of the car?' },
+  { serial: 32, question: 'Has the Service Light and/or Service KMs been reset in the car?' },
+  { serial: 33, question: 'Has the Clock & Radio been set?' },
+  { serial: 34, question: 'Is the Car checked for any leftover Tools, Nuts, Bolts or any other items?' },
+  { serial: 35, question: 'Is car wash task completed?' },
+];
+
 export default function SupervisorJobDetailPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.id as string;
 
-  type MainTab = 'overview' | 'service' | 'photos' | 'billing' | 'parts' | 'workflow';
+  type MainTab = 'overview' | 'service' | 'photos' | 'billing' | 'parts' | 'workflow' | 'additional-jobs' | 'qc';
 
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -85,6 +109,107 @@ export default function SupervisorJobDetailPage() {
     quantity_issued: 1,
     part_notes: ''
   });
+
+  // QC Tab Data - Mechanic Checklist, Advisor QC, and Proof Images
+  const [mechanicChecklist, setMechanicChecklist] = useState<any[]>([]);
+  const [advisorQcData, setAdvisorQcData] = useState<{
+    answered?: Record<number, 'YES' | 'NO'>;
+    proof_required_serials?: number[];
+    proof_uploads?: Record<number, string[]>;
+    reviewed_at?: string;
+  } | null>(null);
+  const [proofImages, setProofImages] = useState<Record<number, string[]>>({});
+
+  const qcProofRows = useMemo(() => {
+    const media = Array.isArray((lead as any)?.media) ? ((lead as any).media as any[]) : [];
+    const qcMedia = media.filter((m) => {
+      const cat = String(m?.category || '').toUpperCase();
+      const fn = String(m?.file_name || '').toUpperCase();
+      return cat === 'QC_PROOF' || fn.startsWith('QC_PROOF');
+    });
+
+    const parsed = qcMedia
+      .map((m) => {
+        const desc = String(m?.description || '');
+        const pMatch = desc.match(/point\s*=\s*(\d+)/i);
+        const sMatch = desc.match(/serial\s*=\s*(\d+)/i);
+        const point = pMatch?.[1] ? parseInt(pMatch[1], 10) : null;
+        const serial = sMatch?.[1] ? parseInt(sMatch[1], 10) : null;
+        const url = String(m?.file_url || '').trim();
+        return {
+          id: String(m?.id || `${url}__${m?.created_at || ''}`),
+          url,
+          created_at: String(m?.created_at || ''),
+          point,
+          serial,
+        };
+      })
+      .filter((x) => !!x.url);
+
+    // Group by serial (preferred) else point. Keep latest-first.
+    parsed.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+
+    const bySerial = new Map<number, { serial: number; point: number | null; urls: string[]; latestAt: string }>();
+    const byPoint = new Map<number, { point: number; urls: string[]; latestAt: string }>();
+
+    for (const r of parsed) {
+      if (r.serial && Number.isFinite(r.serial)) {
+        const prev = bySerial.get(r.serial) || { serial: r.serial, point: r.point, urls: [], latestAt: r.created_at };
+        if (!prev.point && r.point) prev.point = r.point;
+        if (!prev.urls.includes(r.url)) prev.urls.push(r.url);
+        if (!prev.latestAt) prev.latestAt = r.created_at;
+        bySerial.set(r.serial, prev);
+      } else if (r.point && Number.isFinite(r.point)) {
+        const prev = byPoint.get(r.point) || { point: r.point, urls: [], latestAt: r.created_at };
+        if (!prev.urls.includes(r.url)) prev.urls.push(r.url);
+        if (!prev.latestAt) prev.latestAt = r.created_at;
+        byPoint.set(r.point, prev);
+      }
+    }
+
+    const fromDb = Array.isArray(advisorQcData?.proof_required_serials)
+      ? advisorQcData!.proof_required_serials.filter((n) => Number.isFinite(n)).slice(0, 3)
+      : [];
+
+    // Pick the 3 points asked (serial-based). Fallback to latest 3 serial groups, else latest 3 point groups.
+    const chosenSerials =
+      fromDb.length > 0
+        ? fromDb
+        : Array.from(bySerial.values())
+            .sort((a, b) => String(b.latestAt).localeCompare(String(a.latestAt)))
+            .map((x) => x.serial)
+            .slice(0, 3);
+
+    if (chosenSerials.length > 0) {
+      return chosenSerials
+        .map((s) => {
+          const g = bySerial.get(s);
+          if (!g) return null;
+          const q = ADVISOR_QC_ITEMS.find((it) => it.serial === s);
+          return {
+            key: `S${s}`,
+            point: g.point,
+            serial: s,
+            name: q?.question || `Serial ${s}`,
+            urls: g.urls.slice(0, 3),
+            date: g.latestAt,
+          };
+        })
+        .filter(Boolean) as Array<{ key: string; point: number | null; serial: number; name: string; urls: string[]; date: string }>;
+    }
+
+    return Array.from(byPoint.values())
+      .sort((a, b) => String(b.latestAt).localeCompare(String(a.latestAt)))
+      .slice(0, 3)
+      .map((g) => ({
+        key: `P${g.point}`,
+        point: g.point,
+        serial: NaN,
+        name: `Point ${g.point}`,
+        urls: g.urls.slice(0, 3),
+        date: g.latestAt,
+      }));
+  }, [lead, advisorQcData]);
 
   // Master parts autocomplete (super admin Product Master)
   const [partSuggestions, setPartSuggestions] = useState<MasterPartSuggestion[]>([]);
@@ -345,6 +470,7 @@ export default function SupervisorJobDetailPage() {
           mechanic:assigned_mechanic_id(id, full_name, profile_image),
           supervisor:assigned_supervisor_id(id, full_name),
           pickup_boy:assigned_pickup_boy_id(id, full_name),
+          qc_performed_by_user:qc_performed_by(id, full_name, email),
           extra_charges:lead_extra_charges(*, requester:requested_by(full_name)),
           media:lead_media(*),
           events:lead_events(*, created_by_user:created_by(full_name))
@@ -444,9 +570,36 @@ export default function SupervisorJobDetailPage() {
         data.display_status = data.status;
       }
 
+      // Fetch pickup tracking data to get pickup_odometer_reading
+      if (data.pickup_required) {
+        const { data: pickupTracking, error: pickupTrackingError } = await supabase
+          .from('pickup_tracking')
+          .select('pickup_odometer_reading, drop_odometer_reading')
+          .eq('lead_id', jobId)
+          .maybeSingle();
+        
+        if (!pickupTrackingError && pickupTracking) {
+          (data as any).pickup_odometer_reading = pickupTracking.pickup_odometer_reading;
+          (data as any).drop_odometer_reading = pickupTracking.drop_odometer_reading;
+        }
+      }
+
+      // Fetch mechanic job photos (mechanic uploaded photos)
+      if (mechanicJob?.id) {
+        const { data: mechanicPhotos, error: mechanicPhotosError } = await supabase
+          .from('mechanic_job_photos')
+          .select('*')
+          .eq('job_id', mechanicJob.id)
+          .order('created_at', { ascending: false });
+
+        if (!mechanicPhotosError && mechanicPhotos) {
+          (data as any).mechanic_job_photos = mechanicPhotos;
+        }
+      }
+
       setLead(data);
       setInternalNotes(data.notes_internal || '');
-      setObservationText(String((data as any)?.pickup_observation || ''));
+      setObservationText(String((data as any)?.supervisor_observation || ''));
 
       // Fetch parts if mechanic is assigned
       if (mechanicJob?.mechanic_id) {
@@ -458,6 +611,79 @@ export default function SupervisorJobDetailPage() {
 
         if (!partsError && partsData) {
           setParts(partsData || []);
+        }
+
+        // Fetch mechanic checklist items
+        const { data: checklistData, error: checklistError } = await supabase
+          .from('service_checklists')
+          .select('checklist_items')
+          .eq('lead_id', jobId)
+          .eq('mechanic_id', mechanicJob.mechanic_id)
+          .maybeSingle();
+
+        if (!checklistError && checklistData?.checklist_items) {
+          let items = checklistData.checklist_items;
+          if (typeof items === 'string') {
+            try {
+              items = JSON.parse(items);
+            } catch (e) {
+              items = [];
+            }
+          }
+          setMechanicChecklist(Array.isArray(items) ? items : []);
+        } else {
+          setMechanicChecklist([]);
+        }
+      }
+
+      // Fetch QC checks data for advisor checklist and proof images
+      let qcChecklistData: any = null;
+      try {
+        const { data: qcCheckData, error: qcCheckError } = await supabase
+          .from('qc_checks')
+          .select('checklist_data')
+          .eq('lead_id', jobId)
+          .maybeSingle();
+
+        if (!qcCheckError && qcCheckData?.checklist_data) {
+          qcChecklistData = qcCheckData.checklist_data;
+        }
+      } catch {
+        // ignore; fallback below
+      }
+
+      // Fallback (server route) to avoid client-side RLS issues
+      if (!qcChecklistData) {
+        try {
+          const res = await fetch(`/api/leads/${jobId}/qc-status`, { method: 'GET' });
+          const json = await res.json().catch(() => ({}));
+          if (res.ok && json?.data?.checklist_data) {
+            qcChecklistData = json.data.checklist_data;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Reset QC-tab derived states each fetch
+      setAdvisorQcData(null);
+      setProofImages({});
+
+      if (qcChecklistData && typeof qcChecklistData === 'object') {
+        const advisorReview = (qcChecklistData as any)?.advisor_review;
+        if (advisorReview) {
+          setAdvisorQcData(advisorReview);
+          const rawUploads = advisorReview?.proof_uploads || {};
+          const normalized: Record<number, string[]> = {};
+          if (rawUploads && typeof rawUploads === 'object') {
+            for (const [k, v] of Object.entries(rawUploads as any)) {
+              const n = parseInt(String(k), 10);
+              if (!Number.isFinite(n)) continue;
+              const arr = Array.isArray(v) ? v.map((x) => String(x)).filter(Boolean) : [];
+              normalized[n] = arr;
+            }
+          }
+          setProofImages(normalized);
         }
       }
     } catch (err: any) {
@@ -915,34 +1141,27 @@ export default function SupervisorJobDetailPage() {
 
         {/* Tabs */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* 1. Overview */}
           <button type="button" className={tabBtn('overview')} onClick={() => setActiveTab('overview')}>
             Overview
           </button>
+          {/* 2. Service */}
           <button type="button" className={tabBtn('service')} onClick={() => setActiveTab('service')}>
             Service
           </button>
-          <button type="button" className={tabBtn('photos')} onClick={() => setActiveTab('photos')}>
-            Photos {mediaCount > 0 && <span className="ml-1">({mediaCount})</span>}
-          </button>
-          <button type="button" className={tabBtn('billing')} onClick={() => setActiveTab('billing')}>
-            Billing {pendingExtraCharges.length > 0 && <span className="ml-1">({pendingExtraCharges.length})</span>}
-          </button>
+          {/* 3. Parts */}
           <button type="button" className={tabBtn('parts')} onClick={() => setActiveTab('parts')}>
             Parts {parts.length > 0 && <span className="ml-1">({parts.length})</span>}
           </button>
+          {/* 4. Photos */}
+          <button type="button" className={tabBtn('photos')} onClick={() => setActiveTab('photos')}>
+            Photos {mediaCount > 0 && <span className="ml-1">({mediaCount})</span>}
+          </button>
+          {/* 5. Additional Jobs */}
           <button
             type="button"
-            className="btn !px-4 !py-2 text-xs sm:text-sm btn-outline bg-white border-orange-300 text-orange-800 hover:bg-orange-50"
-            onClick={() => {
-              setActiveTab('billing');
-              // Scroll to pending additional jobs section (best-effort)
-              if (typeof window !== 'undefined') {
-                window.requestAnimationFrame(() => {
-                  const el = document.getElementById('pending-additional-jobs');
-                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                });
-              }
-            }}
+            className={tabBtn('additional-jobs')}
+            onClick={() => setActiveTab('additional-jobs' as any)}
           >
             Additional Jobs
             {pendingExtraCharges.length > 0 && (
@@ -951,6 +1170,18 @@ export default function SupervisorJobDetailPage() {
               </span>
             )}
           </button>
+          {/* 6. QC */}
+          <button type="button" className={tabBtn('qc')} onClick={() => setActiveTab('qc')}>
+            QC
+            {qcPending && <span className="ml-1 text-yellow-700 font-semibold">(Pending)</span>}
+            {lead.qc_status === 'PASSED' && <span className="ml-1 text-green-700 font-semibold">(Passed)</span>}
+            {lead.qc_status === 'FAILED' && <span className="ml-1 text-red-700 font-semibold">(Failed)</span>}
+          </button>
+          {/* 7. Billing */}
+          <button type="button" className={tabBtn('billing')} onClick={() => setActiveTab('billing')}>
+            Billing {pendingExtraCharges.length > 0 && <span className="ml-1">({pendingExtraCharges.length})</span>}
+          </button>
+          {/* 8. Workflow & Timeline */}
           <button type="button" className={tabBtn('workflow')} onClick={() => setActiveTab('workflow')}>
             Workflow &amp; Timeline
             {qcPending && <span className="ml-1 text-yellow-700 font-semibold">(QC)</span>}
@@ -1067,16 +1298,17 @@ export default function SupervisorJobDetailPage() {
             )}
           </div>
 
-          {/* Pickup Observation (shared between pickup boy + supervisor) */}
-          <div className="mb-3 p-3 bg-white border border-orange-200 rounded-lg">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+          {/* Pickup Boy Observation */}
+          <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start justify-between gap-3 mb-2">
                 <p className="text-xs sm:text-sm font-semibold text-gray-800 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-gray-700" />
-                  Pickup Observation
+                <FileText className="w-4 h-4 text-blue-700" />
+                Pickup Boy Observation
                 </p>
-                <p className="text-xs sm:text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words">
-                  {String((lead as any)?.pickup_observation || '').trim() ? (lead as any).pickup_observation : '—'}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-gray-700 whitespace-pre-wrap break-words">
+                {String((lead as any)?.pickup_observation || '').trim() ? (lead as any).pickup_observation : 'No observation from pickup boy yet.'}
                 </p>
                 {(lead as any)?.pickup_observation_updated_at && (
                   <p className="text-[11px] text-gray-500 mt-1">
@@ -1084,16 +1316,49 @@ export default function SupervisorJobDetailPage() {
                   </p>
                 )}
               </div>
+          </div>
+
+          {/* Supervisor/Advisor Observation */}
+          <div className="mb-3 p-3 bg-white border border-orange-200 rounded-lg">
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <p className="text-xs sm:text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-gray-700" />
+                Supervisor/Advisor Observation
+              </p>
+              <div className="flex gap-2">
               <button
                 type="button"
-                className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start"
+                  className="btn bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                 onClick={() => {
-                  setObservationText(String((lead as any)?.pickup_observation || ''));
+                    setObservationText('');
+                    setShowObservationModal(true);
+                  }}
+                >
+                  Add New
+                </button>
+                {String((lead as any)?.supervisor_observation || '').trim() && (
+                  <button
+                    type="button"
+                    className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                    onClick={() => {
+                      setObservationText(String((lead as any)?.supervisor_observation || ''));
                   setShowObservationModal(true);
                 }}
               >
                 Edit
               </button>
+                )}
+              </div>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-gray-700 whitespace-pre-wrap break-words">
+                {String((lead as any)?.supervisor_observation || '').trim() ? (lead as any).supervisor_observation : 'No observation added yet.'}
+              </p>
+              {(lead as any)?.supervisor_observation_updated_at && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Last updated: {formatDateTime((lead as any).supervisor_observation_updated_at)}
+                </p>
+              )}
             </div>
           </div>
 
@@ -1192,54 +1457,66 @@ export default function SupervisorJobDetailPage() {
           )}
 
           {lead.pickup_required ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Pickup Status</p>
-                <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {/* Pickup Status */}
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500 w-1/3">
+                      Pickup Status
+                    </td>
+                    <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
+                      <div className="flex items-center gap-2">
                   {String(effectivePickupStatus).toUpperCase() === 'COMPLETED' ? (
                     <>
                       <CheckCircle className="w-4 h-4 text-green-600" />
-                      <span className="font-semibold text-green-700 text-xs sm:text-sm">Completed</span>
+                            <span className="font-semibold text-green-700">Completed</span>
                     </>
                   ) : String(effectivePickupStatus).toUpperCase() === 'VEHICLE_DROPPED_AT_WORKSHOP' ? (
                     <>
                       <CheckCircle className="w-4 h-4 text-emerald-600" />
-                      <span className="font-semibold text-emerald-700 text-xs sm:text-sm">Dropped at Workshop</span>
+                            <span className="font-semibold text-emerald-700">Dropped at Workshop</span>
                     </>
                   ) : String(effectivePickupStatus).toUpperCase() === 'VEHICLE_IN_TRANSIT' ? (
                     <>
                       <Clock className="w-4 h-4 text-blue-600" />
-                      <span className="font-semibold text-blue-700 text-xs sm:text-sm">Vehicle In Transit</span>
+                            <span className="font-semibold text-blue-700">Vehicle In Transit</span>
                     </>
                   ) : String(effectivePickupStatus).toUpperCase() === 'IN_PROGRESS' || String(effectivePickupStatus).toUpperCase() === 'ON_THE_WAY' ? (
                     <>
                       <Clock className="w-4 h-4 text-blue-600" />
-                      <span className="font-semibold text-blue-700 text-xs sm:text-sm">
+                            <span className="font-semibold text-blue-700">
                         {String(effectivePickupStatus).toUpperCase() === 'ON_THE_WAY' ? 'On The Way' : 'In Progress'}
                       </span>
                     </>
                   ) : String(effectivePickupStatus).toUpperCase() === 'ASSIGNED' ? (
                     <>
                       <User className="w-4 h-4 text-yellow-600" />
-                      <span className="font-semibold text-yellow-700 text-xs sm:text-sm">Assigned</span>
+                            <span className="font-semibold text-yellow-700">Assigned</span>
                     </>
                   ) : (
                     <>
                       <AlertCircle className="w-4 h-4 text-gray-500" />
-                      <span className="font-semibold text-gray-700 text-xs sm:text-sm">Not Assigned</span>
+                            <span className="font-semibold text-gray-700">Not Assigned</span>
                     </>
                   )}
                 </div>
-              </div>
+                    </td>
+                  </tr>
 
-              <div className="sm:col-span-2 md:col-span-2">
-                <p className="text-xs sm:text-sm text-gray-600">Pickup Address</p>
-                <div className="flex items-start gap-2 mt-0.5 sm:mt-1">
-                  <MapPin className="w-4 h-4 text-gray-500 mt-0.5" />
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm font-semibold text-gray-900 break-words">
+                  {/* Pickup Address */}
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-gray-400" />
+                        Pickup Address
+                      </div>
+                    </td>
+                    <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
+                      <div className="flex flex-col gap-1">
+                        <span className="font-semibold text-gray-900 break-words">
                       {lead.pickup_address || lead.customer_address || lead.address || '—'}
-                    </p>
+                        </span>
                     {(lead.pickup_address || lead.customer_address || lead.address) && (
                       <button
                         type="button"
@@ -1248,61 +1525,108 @@ export default function SupervisorJobDetailPage() {
                           const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
                           window.open(url, '_blank');
                         }}
-                        className="text-[11px] sm:text-xs text-brand-primary hover:underline mt-0.5"
+                            className="text-[11px] sm:text-xs text-brand-primary hover:underline w-fit"
                       >
                         Open in Google Maps
                       </button>
                     )}
                   </div>
-                </div>
-              </div>
+                    </td>
+                  </tr>
 
-              <div className="sm:col-span-2 md:col-span-3">
-                <p className="text-xs sm:text-sm text-gray-600">Pickup Scheduled</p>
+                  {/* Pickup Scheduled */}
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-gray-400" />
+                        Pickup Scheduled
+                      </div>
+                    </td>
+                    <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
                 {lead.preferred_date || lead.preferred_time_slot ? (
-                  <p className="font-semibold text-xs sm:text-sm text-gray-900 mt-0.5 sm:mt-1">
+                        <span className="font-semibold text-gray-900">
                     {lead.preferred_date ? formatDateDMY(lead.preferred_date) : '—'}
                     {lead.preferred_time_slot ? ` • ${lead.preferred_time_slot}` : ''}
-                  </p>
+                        </span>
                 ) : (
-                  <p className="text-xs sm:text-sm text-gray-700 mt-0.5 sm:mt-1">
+                        <span className="text-gray-700">
                     Not set.
                     {!pickupLocked && (
-                      <>
-                        {' '}Click <strong>Update Pickup Details</strong> and add date/time.
-                      </>
+                            <> Click <strong>Update Pickup Details</strong> and add date/time.</>
                     )}
-                  </p>
+                        </span>
                 )}
-              </div>
+                    </td>
+                  </tr>
 
+                  {/* Assigned Pickup Boy */}
               {lead.pickup_boy && (
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-600">Assigned Pickup Boy</p>
-                  <p className="font-semibold text-xs sm:text-sm text-gray-900 mt-0.5 sm:mt-1">
-                    {lead.pickup_boy.full_name}
-                  </p>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-gray-400" />
+                          Assigned Pickup Boy
                 </div>
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm font-semibold text-gray-900">
+                        {lead.pickup_boy.full_name}
+                      </td>
+                    </tr>
               )}
 
+                  {/* Pickup Assigned At */}
               {lead.pickup_assigned_at && (
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-600">Pickup Assigned At</p>
-                  <p className="font-semibold text-xs sm:text-sm mt-0.5 sm:mt-1">{formatDateTime(lead.pickup_assigned_at)}</p>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                        Pickup Assigned At
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm font-semibold text-gray-900">
+                        {formatDateTime(lead.pickup_assigned_at)}
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* Odometer Reading */}
+                  {(lead.vehicle_odometer || (lead as any)?.pickup_odometer_reading) && (
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                        <div className="flex items-center gap-2">
+                          <Car className="w-4 h-4 text-gray-400" />
+                          Odometer Reading
                 </div>
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
+                        <span className="font-semibold text-gray-900">
+                          {Number(lead.vehicle_odometer || (lead as any)?.pickup_odometer_reading || 0).toLocaleString()} km
+                        </span>
+                        {(lead as any)?.pickup_odometer_reading && lead.vehicle_odometer && (lead as any).pickup_odometer_reading !== lead.vehicle_odometer && (
+                          <span className="text-[10px] text-gray-500 ml-2">
+                            (from pickup tracking)
+                          </span>
+                        )}
+                      </td>
+                    </tr>
               )}
 
+                  {/* Pickup OTP */}
               {lead.pickup_otp && String(effectivePickupStatus).toUpperCase() !== 'COMPLETED' && (
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-600">Pickup OTP</p>
-                  <p className="font-mono text-xl sm:text-2xl font-bold text-orange-700 tracking-wider mt-0.5 sm:mt-1">
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                        Pickup OTP
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <span className="font-mono text-xl sm:text-2xl font-bold text-orange-700 tracking-wider">
                     {lead.pickup_otp}
-                  </p>
-                </div>
+                        </span>
+                      </td>
+                    </tr>
               )}
 
+                  {/* Not Assigned Warning */}
               {!lead.assigned_pickup_boy_id && (String(effectivePickupStatus).toUpperCase() === 'NOT_ASSIGNED') && (
-                <div className="sm:col-span-2 md:col-span-3 p-3 sm:p-4 bg-white border border-orange-200 rounded-lg">
+                    <tr>
+                      <td colSpan={2} className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="p-3 sm:p-4 bg-white border border-orange-200 rounded-lg">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5" />
@@ -1318,7 +1642,11 @@ export default function SupervisorJobDetailPage() {
                     </button>
                   </div>
                 </div>
+                      </td>
+                    </tr>
               )}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1335,9 +1663,13 @@ export default function SupervisorJobDetailPage() {
         {showObservationModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
             <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 md:p-6">
-              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-gray-800">Pickup Observation</h3>
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-gray-800">
+                {observationText.trim() ? 'Edit Supervisor Observation' : 'Add New Supervisor Observation'}
+              </h3>
               <p className="text-xs sm:text-sm text-gray-600 mb-3">
-                Add/edit observation for this lead. This will be visible to Pickup Boy and Supervisor.
+                {observationText.trim() 
+                  ? 'Update your observation for this lead. This is separate from pickup boy observation.'
+                  : 'Add a new observation for this lead. This is separate from pickup boy observation.'}
               </p>
               <textarea
                 value={observationText}
@@ -1371,7 +1703,7 @@ export default function SupervisorJobDetailPage() {
         <>
         {/* Section 3: Service Details */}
         <div className="card">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-4">
             <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
               <Package className="w-4 h-4 sm:w-5 sm:h-5" />
               Service Request
@@ -1389,57 +1721,96 @@ export default function SupervisorJobDetailPage() {
             )}
           </div>
           
+          {/* Service Table */}
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service Name</th>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
           {/* Service Types */}
           {lead.service_type_names && lead.service_type_names.length > 0 ? (
-            <div className="mb-3 sm:mb-4">
-              <p className="text-xs sm:text-sm text-gray-600 mb-1.5 sm:mb-2 font-medium">Service Types:</p>
-              <div className="flex flex-wrap gap-1.5 sm:gap-2">
-              {lead.service_type_names.map((serviceName: string, index: number) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-100 text-blue-800 rounded-full text-[10px] sm:text-xs md:text-sm font-medium"
-                  >
-                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-500 rounded-full"></span>
-                    {serviceName}
-                  </span>
-              ))}
+                  lead.service_type_names.map((serviceName: string, index: number) => (
+                    <tr key={`service-type-${index}`} className="hover:bg-gray-50">
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                          <span className="text-xs sm:text-sm font-medium text-gray-900">{serviceName}</span>
               </div>
-            </div>
-          ) : (
-            <div className="mb-3 sm:mb-4">
-            <p className="text-xs sm:text-sm md:text-base text-gray-700">{lead.service_type || 'General Service'}</p>
-            </div>
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-blue-100 text-blue-800">
+                          Service Type
+                        </span>
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <span className="text-xs sm:text-sm text-gray-500">Included</span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-4 md:px-6 py-3 md:py-4">
+                      <span className="text-xs sm:text-sm font-medium text-gray-900">{lead.service_type || 'General Service'}</span>
+                    </td>
+                    <td className="px-4 md:px-6 py-3 md:py-4">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-blue-100 text-blue-800">
+                        Service Type
+                      </span>
+                    </td>
+                    <td className="px-4 md:px-6 py-3 md:py-4">
+                      <span className="text-xs sm:text-sm text-gray-500">Included</span>
+                    </td>
+                  </tr>
           )}
 
           {/* Service Addons */}
           {lead.service_addon_names && lead.service_addon_names.length > 0 && (
-            <div className="mb-3 sm:mb-4">
-              <p className="text-xs sm:text-sm text-gray-600 mb-1.5 sm:mb-2 font-medium">Service Addons:</p>
-              <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                {lead.service_addon_names.map((addon: any, index: number) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-0.5 sm:py-1 bg-green-100 text-green-800 rounded-full text-[10px] sm:text-xs md:text-sm font-medium"
-                  >
-                    <Package className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                    {addon.name}
-                    {addon.price && (
-                      <span className="text-[9px] sm:text-xs font-semibold">(₹{addon.price.toLocaleString()})</span>
-                    )}
-                  </span>
-                ))}
+                  lead.service_addon_names.map((addon: any, index: number) => (
+                    <tr key={`service-addon-${index}`} className="hover:bg-gray-50">
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex items-center gap-2">
+                          <Package className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                          <span className="text-xs sm:text-sm font-medium text-gray-900">{addon.name}</span>
               </div>
-            </div>
-          )}
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-green-100 text-green-800">
+                          Addon
+                        </span>
+                      </td>
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        {addon.price ? (
+                          <span className="text-xs sm:text-sm font-semibold text-green-600">
+                            ₹{addon.price.toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="text-xs sm:text-sm text-gray-500">N/A</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
+          {/* Problem Description */}
           {lead.problem_description && (
-            <div className="mt-2 sm:mt-3 p-2 sm:p-3 bg-gray-50 rounded-lg">
-              <p className="text-xs sm:text-sm text-gray-600 font-semibold">Problem Description:</p>
-              <p className="text-xs sm:text-sm text-gray-700 mt-0.5 sm:mt-1">{lead.problem_description}</p>
+            <div className="mt-4 p-3 sm:p-4 bg-gray-50 rounded-lg">
+              <p className="text-xs sm:text-sm text-gray-600 font-semibold mb-1">Problem Description:</p>
+              <p className="text-xs sm:text-sm text-gray-700">{lead.problem_description}</p>
             </div>
           )}
           {lead.issue_description && (
-            <p className="text-xs sm:text-sm text-gray-600 mt-1.5 sm:mt-2">{lead.issue_description}</p>
+            <div className="mt-3 p-3 sm:p-4 bg-gray-50 rounded-lg">
+              <p className="text-xs sm:text-sm text-gray-600 font-semibold mb-1">Issue Description:</p>
+              <p className="text-xs sm:text-sm text-gray-700">{lead.issue_description}</p>
+            </div>
           )}
         </div>
 
@@ -1489,7 +1860,101 @@ export default function SupervisorJobDetailPage() {
 
         {/* Billing UI is rendered by `InvoiceSection` below (single source of truth for OS/CI/TI). */}
 
-        {/* Section 6: Extra Charges */}
+        {/* Section 6: Extra Charges - Additional Jobs Tab */}
+        {activeTab === 'additional-jobs' && (
+          <div className="space-y-4">
+            {/* Pending Additional Jobs */}
+            {pendingExtraCharges.length > 0 && (
+              <div id="pending-additional-jobs" className="card bg-orange-50 border-orange-200">
+                <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+                  <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
+                  Pending Additional Jobs Approval ({pendingExtraCharges.length})
+                </h3>
+                <div className="space-y-2 sm:space-y-3">
+                  {pendingExtraCharges.map((charge: any) => (
+                    <div key={charge.id} className="bg-white p-3 sm:p-4 rounded-lg border border-orange-200">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm sm:text-base">{charge.description}</p>
+                          <p className="text-xl sm:text-2xl font-bold text-brand-primary mt-0.5 sm:mt-1">
+                            ₹{charge.amount.toLocaleString()}
+                          </p>
+                          <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{charge.reason}</p>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setSelectedExtraCharge({
+                              ...charge,
+                              requested_by_name: (charge as any)?.requester?.full_name || (charge as any)?.requested_by_name,
+                            })
+                          }
+                          className="btn bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
+                        >
+                          Review
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* All Additional Jobs (Approved/Rejected) */}
+            {lead.extra_charges && lead.extra_charges.length > 0 && (
+              <div className="card">
+                <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+                  <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
+                  All Additional Jobs ({lead.extra_charges.length})
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Requested By</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {lead.extra_charges.map((charge: any) => (
+                        <tr key={charge.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 text-sm font-medium text-gray-900">{charge.description}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{charge.reason || '—'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">
+                            {(charge as any)?.requester?.full_name || 'Unknown'}
+                          </td>
+                          <td className="px-4 py-2 text-sm text-right font-semibold text-gray-900">
+                            ₹{Number(charge.amount || 0).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-2 text-sm">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                              charge.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                              charge.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {charge.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {(!lead.extra_charges || lead.extra_charges.length === 0) && (
+              <div className="card text-center py-8">
+                <DollarSign className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                <p className="text-gray-500">No additional jobs requested</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Section 6: Extra Charges - Also show in Billing tab */}
         {activeTab === 'billing' && pendingExtraCharges.length > 0 && (
           <div id="pending-additional-jobs" className="card bg-orange-50 border-orange-200">
             <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
@@ -1691,6 +2156,34 @@ export default function SupervisorJobDetailPage() {
           <InvoiceSection lead={lead} onUpdate={fetchJobDetails} />
         )}
 
+        {/* Mechanic Uploaded Photos Section */}
+        {activeTab === 'photos' && (lead as any)?.mechanic_job_photos && (lead as any).mechanic_job_photos.length > 0 && (
+          <div className="card border-2 border-purple-300">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <Camera className="w-6 h-6 text-purple-600" />
+              Mechanic Uploaded Photos ({(lead as any).mechanic_job_photos.length})
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
+              {(lead as any).mechanic_job_photos.map((photo: any) => (
+                <div key={photo.id} className="relative group">
+                  <img
+                    src={photo.photo_url}
+                    alt={photo.photo_type || 'Mechanic Photo'}
+                    className="w-full h-32 sm:h-40 md:h-48 object-cover rounded-lg cursor-pointer hover:opacity-90 border border-gray-200"
+                    onClick={() => window.open(photo.photo_url, '_blank')}
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 text-white p-2 rounded-b-lg">
+                    <p className="text-xs font-medium truncate">{photo.photo_type?.replace(/_/g, ' ') || 'Photo'}</p>
+                    <p className="text-[10px] text-gray-300 mt-0.5">
+                      {photo.photo_category === 'before' ? 'Before' : photo.photo_category === 'after' ? 'After' : photo.photo_category === 'during' ? 'During' : photo.photo_category}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Media Section (Adviser can upload; owner upload removed elsewhere) */}
         {activeTab === 'photos' && (
           <MediaSection
@@ -1755,8 +2248,11 @@ export default function SupervisorJobDetailPage() {
           </div>
         )}
 
-        {/* Section 9: QC Section */}
-        {activeTab === 'workflow' && ['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING' && !showQC && (
+        {/* Section 9: QC Section - QC Tab */}
+        {activeTab === 'qc' && (
+          <>
+            {/* QC Pending - Show QC Checklist */}
+            {['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING' && !showQC && (
           <div className="card bg-purple-50 border-purple-200">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
               <div className="flex-1 min-w-0">
@@ -1776,7 +2272,8 @@ export default function SupervisorJobDetailPage() {
           </div>
         )}
 
-        {activeTab === 'workflow' && showQC && (
+            {/* QC Checklist Form */}
+            {showQC && (
           <QCChecklist
             leadId={lead.id}
             leadNumber={lead.lead_number}
@@ -1786,6 +2283,311 @@ export default function SupervisorJobDetailPage() {
             }}
             onCancel={() => setShowQC(false)}
           />
+            )}
+
+            {/* QC Results - Show if QC is already performed */}
+            {lead.qc_status === 'PASSED' && lead.qc_performed_at && (
+              <div className="card bg-green-50 border-green-200">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
+                  QC Approved
+                </h3>
+                <div className="space-y-3">
+                  {(lead as any).qc_performed_by_user && (
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">QC Performed By</p>
+                      <p className="text-sm sm:text-base font-semibold text-gray-900">
+                        {(lead as any).qc_performed_by_user?.full_name || 'Unknown'}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-600">QC Performed At</p>
+                    <p className="text-sm sm:text-base font-semibold text-gray-900">
+                      {formatDateTime(lead.qc_performed_at)}
+                    </p>
+                  </div>
+                  {lead.qc_notes && (
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">QC Notes</p>
+                      <div className="mt-1 p-3 bg-white rounded-lg border border-green-200">
+                        <p className="text-sm text-gray-900 whitespace-pre-wrap">{lead.qc_notes}</p>
+                      </div>
+                    </div>
+                  )}
+                  {lead.qc_score !== null && lead.qc_score !== undefined && (
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">QC Score</p>
+                      <p className="text-2xl font-bold text-green-700">{lead.qc_score}/100</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Mechanic Checklist (Table) */}
+            {mechanicChecklist.length > 0 && (
+              <div className="card">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  Mechanic Checklist
+                </h3>
+                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold w-16">#</th>
+                        <th className="px-4 py-3 text-left font-semibold">Item</th>
+                        <th className="px-4 py-3 text-left font-semibold w-28">Required</th>
+                        <th className="px-4 py-3 text-left font-semibold w-32">Status</th>
+                        <th className="px-4 py-3 text-left font-semibold w-48">Remark</th>
+                        <th className="px-4 py-3 text-left font-semibold w-56">Completed At</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {mechanicChecklist.map((item: any, idx: number) => {
+                        const status = String(item?.status || 'PENDING').toUpperCase();
+                        const required = !!item?.mandatory;
+                        return (
+                          <tr key={item?.id || idx} className="align-top">
+                            <td className="px-4 py-3 text-gray-700 font-semibold">{idx + 1}</td>
+                            <td className="px-4 py-3">
+                              <div className="font-semibold text-gray-900">{item?.name || item?.item_name || `Item ${idx + 1}`}</div>
+                              {item?.notes && <div className="text-xs text-gray-600 mt-1">{String(item.notes)}</div>}
+                            </td>
+                            <td className="px-4 py-3">
+                              {required ? (
+                                <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700">YES</span>
+                              ) : (
+                                <span className="text-xs text-gray-500">NO</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
+                                  status === 'COMPLETED'
+                                    ? 'bg-green-100 text-green-700'
+                                    : status === 'PENDING'
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-sm text-gray-700">{String(item?.remark || item?.notes || '—')}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-sm text-gray-700">{item?.completed_at ? formatDateTime(item.completed_at) : '—'}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Advisor Checklist (Table) */}
+            {advisorQcData && advisorQcData.answered && Object.keys(advisorQcData.answered).length > 0 && (
+              <div className="card">
+                <div className="flex items-center justify-between gap-3 mb-3 sm:mb-4">
+                  <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
+                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
+                    Advisor Checklist Points
+                  </h3>
+                  {advisorQcData.reviewed_at && (
+                    <p className="text-xs text-gray-500">Reviewed: {formatDateTime(advisorQcData.reviewed_at)}</p>
+                  )}
+                </div>
+
+                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold w-14">#</th>
+                        <th className="px-4 py-3 text-left font-semibold">Point</th>
+                        <th className="px-4 py-3 text-left font-semibold w-28">YES/NO</th>
+                        <th className="px-4 py-3 text-left font-semibold w-[360px]">Proof</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {ADVISOR_QC_ITEMS.map((item, idx) => {
+                        const answer = advisorQcData.answered?.[item.serial];
+                        const imgs = proofImages[item.serial] || [];
+                        return (
+                          <tr key={item.serial} className="align-top">
+                            <td className="px-4 py-3 text-gray-700 font-semibold">{idx + 1}</td>
+                            <td className="px-4 py-3">
+                              <div className="font-semibold text-gray-900">{item.question}</div>
+                              <div className="mt-1 text-xs text-gray-500">serial: {item.serial}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              {answer ? (
+                                <span
+                                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
+                                    answer === 'YES' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                  }`}
+                                >
+                                  {answer}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-500">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {imgs.length === 0 ? (
+                                <span className="text-xs text-gray-500">—</span>
+                              ) : (
+                                <div className="grid grid-cols-3 gap-2">
+                                  {imgs.slice(0, 3).map((u) => (
+                                    <div key={u} className="relative group">
+                                      <img
+                                        src={u}
+                                        alt="Proof"
+                                        className="w-full h-16 object-cover rounded border cursor-pointer hover:opacity-80"
+                                        onClick={() => window.open(u, '_blank')}
+                                      />
+                                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition" />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* QC PROOF (3) - show exactly like Photos tab, but with point name + table format */}
+            {qcProofRows.length > 0 && (
+              <div className="card">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                  <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  QC PROOF ({qcProofRows.length})
+                </h3>
+                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold w-24">Point</th>
+                        <th className="px-4 py-3 text-left font-semibold w-24">Serial</th>
+                        <th className="px-4 py-3 text-left font-semibold">Point Name</th>
+                        <th className="px-4 py-3 text-left font-semibold w-[420px]">Images</th>
+                        <th className="px-4 py-3 text-left font-semibold w-44">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {qcProofRows.map((r) => (
+                        <tr key={r.key} className="align-top">
+                          <td className="px-4 py-3 font-semibold text-gray-900">{r.point ?? '—'}</td>
+                          <td className="px-4 py-3 text-gray-700">{Number.isFinite(r.serial) ? r.serial : '—'}</td>
+                          <td className="px-4 py-3">
+                            <div className="font-semibold text-gray-900">{r.name}</div>
+                            <div className="mt-1 text-xs text-gray-500">
+                              QC Proof | point={r.point ?? '—'}
+                              {Number.isFinite(r.serial) ? ` | serial=${r.serial}` : ''}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {r.urls.length === 0 ? (
+                              <span className="text-xs text-gray-500">—</span>
+                            ) : (
+                              <div className="grid grid-cols-3 gap-2">
+                                {r.urls.slice(0, 3).map((u) => (
+                                  <div key={u} className="relative group">
+                                    <img
+                                      src={u}
+                                      alt="QC Proof"
+                                      className="w-full h-20 object-cover rounded border cursor-pointer hover:opacity-80"
+                                      onClick={() => window.open(u, '_blank')}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-gray-700">{r.date ? formatDateTime(r.date) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* QC Failed */}
+            {lead.qc_status === 'FAILED' && lead.qc_performed_at && (
+              <div className="card bg-red-50 border-red-200">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                  <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
+                  QC Failed
+                </h3>
+                <div className="space-y-3">
+                  {(lead as any).qc_performed_by_user && (
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">QC Performed By</p>
+                      <p className="text-sm sm:text-base font-semibold text-gray-900">
+                        {(lead as any).qc_performed_by_user?.full_name || 'Unknown'}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-600">QC Performed At</p>
+                    <p className="text-sm sm:text-base font-semibold text-gray-900">
+                      {formatDateTime(lead.qc_performed_at)}
+                    </p>
+                  </div>
+                  {lead.qc_notes && (
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">QC Notes</p>
+                      <div className="mt-1 p-3 bg-white rounded-lg border border-red-200">
+                        <p className="text-sm text-gray-900 whitespace-pre-wrap">{lead.qc_notes}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* No QC Status */}
+            {!['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status !== 'PASSED' && lead.qc_status !== 'FAILED' && (
+              <div className="card text-center py-8">
+                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                <p className="text-gray-500">QC not available yet. Job must be completed first.</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Section 9: QC Section - Also in Workflow tab for backward compatibility */}
+        {activeTab === 'workflow' && ['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING' && !showQC && (
+          <div className="card bg-purple-50 border-purple-200">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
+                  Quality Control Required
+                </h3>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">This job is ready for quality inspection</p>
+              </div>
+              <button
+                onClick={() => {
+                  setActiveTab('qc');
+                  setShowQC(true);
+                }}
+                className="btn bg-purple-600 hover:bg-purple-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
+              >
+                Go to QC Tab
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Section 10: Activity Timeline (merged into Workflow tab) */}

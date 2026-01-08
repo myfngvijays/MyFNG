@@ -78,14 +78,27 @@ export async function POST(
     }
 
     const now = new Date().toISOString();
+    
+    // Separate observations based on role
+    let updateData: any = {
+      updated_at: now,
+    };
+
+    if (rc === 'WORKSHOP_PICKUP_BOY') {
+      // Pickup boy's observation (using existing pickup_observation field)
+      updateData.pickup_observation = observation;
+      updateData.pickup_observation_updated_at = now;
+      updateData.pickup_observation_by = userProfile.id;
+    } else {
+      // Supervisor/Admin/Advisor observation (new separate field)
+      updateData.supervisor_observation = observation;
+      updateData.supervisor_observation_updated_at = now;
+      updateData.supervisor_observation_by = userProfile.id;
+    }
+
     const { error: updateError } = await supabase
       .from('service_leads')
-      .update({
-        pickup_observation: observation,
-        pickup_observation_updated_at: now,
-        pickup_observation_by: userProfile.id,
-        updated_at: now,
-      })
+      .update(updateData)
       .eq('id', leadId);
 
     if (updateError) {

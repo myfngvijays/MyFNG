@@ -172,6 +172,43 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
     }
   }
 
+  // Prepare assignment rows for table
+  const assignmentRows = [
+    ...(lead.pickup_required ? [{
+      type: 'pickup' as const,
+      label: 'Pickupboy/Driver',
+      icon: Truck,
+      selected: selectedPickup,
+      setSelected: setSelectedPickup,
+      assignedId: lead.assigned_pickup_boy_id,
+      assignedAt: lead.pickup_assigned_at,
+      options: pickupBoys,
+      emptyMessage: 'No pickupboys/drivers available'
+    }] : []),
+    {
+      type: 'mechanic' as const,
+      label: 'Mechanic',
+      icon: UserCheck,
+      selected: selectedMechanic,
+      setSelected: setSelectedMechanic,
+      assignedId: lead.assigned_mechanic_id,
+      assignedAt: lead.mechanic_assigned_at,
+      options: mechanics,
+      emptyMessage: 'No mechanics available'
+    },
+    {
+      type: 'supervisor' as const,
+      label: 'Adviser',
+      icon: Users,
+      selected: selectedSupervisor,
+      setSelected: setSelectedSupervisor,
+      assignedId: lead.assigned_supervisor_id,
+      assignedAt: lead.supervisor_assigned_at,
+      options: supervisors,
+      emptyMessage: 'No advisers available'
+    }
+  ];
+
   return (
     <div className="card">
       <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -179,176 +216,86 @@ export default function InternalAssignment({ lead, onUpdate }: InternalAssignmen
         Internal Assignment
       </h2>
 
-      <div className="space-y-6">
-        {/* Pickup Boy Assignment - First */}
-        {lead.pickup_required && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-              <Truck className="w-4 h-4" />
-              Assign Pickupboy/Driver
-            </label>
-            <div className="flex gap-2">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+              <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assign</th>
+              <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {assignmentRows.map((row) => {
+              const Icon = row.icon;
+              const assignedPerson = row.options.find((p: any) => p.id === row.assignedId);
+              
+              return (
+                <tr key={row.type} className="hover:bg-gray-50">
+                  {/* Role */}
+                  <td className="px-4 md:px-6 py-3 md:py-4">
+                    <div className="flex items-center gap-2">
+                      <Icon className="w-4 h-4 text-gray-600" />
+                      <span className="text-xs sm:text-sm font-medium text-gray-900">{row.label}</span>
+                    </div>
+                  </td>
+
+                  {/* Assign Dropdown */}
+                  <td className="px-4 md:px-6 py-3 md:py-4">
               <select
-                value={selectedPickup}
-                onChange={(e) => setSelectedPickup(e.target.value)}
+                      value={row.selected}
+                      onChange={(e) => row.setSelected(e.target.value)}
                 disabled={loading}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                      className="w-full px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent disabled:opacity-50"
               >
-                <option value="">Select pickupboy/driver...</option>
-                {pickupBoys.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.full_name}
+                      <option value="">Select {row.label.toLowerCase()}...</option>
+                      {row.options.map((option: any) => (
+                        <option key={option.id} value={option.id}>
+                          {option.full_name}
                   </option>
                 ))}
               </select>
-              <button
-                onClick={() => handleAssignment('pickup', selectedPickup)}
-                disabled={loading || !selectedPickup}
-                className="btn btn-primary disabled:opacity-50"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Assign
-              </button>
-            </div>
-            {lead.assigned_pickup_boy_id && (
-              <div className="mt-2 text-sm text-green-600 flex items-center gap-1">
-                <CheckCircle className="w-4 h-4" />
-                Currently assigned
-                {lead.pickup_assigned_at && (
-                  <span className="text-gray-500">
-                    - {formatDateTime(lead.pickup_assigned_at)}
-                  </span>
+                    {row.options.length === 0 && (
+                      <p className="text-xs text-gray-500 mt-1">{row.emptyMessage}</p>
                 )}
-              </div>
-            )}
-            {pickupBoys.length === 0 && (
-              <p className="text-sm text-gray-500 mt-2">No pickupboys/drivers available</p>
-            )}
-          </div>
-        )}
+                  </td>
 
-        {/* Mechanic Assignment - Second */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-            <UserCheck className="w-4 h-4" />
-            Assign Mechanic
-          </label>
-          <div className="flex gap-2">
-            <select
-              value={selectedMechanic}
-              onChange={(e) => setSelectedMechanic(e.target.value)}
-              disabled={loading}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-            >
-              <option value="">Select mechanic...</option>
-              {mechanics.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.full_name}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => handleAssignment('mechanic', selectedMechanic)}
-              disabled={loading || !selectedMechanic}
-              className="btn btn-primary disabled:opacity-50"
-            >
-              <CheckCircle className="w-4 h-4" />
-              Assign
-            </button>
+                  {/* Status */}
+                  <td className="px-4 md:px-6 py-3 md:py-4">
+                    {row.assignedId && assignedPerson ? (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1 text-xs sm:text-sm text-green-600">
+                          <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                          <span className="font-medium">{assignedPerson.full_name}</span>
           </div>
-          {lead.assigned_mechanic_id && (
-            <div className="mt-2 text-sm text-green-600 flex items-center gap-1">
-              <CheckCircle className="w-4 h-4" />
-              Currently assigned
-              {lead.mechanic_assigned_at && (
-                <span className="text-gray-500">
-                  - {formatDateTime(lead.mechanic_assigned_at)}
+                        {row.assignedAt && (
+                          <span className="text-[10px] sm:text-xs text-gray-500">
+                            {formatDateTime(row.assignedAt)}
                 </span>
               )}
             </div>
+                    ) : (
+                      <span className="text-xs sm:text-sm text-gray-400">Not assigned</span>
           )}
-          {mechanics.length === 0 && (
-            <p className="text-sm text-gray-500 mt-2">No mechanics available</p>
-          )}
-        </div>
+                  </td>
 
-        {/* Supervisor Assignment - Third */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            Assign Adviser
-          </label>
-          <div className="flex gap-2">
-            <select
-              value={selectedSupervisor}
-              onChange={(e) => setSelectedSupervisor(e.target.value)}
-              disabled={loading}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-            >
-              <option value="">Select adviser...</option>
-              {supervisors.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.full_name}
-                </option>
-              ))}
-            </select>
+                  {/* Action */}
+                  <td className="px-4 md:px-6 py-3 md:py-4">
             <button
-              onClick={() => handleAssignment('supervisor', selectedSupervisor)}
-              disabled={loading || !selectedSupervisor}
-              className="btn btn-primary disabled:opacity-50"
+                      onClick={() => handleAssignment(row.type, row.selected)}
+                      disabled={loading || !row.selected}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
             >
-              <CheckCircle className="w-4 h-4" />
+                      <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
               Assign
             </button>
-          </div>
-          {lead.assigned_supervisor_id && (
-            <div className="mt-2 text-sm text-green-600 flex items-center gap-1">
-              <CheckCircle className="w-4 h-4" />
-              Currently assigned
-              {lead.supervisor_assigned_at && (
-                <span className="text-gray-500">
-                  - {formatDateTime(lead.supervisor_assigned_at)}
-                </span>
-              )}
-            </div>
-          )}
-          {supervisors.length === 0 && (
-            <p className="text-sm text-gray-500 mt-2">No advisers available</p>
-          )}
-        </div>
-
-        {/* Assignment History */}
-        {(lead.assigned_mechanic_id || lead.assigned_pickup_boy_id || lead.assigned_supervisor_id) && (
-          <div className="pt-4 border-t border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Assignment History</h3>
-            <div className="space-y-2 text-sm">
-              {lead.assigned_pickup_boy_id && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Pickupboy/Driver:</span>
-                  <span className="font-medium">
-                    {pickupBoys.find(p => p.id === lead.assigned_pickup_boy_id)?.full_name || 'Unknown'}
-                  </span>
-                </div>
-              )}
-              {lead.assigned_mechanic_id && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Mechanic:</span>
-                  <span className="font-medium">
-                    {mechanics.find(m => m.id === lead.assigned_mechanic_id)?.full_name || 'Unknown'}
-                  </span>
-                </div>
-              )}
-              {lead.assigned_supervisor_id && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Adviser:</span>
-                  <span className="font-medium">
-                    {supervisors.find(s => s.id === lead.assigned_supervisor_id)?.full_name || 'Unknown'}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Search, Loader2, ArrowRight, Building, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import DashboardLayout from '@/components/DashboardLayout';
 
 function LeadManagerLeadsContent() {
   const supabase = createClientComponentClient();
@@ -17,7 +18,7 @@ function LeadManagerLeadsContent() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState(filterParam);
-  const [sortBy, setSortBy] = useState<'priority' | 'sla' | 'created'>('priority');
+  const [sortBy, setSortBy] = useState<'priority' | 'sla' | 'created'>('created');
   
   // Assignment modal state
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -235,17 +236,20 @@ function LeadManagerLeadsContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading leads...</p>
+      <DashboardLayout role="lead_manager">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading leads...</p>
+          </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+    <DashboardLayout role="lead_manager">
+      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-4 sm:mb-5 md:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0 flex-1">
@@ -321,8 +325,8 @@ function LeadManagerLeadsContent() {
         </div>
       ) : (
         <>
-          {/* Desktop Table */}
-          <div className="bg-white rounded-lg shadow overflow-hidden hidden lg:block">
+          {/* Table View - Always Visible */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -436,8 +440,8 @@ function LeadManagerLeadsContent() {
             </div>
           </div>
 
-          {/* Mobile/Tablet Cards */}
-          <div className="lg:hidden space-y-3 sm:space-y-4">
+          {/* Mobile/Tablet Cards - Hidden, using table view instead */}
+          <div className="hidden space-y-3 sm:space-y-4">
             {leads.map((lead) => (
               <div 
                 key={lead.id}
@@ -659,19 +663,22 @@ function LeadManagerLeadsContent() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }
 
 export default function LeadManagerLeadsPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading leads...</p>
+      <DashboardLayout role="lead_manager">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading leads...</p>
+          </div>
         </div>
-      </div>
+      </DashboardLayout>
     }>
       <LeadManagerLeadsContent />
     </Suspense>

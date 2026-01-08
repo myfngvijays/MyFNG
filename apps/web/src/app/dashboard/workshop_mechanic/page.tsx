@@ -601,177 +601,203 @@ export default function WorkshopMechanicDashboard() {
           ))}
         </div>
 
-        {/* Jobs List */}
-        <div className="space-y-3 sm:space-y-4">
+        {/* Jobs Table */}
           {filteredJobs.length > 0 ? (
-            filteredJobs.map((job) => (
-              <div 
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead #</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Images</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SLA</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredJobs.map((job) => (
+                    <tr 
                 key={job.id} 
-                className="card hover:shadow-lg transition-shadow cursor-pointer border-l-4"
-                style={{
-                  borderLeftColor: job.job_priority === 'URGENT' || job.job_priority === 'CRITICAL' ? '#ef4444' : 
-                                  job.job_priority === 'HIGH' ? '#f97316' : '#3b82f6'
-                }}
+                      className="hover:bg-gray-50 cursor-pointer"
                 onClick={() => router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`)}
               >
-                <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3 sm:mb-4">
-                    <div className="flex-1 min-w-0 w-full">
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
-                      <h3 className="text-lg sm:text-xl font-bold truncate">{job.lead_number}</h3>
-                      {/* Show mechanic status if available; otherwise fall back to lead status */}
+                      {/* Lead Number */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs sm:text-sm font-medium text-gray-900">#{job.lead_number}</span>
+                          <div className="flex flex-wrap gap-1">
+                            {job.job_priority !== 'NORMAL' && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${getPriorityColor(job.job_priority)}`}>
+                                {job.job_priority}
+                              </span>
+                            )}
+                            {job.has_pending_extra_work && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-semibold">
+                                Extra Work
+                              </span>
+                            )}
+                            {job.has_parts_assigned && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">
+                                Parts
+                              </span>
+                            )}
+                            {job.checklist_completed && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded font-semibold">
+                                ✓ Checklist
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-gray-500">
+                            {formatDateTime(job.assigned_at)}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Vehicle */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div>
+                          <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[120px]">
+                            {job.vehicle_number}
+                          </div>
+                          <div className="text-[10px] sm:text-xs text-gray-500 truncate">
+                            {job.vehicle_make} {job.vehicle_model}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Service */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div>
+                          <div className="text-xs sm:text-sm text-gray-900 truncate max-w-[150px]">
+                            {job.service_type_names && job.service_type_names.length > 0
+                              ? job.service_type_names.join(', ')
+                              : job.service_types?.join(', ') || 'N/A'}
+                          </div>
+                          {job.service_addon_names && job.service_addon_names.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {job.service_addon_names.slice(0, 2).map((addon, idx) => (
+                                <span key={idx} className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
+                                  {addon}
+                                </span>
+                              ))}
+                              {job.service_addon_names.length > 2 && (
+                                <span className="text-[10px] text-gray-500">+{job.service_addon_names.length - 2}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
                       {job.mechanic_status ? (
-                        <span
-                          className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 ${getStatusColor(
-                            job.mechanic_status
-                          )}`}
-                        >
+                          <span className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-semibold ${getStatusColor(job.mechanic_status)}`}>
                           {getMechanicStatusLabel(job.mechanic_status)}
                         </span>
                       ) : job.lead_status ? (
-                        <span
-                          className={[
-                            'px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold flex-shrink-0 border',
+                          <span className={[
+                            'text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-semibold border',
                             getLeadStatusColor(job.lead_status).bg,
                             getLeadStatusColor(job.lead_status).text,
                             getLeadStatusColor(job.lead_status).border,
-                          ].join(' ')}
-                        >
+                          ].join(' ')}>
                           {getLeadStatusLabel(job.lead_status)}
                         </span>
-                      ) : null}
-                      {job.job_priority !== 'NORMAL' && (
-                        <span className={`px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-semibold border flex-shrink-0 ${getPriorityColor(job.job_priority)}`}>
-                          {job.job_priority}
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mt-2 sm:mt-3">
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600">Vehicle</p>
-                        <p className="font-semibold text-sm sm:text-base">{job.vehicle_number}</p>
-                        <p className="text-xs sm:text-sm text-gray-600">{job.vehicle_make} {job.vehicle_model}</p>
-                      </div>
-                      
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600">Service Type</p>
-                        <p className="font-semibold text-xs sm:text-sm">
-                          {job.service_type_names && job.service_type_names.length > 0
-                            ? job.service_type_names.join(', ')
-                            : job.service_types?.join(', ') || 'N/A'}
-                        </p>
-                        {job.service_addon_names && job.service_addon_names.length > 0 && (
-                          <div className="mt-1.5 sm:mt-2 flex flex-wrap gap-1">
-                            {job.service_addon_names.map((addon, idx) => (
-                              <span key={idx} className="px-1.5 sm:px-2 py-0.5 bg-green-100 text-green-700 rounded text-[10px] sm:text-xs font-medium">
-                                {addon}
-                              </span>
-                            ))}
-                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">N/A</span>
                         )}
-                      </div>
-                      
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600">SLA Remaining</p>
-                        <p className="font-semibold text-sm sm:text-base">{formatSLA(job.sla_remaining_minutes)}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                      </td>
 
-                {/* Progress Indicators */}
-                <div className="flex flex-wrap gap-2 sm:gap-3 pt-2 sm:pt-3 border-t">
-                  {/* Media upload status */}
-                  <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                      {/* Images */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-0.5">
                     {job.before_images_count > 0 ? (
-                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
+                              <CheckCircle className="w-3 h-3 text-green-600" />
                     ) : (
-                      <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
+                              <Camera className="w-3 h-3 text-gray-300" />
                     )}
-                    <span className={job.before_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
-                      Pickup/Visit: {job.before_images_count}
-                    </span>
-                    <span className={job.progress_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
-                      Progress: {job.progress_images_count}
-                    </span>
-                    <span className={job.after_images_count > 0 ? 'text-green-600' : 'text-gray-500'}>
-                      After: {job.after_images_count}
-                    </span>
+                            <span className="text-[10px] text-gray-600">B</span>
                   </div>
-
-                  {/* Checklist status */}
-                  {job.checklist_completed && (
-                    <div className="flex items-center gap-1 text-xs sm:text-sm text-green-600">
-                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                      Checklist Complete
+                          <div className="flex items-center gap-0.5">
+                            {job.progress_images_count > 0 ? (
+                              <CheckCircle className="w-3 h-3 text-green-600" />
+                            ) : (
+                              <Camera className="w-3 h-3 text-gray-300" />
+                            )}
+                            <span className="text-[10px] text-gray-600">P</span>
                     </div>
-                  )}
-
-                  {/* Parts assigned */}
-                  {job.has_parts_assigned && (
-                    <div className="flex items-center gap-1 text-xs sm:text-sm text-blue-600">
-                      <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                      Parts Assigned
+                          <div className="flex items-center gap-0.5">
+                            {job.after_images_count > 0 ? (
+                              <CheckCircle className="w-3 h-3 text-green-600" />
+                            ) : (
+                              <Camera className="w-3 h-3 text-gray-300" />
+                            )}
+                            <span className="text-[10px] text-gray-600">A</span>
                     </div>
-                  )}
-
-                  {/* Extra work pending */}
-                  {job.has_pending_extra_work && (
-                    <div className="flex items-center gap-1 text-xs sm:text-sm text-orange-600">
-                      <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                      Additional Jobs Pending
                     </div>
-                  )}
+                      </td>
+
+                      {/* SLA */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="text-xs sm:text-sm">
+                          {formatSLA(job.sla_remaining_minutes)}
                 </div>
+                      </td>
 
-                <div className="flex flex-col sm:flex-row gap-2 mt-3 sm:mt-4 pt-3 sm:pt-4 border-t">
+                      {/* Actions */}
+                      <td className="px-4 md:px-6 py-3 md:py-4">
+                        <div className="flex flex-col gap-1">
                   {job.mechanic_status === 'ASSIGNED' && (
                     <button 
-                      className="btn bg-brand-primary hover:bg-brand-primary-hover text-white text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2"
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded font-medium transition-colors flex items-center justify-center gap-1"
                       onClick={(e) => {
                         e.stopPropagation();
                         router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`);
                       }}
                     >
-                      <PlayCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        Start Job
+                              <PlayCircle className="w-3 h-3" />
+                              Start
                       </button>
                     )}
                   {job.mechanic_status === 'IN_PROGRESS' && (
                     <button 
-                      className="btn btn-outline text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4"
+                              className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded font-medium transition-colors flex items-center justify-center gap-1"
                       onClick={(e) => {
                         e.stopPropagation();
                         router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}?action=upload`);
                       }}
                     >
-                      <ImagePlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    Upload Photos
+                              <ImagePlus className="w-3 h-3" />
+                              Upload
                   </button>
                   )}
                   <button 
-                    className="btn btn-primary text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4"
+                            className="px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded font-medium transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
                       router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`);
                     }}
                   >
-                    View Details
+                            View
                   </button>
                   </div>
-
-                <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t text-[10px] sm:text-xs text-gray-500">
-                  Assigned: {formatDateTime(job.assigned_at)}
-                </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            ))
+          </div>
           ) : (
             <div className="card text-center py-8 sm:py-10 md:py-12">
               <AlertCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
               <p className="text-gray-500 text-base sm:text-lg">No jobs found for this filter</p>
             </div>
           )}
-          </div>
 
         {/* Quick Actions Guide */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

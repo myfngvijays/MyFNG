@@ -33,6 +33,7 @@ export default function AdditionalJobsMasterManager({
   mode: 'SUPER_ADMIN' | 'WORKSHOP_ADMIN' | 'WORKSHOP_SUPERVISOR';
 }) {
   const isSuperAdmin = mode === 'SUPER_ADMIN';
+  const isSupervisor = mode === 'WORKSHOP_SUPERVISOR';
   const [viewerWorkshopId, setViewerWorkshopId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -184,6 +185,11 @@ export default function AdditionalJobsMasterManager({
       fetchZones();
       fetchLabourCarClasses();
     }
+    if (isSupervisor) {
+      fetchCarClassesForMatrix().then((classes) => {
+        setLabourClasses(['DEFAULT', ...classes]);
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperAdmin]);
 
@@ -257,8 +263,14 @@ export default function AdditionalJobsMasterManager({
   }, [labourZoneId, workshops]);
 
   const labourPricingActive = useMemo(() => {
-    return Boolean(isSuperAdmin && labourZoneId && labourWorkshopId && labourClass);
-  }, [isSuperAdmin, labourZoneId, labourWorkshopId, labourClass]);
+    if (isSuperAdmin) {
+      return Boolean(labourZoneId && labourWorkshopId && labourClass);
+    }
+    if (isSupervisor) {
+      return Boolean(viewerWorkshopId && labourClass);
+    }
+    return false;
+  }, [isSuperAdmin, isSupervisor, labourZoneId, labourWorkshopId, labourClass, viewerWorkshopId]);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -270,15 +282,23 @@ export default function AdditionalJobsMasterManager({
   }, [labourZoneId]);
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
-    if (!labourZoneId || !labourWorkshopId || !labourClass) {
-      setLabourJobs([]);
-      setLabourRates({});
-      return;
+    if (isSuperAdmin) {
+      if (!labourZoneId || !labourWorkshopId || !labourClass) {
+        setLabourJobs([]);
+        setLabourRates({});
+        return;
+      }
+      fetchLabourPricing();
+    } else if (isSupervisor) {
+      if (!viewerWorkshopId || !labourClass) {
+        setLabourJobs([]);
+        setLabourRates({});
+        return;
+      }
+      fetchLabourPricing();
     }
-    fetchLabourPricing();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [labourZoneId, labourWorkshopId, labourClass]);
+  }, [isSuperAdmin, isSupervisor, labourZoneId, labourWorkshopId, labourClass, viewerWorkshopId]);
 
   async function fetchLabourPricing() {
     setLabourLoading(true);
@@ -293,8 +313,14 @@ export default function AdditionalJobsMasterManager({
         .order('name', { ascending: true })
         .limit(5000);
 
-      if (labourWorkshopId === 'ALL') q = q.is('workshop_id', null);
-      else q = q.eq('workshop_id', labourWorkshopId);
+      if (isSupervisor) {
+        // Supervisor: only their workshop
+        q = q.eq('workshop_id', viewerWorkshopId);
+      } else if (labourWorkshopId === 'ALL') {
+        q = q.is('workshop_id', null);
+      } else {
+        q = q.eq('workshop_id', labourWorkshopId);
+      }
 
       const { data: jobs, error: jobErr } = await q;
       if (jobErr) throw jobErr;
@@ -603,9 +629,9 @@ export default function AdditionalJobsMasterManager({
     setCsvInfo('');
     setCsvImportSummary(null);
 
-    // If super admin is using the labour pricing panel (zone/workshop/class selected),
+    // If using the labour pricing panel (zone/workshop/class selected for super admin, or class selected for supervisor),
     // export labour rates CSV (PETROL/DIESEL/CNG) for the currently loaded rate list.
-    if (isSuperAdmin && labourPricingActive) {
+    if (labourPricingActive) {
       const headers = [
         'zone_id',
         'workshop_id',
@@ -648,15 +674,20 @@ export default function AdditionalJobsMasterManager({
 
       const csv = buildCsv(headers, rows);
       const date = new Date().toISOString().slice(0, 10);
-      const zoneName = zones.find((z) => z.id === labourZoneId)?.name || 'zone';
-      const workshopLabel =
-        labourWorkshopId === 'ALL'
-          ? 'all-workshops'
-          : workshops.find((w) => w.id === labourWorkshopId)?.name || 'workshop';
-      const className = labourClass === 'DEFAULT' ? 'default' : labourClass;
-      const filename = `additional-jobs-labour-${zoneName}-${className}-${workshopLabel}-${date}.csv`
-        .replace(/\s+/g, '-')
-        .replace(/[^a-zA-Z0-9._-]/g, '');
+      let filename: string;
+      if (isSuperAdmin) {
+        const zoneName = zones.find((z) => z.id === labourZoneId)?.name || 'zone';
+        const workshopLabel =
+          labourWorkshopId === 'ALL'
+            ? 'all-workshops'
+            : workshops.find((w) => w.id === labourWorkshopId)?.name || 'workshop';
+        const className = labourClass === 'DEFAULT' ? 'default' : labourClass;
+        filename = `additional-jobs-labour-${zoneName}-${className}-${workshopLabel}-${date}.csv`;
+      } else {
+        const className = labourClass === 'DEFAULT' ? 'default' : labourClass;
+        filename = `additional-jobs-labour-${className}-${date}.csv`;
+      }
+      filename = filename.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '');
       downloadTextFile(csv, filename);
       setCsvInfo(`Downloaded ${rows.length} rows.`);
       return;
@@ -727,7 +758,7 @@ export default function AdditionalJobsMasterManager({
     setCsvImportSummary(null);
     try {
       // Labour pricing CSV import (context-aware, no separate option)
-      if (isSuperAdmin && labourPricingActive) {
+      if (labourPricingActive) {
         const text = await file.text();
         const grid = parseCsv(text);
         if (!grid.length) throw new Error('CSV is empty.');
@@ -758,8 +789,8 @@ export default function AdditionalJobsMasterManager({
           throw new Error('CSV must contain at least one header: petrol_labour, diesel_labour, cng_labour, default_labour');
         }
 
-        const expectedZone = labourZoneId || '';
-        const expectedWorkshop = labourWorkshopId || '';
+        const expectedZone = isSuperAdmin ? (labourZoneId || '') : '';
+        const expectedWorkshop = isSuperAdmin ? (labourWorkshopId || '') : (viewerWorkshopId || '');
         const expectedClass = labourClass || 'DEFAULT';
 
         const rows = grid.slice(1).filter((r) => r.some((x) => (x || '').trim() !== ''));
@@ -774,7 +805,7 @@ export default function AdditionalJobsMasterManager({
           const r = rows[i];
           const rowNum = i + 2;
 
-          if (idxZone !== -1) {
+          if (isSuperAdmin && idxZone !== -1) {
             const z = (r[idxZone] || '').trim();
             if (z && z !== expectedZone) errors.push(`Row ${rowNum}: zone_id mismatch (file "${z}" vs selected "${expectedZone}")`);
           }
@@ -922,10 +953,10 @@ export default function AdditionalJobsMasterManager({
         setLabourRates(nextRates);
 
         // Persist immediately (like Workshop Pricing) for current scope
-        if (labourWorkshopId === 'ALL') {
+        if (isSuperAdmin && labourWorkshopId === 'ALL') {
           const confirmed = confirm(`Apply imported labour rates to ALL ${labourWorkshopsInZone.length} workshops in this zone?`);
           if (!confirmed) {
-            setCsvInfo('Imported labour rates loaded. Click “Apply to All Workshops” when ready.');
+            setCsvInfo('Imported labour rates loaded. Click "Apply to All Workshops" when ready.');
             return;
           }
           const mode = confirm('Overwrite existing workshop labour matrix rates?\n\nOK = Overwrite all\nCancel = Fill missing only')
@@ -1334,9 +1365,9 @@ export default function AdditionalJobsMasterManager({
           </p>
         </div>
         <div className="flex gap-2">
-          {isSuperAdmin && labourPricingActive && (
+          {labourPricingActive && (
             <>
-              {isLabourBulkMode ? (
+              {isSuperAdmin && isLabourBulkMode ? (
                 <button
                   type="button"
                   onClick={() => applyLabourPricingToAllWorkshopsInZone()}
@@ -1382,52 +1413,56 @@ export default function AdditionalJobsMasterManager({
         </div>
       </div>
 
-      {/* Labour Pricing (Zone -> Workshop/ALL -> Car Class) */}
-      {isSuperAdmin && (
+      {/* Labour Pricing (Zone -> Workshop/ALL -> Car Class) for Super Admin, (Car Class) for Supervisor */}
+      {(isSuperAdmin || isSupervisor) && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5 mb-5">
           <div className="flex flex-col lg:flex-row lg:items-end gap-3 lg:gap-4 justify-between">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Zone</label>
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-gray-400" />
-                  <select
-                    className="input w-full"
-                    value={labourZoneId}
-                    onChange={(e) => setLabourZoneId(e.target.value)}
-                    disabled={loadingZones}
-                  >
-                    <option value="">{loadingZones ? 'Loading zones…' : '-- Select Zone --'}</option>
-                    {zones.map((z) => (
-                      <option key={z.id} value={z.id}>
-                        {z.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+            <div className={`grid grid-cols-1 ${isSuperAdmin ? 'md:grid-cols-3' : 'md:grid-cols-1'} gap-3 flex-1`}>
+              {isSuperAdmin && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Zone</label>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-gray-400" />
+                      <select
+                        className="input w-full"
+                        value={labourZoneId}
+                        onChange={(e) => setLabourZoneId(e.target.value)}
+                        disabled={loadingZones}
+                      >
+                        <option value="">{loadingZones ? 'Loading zones…' : '-- Select Zone --'}</option>
+                        {zones.map((z) => (
+                          <option key={z.id} value={z.id}>
+                            {z.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Workshop</label>
-                <div className="flex items-center gap-2">
-                  <Car className="w-4 h-4 text-gray-400" />
-                  <select
-                    className="input w-full"
-                    value={labourWorkshopId}
-                    onChange={(e) => setLabourWorkshopId(e.target.value)}
-                    disabled={!labourZoneId}
-                  >
-                    <option value="">{labourZoneId ? '-- Select Workshop --' : '-- Select Zone First --'}</option>
-                    {labourZoneId ? <option value="ALL">All Workshops (Zone)</option> : null}
-                    {labourWorkshopsInZone.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                        {w.city ? ` (${w.city})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Workshop</label>
+                    <div className="flex items-center gap-2">
+                      <Car className="w-4 h-4 text-gray-400" />
+                      <select
+                        className="input w-full"
+                        value={labourWorkshopId}
+                        onChange={(e) => setLabourWorkshopId(e.target.value)}
+                        disabled={!labourZoneId}
+                      >
+                        <option value="">{labourZoneId ? '-- Select Workshop --' : '-- Select Zone First --'}</option>
+                        {labourZoneId ? <option value="ALL">All Workshops (Zone)</option> : null}
+                        {labourWorkshopsInZone.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name}
+                            {w.city ? ` (${w.city})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Car Class</label>
@@ -1435,7 +1470,7 @@ export default function AdditionalJobsMasterManager({
                   className="input w-full"
                   value={labourClass}
                   onChange={(e) => setLabourClass(e.target.value)}
-                  disabled={!labourZoneId}
+                  disabled={isSuperAdmin ? !labourZoneId : false}
                 >
                   {labourClasses.map((c) => (
                     <option key={c} value={c}>
@@ -1469,10 +1504,10 @@ export default function AdditionalJobsMasterManager({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {!labourZoneId || !labourWorkshopId ? (
+                  {(isSuperAdmin && (!labourZoneId || !labourWorkshopId)) || (isSupervisor && !viewerWorkshopId) ? (
                     <tr>
                       <td colSpan={12} className="p-6 text-center text-gray-500">
-                        Select Zone and Workshop to load rates.
+                        {isSuperAdmin ? 'Select Zone and Workshop to load rates.' : 'Select Car Class to load rates.'}
                       </td>
                     </tr>
                   ) : labourLoading ? (
@@ -1554,7 +1589,7 @@ export default function AdditionalJobsMasterManager({
                               onClick={() =>
                                 toggleActive({
                                   id: j.id,
-                                  workshop_id: labourWorkshopId === 'ALL' ? null : labourWorkshopId,
+                                  workshop_id: isSuperAdmin ? (labourWorkshopId === 'ALL' ? null : labourWorkshopId) : viewerWorkshopId,
                                   name: j.name,
                                   category: j.category,
                                   hsn_sac_code: j.hsn_sac_code,
@@ -1575,7 +1610,7 @@ export default function AdditionalJobsMasterManager({
                               onClick={() =>
                                 openEdit({
                                   id: j.id,
-                                  workshop_id: labourWorkshopId === 'ALL' ? null : labourWorkshopId,
+                                  workshop_id: isSuperAdmin ? (labourWorkshopId === 'ALL' ? null : labourWorkshopId) : viewerWorkshopId,
                                   name: j.name,
                                   description: null,
                                   category: j.category,
@@ -1597,7 +1632,7 @@ export default function AdditionalJobsMasterManager({
                               onClick={() =>
                                 deleteItem({
                                   id: j.id,
-                                  workshop_id: labourWorkshopId === 'ALL' ? null : labourWorkshopId,
+                                  workshop_id: isSuperAdmin ? (labourWorkshopId === 'ALL' ? null : labourWorkshopId) : viewerWorkshopId,
                                   name: j.name,
                                   category: j.category,
                                   hsn_sac_code: j.hsn_sac_code,
@@ -1637,24 +1672,28 @@ export default function AdditionalJobsMasterManager({
             <div className="p-5 border-b border-gray-100 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-lg font-semibold text-gray-900">
-                  {isSuperAdmin && labourPricingActive ? 'Import / Export Labour Rates (CSV)' : 'Import / Export Additional Jobs (CSV)'}
+                  {labourPricingActive ? 'Import / Export Labour Rates (CSV)' : 'Import / Export Additional Jobs (CSV)'}
                 </div>
                 <div className="text-sm text-gray-500 mt-1">
-                  {isSuperAdmin && labourPricingActive ? (
+                  {labourPricingActive ? (
                     <>
-                      Scope: <span className="font-medium text-gray-700">{zones.find((z) => z.id === labourZoneId)?.name || 'Zone'}</span>
-                      {' / '}
-                      <span className="font-medium text-gray-700">
-                        {labourWorkshopId === 'ALL'
-                          ? `All Workshops (${labourWorkshopsInZone.length})`
-                          : workshops.find((w) => w.id === labourWorkshopId)?.name || 'Workshop'}
-                      </span>
-                      {' / '}
+                      {isSuperAdmin && (
+                        <>
+                          Scope: <span className="font-medium text-gray-700">{zones.find((z) => z.id === labourZoneId)?.name || 'Zone'}</span>
+                          {' / '}
+                          <span className="font-medium text-gray-700">
+                            {labourWorkshopId === 'ALL'
+                              ? `All Workshops (${labourWorkshopsInZone.length})`
+                              : workshops.find((w) => w.id === labourWorkshopId)?.name || 'Workshop'}
+                          </span>
+                          {' / '}
+                        </>
+                      )}
                       <span className="font-medium text-gray-700">{labourClass}</span>
                     </>
                   ) : (
                     <>
-                      Export will download the <span className="font-medium">currently visible list</span> (filters applied).
+                  Export will download the <span className="font-medium">currently visible list</span> (filters applied).
                     </>
                   )}
                 </div>
@@ -1673,7 +1712,7 @@ export default function AdditionalJobsMasterManager({
                 <div className="text-sm text-gray-600">
                   Rows:{' '}
                   <span className="font-medium text-gray-800">
-                    {isSuperAdmin && labourPricingActive ? labourDisplayedJobs.length : displayedItems.length}
+                    {labourPricingActive ? labourDisplayedJobs.length : displayedItems.length}
                   </span>
                   {!(isSuperAdmin && labourPricingActive) && isSuperAdmin && selectedWorkshopId ? (
                     <span className="ml-2 text-xs text-gray-500">(Filtered by selected workshop)</span>
@@ -1691,10 +1730,10 @@ export default function AdditionalJobsMasterManager({
 
               <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4">
                 <div className="text-sm font-medium text-gray-800 mb-1">
-                  {isSuperAdmin && labourPricingActive ? 'Upload CSV to set fuel-wise labour rates' : 'Upload CSV to create/update'}
+                  {labourPricingActive ? 'Upload CSV to set fuel-wise labour rates' : 'Upload CSV to create/update'}
                 </div>
                 <div className="text-xs text-gray-500 mb-2">
-                  {isSuperAdmin && labourPricingActive ? (
+                  {labourPricingActive ? (
                     <>
                       Required header: <span className="font-mono">additional_job_id</span>. Use any of:{' '}
                       <span className="font-mono">petrol_labour</span>, <span className="font-mono">diesel_labour</span>,{' '}
@@ -1703,14 +1742,14 @@ export default function AdditionalJobsMasterManager({
                     </>
                   ) : (
                     <>
-                      Required header: <span className="font-mono">name</span>. If <span className="font-mono">id</span> is provided, the row updates that record; otherwise it creates new.
-                      {isSuperAdmin ? (
+                  Required header: <span className="font-mono">name</span>. If <span className="font-mono">id</span> is provided, the row updates that record; otherwise it creates new.
+                  {isSuperAdmin ? (
                         <span>
                           {' '}
                           For scope, include <span className="font-mono">workshop_id</span> (blank = Global). If omitted, import uses selected workshop (if any) else Global.
                         </span>
-                      ) : (
-                        <span> Workshop users can only create/update their own workshop items.</span>
+                  ) : (
+                    <span> Workshop users can only create/update their own workshop items.</span>
                       )}
                     </>
                   )}
@@ -1764,44 +1803,44 @@ export default function AdditionalJobsMasterManager({
 
       {/* Filters (workshop roles only) */}
       {!isSuperAdmin && (
-        <div className="flex flex-col lg:flex-row gap-3 mb-5 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search by name/category/HSN..."
-              className="w-full pl-10 p-2 border rounded-lg bg-gray-50 focus:bg-white transition-colors"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') fetchItems();
-              }}
-            />
-          </div>
+      <div className="flex flex-col lg:flex-row gap-3 mb-5 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <input
+            type="text"
+            placeholder="Search by name/category/HSN..."
+            className="w-full pl-10 p-2 border rounded-lg bg-gray-50 focus:bg-white transition-colors"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') fetchItems();
+            }}
+          />
+        </div>
 
-          <select
-            className="p-2 border rounded-lg bg-gray-50 min-w-[200px]"
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            title="Category filter"
-          >
-            <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+        <select
+          className="p-2 border rounded-lg bg-gray-50 min-w-[200px]"
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          title="Category filter"
+        >
+          <option value="">All Categories</option>
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
 
-          <label className="flex items-center gap-2 text-sm text-gray-700 select-none">
+        <label className="flex items-center gap-2 text-sm text-gray-700 select-none">
             <input type="checkbox" checked={includeGlobal} onChange={(e) => setIncludeGlobal(e.target.checked)} />
-            Include Global
-          </label>
+          Include Global
+        </label>
 
-          <label className="flex items-center gap-2 text-sm text-gray-700 select-none">
+        <label className="flex items-center gap-2 text-sm text-gray-700 select-none">
             <input type="checkbox" checked={includeInactive} onChange={(e) => setIncludeInactive(e.target.checked)} />
-            Show Inactive
-          </label>
+          Show Inactive
+        </label>
 
           <button
             type="button"
@@ -1812,16 +1851,16 @@ export default function AdditionalJobsMasterManager({
           >
             Bulk Add to Workshop
           </button>
-        </div>
+      </div>
       )}
 
-      {/* Table (workshop roles only) */}
-      {!isSuperAdmin && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 border-b border-gray-100">
-                <tr>
+      {/* Table (workshop roles only, but hide if labour pricing is active) */}
+      {!isSuperAdmin && !labourPricingActive && (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
                   <th className="p-4 font-medium text-gray-600 w-12">
                     <input
                       type="checkbox"
@@ -1840,37 +1879,37 @@ export default function AdditionalJobsMasterManager({
                       }}
                     />
                   </th>
-                  <th className="p-4 font-medium text-gray-600">Name</th>
-                  <th className="p-4 font-medium text-gray-600">Category</th>
-                  <th className="p-4 font-medium text-gray-600">HSN/SAC</th>
-                  <th className="p-4 font-medium text-gray-600 text-right">OEM</th>
-                  <th className="p-4 font-medium text-gray-600 text-right">OES</th>
-                  <th className="p-4 font-medium text-gray-600 text-right">Labour</th>
-                  <th className="p-4 font-medium text-gray-600 text-center">Tax %</th>
-                  <th className="p-4 font-medium text-gray-600 text-center">Unit</th>
-                  <th className="p-4 font-medium text-gray-600 text-center">Status</th>
-                  <th className="p-4 font-medium text-gray-600 text-center">Actions</th>
+                <th className="p-4 font-medium text-gray-600">Name</th>
+                <th className="p-4 font-medium text-gray-600">Category</th>
+                <th className="p-4 font-medium text-gray-600">HSN/SAC</th>
+                <th className="p-4 font-medium text-gray-600 text-right">OEM</th>
+                <th className="p-4 font-medium text-gray-600 text-right">OES</th>
+                <th className="p-4 font-medium text-gray-600 text-right">Labour</th>
+                <th className="p-4 font-medium text-gray-600 text-center">Tax %</th>
+                <th className="p-4 font-medium text-gray-600 text-center">Unit</th>
+                <th className="p-4 font-medium text-gray-600 text-center">Status</th>
+                <th className="p-4 font-medium text-gray-600 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loading ? (
+                <tr>
+                  <td colSpan={11} className="p-8 text-center text-gray-500">
+                    <div className="inline-flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading...
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {loading ? (
-                  <tr>
-                    <td colSpan={11} className="p-8 text-center text-gray-500">
-                      <div className="inline-flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Loading...
-                      </div>
-                    </td>
-                  </tr>
-                ) : displayedItems.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="p-8 text-center text-gray-500">
-                      No additional jobs found.
-                    </td>
-                  </tr>
-                ) : (
-                  displayedItems.map((it) => (
-                    <tr key={it.id} className="hover:bg-gray-50 transition-colors">
+              ) : displayedItems.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="p-8 text-center text-gray-500">
+                    No additional jobs found.
+                  </td>
+                </tr>
+              ) : (
+                displayedItems.map((it) => (
+                  <tr key={it.id} className="hover:bg-gray-50 transition-colors">
                       <td className="p-4">
                         {!it.workshop_id ? (
                           <input
@@ -1883,75 +1922,75 @@ export default function AdditionalJobsMasterManager({
                           <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="p-4">
-                        <div className="font-semibold text-gray-900">{it.name}</div>
-                        {it.description && <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{it.description}</div>}
-                      </td>
-                      <td className="p-4 text-gray-600">{it.category || '-'}</td>
-                      <td className="p-4 font-mono text-xs bg-gray-50 rounded w-fit">{it.hsn_sac_code || '-'}</td>
-                      <td className="p-4 text-right font-medium">₹{Number(it.oem_price || 0).toFixed(0)}</td>
-                      <td className="p-4 text-right font-medium">₹{Number(it.oes_price || 0).toFixed(0)}</td>
-                      <td className="p-4 text-right font-medium">₹{Number(it.labour_price || 0).toFixed(0)}</td>
-                      <td className="p-4 text-center">{Number(it.tax_rate || 0).toFixed(0)}%</td>
-                      <td className="p-4 text-center text-gray-500">{it.unit || 'job'}</td>
-                      <td className="p-4 text-center">
+                    <td className="p-4">
+                      <div className="font-semibold text-gray-900">{it.name}</div>
+                      {it.description && <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{it.description}</div>}
+                    </td>
+                    <td className="p-4 text-gray-600">{it.category || '-'}</td>
+                    <td className="p-4 font-mono text-xs bg-gray-50 rounded w-fit">{it.hsn_sac_code || '-'}</td>
+                    <td className="p-4 text-right font-medium">₹{Number(it.oem_price || 0).toFixed(0)}</td>
+                    <td className="p-4 text-right font-medium">₹{Number(it.oes_price || 0).toFixed(0)}</td>
+                    <td className="p-4 text-right font-medium">₹{Number(it.labour_price || 0).toFixed(0)}</td>
+                    <td className="p-4 text-center">{Number(it.tax_rate || 0).toFixed(0)}%</td>
+                    <td className="p-4 text-center text-gray-500">{it.unit || 'job'}</td>
+                    <td className="p-4 text-center">
                         <span
                           className={`px-2 py-1 rounded-md text-xs font-medium ${
                             it.is_active !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                           }`}
                         >
-                          {it.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          {canManage(it) ? (
-                            <>
-                              <button
-                                onClick={() => toggleActive(it)}
-                                className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                                title={it.is_active !== false ? 'Disable' : 'Enable'}
-                              >
-                                {it.is_active !== false ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-                              </button>
-                              <button
-                                onClick={() => openEdit(it)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="Edit"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => deleteItem(it)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          ) : (
-                            <>
+                        {it.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        {canManage(it) ? (
+                          <>
+                            <button
+                              onClick={() => toggleActive(it)}
+                              className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                              title={it.is_active !== false ? 'Disable' : 'Enable'}
+                            >
+                              {it.is_active !== false ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                            </button>
+                            <button
+                              onClick={() => openEdit(it)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Edit"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteItem(it)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
                               {!it.workshop_id && (
-                                <button
-                                  onClick={() => createWorkshopCopyFromGlobal(it)}
-                                  className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                  title="Create workshop copy"
-                                  disabled={submitting}
-                                >
-                                  Add to Workshop
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                              <button
+                                onClick={() => createWorkshopCopyFromGlobal(it)}
+                                className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                title="Create workshop copy"
+                                disabled={submitting}
+                              >
+                                Add to Workshop
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
+      </div>
       )}
 
       {/* Add Modal */}

@@ -313,7 +313,7 @@ export default function PickupTasksPage() {
           </div>
         </div>
 
-        {/* Tasks List */}
+        {/* Tasks Table */}
         {tasks.length === 0 ? (
           <div className="card text-center py-8 sm:py-10 md:py-12">
             <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
@@ -325,111 +325,138 @@ export default function PickupTasksPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3 sm:space-y-4">
-            {tasks.map((task) => {
-              const statusBadge = getStatusBadge(task.status, !!task.pickup_otp, !!task.pickup_otp_verified_at);
-              return (
-                <div 
-                  key={task.id} 
-                  className="card hover:shadow-xl transition-all border-l-4 border-blue-500"
-                >
-                  <div className="space-y-3 sm:space-y-4">
-                    {/* Header */}
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
-                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                        <span className="badge-blue text-sm sm:text-base md:text-lg">{task.lead_number}</span>
-                        <span className={statusBadge.class}>{statusBadge.text}</span>
-                      </div>
-                      <div className="text-left sm:text-right flex-shrink-0">
-                        <p className="text-xs sm:text-sm text-gray-600">Preferred Date & Time</p>
-                        {(() => {
-                          // Check for preferred_date (DATE column)
-                          if (task.preferred_date) {
-                            const date = new Date(task.preferred_date);
-                            return (
-                              <>
-                                <p className="font-semibold text-xs sm:text-sm">
-                                  {formatDateDMY(date)}
-                                </p>
-                                {task.preferred_time_slot && (
-                                  <p className="text-xs sm:text-sm text-gray-600">{task.preferred_time_slot}</p>
-                                )}
-                              </>
-                            );
-                          }
-                          // Check for preferred_slot_start (TIMESTAMP column)
-                          if (task.preferred_slot_start) {
-                            const startDate = new Date(task.preferred_slot_start);
-                            const endDate = task.preferred_slot_end ? new Date(task.preferred_slot_end) : null;
-                            return (
-                              <>
-                                <p className="font-semibold text-xs sm:text-sm">
-                                  {formatDateDMY(startDate)}
-                                </p>
-                                <p className="text-xs sm:text-sm text-gray-600">
-                                  {formatTime12h(startDate)}
-                                  {endDate && ` - ${formatTime12h(endDate)}`}
-                                </p>
-                              </>
-                            );
-                          }
-                          // No preferred date/time found
-                          return <p className="font-semibold text-xs sm:text-sm text-gray-400">Not specified</p>;
-                        })()}
-                      </div>
-                    </div>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead #</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Preferred Date & Time</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {tasks.map((task) => {
+                    const statusBadge = getStatusBadge(task.status, !!task.pickup_otp, !!task.pickup_otp_verified_at);
+                    return (
+                      <tr key={task.id} className="hover:bg-gray-50">
+                        {/* Lead Number */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="text-sm font-medium text-blue-600">#{task.lead_number}</div>
+                        </td>
 
-                    {/* Customer & Vehicle Info */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                      <div className="space-y-1.5 sm:space-y-2">
-                        <div className="flex items-center gap-1.5 sm:gap-2">
-                          <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
-                          <span className="font-semibold text-xs sm:text-sm truncate">{task.customer_name}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 sm:gap-2">
-                          <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
-                          <a href={`tel:${task.customer_phone}`} className="text-brand-primary hover:underline text-xs sm:text-sm truncate">
-                            {task.customer_phone}
-                          </a>
-                        </div>
-                        <div className="flex items-center gap-1.5 sm:gap-2">
-                          <Car className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" />
-                          <span className="text-xs sm:text-sm truncate">{task.vehicle_make} {task.vehicle_model} - {task.vehicle_number}</span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 sm:space-y-2">
-                        <div className="flex items-start gap-1.5 sm:gap-2">
-                          <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 mt-0.5 sm:mt-1 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs sm:text-sm font-medium truncate">{task.address || 'Address not provided'}</p>
-                            {task.city && <p className="text-xs sm:text-sm text-gray-600 truncate">{task.city}{task.pincode ? `, ${task.pincode}` : ''}</p>}
+                        {/* Customer */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                            <div>
+                              <div className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                                {task.customer_name}
+                              </div>
+                              <a href={`tel:${task.customer_phone}`} className="text-xs text-brand-primary hover:underline">
+                                {task.customer_phone}
+                              </a>
+                            </div>
                           </div>
-                        </div>
-                        <button
-                          onClick={() => openGoogleMaps(task)}
-                          className="btn-secondary bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 w-full"
-                          disabled={!task.address && !task.city}
-                        >
-                          <Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                          Navigate
-                        </button>
-                      </div>
-                    </div>
+                        </td>
 
-                    {/* Action Buttons */}
-                    <div className="flex gap-2 pt-2 border-t">
-                      <button
-                        onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
-                        className="btn-primary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                      >
-                        View Details
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                        {/* Vehicle */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="flex items-center gap-2">
+                            <Car className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                            <div>
+                              <div className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                                {task.vehicle_number}
+                              </div>
+                              <div className="text-xs text-gray-500 truncate max-w-[150px]">
+                                {task.vehicle_make} {task.vehicle_model}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Address */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <div className="flex items-start gap-2">
+                            <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <div className="text-sm text-gray-900 truncate max-w-[200px]">
+                                {task.address || 'Address not provided'}
+                              </div>
+                              {task.city && (
+                                <div className="text-xs text-gray-500 truncate max-w-[200px]">
+                                  {task.city}{task.pincode ? `, ${task.pincode}` : ''}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          <span className={statusBadge.class}>{statusBadge.text}</span>
+                        </td>
+
+                        {/* Preferred Date & Time */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">
+                          {(() => {
+                            if (task.preferred_date) {
+                              const date = new Date(task.preferred_date);
+                              return (
+                                <div className="text-xs sm:text-sm">
+                                  <div className="font-semibold text-gray-900">{formatDateDMY(date)}</div>
+                                  {task.preferred_time_slot && (
+                                    <div className="text-gray-600">{task.preferred_time_slot}</div>
+                                  )}
+                                </div>
+                              );
+                            }
+                            if (task.preferred_slot_start) {
+                              const startDate = new Date(task.preferred_slot_start);
+                              const endDate = task.preferred_slot_end ? new Date(task.preferred_slot_end) : null;
+                              return (
+                                <div className="text-xs sm:text-sm">
+                                  <div className="font-semibold text-gray-900">{formatDateDMY(startDate)}</div>
+                                  <div className="text-gray-600">
+                                    {formatTime12h(startDate)}
+                                    {endDate && ` - ${formatTime12h(endDate)}`}
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return <span className="text-xs text-gray-400">Not specified</span>;
+                          })()}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex flex-col gap-2">
+                            <button
+                              onClick={() => openGoogleMaps(task)}
+                              disabled={!task.address && !task.city}
+                              className="btn bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Navigation className="w-3.5 h-3.5" />
+                              Navigate
+                            </button>
+                            <button
+                              onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
+                              className="btn btn-primary text-xs px-3 py-1.5"
+                            >
+                              View Details
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

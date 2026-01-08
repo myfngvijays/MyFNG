@@ -356,7 +356,7 @@ export default function ExtraWorkApprovalsPage() {
         .eq('service_leads.workshop_id', userProfile.workshop_id)
         .in('status', ['PENDING', 'APPROVED', 'REJECTED'])
         .order('is_urgent', { ascending: false })
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false });
 
       extraWork = attempt.data as any;
       error = attempt.error as any;
@@ -368,7 +368,7 @@ export default function ExtraWorkApprovalsPage() {
           .eq('service_leads.workshop_id', userProfile.workshop_id)
           .in('status', ['PENDING', 'APPROVED', 'REJECTED'])
           .order('is_urgent', { ascending: false })
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: false });
         extraWork = fallback.data as any;
         error = fallback.error as any;
       }
@@ -466,8 +466,16 @@ export default function ExtraWorkApprovalsPage() {
         };
       }));
 
+      // Sort by status first (PENDING first), then by created_at descending (latest first) within each status
       const statusWeight: Record<string, number> = { PENDING: 0, REJECTED: 1, APPROVED: 2 };
-      requestsWithMechanics.sort((a, b) => (statusWeight[a.status] ?? 9) - (statusWeight[b.status] ?? 9));
+      requestsWithMechanics.sort((a, b) => {
+        const statusDiff = (statusWeight[a.status] ?? 9) - (statusWeight[b.status] ?? 9);
+        if (statusDiff !== 0) return statusDiff;
+        // Within same status, sort by created_at descending (latest first)
+        const aTime = new Date(a.created_at).getTime();
+        const bTime = new Date(b.created_at).getTime();
+        return bTime - aTime;
+      });
       setRequests(requestsWithMechanics);
       setEditedPricing((prev) => {
         const next: Record<string, { oem: string; oes: string; labour: string }> = {};
@@ -859,7 +867,23 @@ export default function ExtraWorkApprovalsPage() {
       }
     }
 
-    return Array.from(byLead.values());
+    // Sort groups: groups with PENDING items first, then by latest created_at (descending)
+    const groups = Array.from(byLead.values());
+    groups.sort((a, b) => {
+      const aHasPending = a.items.some((i) => String(i.status || 'PENDING').toUpperCase() === 'PENDING');
+      const bHasPending = b.items.some((i) => String(i.status || 'PENDING').toUpperCase() === 'PENDING');
+      
+      // Groups with PENDING items come first
+      if (aHasPending && !bHasPending) return -1;
+      if (!aHasPending && bHasPending) return 1;
+      
+      // Within same category (both have PENDING or both don't), sort by latest created_at
+      const aLatestTime = Math.max(...a.items.map((i) => new Date(i.created_at).getTime()));
+      const bLatestTime = Math.max(...b.items.map((i) => new Date(i.created_at).getTime()));
+      return bLatestTime - aLatestTime; // Descending (latest first)
+    });
+
+    return groups;
   }, [requests]);
 
   const getEditedPartNumber = (raw: string, fallback: number) => {

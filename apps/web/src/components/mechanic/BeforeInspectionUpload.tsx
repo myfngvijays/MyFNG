@@ -48,10 +48,15 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
       initializePhotos();
     }
     getLocation();
+    // Fetch from both sources if both are available (for supervisor view)
     if (mode === 'MECHANIC_JOB') {
       if (jobId) fetchExistingPhotosFromJob();
+      // Also fetch from lead_media to show pickup photos
+      if (leadId) fetchExistingPhotosFromLead();
     } else {
       if (leadId) fetchExistingPhotosFromLead();
+      // Also fetch from mechanic_job_photos if jobId is available
+      if (jobId) fetchExistingPhotosFromJob();
     }
   }, [leadId, jobId, mode]);
 
@@ -88,13 +93,20 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
                 }));
 
           return base.map((photo) => {
+            // Check if photo already has a preview (from lead_media - pickup photos)
+            const hasPickupPhoto = photo.preview && photo.uploaded;
             const existing = data.find((d) => d.photo_type === photo.type);
             if (existing) {
+              // Mechanic photo exists - use it (mechanic photos take priority)
               return {
                 ...photo,
                 preview: existing.photo_url,
                 uploaded: true,
               };
+            }
+            // If no mechanic photo but pickup photo exists, keep the pickup photo
+            if (hasPickupPhoto) {
+              return photo;
             }
             return photo;
           });
@@ -140,6 +152,11 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
               }));
 
         return base.map((photo) => {
+          // Check if photo already has a preview (from mechanic_job_photos)
+          if (photo.preview && photo.uploaded) {
+            return photo; // Keep existing mechanic photo
+          }
+          // Otherwise, check lead_media
           const existing = typedBefore.find((d: any) => {
             const t = String(d.photo_type || d.category || '').toUpperCase();
             if (t) return t === photo.type;
@@ -150,7 +167,7 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
           if (existing) {
             return {
               ...photo,
-              preview: existing.file_url || existing.photo_url || null,
+              preview: existing.file_url || existing.photo_url || photo.preview || null,
               uploaded: true,
             };
           }
