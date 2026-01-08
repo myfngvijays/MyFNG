@@ -253,6 +253,21 @@ export default function PickupDeliveryCoordinationPage() {
   }
 
   async function assignPickupBoy(jobId: string, pickupBoyId: string) {
+    // Find pickup boy name for confirmation
+    const pickupBoy = pickupBoys.find((boy) => boy.id === pickupBoyId);
+    const pickupBoyName = pickupBoy?.full_name || 'selected pickup boy';
+    
+    // Show confirmation dialog with pickup boy name
+    const confirmed = confirm(`Assign this lead to pickup boy: ${pickupBoyName}?`);
+    if (!confirmed) {
+      // Reset dropdown to empty if user cancels
+      const selectElement = document.querySelector(`select[data-job-id="${jobId}"]`) as HTMLSelectElement;
+      if (selectElement) {
+        selectElement.value = '';
+      }
+      return;
+    }
+
     try {
       // IMPORTANT: use the server API so notification + push fan-out happens
       const res = await fetch(`/api/workshop/leads/${jobId}/assign-team`, {
@@ -274,6 +289,11 @@ export default function PickupDeliveryCoordinationPage() {
     } catch (error) {
       console.error('Error assigning pickup boy:', error);
       alert('Failed to assign pickup boy');
+      // Reset dropdown on error
+      const selectElement = document.querySelector(`select[data-job-id="${jobId}"]`) as HTMLSelectElement;
+      if (selectElement) {
+        selectElement.value = '';
+      }
     }
   }
 
@@ -520,6 +540,7 @@ export default function PickupDeliveryCoordinationPage() {
                     </div>
                   ) : (
                     <select
+                      data-job-id={job.id}
                       onChange={(e) => e.target.value && assignPickupBoy(job.id, e.target.value)}
                         className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                       defaultValue=""

@@ -193,9 +193,19 @@ export default function DayPlanningPage() {
   async function assignJobsToMechanic(mechanicId: string) {
     if (selectedJobs.size === 0) return;
 
+    // Find mechanic name for confirmation
+    const mechanic = mechanics.find((m) => m.id === mechanicId);
+    const mechanicName = mechanic?.full_name || 'selected mechanic';
+    const jobIds = Array.from(selectedJobs);
+
+    // Show confirmation dialog with mechanic name and job count
+    const confirmed = confirm(`Assign ${jobIds.length} job(s) to mechanic: ${mechanicName}?`);
+    if (!confirmed) {
+      return;
+    }
+
     try {
       const supabase = createClient();
-      const jobIds = Array.from(selectedJobs);
 
       const { error } = await supabase
         .from('service_leads')
