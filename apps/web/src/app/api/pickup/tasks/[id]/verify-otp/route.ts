@@ -198,7 +198,7 @@ export async function POST(
       })
       .eq('lead_id', leadId);
     } else {
-      // DROP OTP verification: update tracking and lead status to reflect delivery progress
+      // DROP OTP verification: treat as final handover to customer => mark delivered.
       await supabase
         .from('pickup_tracking')
         .upsert(
@@ -206,39 +206,45 @@ export async function POST(
             lead_id: leadId,
             drop_required: true,
             drop_assigned_to: userProfile.id,
-            drop_status: 'ARRIVED_AT_CUSTOMER',
+            drop_status: 'DELIVERED',
             drop_otp_verified_at: now,
+            drop_completed_time: now,
             updated_at: now,
           } as any,
           { onConflict: 'lead_id' }
         );
 
-      // Update lead pickup_status to reflect delivery OTP verification
+      // Update lead status to delivered
       const { error: updateLeadError } = await supabase
         .from('service_leads')
         .update({
-          pickup_status: 'OUT_FOR_DELIVERY',
+          status: 'DELIVERED_TO_CUSTOMER',
+          pickup_status: 'DELIVERED',
+          delivered_at: now,
+          delivered_by: userProfile.id,
+          read_only: true,
           updated_at: now,
-        })
+        } as any)
         .eq('id', leadId);
 
       if (updateLeadError) {
-        console.error('Error updating lead pickup_status:', updateLeadError);
-        // Don't fail the request, but log the error
+        console.error('Error updating lead status to DELIVERED_TO_CUSTOMER:', updateLeadError);
+        return NextResponse.json(
+          { error: 'Failed to update lead status', details: updateLeadError.message },
+          { status: 500 }
+        );
       }
 
-      // Log status change for delivery OTP verification
-      await supabase
-        .from('lead_status_history')
-        .insert({
-          lead_id: leadId,
-          old_status: lead.status,
-          new_status: lead.status, // Keep main status, but pickup_status changed
-          changed_by: userProfile.id,
-          changed_at: now,
-          reason: 'Delivery OTP verified - Arrived at customer location',
-          notes: 'Delivery OTP verified successfully',
-        });
+      // Log status change for delivery completion
+      await supabase.from('lead_status_history').insert({
+        lead_id: leadId,
+        old_status: lead.status,
+        new_status: 'DELIVERED_TO_CUSTOMER',
+        changed_by: userProfile.id,
+        changed_at: now,
+        reason: 'Delivery OTP verified - Vehicle delivered to customer',
+        notes: 'Delivery OTP verified successfully',
+      } as any);
     }
 
     if (otpType === 'PICKUP') {
@@ -261,7 +267,7 @@ export async function POST(
         lead_id: leadId,
         user_id: userProfile.id,
       activity_type: `${otpType}_OTP_VERIFIED`,
-      description: otpType === 'DROP' ? 'Delivery OTP verified' : 'Customer OTP verified - Vehicle picked up, driving to workshop',
+      description: otpType === 'DROP' ? 'Delivery OTP verified - Vehicle delivered to customer' : 'Customer OTP verified - Vehicle picked up, driving to workshop',
       metadata: { pickup_boy_id: userProfile.id, verified_at: now, otp_type: otpType },
     } as any);
 
@@ -310,10 +316,10 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: 'OTP verified successfully',
-      next_step: otpType === 'DROP' ? 'Complete delivery to customer' : 'Upload before images of the vehicle',
+      next_step: otpType === 'DROP' ? 'Delivery completed' : 'Upload before images of the vehicle',
       instructions:
         otpType === 'DROP'
-          ? ['Confirm handover with customer', 'Complete delivery']
+          ? ['Delivery marked as completed']
           : [
         'Take clear photos of all 4 sides of vehicle',
         'Include close-ups of any existing damage',

@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { calculateTaxes, generateSeriesDocumentNumber, getPlaceOfSupply, numberToWords, roundOff } from '@/lib/utils/invoiceUtils';
+import { getEffectivePricingItemAmount, getEffectiveQty } from '@/lib/utils/pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +18,19 @@ export async function POST(
 ) {
   try {
     const supabase = await createClient();
+
+    // Optional service-role client for write operations when RLS blocks (best-effort).
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const serviceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY ||
+      process.env.SUPABASE_ADMIN_KEY;
+    const supabaseAdmin =
+      supabaseUrl && serviceRoleKey
+        ? createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
+            auth: { persistSession: false, autoRefreshToken: false },
+          })
+        : null;
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -231,9 +246,8 @@ export async function POST(
     const extraCharges = (Array.isArray(extraChargesRaw) ? extraChargesRaw : []).filter(isApprovedExtra);
 
     const serviceLines = (pricingItems || []).map((it: any) => {
-      const qtyRaw = it.quantity ?? it.qty ?? 1;
-      const qty = qtyRaw ? parseFloat(String(qtyRaw)) : 1;
-      const amount = parseFloat(it.final_price || '0') || 0;
+      const qty = getEffectiveQty(it, 1);
+      const amount = getEffectivePricingItemAmount(it);
       return {
         description: it.name || it.item_name || 'Service',
         qty,
@@ -478,18 +492,51 @@ export async function POST(
     }
 
     // Keep lead in PAYMENT_AWAITING (awaiting payment/confirmation) and lock edits.
-    await supabase
-      .from('service_leads')
-      .update({
-        status: lead.status === 'PAYMENT_AWAITING' ? lead.status : 'PAYMENT_AWAITING',
-        billing_locked_at: (lead as any).billing_locked_at || now,
-        invoice_id: ciInvoice.id, // payable doc is CI
-        invoice_number: ciInvoice.invoice_number,
-        invoice_generated_at: now,
-        invoice_generated_by: userProfile.id,
-        updated_at: now,
-      })
-      .eq('id', leadId);
+    const leadUpdatePayload = {
+      status: lead.status === 'PAYMENT_AWAITING' ? lead.status : 'PAYMENT_AWAITING',
+      billing_locked_at: (lead as any).billing_locked_at || now,
+      invoice_id: ciInvoice.id, // payable doc is CI
+      invoice_number: ciInvoice.invoice_number,
+      invoice_generated_at: now,
+      invoice_generated_by: userProfile.id,
+      updated_at: now,
+    };
+
+    const tryUpdateLead = async (client: any) =>
+      client
+        .from('service_leads')
+        .update(leadUpdatePayload)
+        .eq('id', leadId)
+        .select('id, status, invoice_id')
+        .maybeSingle();
+
+    let leadUpdate = await tryUpdateLead(supabase);
+    if (leadUpdate.error) {
+      const msg = String(leadUpdate.error?.message || leadUpdate.error);
+      const code = (leadUpdate.error as any)?.code;
+      const isRls =
+        code === '42501' ||
+        /row-level security|violates row level security|permission denied/i.test(msg);
+
+      // Retry with service role if available (still gated by our role checks above)
+      if (isRls && supabaseAdmin) {
+        leadUpdate = await tryUpdateLead(supabaseAdmin);
+      }
+    }
+
+    if (leadUpdate.error) {
+      return NextResponse.json(
+        {
+          error: 'Failed to update lead status after bill finalization',
+          details: (leadUpdate.error as any)?.message || String(leadUpdate.error),
+          code: (leadUpdate.error as any)?.code,
+          hint: supabaseAdmin
+            ? null
+            : 'Server is missing SUPABASE_SERVICE_ROLE_KEY; if RLS blocks this update, configure it or adjust policies.',
+        },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,

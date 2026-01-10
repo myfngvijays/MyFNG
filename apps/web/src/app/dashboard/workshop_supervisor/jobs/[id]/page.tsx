@@ -23,6 +23,7 @@ import {
   XCircle, ArrowLeftCircle, Camera, Edit, MapPin, AlertCircle
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { resolveWorkshopServicePriceBestAvailable } from '@/lib/utils/workshopServicePricing';
 
 type MasterPartSuggestion = {
   id: string;
@@ -248,14 +249,27 @@ export default function SupervisorJobDetailPage() {
               
               // Always prioritize mechanic_status over lead status
               if (prevLead.mechanic_status === 'COMPLETED') {
-                // If mechanic completed, check QC status
-                if (prevLead.qc_status === 'PASSED' || newStatus === 'READY_FOR_BILLING' || newStatus === 'QC_APPROVED') {
-                  // QC already approved - show READY_FOR_BILLING or QC_APPROVED
-                  displayStatus = newStatus === 'READY_FOR_BILLING' ? 'READY_FOR_BILLING' : (newStatus === 'QC_APPROVED' ? 'QC_APPROVED' : 'READY_FOR_BILLING');
-                } else {
-                  // Mechanic completed but QC not approved yet - show COMPLETED
-                  displayStatus = 'COMPLETED';
-                }
+                // If mechanic completed, only override when QC isn't approved yet.
+                const statusUpper = String(newStatus || '').toUpperCase();
+                const qcApproved =
+                  String(prevLead.qc_status || '').toUpperCase() === 'PASSED' ||
+                  statusUpper === 'QC_APPROVED' ||
+                  [
+                    'READY_FOR_BILLING',
+                    'INVOICE_GENERATED',
+                    'PAYMENT_AWAITING',
+                    'AWAITING_PAYMENT',
+                    'INVOICE_SENT',
+                    'PARTIAL_PAYMENT',
+                    'PAID',
+                    'COD_PENDING',
+                    'READY_FOR_DELIVERY',
+                    'DELIVERED_TO_CUSTOMER',
+                    'DELIVERED',
+                    'CLOSED',
+                  ].includes(statusUpper);
+
+                displayStatus = qcApproved ? statusUpper : 'COMPLETED';
               } else if (prevLead.mechanic_status === 'IN_PROGRESS') {
                 // If mechanic is working, show IN_PROGRESS
                 displayStatus = 'IN_PROGRESS';
@@ -305,12 +319,28 @@ export default function SupervisorJobDetailPage() {
               else if (mechanicStatus === 'IN_PROGRESS') {
                 displayStatus = 'IN_PROGRESS';
               }
-              // Priority 3: If mechanic completed, show COMPLETED
-              else if (mechanicStatus === 'COMPLETED' && (prevLead.status === 'COMPLETED' || prevLead.status === 'QC_PENDING' || prevLead.status === 'WORK_COMPLETED')) {
-                displayStatus = 'COMPLETED';
-              } else if (mechanicStatus === 'COMPLETED') {
-                // If mechanic completed, always show COMPLETED regardless of current status
-                displayStatus = 'COMPLETED';
+              // Priority 3: If mechanic completed, only show COMPLETED when QC isn't approved yet
+              else if (mechanicStatus === 'COMPLETED') {
+                const statusUpper = String(prevLead.status || '').toUpperCase();
+                const qcApproved =
+                  String(prevLead.qc_status || '').toUpperCase() === 'PASSED' ||
+                  statusUpper === 'QC_APPROVED' ||
+                  [
+                    'READY_FOR_BILLING',
+                    'INVOICE_GENERATED',
+                    'PAYMENT_AWAITING',
+                    'AWAITING_PAYMENT',
+                    'INVOICE_SENT',
+                    'PARTIAL_PAYMENT',
+                    'PAID',
+                    'COD_PENDING',
+                    'READY_FOR_DELIVERY',
+                    'DELIVERED_TO_CUSTOMER',
+                    'DELIVERED',
+                    'CLOSED',
+                  ].includes(statusUpper);
+
+                displayStatus = qcApproved ? statusUpper : 'COMPLETED';
               }
               
               return {
@@ -492,13 +522,55 @@ export default function SupervisorJobDetailPage() {
       }
       
       if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
-        const { data: serviceTypes } = await supabase
-          .from('service_types')
-          .select('id, name')
-          .in('id', serviceTypeIds);
-        
-        if (serviceTypes && serviceTypes.length > 0) {
-          data.service_type_names = serviceTypes.map((st: any) => st.name);
+        // Fetch service types (base_price may not exist in all deployments)
+        let serviceTypes: any[] = [];
+        try {
+          const attempt = await supabase
+            .from('service_types')
+            .select('id, name, base_price')
+            .in('id', serviceTypeIds);
+          // @ts-ignore - supabase error type
+          if (attempt?.error && (attempt.error as any)?.code === '42703') {
+            const fallback = await supabase
+              .from('service_types')
+              .select('id, name')
+              .in('id', serviceTypeIds);
+            serviceTypes = (fallback.data || []) as any[];
+          } else {
+            serviceTypes = (attempt.data || []) as any[];
+          }
+        } catch {
+          const fallback = await supabase
+            .from('service_types')
+            .select('id, name')
+            .in('id', serviceTypeIds);
+          serviceTypes = (fallback.data || []) as any[];
+        }
+
+        // Compute workshop-based prices (match public customer page behavior)
+        const workshopId = String((data as any)?.workshop_id || '').trim();
+
+        const detailed = await Promise.all(
+          (serviceTypes || []).map(async (st: any) => {
+            const id = String(st?.id || '').trim();
+            const name = String(st?.name || '').trim();
+            const base = Number((st as any)?.base_price ?? 0) || 0;
+            let resolved = 0;
+            if (workshopId && id) {
+              try {
+                resolved = await resolveWorkshopServicePriceBestAvailable({ supabase, workshopId, serviceTypeId: id });
+              } catch {
+                resolved = 0;
+              }
+            }
+            const price = resolved > 0 ? resolved : base;
+            return { id, name, price };
+          })
+        );
+
+        if (detailed.length > 0) {
+          (data as any).service_types_detailed = detailed;
+          data.service_type_names = detailed.map((x: any) => x.name).filter(Boolean);
         }
       }
 
@@ -552,15 +624,28 @@ export default function SupervisorJobDetailPage() {
           // Update the displayed status to reflect mechanic is working
           data.display_status = 'IN_PROGRESS';
         } else if (mechanicJob.mechanic_status === 'COMPLETED') {
-          // If mechanic completed, check QC status
-          if (data.qc_status === 'PASSED' || data.status === 'READY_FOR_BILLING' || data.status === 'QC_APPROVED') {
-            // QC already approved - show READY_FOR_BILLING or QC_APPROVED
-            data.display_status = data.status === 'READY_FOR_BILLING' ? 'READY_FOR_BILLING' : (data.status === 'QC_APPROVED' ? 'QC_APPROVED' : 'READY_FOR_BILLING');
-          } else {
-            // Mechanic completed but QC not approved yet - ALWAYS show COMPLETED
-            // Override any other status (like READY_FOR_BILLING) if QC is not approved
-            data.display_status = 'COMPLETED';
-          }
+          // If mechanic completed, only override when QC isn't approved yet.
+          // Otherwise, show the actual lead status (READY_FOR_BILLING / INVOICE_GENERATED / PAYMENT_AWAITING / etc).
+          const statusUpper = String(data.status || '').toUpperCase();
+          const qcApproved =
+            String(data.qc_status || '').toUpperCase() === 'PASSED' ||
+            statusUpper === 'QC_APPROVED' ||
+            [
+              'READY_FOR_BILLING',
+              'INVOICE_GENERATED',
+              'PAYMENT_AWAITING',
+              'AWAITING_PAYMENT',
+              'INVOICE_SENT',
+              'PARTIAL_PAYMENT',
+              'PAID',
+              'COD_PENDING',
+              'READY_FOR_DELIVERY',
+              'DELIVERED_TO_CUSTOMER',
+              'DELIVERED',
+              'CLOSED',
+            ].includes(statusUpper);
+
+          data.display_status = qcApproved ? statusUpper : 'COMPLETED';
         } else {
           // Use lead status as display status
           data.display_status = data.status;
@@ -570,17 +655,25 @@ export default function SupervisorJobDetailPage() {
         data.display_status = data.status;
       }
 
-      // Fetch pickup tracking data to get pickup_odometer_reading
+      // Fetch pickup tracking data (odometer + arrival times)
       if (data.pickup_required) {
         const { data: pickupTracking, error: pickupTrackingError } = await supabase
           .from('pickup_tracking')
-          .select('pickup_odometer_reading, drop_odometer_reading')
+          .select('pickup_odometer_reading, drop_odometer_reading, pickup_arrival_time, pickup_handover_to_workshop_at')
           .eq('lead_id', jobId)
           .maybeSingle();
         
         if (!pickupTrackingError && pickupTracking) {
           (data as any).pickup_odometer_reading = pickupTracking.pickup_odometer_reading;
           (data as any).drop_odometer_reading = pickupTracking.drop_odometer_reading;
+
+          // Prefer service_leads columns if present, else fallback to pickup_tracking
+          if (!(data as any).pickup_arrival_time && (pickupTracking as any).pickup_arrival_time) {
+            (data as any).pickup_arrival_time = (pickupTracking as any).pickup_arrival_time;
+          }
+          if (!(data as any).pickup_handover_to_workshop_at && (pickupTracking as any).pickup_handover_to_workshop_at) {
+            (data as any).pickup_handover_to_workshop_at = (pickupTracking as any).pickup_handover_to_workshop_at;
+          }
         }
       }
 
@@ -1028,6 +1121,14 @@ export default function SupervisorJobDetailPage() {
       'QC_PENDING': 'bg-yellow-100 text-yellow-700',
       'QC_APPROVED': 'bg-green-100 text-green-700',
       'QC_FAILED': 'bg-red-100 text-red-700',
+      'READY_FOR_BILLING': 'bg-sky-100 text-sky-700',
+      'INVOICE_GENERATED': 'bg-indigo-100 text-indigo-700',
+      'PAYMENT_AWAITING': 'bg-amber-100 text-amber-800',
+      'AWAITING_PAYMENT': 'bg-amber-100 text-amber-800',
+      'INVOICE_SENT': 'bg-indigo-100 text-indigo-700',
+      'PARTIAL_PAYMENT': 'bg-amber-100 text-amber-800',
+      'PAID': 'bg-green-100 text-green-800',
+      'COD_PENDING': 'bg-amber-100 text-amber-800',
       'HOLD': 'bg-orange-100 text-orange-700',
       'ON_HOLD': 'bg-orange-100 text-orange-700', // Support both for backward compatibility
       'COMPLETED': 'bg-teal-100 text-teal-700',
@@ -1252,12 +1353,20 @@ export default function SupervisorJobDetailPage() {
               {lead.vehicle_year && (
                 <p className="text-xs sm:text-sm"><span className="text-gray-600">Year:</span> {lead.vehicle_year}</p>
               )}
-              {lead.vehicle_odometer && (
-                <p className="text-xs sm:text-sm">
-                  <span className="text-gray-600">Odometer:</span>{' '}
-                  <strong>{Number(lead.vehicle_odometer).toLocaleString()} km</strong>
-                </p>
-              )}
+              {(() => {
+                const odo =
+                  (lead as any).vehicle_odometer ??
+                  (lead as any).odometer_km ??
+                  (lead as any).pickup_odometer_reading ??
+                  null;
+                if (!odo) return null;
+                return (
+                  <p className="text-xs sm:text-sm">
+                    <span className="text-gray-600">Odometer:</span>{' '}
+                    <strong>{Number(odo).toLocaleString()} km</strong>
+                  </p>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1501,6 +1610,20 @@ export default function SupervisorJobDetailPage() {
                     </>
                   )}
                 </div>
+
+                      {(['ARRIVED_AT_WORKSHOP', 'VEHICLE_DROPPED_AT_WORKSHOP', 'DROPPED_AT_WORKSHOP'].includes(String(effectivePickupStatus || '').toUpperCase())) && (
+                        <div className="mt-1 text-[11px] sm:text-xs text-gray-600 flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          <span>
+                            Arrived at Workshop:{' '}
+                            <strong className="text-gray-800">
+                              {((lead as any)?.pickup_arrival_time || (lead as any)?.pickup_handover_to_workshop_at)
+                                ? formatDateTime((lead as any)?.pickup_arrival_time || (lead as any)?.pickup_handover_to_workshop_at)
+                                : '—'}
+                            </strong>
+                          </span>
+                        </div>
+                      )}
                     </td>
                   </tr>
 
@@ -1733,13 +1856,13 @@ export default function SupervisorJobDetailPage() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
           {/* Service Types */}
-          {lead.service_type_names && lead.service_type_names.length > 0 ? (
-                  lead.service_type_names.map((serviceName: string, index: number) => (
+          {(lead as any).service_types_detailed && (lead as any).service_types_detailed.length > 0 ? (
+                  (lead as any).service_types_detailed.map((st: any, index: number) => (
                     <tr key={`service-type-${index}`} className="hover:bg-gray-50">
                       <td className="px-4 md:px-6 py-3 md:py-4">
                         <div className="flex items-center gap-2">
                           <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                          <span className="text-xs sm:text-sm font-medium text-gray-900">{serviceName}</span>
+                          <span className="text-xs sm:text-sm font-medium text-gray-900">{st?.name || 'Service'}</span>
               </div>
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4">
@@ -1748,7 +1871,13 @@ export default function SupervisorJobDetailPage() {
                         </span>
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4">
-                        <span className="text-xs sm:text-sm text-gray-500">Included</span>
+                        {Number(st?.price || 0) > 0 ? (
+                          <span className="text-xs sm:text-sm font-semibold text-blue-700">
+                            ₹{Number(st.price).toLocaleString('en-IN')}
+                          </span>
+                        ) : (
+                          <span className="text-xs sm:text-sm text-gray-500">—</span>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -1763,7 +1892,7 @@ export default function SupervisorJobDetailPage() {
                       </span>
                     </td>
                     <td className="px-4 md:px-6 py-3 md:py-4">
-                      <span className="text-xs sm:text-sm text-gray-500">Included</span>
+                      <span className="text-xs sm:text-sm text-gray-500">—</span>
                     </td>
                   </tr>
           )}
@@ -1863,42 +1992,6 @@ export default function SupervisorJobDetailPage() {
         {/* Section 6: Extra Charges - Additional Jobs Tab */}
         {activeTab === 'additional-jobs' && (
           <div className="space-y-4">
-            {/* Pending Additional Jobs */}
-            {pendingExtraCharges.length > 0 && (
-              <div id="pending-additional-jobs" className="card bg-orange-50 border-orange-200">
-                <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
-                  <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
-                  Pending Additional Jobs Approval ({pendingExtraCharges.length})
-                </h3>
-                <div className="space-y-2 sm:space-y-3">
-                  {pendingExtraCharges.map((charge: any) => (
-                    <div key={charge.id} className="bg-white p-3 sm:p-4 rounded-lg border border-orange-200">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm sm:text-base">{charge.description}</p>
-                          <p className="text-xl sm:text-2xl font-bold text-brand-primary mt-0.5 sm:mt-1">
-                            ₹{charge.amount.toLocaleString()}
-                          </p>
-                          <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{charge.reason}</p>
-                        </div>
-                        <button
-                          onClick={() =>
-                            setSelectedExtraCharge({
-                              ...charge,
-                              requested_by_name: (charge as any)?.requester?.full_name || (charge as any)?.requested_by_name,
-                            })
-                          }
-                          className="btn bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
-                        >
-                          Review
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* All Additional Jobs (Approved/Rejected) */}
             {lead.extra_charges && lead.extra_charges.length > 0 && (
               <div className="card">

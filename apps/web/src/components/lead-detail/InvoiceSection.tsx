@@ -83,6 +83,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const [loading, setLoading] = useState(false);
   const [includedByServiceTypeId, setIncludedByServiceTypeId] = useState<Record<string, any[]>>({});
   const [includedByServiceNameKey, setIncludedByServiceNameKey] = useState<Record<string, any[]>>({});
+  const [editingIncludedFor, setEditingIncludedFor] = useState<string | null>(null);
+  const [includedRateDraft, setIncludedRateDraft] = useState<Record<string, string>>({});
   const [finalizing, setFinalizing] = useState(false);
   const [activating, setActivating] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -144,6 +146,44 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       console.error('Error fetching invoice:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  const buildIncludedDraft = (includedItems: any[]) => {
+    const next: Record<string, string> = {};
+    for (const it of includedItems || []) {
+      const pid = String(it?.product_id || '').trim();
+      if (!pid) continue;
+      const p = it?.unit_price != null ? Number(it.unit_price) : 0;
+      next[pid] = Number.isFinite(p) ? String(p) : '';
+    }
+    setIncludedRateDraft(next);
+  };
+
+  async function saveIncludedRates(serviceDescription: string, includedItems: any[]) {
+    if (!invoice?.id) return;
+    try {
+      const items = (includedItems || [])
+        .map((it: any) => {
+          const pid = String(it?.product_id || '').trim();
+          if (!pid) return null;
+          const raw = includedRateDraft[pid];
+          const unit_price = raw === '' || raw == null ? 0 : Number(raw);
+          return Number.isFinite(unit_price) ? { product_id: pid, unit_price } : null;
+        })
+        .filter(Boolean);
+
+      const res = await fetch(`/api/billing/invoices/${invoice.id}/included-items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service_description: serviceDescription, items }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to save included item rates');
+      setEditingIncludedFor(null);
+      await fetchInvoice();
+    } catch (e: any) {
+      alert(e?.message || 'Failed to save');
     }
   }
 
@@ -571,6 +611,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                 ? includedByServiceTypeId[String(it.service_type_id)]
                                 : includedByServiceNameKey[normalizeName(String(it?.description || ''))]
                               : [];
+                          const canEditIncluded = isOS && cat === 'SERVICE' && Array.isArray(includedItems) && includedItems.length > 0;
+                          const isEditingThis = canEditIncluded && editingIncludedFor === String(it?.description || '');
                           return (
                             <tr key={`${g.key}-${idx}`}>
                               <td className="px-4 py-3 text-gray-600">{sr}</td>
@@ -578,21 +620,91 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                 <div>{it?.description || '-'}</div>
                                 {Array.isArray(includedItems) && includedItems.length > 0 && (
                                   <div className="mt-1 text-[11px] text-gray-500">
-                                    <div className="font-semibold">Included:</div>
-                                    <ul className="mt-1 ml-4 list-disc space-y-0.5">
-                                      {includedItems.slice(0, 8).map((p: any, i: number) => (
-                                        <li key={`${p?.product_id || p?.name || i}`}>
-                                          {String(p?.name || 'Item')}
-                                          {p?.type ? ` (${String(p.type)})` : ''}
-                                          {` ×${Number(p?.quantity || 1) || 1}`}
-                                        </li>
-                                      ))}
-                                      {includedItems.length > 8 && (
-                                        <li className="list-none ml-[-1rem] text-gray-400">
-                                          +{includedItems.length - 8} more
-                                        </li>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="font-semibold">Included:</div>
+                                      {canEditIncluded && (
+                                        <button
+                                          type="button"
+                                          className="text-[11px] text-blue-700 hover:underline"
+                                          onClick={() => {
+                                            const desc = String(it?.description || '');
+                                            if (editingIncludedFor === desc) {
+                                              setEditingIncludedFor(null);
+                                              return;
+                                            }
+                                            setEditingIncludedFor(desc);
+                                            buildIncludedDraft(includedItems);
+                                          }}
+                                        >
+                                          {isEditingThis ? 'Cancel' : 'Edit rates'}
+                                        </button>
                                       )}
-                                    </ul>
+                                    </div>
+
+                                    <div className="mt-1 overflow-x-auto">
+                                      <table className="min-w-[520px] w-full text-[11px]">
+                                        <thead>
+                                          <tr className="text-gray-500">
+                                            <th className="text-left pr-2 py-1 font-semibold">Item</th>
+                                            <th className="text-left pr-2 py-1 font-semibold">Type</th>
+                                            <th className="text-right pr-2 py-1 font-semibold">Qty</th>
+                                            <th className="text-right pr-2 py-1 font-semibold">Rate</th>
+                                            <th className="text-right py-1 font-semibold">Amount</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                          {(includedItems || []).slice(0, 12).map((p: any, i: number) => {
+                                            const qtyI = Number(p?.quantity || 1) || 1;
+                                            const unitPrice = Number(p?.unit_price || 0) || 0;
+                                            const amtI = Number(p?.amount ?? unitPrice * qtyI) || 0;
+                                            const pid = String(p?.product_id || i);
+                                            return (
+                                              <tr key={pid} className="text-gray-700">
+                                                <td className="pr-2 py-1">
+                                                  {String(p?.name || 'Item')}
+                                                  {p?.part_number ? ` (${String(p.part_number)})` : ''}
+                                                </td>
+                                                <td className="pr-2 py-1">{String(p?.type || '—')}</td>
+                                                <td className="pr-2 py-1 text-right">{qtyI}</td>
+                                                <td className="pr-2 py-1 text-right">
+                                                  {isEditingThis ? (
+                                                    <input
+                                                      className="w-20 rounded border border-gray-200 px-2 py-0.5 text-right"
+                                                      value={includedRateDraft[String(p?.product_id || '')] ?? String(unitPrice || '')}
+                                                      onChange={(e) =>
+                                                        setIncludedRateDraft((prev) => ({
+                                                          ...prev,
+                                                          [String(p?.product_id || '')]: e.target.value,
+                                                        }))
+                                                      }
+                                                    />
+                                                  ) : (
+                                                    money(unitPrice)
+                                                  )}
+                                                </td>
+                                                <td className="py-1 text-right font-medium">{money(amtI)}</td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                      {includedItems.length > 12 && (
+                                        <div className="mt-1 text-gray-400">+{includedItems.length - 12} more</div>
+                                      )}
+                                    </div>
+
+                                    {isEditingThis && (
+                                      <div className="mt-2 flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          className="px-2 py-1 rounded bg-blue-600 text-white text-[11px]"
+                                          onClick={() => saveIncludedRates(String(it?.description || ''), includedItems)}
+                                        >
+                                          Save
+                                        </button>
+                                        <span className="text-gray-400 text-[11px]">Saved only for this OS invoice</span>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </td>

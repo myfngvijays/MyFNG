@@ -390,6 +390,39 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       extraWork = data || [];
     }
 
+    // Odometer fallback:
+    // Some installs store it in `odometer_km` or only in pickup_tracking.
+    try {
+      const currentOdo = Number((lead as any)?.vehicle_odometer || 0) || 0;
+      if (currentOdo <= 0) {
+        // 1) Try odometer_km on service_leads (legacy)
+        try {
+          const { data } = await reader
+            .from('service_leads')
+            .select('odometer_km')
+            .eq('id', leadId)
+            .maybeSingle();
+          const legacy = Number((data as any)?.odometer_km || 0) || 0;
+          if (legacy > 0) (lead as any).vehicle_odometer = legacy;
+        } catch {
+          // ignore
+        }
+
+        // 2) Try pickup_tracking pickup_odometer_reading
+        if (!(Number((lead as any)?.vehicle_odometer || 0) > 0)) {
+          const { data: tracking } = await reader
+            .from('pickup_tracking')
+            .select('pickup_odometer_reading')
+            .eq('lead_id', leadId)
+            .maybeSingle();
+          const picked = Number((tracking as any)?.pickup_odometer_reading || 0) || 0;
+          if (picked > 0) (lead as any).vehicle_odometer = picked;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     return NextResponse.json(
       {
         lead,

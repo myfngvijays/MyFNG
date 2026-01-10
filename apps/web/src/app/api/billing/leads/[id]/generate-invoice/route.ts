@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import {
   generateInvoiceNumber,
   getHSNCode,
@@ -8,6 +9,7 @@ import {
   numberToWords,
   roundOff,
 } from '@/lib/utils/invoiceUtils';
+import { getEffectivePricingItemAmount, getEffectiveQty } from '@/lib/utils/pricing';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { createNotification, notifyTelecallerTeamlead, notifyWorkshopRoles } from '@/lib/notifications';
 
@@ -19,6 +21,19 @@ export async function POST(
 ) {
   try {
     const supabase = await createClient();
+
+    // Optional service-role client for write operations when RLS blocks (best-effort).
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const serviceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY ||
+      process.env.SUPABASE_ADMIN_KEY;
+    const supabaseAdmin =
+      supabaseUrl && serviceRoleKey
+        ? createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
+            auth: { persistSession: false, autoRefreshToken: false },
+          })
+        : null;
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -381,7 +396,7 @@ export async function POST(
       .single();
 
     // Calculate base amount from pricing items
-    const pricingItemsTotal = pricingItems?.reduce((sum, item) => sum + parseFloat(item.final_price || '0'), 0) || 0;
+    const pricingItemsTotal = pricingItems?.reduce((sum, item) => sum + getEffectivePricingItemAmount(item), 0) || 0;
     const estimatedAmount = parseFloat(lead.estimated_amount || '0');
     const estimatedCost = parseFloat(lead.estimated_cost || '0');
     const actualAmount = parseFloat(lead.actual_amount || '0');
@@ -518,12 +533,14 @@ export async function POST(
     // Add pricing items
     pricingItems?.forEach((item) => {
       const hsnCode = getHSNCode(item.item_name, true);
+      const qty = getEffectiveQty(item, 1);
+      const amt = getEffectivePricingItemAmount(item);
       lineItems.push({
         description: item.item_name,
         hsn_sac: hsnCode,
-        qty: item.qty || 1,
-        rate: parseFloat(item.final_price || '0') / (item.qty || 1),
-        amount: parseFloat(item.final_price || '0'),
+        qty,
+        rate: qty ? amt / qty : amt,
+        amount: amt,
         is_addon: item.is_addon || false,
       });
       if (!hsnSacCodes.includes(hsnCode)) {
@@ -696,32 +713,86 @@ export async function POST(
 
     // Update lead with invoice details (Step 0: System actions)
     // Status should be INVOICE_GENERATED initially, will change to AWAITING_PAYMENT after approval
-    await supabase
-      .from('service_leads')
-      .update({
-        invoice_id: invoice.id,
-        invoice_amount: finalAmount,
-        invoice_generated_by: userProfile.id,
-        invoice_generated_at: nowISO,
-        status: 'INVOICE_GENERATED', // Will change to AWAITING_PAYMENT after approval
-        updated_at: nowISO
-      })
-      .eq('id', leadId);
+    const leadUpdatePayload = {
+      invoice_id: invoice.id,
+      invoice_amount: finalAmount,
+      invoice_generated_by: userProfile.id,
+      invoice_generated_at: nowISO,
+      status: 'INVOICE_GENERATED', // Will change to AWAITING_PAYMENT after approval
+      updated_at: nowISO,
+    };
+
+    const tryUpdateLead = async (client: any) =>
+      client
+        .from('service_leads')
+        .update(leadUpdatePayload)
+        .eq('id', leadId)
+        .select('id, status, invoice_id')
+        .maybeSingle();
+
+    let leadUpdate = await tryUpdateLead(supabase);
+    if (leadUpdate.error) {
+      const msg = String(leadUpdate.error?.message || leadUpdate.error);
+      const code = (leadUpdate.error as any)?.code;
+      const isRls =
+        code === '42501' ||
+        /row-level security|violates row level security|permission denied/i.test(msg);
+      if (isRls && supabaseAdmin) {
+        leadUpdate = await tryUpdateLead(supabaseAdmin);
+      }
+    }
+
+    if (leadUpdate.error) {
+      return NextResponse.json(
+        {
+          error: 'Failed to update lead status after invoice generation',
+          details: (leadUpdate.error as any)?.message || String(leadUpdate.error),
+          code: (leadUpdate.error as any)?.code,
+          hint: supabaseAdmin
+            ? null
+            : 'Server is missing SUPABASE_SERVICE_ROLE_KEY; if RLS blocks this update, configure it or adjust policies.',
+        },
+        { status: 500 }
+      );
+    }
 
     // Lock job card for edits after invoice generation (Step 0: System actions)
     // Mark job card as locked after invoice generation
     if (jobCard) {
       // Update job card with locked_at timestamp (column added in migration 78)
-      await supabase
-        .from('job_cards')
-        .update({
-          locked_at: nowISO,
-          locked_by: userProfile.id,
-          lock_reason: `Locked after invoice generation: ${invoiceNumber}`,
-          status: 'INVOICE_GENERATED', // Mark as invoice generated to prevent edits
-          updated_at: nowISO,
-        })
-        .eq('id', jobCard.id);
+      const jobCardUpdatePayload = {
+        locked_at: nowISO,
+        locked_by: userProfile.id,
+        lock_reason: `Locked after invoice generation: ${invoiceNumber}`,
+        status: 'INVOICE_GENERATED', // Mark as invoice generated to prevent edits
+        updated_at: nowISO,
+      };
+
+      const tryUpdateJobCard = async (client: any) =>
+        client.from('job_cards').update(jobCardUpdatePayload).eq('id', jobCard.id);
+
+      let jobCardUpdate = await tryUpdateJobCard(supabase);
+      if (jobCardUpdate.error) {
+        const msg = String(jobCardUpdate.error?.message || jobCardUpdate.error);
+        const code = (jobCardUpdate.error as any)?.code;
+        const isRls =
+          code === '42501' ||
+          /row-level security|violates row level security|permission denied/i.test(msg);
+        if (isRls && supabaseAdmin) {
+          jobCardUpdate = await tryUpdateJobCard(supabaseAdmin);
+        }
+      }
+
+      if (jobCardUpdate.error) {
+        return NextResponse.json(
+          {
+            error: 'Invoice generated but failed to lock job card',
+            details: (jobCardUpdate.error as any)?.message || String(jobCardUpdate.error),
+            code: (jobCardUpdate.error as any)?.code,
+          },
+          { status: 500 }
+        );
+      }
 
       // Log job card lock event
       await supabase

@@ -7,6 +7,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { calculateTaxes, getPlaceOfSupply, numberToWords, roundOff } from '@/lib/utils/invoiceUtils';
+import { getEffectivePricingItemAmount, getEffectiveQty } from '@/lib/utils/pricing';
+import { resolveWorkshopServicePriceBestAvailable } from '@/lib/utils/workshopServicePricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -164,10 +166,7 @@ export async function POST(
     }
     // Priority 6: Sum up pricing items if available
     else if (pricingItems && pricingItems.length > 0) {
-      baseAmount = pricingItems.reduce(
-        (sum, item) => sum + parseFloat(item.final_price || '0'),
-        0
-      );
+      baseAmount = pricingItems.reduce((sum, item) => sum + getEffectivePricingItemAmount(item), 0);
     }
     
     const partsTotal = jobCard?.job_card_parts?.reduce(
@@ -561,10 +560,132 @@ export async function GET(
         part_number?: string | null;
         unit?: string | null;
         quantity: number;
+        unit_price?: number;
+        amount?: number;
+        price_source?: string;
       }>;
     }> = [];
 
     try {
+      const workshopId = String((leadMeta as any)?.workshop_id || '').trim();
+
+      // Resolve vehicleClass + zoneId for workshop_product_pricing
+      let vehicleClass: string | null = null;
+      let zoneId: string | null = null;
+      try {
+        const modelId = String((leadMeta as any)?.model_id || '').trim();
+        if (modelId) {
+          const { data: cm } = await supabase.from('car_models').select('class').eq('id', modelId).maybeSingle();
+          vehicleClass = (cm as any)?.class || null;
+        } else if ((leadMeta as any)?.vehicle_model) {
+          const { data: cm } = await supabase
+            .from('car_models')
+            .select('class')
+            .eq('model_name', (leadMeta as any).vehicle_model)
+            .maybeSingle();
+          vehicleClass = (cm as any)?.class || null;
+        }
+      } catch {
+        // ignore if table/schema differs
+      }
+      try {
+        if (workshopId) {
+          const { data: w } = await supabase.from('workshops').select('zone_id').eq('id', workshopId).maybeSingle();
+          zoneId = (w as any)?.zone_id || null;
+        }
+      } catch {
+        // ignore
+      }
+
+      const productPriceCache = new Map<string, { unit_price: number; source: string }>();
+      const resolveProductUnitPrice = async (productId: string, fallbackPrice: number) => {
+        if (!productId) return { unit_price: fallbackPrice || 0, source: 'fallback' };
+        const cached = productPriceCache.get(productId);
+        if (cached) return cached;
+
+        let price = Number(fallbackPrice || 0) || 0;
+        let source: string = price > 0 ? 'master_products' : 'fallback';
+
+        // Workshop overrides: Class+Zone > Class > Zone > Default
+        if (workshopId) {
+          try {
+            if (vehicleClass && zoneId) {
+              const { data } = await supabase
+                .from('workshop_product_pricing')
+                .select('selling_price')
+                .eq('workshop_id', workshopId)
+                .eq('product_id', productId)
+                .eq('class', vehicleClass)
+                .eq('zone_id', zoneId)
+                .maybeSingle();
+              const p = Number((data as any)?.selling_price || 0) || 0;
+              if (p > 0) {
+                price = p;
+                source = 'workshop_product_pricing:class+zone';
+              }
+            }
+
+            if (source.startsWith('master_products') || source === 'fallback') {
+              if (vehicleClass) {
+                const { data } = await supabase
+                  .from('workshop_product_pricing')
+                  .select('selling_price')
+                  .eq('workshop_id', workshopId)
+                  .eq('product_id', productId)
+                  .eq('class', vehicleClass)
+                  .is('zone_id', null)
+                  .maybeSingle();
+                const p = Number((data as any)?.selling_price || 0) || 0;
+                if (p > 0) {
+                  price = p;
+                  source = 'workshop_product_pricing:class';
+                }
+              }
+            }
+
+            if (source.startsWith('master_products') || source === 'fallback') {
+              if (zoneId) {
+                const { data } = await supabase
+                  .from('workshop_product_pricing')
+                  .select('selling_price')
+                  .eq('workshop_id', workshopId)
+                  .eq('product_id', productId)
+                  .is('class', null)
+                  .eq('zone_id', zoneId)
+                  .maybeSingle();
+                const p = Number((data as any)?.selling_price || 0) || 0;
+                if (p > 0) {
+                  price = p;
+                  source = 'workshop_product_pricing:zone';
+                }
+              }
+            }
+
+            if (source.startsWith('master_products') || source === 'fallback') {
+              const { data } = await supabase
+                .from('workshop_product_pricing')
+                .select('selling_price')
+                .eq('workshop_id', workshopId)
+                .eq('product_id', productId)
+                .is('class', null)
+                .is('zone_id', null)
+                .maybeSingle();
+              const p = Number((data as any)?.selling_price || 0) || 0;
+              if (p > 0) {
+                price = p;
+                source = 'workshop_product_pricing:default';
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        const out = { unit_price: Number(price || 0) || 0, source };
+        productPriceCache.set(productId, out);
+        return out;
+      };
+
       const serviceTypeIdsRaw =
         parseIdList((leadMeta as any)?.service_type_ids) ||
         [];
@@ -589,7 +710,7 @@ export async function GET(
         const { data: svcItems } = await supabase
           .from('service_type_items')
           .select(
-            'service_type_id, quantity, is_active, product:master_products(id, name, type, part_number, unit)'
+            'service_type_id, quantity, is_active, product:master_products(id, name, type, part_number, unit, default_price)'
           )
           .in('service_type_id', serviceTypeIds)
           .eq('is_active', true);
@@ -609,16 +730,39 @@ export async function GET(
             service_type_id: sid,
             service_name: nameById.get(sid) || '',
             items: raw
-              .map((r: any) => ({
-                product_id: String(r?.product?.id || ''),
-                name: String(r?.product?.name || ''),
-                type: String(r?.product?.type || ''),
-                part_number: r?.product?.part_number ?? null,
-                unit: r?.product?.unit ?? null,
-                quantity: Number(r?.quantity || 1) || 1,
-              }))
+              .map((r: any) => {
+                const product_id = String(r?.product?.id || '');
+                const quantity = Number(r?.quantity || 1) || 1;
+                const fallbackPrice = Number(r?.product?.default_price ?? 0) || 0;
+                return {
+                  product_id,
+                  name: String(r?.product?.name || ''),
+                  type: String(r?.product?.type || ''),
+                  part_number: r?.product?.part_number ?? null,
+                  unit: r?.product?.unit ?? null,
+                  quantity,
+                  // resolved later (best-effort; async)
+                  unit_price: fallbackPrice,
+                  amount: fallbackPrice * quantity,
+                  price_source: fallbackPrice > 0 ? 'master_products' : 'fallback',
+                };
+              })
               .filter((x: any) => x.product_id && x.name),
           });
+        }
+      }
+
+      // Resolve workshop product prices (best-effort) and compute amounts
+      for (const svc of included_service_items) {
+        const items = Array.isArray(svc.items) ? svc.items : [];
+        for (const it of items) {
+          const productId = String(it?.product_id || '').trim();
+          const qty = Number(it?.quantity || 1) || 1;
+          const fallbackPrice = Number(it?.unit_price || 0) || 0;
+          const resolved = await resolveProductUnitPrice(productId, fallbackPrice);
+          it.unit_price = resolved.unit_price;
+          it.price_source = resolved.source;
+          it.amount = (Number(resolved.unit_price || 0) || 0) * qty;
         }
       }
     } catch {
@@ -637,10 +781,20 @@ export async function GET(
     const osLooksStale = (inv: any) => {
       const li = Array.isArray(inv?.line_items) ? inv.line_items : [];
       if (li.length === 0) return true;
+      const serviceLi = li.filter((x: any) => {
+        const c = String(x?.category || '').toUpperCase();
+        return c === 'SERVICE' || c === 'ADDON';
+      });
+      // If base_amount is 0 and there are no service/addon lines, the invoice is incomplete (common in older OS rows).
+      const baseZero = Number(inv?.base_amount || 0) <= 0;
+      const missingServiceLines = baseZero && serviceLi.length === 0;
+      const hasZeroService = serviceLi.some(
+        (x: any) => Number(x?.amount || 0) <= 0 && Number(x?.rate || 0) <= 0
+      );
       const extraLi = li.filter((x: any) => String(x?.category || '').toUpperCase() === 'EXTRA');
       const hasZeroExtra = extraLi.some((x: any) => Number(x?.amount || 0) <= 0 && Number(x?.rate || 0) <= 0);
       const totalsZero = Number(inv?.final_amount || inv?.total_amount || 0) <= 0;
-      return hasZeroExtra || totalsZero;
+      return missingServiceLines || hasZeroService || hasZeroExtra || totalsZero;
     };
 
     const ciLooksStale = (inv: any) => osLooksStale(inv);
@@ -699,11 +853,11 @@ export async function GET(
             .maybeSingle(),
         ]);
 
-        // Base service lines from pricing items
-        const serviceLines = (pricingItems || []).map((it: any) => {
-          const qtyRaw = it.quantity ?? it.qty ?? 1;
-          const qty = qtyRaw ? parseFloat(String(qtyRaw)) : 1;
-          const amount = parseFloat(it.final_price || '0') || 0;
+        // Base service lines:
+        // Prefer workshop pricing (same logic used by public estimate), with vehicle class when available.
+        const serviceLinesFromPricingItems = (pricingItems || []).map((it: any) => {
+          const qty = getEffectiveQty(it, 1);
+          const amount = getEffectivePricingItemAmount(it);
           return {
             description: it.name || it.item_name || 'Service',
             qty,
@@ -715,55 +869,54 @@ export async function GET(
 
         // Fallback: if lead_pricing_items empty, use workshop pricing tables by service_type_ids/subservice_ids
         let fallbackServiceLines: any[] = [];
+        let workshopServiceLines: any[] = [];
         try {
-          if ((serviceLines?.length || 0) === 0) {
-            const serviceTypeIds = parseIdList((leadFull as any).service_type_ids);
-            const addonIds = parseIdList((leadFull as any).subservice_ids);
+          const serviceTypeIds = parseIdList((leadFull as any).service_type_ids);
+          const addonIds = parseIdList((leadFull as any).subservice_ids);
 
-            if (serviceTypeIds.length > 0) {
-              let serviceTypes: any[] = [];
-              const { data: serviceTypesData, error: stErr } = await supabase
+          if (serviceTypeIds.length > 0) {
+            // Load service type names (base_price optional)
+            let serviceTypes: any[] = [];
+            const { data: serviceTypesData, error: stErr } = await supabase
+              .from('service_types')
+              .select('id, name, base_price')
+              .in('id', serviceTypeIds);
+            if (!stErr && serviceTypesData) {
+              serviceTypes = serviceTypesData as any[];
+            } else {
+              const { data: stAlt } = await supabase
                 .from('service_types')
-                .select('id, name, base_price')
+                .select('id, name')
                 .in('id', serviceTypeIds);
-              if (!stErr && serviceTypesData) {
-                serviceTypes = serviceTypesData as any[];
-              } else {
-                const { data: stAlt } = await supabase
-                  .from('service_types')
-                  .select('id, name')
-                  .in('id', serviceTypeIds);
-                serviceTypes = (stAlt || []) as any[];
-              }
-
-              const { data: wsp } = await supabase
-                .from('workshop_service_pricing')
-                .select('service_type_id, custom_price')
-                .eq('workshop_id', leadFull.workshop_id)
-                .in('service_type_id', serviceTypeIds)
-                .eq('is_active', true);
-
-              const priceByServiceType: Record<string, number> = {};
-              for (const row of wsp || []) {
-                const id = String((row as any).service_type_id || '');
-                const p = parseFloat(String((row as any).custom_price || '0')) || 0;
-                if (id) priceByServiceType[id] = p;
-              }
-
-              for (const st of serviceTypes) {
-                const id = String(st?.id || '');
-                const base = parseFloat(String((st as any).base_price || '0')) || 0;
-                const custom = priceByServiceType[id] || 0;
-                const amount = custom > 0 ? custom : base;
-                fallbackServiceLines.push({
-                  description: st?.name || 'Service',
-                  qty: 1,
-                  rate: amount,
-                  amount,
-                  category: 'SERVICE',
-                });
-              }
+              serviceTypes = (stAlt || []) as any[];
             }
+
+            // Build workshop-based prices (match public customer page behavior)
+            for (const st of serviceTypes) {
+              const id = String(st?.id || '').trim();
+              if (!id) continue;
+              let price = 0;
+              try {
+                price = await resolveWorkshopServicePriceBestAvailable({
+                  supabase,
+                  workshopId: String(leadFull.workshop_id),
+                  serviceTypeId: id,
+                });
+              } catch {
+                price = 0;
+              }
+              const base = parseFloat(String((st as any).base_price || '0')) || 0;
+              const amount = price > 0 ? price : base;
+              workshopServiceLines.push({
+                description: st?.name || 'Service',
+                qty: 1,
+                rate: amount,
+                amount,
+                category: 'SERVICE',
+                service_type_id: id,
+              });
+            }
+          }
 
             if (addonIds.length > 0) {
               const { data: addons } = await supabase
@@ -799,12 +952,17 @@ export async function GET(
                 });
               }
             }
-          }
         } catch {
           // ignore fallback errors
         }
 
-        const effectiveServiceLines = (serviceLines?.length || 0) > 0 ? serviceLines : fallbackServiceLines;
+        // Prefer workshop-based service lines when available (matches public estimate).
+        const effectiveServiceLines =
+          (workshopServiceLines?.length || 0) > 0
+            ? [...workshopServiceLines, ...fallbackServiceLines.filter((x: any) => String(x?.category || '').toUpperCase() !== 'SERVICE')]
+            : (serviceLinesFromPricingItems?.length || 0) > 0
+              ? serviceLinesFromPricingItems
+              : fallbackServiceLines;
         const partLines = (jobCard?.job_card_parts || []).map((p: any) => ({
           description: `${p.part_name || 'Part'}${p.part_number ? ` (${p.part_number})` : ''}`,
           qty: p.quantity || 1,
@@ -950,6 +1108,57 @@ export async function GET(
     // Preserve any creator field we attached above on the selected invoice
     if ((invoice as any).creator && mappedInvoice) {
       (mappedInvoice as any).creator = (invoice as any).creator;
+    }
+
+    // Apply any per-invoice overrides for included items (stored on service line_items)
+    try {
+      const normalizeName = (s: string) =>
+        String(s || '')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const svcOverrideByTypeId = new Map<string, Map<string, number>>();
+      const svcOverrideByName = new Map<string, Map<string, number>>();
+      const li = Array.isArray((mappedInvoice as any)?.line_items) ? (mappedInvoice as any).line_items : [];
+      for (const row of li) {
+        const cat = String(row?.category || '').toUpperCase();
+        if (cat !== 'SERVICE') continue;
+        const serviceTypeId = String(row?.service_type_id || '').trim();
+        const keyName = normalizeName(String(row?.description || ''));
+        const includedOverrides = Array.isArray(row?.included_items) ? row.included_items : [];
+        if (!includedOverrides.length) continue;
+        const m = new Map<string, number>();
+        for (const o of includedOverrides) {
+          const pid = String(o?.product_id || '').trim();
+          const p = Number(o?.unit_price || 0) || 0;
+          if (pid && p >= 0) m.set(pid, p);
+        }
+        if (m.size === 0) continue;
+        if (serviceTypeId) svcOverrideByTypeId.set(serviceTypeId, m);
+        if (keyName) svcOverrideByName.set(keyName, m);
+      }
+
+      for (const svc of included_service_items) {
+        const sid = String((svc as any)?.service_type_id || '').trim();
+        const snameKey = normalizeName(String((svc as any)?.service_name || ''));
+        const overrideMap = (sid && svcOverrideByTypeId.get(sid)) || (snameKey && svcOverrideByName.get(snameKey)) || null;
+        if (!overrideMap) continue;
+        for (const it of (svc as any).items || []) {
+          const pid = String(it?.product_id || '').trim();
+          if (!pid) continue;
+          if (!overrideMap.has(pid)) continue;
+          const unitPrice = overrideMap.get(pid) as number;
+          it.unit_price = unitPrice;
+          it.price_source = 'invoice_override';
+          const qty = Number(it?.quantity || 1) || 1;
+          it.amount = (Number(unitPrice || 0) || 0) * qty;
+        }
+      }
+    } catch {
+      // ignore override application
     }
 
     return NextResponse.json(

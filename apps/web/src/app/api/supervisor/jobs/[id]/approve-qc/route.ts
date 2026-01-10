@@ -2,6 +2,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyQCDecision, notifyAccountsTeam, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
+import { getEffectivePricingItemAmount, getEffectiveQty } from '@/lib/utils/pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -349,8 +350,7 @@ export async function POST(
 
         const extraCharges = (Array.isArray(extraChargesRaw) ? extraChargesRaw : []).filter(isApprovedExtra);
 
-        const pricingTotal =
-          (pricingItems || []).reduce((sum: number, it: any) => sum + parseFloat(it.final_price || '0'), 0) || 0;
+        const pricingTotal = (pricingItems || []).reduce((sum: number, it: any) => sum + getEffectivePricingItemAmount(it), 0) || 0;
         const extraTotal =
           (extraCharges || []).reduce((sum: number, it: any) => sum + computeExtraAmount(it), 0) || 0;
         const partsTotal =
@@ -362,9 +362,8 @@ export async function POST(
 
         const lineItems: any[] = [];
         (pricingItems || []).forEach((it: any) => {
-          const qtyRaw = it.quantity ?? it.qty ?? 1;
-          const qty = qtyRaw ? parseFloat(String(qtyRaw)) : 1;
-          const amt = parseFloat(it.final_price || '0') || 0;
+          const qty = getEffectiveQty(it, 1);
+          const amt = getEffectivePricingItemAmount(it);
           lineItems.push({
             description: it.name || it.item_name || 'Service',
             qty,

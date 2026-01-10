@@ -359,7 +359,15 @@ export default function TrackLeadPage() {
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-gray-600">Odometer</span>
                     <span className="font-medium text-gray-900">
-                      {lead.vehicle_odometer ? `${lead.vehicle_odometer} km` : '—'}
+                      {(() => {
+                        const odo =
+                          (lead as any)?.vehicle_odometer ??
+                          (lead as any)?.odometer_km ??
+                          (lead as any)?.pickup_odometer_reading ??
+                          null;
+                        const n = Number(odo || 0) || 0;
+                        return n > 0 ? `${n.toLocaleString('en-IN')} km` : '—';
+                      })()}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">

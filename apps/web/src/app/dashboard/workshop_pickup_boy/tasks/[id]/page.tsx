@@ -230,10 +230,19 @@ export default function PickupTaskDetailPage() {
         throw new Error(data.error || 'Failed to verify OTP');
       }
 
-      toast.success(otpType === 'DROP' ? '✅ Delivery OTP verified!' : '✅ OTP verified successfully! Status updated to VEHICLE_IN_TRANSIT');
+      toast.success(
+        otpType === 'DROP'
+          ? '✅ Delivery OTP verified! Status updated to DELIVERED'
+          : '✅ OTP verified successfully! Status updated to VEHICLE_IN_TRANSIT'
+      );
       setShowOTPModal(false);
       setOtpVerified(true);
-      fetchTaskDetails();
+      await fetchTaskDetails();
+
+      // For delivery: OTP verification completes delivery; send user back to tasks list.
+      if (otpType === 'DROP') {
+        router.push('/dashboard/workshop_pickup_boy/tasks');
+      }
     } catch (error: any) {
       console.error('Error:', error);
       toast.error(`Failed to verify OTP: ${error.message}`);

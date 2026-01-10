@@ -6,6 +6,7 @@ import { formatDateDMY, formatDateTime } from "@/lib/utils";
 
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveWorkshopServicePriceBestAvailable } from '@/lib/utils/workshopServicePricing';
 
 export async function GET(
   request: NextRequest,
@@ -46,7 +47,7 @@ export async function GET(
     if (invoice.lead_id) {
       const { data: leadData, error: leadError } = await supabase
         .from('service_leads')
-        .select('id, lead_number, customer_name, customer_email, customer_phone, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, vehicle_year, vehicle_fuel_type, odometer_km, service_type, service_type_ids, subservice_ids, customer_address, city, state, pincode')
+        .select('id, lead_number, customer_name, customer_email, customer_phone, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, vehicle_year, vehicle_fuel_type, model_id, city_id, vehicle_odometer, odometer_km, service_type, service_type_ids, subservice_ids, customer_address, city, state, pincode')
         .eq('id', invoice.lead_id)
         .maybeSingle();
       
@@ -69,12 +70,13 @@ export async function GET(
         }
       } else {
         lead = leadData;
-        console.log('[Generate PDF API] Lead data fetched successfully:', {
+          console.log('[Generate PDF API] Lead data fetched successfully:', {
           vehicle_number: lead?.vehicle_number,
           vehicle_make: lead?.vehicle_make,
           vehicle_model: lead?.vehicle_model,
           vehicle_fuel_type: lead?.vehicle_fuel_type,
-          odometer_km: lead?.odometer_km
+            vehicle_odometer: (lead as any)?.vehicle_odometer,
+            odometer_km: (lead as any)?.odometer_km
         });
       }
     }
@@ -105,7 +107,7 @@ export async function GET(
           if (serviceTypesData) {
             serviceTypes = serviceTypesData;
           }
-          
+
           // Fetch workshop-specific pricing for these service types
           const { data: workshopPricingData } = await supabase
             .from('workshop_service_pricing')
@@ -116,6 +118,33 @@ export async function GET(
           
           if (workshopPricingData) {
             workshopServicePricing = workshopPricingData;
+          }
+
+          // Resolve per-service price (match public customer page behavior)
+          try {
+            const resolved: any[] = [];
+            for (const st of serviceTypes || []) {
+              const stId = String((st as any)?.id || '').trim();
+              if (!stId) {
+                resolved.push(st);
+                continue;
+              }
+              const p = await resolveWorkshopServicePriceBestAvailable({
+                supabase,
+                workshopId: String(invoice.workshop_id),
+                serviceTypeId: stId,
+              });
+              resolved.push({ ...(st as any), resolved_price: p });
+            }
+            serviceTypes = resolved;
+
+            // Best-effort: if we found any resolved service prices, reflect them in base_amount for PDF math.
+            const sum = resolved.reduce((acc, st) => acc + (Number((st as any)?.resolved_price || 0) || 0), 0);
+            if (sum > 0) {
+              (invoice as any).base_amount = sum;
+            }
+          } catch {
+            // ignore
           }
         }
       } catch (error) {
@@ -329,7 +358,7 @@ export async function GET(
       jobCardParts,
       pricingItems,
       workshopServicePricing,
-      serviceTypeItems
+      serviceTypeItems,
     };
 
     // Generate HTML for PDF (will be converted to PDF)
@@ -372,6 +401,7 @@ function generateInvoiceHTML(invoice: any): string {
   const pricingItems = invoice.pricingItems || [];
   const workshopServicePricing = invoice.workshopServicePricing || [];
   const serviceTypeItems = invoice.serviceTypeItems || [];
+  // vehicleClass is attached by the route (best-effort) for debugging/traceability
   
   // Use invoice customer address if available, otherwise use lead
   const customerAddress = invoice.customer_address || lead.customer_address || lead.address || '';
@@ -412,8 +442,8 @@ function generateInvoiceHTML(invoice: any): string {
     ? serviceTypes.map((st: any) => st.name).join(' + ') 
     : (lead?.service_type || 'Periodic Service');
   
-  // Odometer reading - use odometer_km field
-  const odometerReading = lead?.odometer_km || null;
+  // Odometer reading - prefer lead.vehicle_odometer (UI standard), fallback to odometer_km (legacy installs)
+  const odometerReading = (lead as any)?.vehicle_odometer ?? (lead as any)?.odometer_km ?? null;
   
   // Debug: Log vehicle details
   if (!lead || !lead.vehicle_number) {
@@ -445,17 +475,22 @@ function generateInvoiceHTML(invoice: any): string {
       return piServiceTypeId === stId;
     });
     
-    // Find workshop pricing
+    // Find workshop pricing (pre-fetched best-effort; may not be class/city aware)
     const workshopPricing = workshopServicePricing.find((wsp: any) => {
       const wspId = String(wsp.service_type_id || '');
       const stId = String(serviceType.id || '');
       return wspId === stId;
     });
-    
-    const servicePrice = pricingItem?.final_price || 
-                        pricingItem?.base_price ||
-                        workshopPricing?.custom_price || 
-                        (serviceTypes.length > 0 ? (invoice.base_amount || 0) / serviceTypes.length : invoice.base_amount || 0);
+
+    // Prefer workshop resolver (city/class aware) to match public estimate pricing.
+    // NOTE: This runs in a server route; `invoice.__supabase` is not available here, so resolver call is done earlier.
+    const resolvedByRoute = Number((serviceType as any)?.resolved_price || 0) || 0;
+    const servicePrice =
+      resolvedByRoute ||
+      pricingItem?.final_price ||
+      pricingItem?.base_price ||
+      workshopPricing?.custom_price ||
+      (serviceTypes.length > 0 ? (invoice.base_amount || 0) / serviceTypes.length : invoice.base_amount || 0);
     
     // Add service type heading with price
     allLineItems.push({

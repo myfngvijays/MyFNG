@@ -131,6 +131,11 @@ export default function MechanicJobDetailPage() {
   const [missingBeforePhotos, setMissingBeforePhotos] = useState<string[]>([]);
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const [serviceAddonNames, setServiceAddonNames] = useState<string[]>([]);
+  const [supervisorObservation, setSupervisorObservation] = useState<{
+    text: string;
+    updatedAt: string | null;
+    byName: string | null;
+  }>({ text: '', updatedAt: null, byName: null });
 
   useEffect(() => {
     if (leadId) {
@@ -508,12 +513,17 @@ export default function MechanicJobDetailPage() {
             vehicle_make,
             vehicle_model,
             vehicle_variant,
+            vehicle_year,
+            vehicle_odometer,
             vehicle_fuel_type,
             problem_description,
             service_type_ids,
             subservice_ids,
             status,
-            qc_status
+            qc_status,
+            supervisor_observation,
+            supervisor_observation_updated_at,
+            supervisor_observation_by_user:supervisor_observation_by(full_name)
           )
         `)
         .eq('lead_id', leadId)
@@ -525,6 +535,40 @@ export default function MechanicJobDetailPage() {
 
 
       if (jobData) {
+        const vehicleYear = Number((jobData.service_leads as any)?.vehicle_year ?? 0) || 0;
+
+        // Odometer: prefer service_leads.vehicle_odometer, fallback to legacy/pickup tracking
+        let odometerReading = Number((jobData.service_leads as any)?.vehicle_odometer ?? 0) || 0;
+        if (odometerReading <= 0) {
+          // 1) Legacy column on service_leads (schema varies, so guard)
+          try {
+            const { data } = await supabase
+              .from('service_leads')
+              .select('odometer_km')
+              .eq('id', leadId)
+              .maybeSingle();
+            const legacy = Number((data as any)?.odometer_km ?? 0) || 0;
+            if (legacy > 0) odometerReading = legacy;
+          } catch {
+            // ignore (missing column/table)
+          }
+
+          // 2) Pickup tracking odometer
+          if (odometerReading <= 0) {
+            try {
+              const { data: tracking } = await supabase
+                .from('pickup_tracking')
+                .select('pickup_odometer_reading')
+                .eq('lead_id', leadId)
+                .maybeSingle();
+              const picked = Number((tracking as any)?.pickup_odometer_reading ?? 0) || 0;
+              if (picked > 0) odometerReading = picked;
+            } catch {
+              // ignore
+            }
+          }
+        }
+
         // Parse service_type_ids if it's a string (JSONB from Supabase)
         let serviceTypeIds = jobData.service_leads?.service_type_ids || jobData.service_leads?.subservice_ids || [];
         if (typeof serviceTypeIds === 'string') {
@@ -545,8 +589,8 @@ export default function MechanicJobDetailPage() {
           vehicle_make: jobData.service_leads?.vehicle_make || '',
           vehicle_model: jobData.service_leads?.vehicle_model || '',
           vehicle_variant: jobData.service_leads?.vehicle_variant || '',
-          vehicle_year: 0,
-          odometer_reading: 0,
+          vehicle_year: vehicleYear,
+          odometer_reading: odometerReading,
           fuel_type: jobData.service_leads?.vehicle_fuel_type || '',
           problem_description: jobData.service_leads?.problem_description || '',
           service_types: serviceTypeIds,
@@ -569,6 +613,13 @@ export default function MechanicJobDetailPage() {
         };
         setJob(jobDetail);
         setWorkNotes(jobDetail.work_notes);
+
+        // Supervisor/Advisor Observation (read-only for mechanic)
+        setSupervisorObservation({
+          text: String(jobData.service_leads?.supervisor_observation || ''),
+          updatedAt: (jobData.service_leads as any)?.supervisor_observation_updated_at || null,
+          byName: (jobData.service_leads as any)?.supervisor_observation_by_user?.full_name || null,
+        });
         
         // Fetch service type names from database
         if (jobDetail.service_types && jobDetail.service_types.length > 0) {
@@ -1403,6 +1454,7 @@ export default function MechanicJobDetailPage() {
               { key: 'media', label: 'Media' },
               { key: 'parts', label: 'Parts' },
               { key: 'notes', label: 'Notes' },
+              { key: 'supervisor-observation', label: 'Supervisor Observation' },
               { key: 'extra-work', label: 'Additional Jobs' },
             ] as const).map((tab) => (
               <button
@@ -1510,14 +1562,16 @@ export default function MechanicJobDetailPage() {
                   <p className="text-xs sm:text-sm text-gray-600">Vehicle</p>
                   <p className="font-semibold text-xs sm:text-sm">{job.vehicle_number}</p>
                   <p className="text-xs sm:text-sm">{job.vehicle_make} {job.vehicle_model} {job.vehicle_variant}</p>
-                  <p className="text-xs sm:text-sm text-gray-600">Year: {job.vehicle_year} | Fuel: {job.fuel_type}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">
+                    Year: {job.vehicle_year || '—'} | Fuel: {job.fuel_type || '—'}
+                  </p>
                 </div>
-                {job.odometer_reading > 0 && (
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-600">Odometer Reading</p>
-                    <p className="font-semibold text-xs sm:text-sm">{job.odometer_reading} km</p>
-                  </div>
-                )}
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-600">Odometer Reading</p>
+                  <p className="font-semibold text-xs sm:text-sm">
+                    {job.odometer_reading > 0 ? `${job.odometer_reading.toLocaleString()} km` : '—'}
+                  </p>
+                </div>
                 {job.problem_description && (
                   <div>
                     <p className="text-xs sm:text-sm text-gray-600">Customer Complaint</p>
@@ -2459,6 +2513,36 @@ export default function MechanicJobDetailPage() {
               <Save className="w-4 h-4 sm:w-5 sm:h-5" />
               Save Notes
             </button>
+          </div>
+        )}
+
+        {activeTab === 'supervisor-observation' && (
+          <div className="card p-3 sm:p-4 md:p-5">
+            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-blue-600" />
+              Supervisor/Advisor Observation
+            </h2>
+
+            <div className="p-4 rounded-lg border bg-blue-50 border-blue-200">
+              <div className="text-sm text-gray-900 whitespace-pre-wrap">
+                {supervisorObservation.text.trim() ? supervisorObservation.text : 'No observation from supervisor yet.'}
+              </div>
+              {(supervisorObservation.updatedAt || supervisorObservation.byName) && (
+                <div className="mt-3 text-xs text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {supervisorObservation.byName && (
+                    <span>
+                      By: <strong className="text-gray-800">{supervisorObservation.byName}</strong>
+                    </span>
+                  )}
+                  {supervisorObservation.updatedAt && (
+                    <span>
+                      Last updated:{' '}
+                      <strong className="text-gray-800">{formatDateTime(supervisorObservation.updatedAt)}</strong>
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
