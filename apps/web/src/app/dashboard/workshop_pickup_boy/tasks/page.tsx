@@ -189,6 +189,13 @@ export default function PickupTasksPage() {
   };
 
   const openGoogleMaps = async (task: PickupTask) => {
+    const isDeliveryReady = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';
+    const ok = window.confirm(
+      isDeliveryReady
+        ? 'Navigate:\n\nKya aap DELIVERY karne ja rahe ho?\n\nOK = Delivery start (status change)\nCancel = Sirf location dekhna'
+        : 'Navigate:\n\nKya aap PICKUP karne ja rahe ho?\n\nOK = Pickup start (status change)\nCancel = Sirf location dekhna'
+    );
+
     // Build address string from available fields
     const addressParts = [];
     if (task.address) addressParts.push(task.address);
@@ -206,9 +213,8 @@ export default function PickupTasksPage() {
     // Open Google Maps
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
     
-    // For delivery-ready leads, "Navigate" should start delivery (drop) flow (generate DROP OTP),
-    // not pickup flow.
-    const isDeliveryReady = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';
+    // Only update status if user confirmed they are actually starting pickup/delivery
+    if (!ok) return;
 
     // Update status / tracking via API
     try {

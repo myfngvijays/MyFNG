@@ -160,34 +160,55 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     setIncludedRateDraft(next);
   };
 
-  async function saveIncludedRates(serviceDescription: string, includedItems: any[]) {
+  async function saveIncludedRates(serviceDescription: string, includedItems: any[], serviceTypeId?: string | null) {
     if (!invoice?.id) return;
     try {
       const items = (includedItems || [])
         .map((it: any) => {
           const pid = String(it?.product_id || '').trim();
           if (!pid) return null;
+          const qty = Number(it?.quantity || 1) || 1;
+          const base_unit_price = Number(it?.unit_price || 0) || 0;
           const raw = includedRateDraft[pid];
           const unit_price = raw === '' || raw == null ? 0 : Number(raw);
-          return Number.isFinite(unit_price) ? { product_id: pid, unit_price } : null;
+          return Number.isFinite(unit_price)
+            ? { product_id: pid, unit_price, base_unit_price, quantity: qty }
+            : null;
         })
         .filter(Boolean);
 
       const res = await fetch(`/api/billing/invoices/${invoice.id}/included-items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service_description: serviceDescription, items }),
+        body: JSON.stringify({ service_description: serviceDescription, service_type_id: serviceTypeId || undefined, items }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to save included item rates');
+      if (!res.ok) {
+        const parts = [
+          data?.error || 'Failed to save included item rates',
+          data?.details ? `Details: ${data.details}` : null,
+          data?.code ? `Code: ${data.code}` : null,
+          data?.step ? `Step: ${data.step}` : null,
+        ].filter(Boolean);
+        throw new Error(parts.join(' | '));
+      }
       setEditingIncludedFor(null);
+      // Refresh OS immediately
       await fetchInvoice();
+
+      // If CI already exists and TI is not generated yet, auto-recalculate CI so the customer invoice reflects latest OS edits.
+      // This matches the workflow: edits allowed until TI is generated.
+      const hasCI = Boolean(byType['CUSTOMER_INVOICE']);
+      const hasTI = Boolean(byType['TAX_INVOICE']);
+      if (hasCI && !hasTI) {
+        await finalizeBill({ silent: true });
+      }
     } catch (e: any) {
       alert(e?.message || 'Failed to save');
     }
   }
 
-  async function finalizeBill() {
+  async function finalizeBill(opts?: { silent?: boolean }) {
     setFinalizing(true);
     try {
       const res = await fetch(`/api/billing/leads/${lead.id}/finalize-bill`, {
@@ -204,13 +225,43 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
         ].filter(Boolean);
         throw new Error(parts.join(' | '));
       }
-      alert(`✅ Bill finalized. Customer Invoice: ${data?.invoice?.invoice_number || ''}`);
+      if (!opts?.silent) {
+        alert(`✅ Bill finalized. Customer Invoice: ${data?.invoice?.invoice_number || ''}`);
+      }
       await fetchInvoice();
       onUpdate?.();
     } catch (e: any) {
-      alert(`Failed to finalize bill: ${e?.message || 'Unknown error'}`);
+      if (!opts?.silent) {
+        alert(`Failed to finalize bill: ${e?.message || 'Unknown error'}`);
+      } else {
+        console.error('Auto finalize (silent) failed:', e);
+      }
     } finally {
       setFinalizing(false);
+    }
+  }
+
+  async function regenerateOS() {
+    try {
+      const res = await fetch(`/api/billing/leads/${lead.id}/regenerate-os`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const parts = [
+          data?.error || 'Failed to regenerate OS',
+          data?.details ? `Details: ${data.details}` : null,
+          data?.code ? `Code: ${data.code}` : null,
+          data?.hint ? `Hint: ${data.hint}` : null,
+        ].filter(Boolean);
+        throw new Error(parts.join(' | '));
+      }
+      alert('✅ OS regenerated');
+      await fetchInvoice();
+      onUpdate?.();
+    } catch (e: any) {
+      alert(e?.message || 'Failed to regenerate OS');
     }
   }
 
@@ -260,7 +311,16 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to record payment');
+      if (!res.ok) {
+        const parts = [
+          data?.error || 'Failed to record payment',
+          data?.current_status ? `Invoice status: ${data.current_status}` : null,
+          data?.hint ? `Hint: ${data.hint}` : null,
+          data?.balance_due != null ? `Balance due: ${data.balance_due}` : null,
+          data?.provided_amount != null ? `Provided: ${data.provided_amount}` : null,
+        ].filter(Boolean);
+        throw new Error(parts.join(' | '));
+      }
       alert('✅ Payment recorded');
       setShowPaymentForm(false);
       setPaymentRef('');
@@ -493,6 +553,9 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     return map;
   }, [invoiceList]);
 
+  const hasOS = Boolean(byType['ORDER_SUMMARY']);
+  const hasTI = Boolean(byType['TAX_INVOICE']);
+
   const typeTabs: Array<{ key: 'ORDER_SUMMARY' | 'CUSTOMER_INVOICE' | 'TAX_INVOICE'; label: string }> = [
     { key: 'ORDER_SUMMARY', label: 'Order Summary (OS)' },
     { key: 'CUSTOMER_INVOICE', label: 'Customer Invoice (CI)' },
@@ -698,11 +761,19 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                         <button
                                           type="button"
                                           className="px-2 py-1 rounded bg-blue-600 text-white text-[11px]"
-                                          onClick={() => saveIncludedRates(String(it?.description || ''), includedItems)}
+                                          onClick={() =>
+                                            saveIncludedRates(
+                                              String(it?.description || ''),
+                                              includedItems,
+                                              (it?.service_type_id ? String(it.service_type_id) : null)
+                                            )
+                                          }
                                         >
                                           Save
                                         </button>
-                                        <span className="text-gray-400 text-[11px]">Saved only for this OS invoice</span>
+                                        <span className="text-gray-400 text-[11px]">
+                                          Saved in OS. CI will update when you click Recalculate/Finalize again.
+                                        </span>
                                       </div>
                                     )}
                                   </div>
@@ -894,9 +965,15 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-3">
+            {hasOS && !hasTI && (
+              <button onClick={regenerateOS} className="btn btn-outline flex-1">
+                <RefreshCw className="w-4 h-4" />
+                Regenerate OS
+              </button>
+            )}
             {isOS && (
               <button
-                onClick={finalizeBill}
+                onClick={() => finalizeBill()}
                 disabled={finalizing}
                 className="btn btn-secondary flex-1"
               >
@@ -906,7 +983,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
             )}
             {isCI && (
               <button
-                onClick={finalizeBill}
+                onClick={() => finalizeBill()}
                 disabled={finalizing}
                 className="btn btn-secondary flex-1"
               >

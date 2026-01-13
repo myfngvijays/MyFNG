@@ -1,8 +1,53 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyWorkshopRoles } from '@/lib/notifications';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
+
+function isMissingCol(err: any) {
+  const code = String(err?.code || '');
+  const msg = String(err?.message || '');
+  return (
+    code === '42703' || // postgres: undefined_column
+    code === 'PGRST204' || // postgrest: missing column in schema cache
+    /Could not find the '.*' column/i.test(msg) ||
+    /column .* does not exist/i.test(msg)
+  );
+}
+
+async function tryUpdateLeadDelivered(
+  supabaseAdmin: any,
+  leadId: string,
+  payload: Record<string, any>
+) {
+  const candidates: Array<Record<string, any>> = [
+    payload,
+    (() => {
+      const { delivered_at, ...rest } = payload;
+      return rest;
+    })(),
+    (() => {
+      const { delivered_by, ...rest } = payload;
+      return rest;
+    })(),
+    (() => {
+      const { read_only, ...rest } = payload;
+      return rest;
+    })(),
+    { status: payload.status, pickup_status: payload.pickup_status, updated_at: payload.updated_at },
+    { status: payload.status, updated_at: payload.updated_at },
+  ];
+
+  let lastErr: any = null;
+  for (const p of candidates) {
+    const { error } = await supabaseAdmin.from('service_leads').update(p).eq('id', leadId);
+    if (!error) return { ok: true as const };
+    lastErr = error;
+    if (!isMissingCol(error) && String(error?.code || '') !== '42501') break;
+  }
+  return { ok: false as const, error: lastErr };
+}
 
 /**
  * POST /api/pickup/tasks/[id]/drop/complete
@@ -11,6 +56,10 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = await createClientFromRequest(request);
+    const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Server misconfigured', details: adminErr }, { status: 500 });
+    }
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -37,6 +86,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     if (leadError || !lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     if (lead.read_only) return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
+
+    // Idempotency: if already delivered, treat as success.
+    if (['DELIVERED', 'DELIVERED_TO_CUSTOMER'].includes(String(lead.status || '').toUpperCase())) {
+      return NextResponse.json({ success: true, message: 'Already delivered' }, { status: 200 });
+    }
 
     const allowedLeadStatuses = ['READY_FOR_DELIVERY', 'COD_PENDING'];
     if (!allowedLeadStatuses.includes(lead.status)) {
@@ -123,7 +177,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }
     }
 
-    await supabase
+    await supabaseAdmin
       .from('pickup_tracking')
       .update({
         drop_status: 'DELIVERED',
@@ -134,40 +188,50 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       .eq('lead_id', leadId);
 
     // Update lead to delivered
-    const { error: updateLeadError } = await supabase
-      .from('service_leads')
-      .update({
-        status: 'DELIVERED_TO_CUSTOMER',
-        pickup_status: 'DELIVERED',
-        delivered_at: now,
-        delivered_by: userProfile.id,
-        read_only: true,
-        updated_at: now,
-      } as any)
-      .eq('id', leadId);
+    const updatePayload: any = {
+      // IMPORTANT: DB trigger allows READY_FOR_DELIVERY -> DELIVERED (not DELIVERED_TO_CUSTOMER)
+      status: 'DELIVERED',
+      pickup_status: 'DELIVERED',
+      delivered_at: now,
+      delivered_by: userProfile.id,
+      read_only: true,
+      updated_at: now,
+    };
 
-    if (updateLeadError) {
-      console.error('Error updating lead status to DELIVERED_TO_CUSTOMER:', updateLeadError);
-      return NextResponse.json({ error: 'Failed to update lead status', details: updateLeadError.message }, { status: 500 });
+    const leadUpdate = await tryUpdateLeadDelivered(supabaseAdmin, leadId, updatePayload);
+    if (!leadUpdate.ok) {
+      console.error('Error updating lead status to DELIVERED:', leadUpdate.error);
+      return NextResponse.json(
+        { error: 'Failed to update lead status', details: (leadUpdate.error as any)?.message, code: (leadUpdate.error as any)?.code },
+        { status: 500 }
+      );
     }
 
-    await supabase.from('lead_status_history').insert({
-      lead_id: leadId,
-      old_status: lead.status,
-      new_status: 'DELIVERED_TO_CUSTOMER',
-      changed_by: userProfile.id,
-      changed_at: now,
-      reason: 'Vehicle delivered to customer (pickup boy)',
-      notes: notes || 'Drop completed',
-    } as any);
+    try {
+      await supabaseAdmin.from('lead_status_history').insert({
+        lead_id: leadId,
+        old_status: lead.status,
+        new_status: 'DELIVERED',
+        changed_by: userProfile.id,
+        changed_at: now,
+        reason: 'Vehicle delivered to customer (pickup boy)',
+        notes: notes || 'Drop completed',
+      } as any);
+    } catch (e) {
+      console.warn('Non-blocking: lead_status_history insert failed:', e);
+    }
 
-    await supabase.from('lead_activities').insert({
-      lead_id: leadId,
-      user_id: userProfile.id,
-      activity_type: 'DROP_COMPLETED',
-      description: 'Vehicle delivered to customer',
-      metadata: { notes },
-    } as any);
+    try {
+      await supabaseAdmin.from('lead_activities').insert({
+        lead_id: leadId,
+        user_id: userProfile.id,
+        activity_type: 'DROP_COMPLETED',
+        description: 'Vehicle delivered to customer',
+        metadata: { notes },
+      } as any);
+    } catch (e) {
+      console.warn('Non-blocking: lead_activities insert failed:', e);
+    }
 
     // Workshop Admin notification (final)
     try {

@@ -192,27 +192,27 @@ export async function POST(
       });
     }
 
-    // Update lead status to DELIVERED_TO_CUSTOMER (workflow-aligned)
+    // Update lead status to DELIVERED (trigger allows READY_FOR_DELIVERY -> DELIVERED)
+    // NOTE: some installs don't have delivered_at / delivered_by columns; keep this minimal.
     const deliveredAt = new Date().toISOString();
     await supabase
       .from('service_leads')
       .update({
-        status: 'DELIVERED_TO_CUSTOMER',
-        delivered_at: deliveredAt,
-        delivered_by: user.id,
-        // Mark CSE follow-up as due (24 hours after delivery)
+        status: 'DELIVERED',
+        pickup_status: 'DELIVERED',
+        // Mark CSE follow-up as due (24 hours after delivery) if columns exist; best-effort for older schemas.
         cse_followup_due: true,
         cse_followup_due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         updated_at: deliveredAt,
         read_only: true // Lock lead after delivery (post-job workflow)
-      })
+      } as any)
       .eq('id', leadId);
 
     // Log status change
     await supabase.from('lead_status_history').insert({
       lead_id: leadId,
       old_status: lead.status,
-      new_status: 'DELIVERED_TO_CUSTOMER',
+      new_status: 'DELIVERED',
       changed_by: user.id,
       changed_at: deliveredAt,
       reason: 'Vehicle delivered to customer (drop completed)',
@@ -222,7 +222,7 @@ export async function POST(
     // Lead event for analytics/audit
     await supabase.from('lead_events').insert({
       lead_id: leadId,
-      event_type: 'DELIVERED_TO_CUSTOMER',
+      event_type: 'DELIVERED',
       event_description: 'Vehicle delivered to customer (pickup/drop flow)',
       event_data: {
         delivered_by: user.id,

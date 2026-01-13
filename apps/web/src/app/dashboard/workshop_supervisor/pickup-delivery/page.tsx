@@ -79,11 +79,12 @@ export default function PickupDeliveryCoordinationPage() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
-        const { data: userProfile } = await supabase
+        const { data: userProfiles } = await supabase
           .from('users_login')
           .select('workshop_id')
           .eq('email', user.email)
-          .single();
+          .limit(1);
+        const userProfile = (userProfiles || [])[0] as any;
         if (!cancelled) setWorkshopId(userProfile?.workshop_id || null);
       } catch (e) {
         console.error('Failed to resolve workshop:', e);
@@ -170,6 +171,8 @@ export default function PickupDeliveryCoordinationPage() {
           vehicle_model,
           pickup_status,
           status,
+          payment_status,
+          read_only,
           pickup_required,
           customer_special_notes,
           delivery_invoice_ready,
@@ -187,11 +190,19 @@ export default function PickupDeliveryCoordinationPage() {
       const enhancedJobs = await Promise.all(
         (jobsData || []).map(async (job) => {
           // Check if invoice is ready
-          const { data: invoiceData } = await supabase
+          // NOTE: use array mode (+limit) so the HTTP response is 200 even when no rows exist
+          // (avoids noisy 406 logs in the browser network console).
+          const { data: invoiceRows, error: invoiceError } = await supabase
             .from('invoices')
-            .select('id, status')
+            .select('id, status, payment_status')
             .eq('lead_id', job.id)
-            .single();
+            .limit(1);
+          if (invoiceError) {
+            // Best-effort: don't break the whole dashboard for invoice read issues (RLS/schema).
+            // eslint-disable-next-line no-console
+            console.warn('Invoice lookup failed (non-blocking):', invoiceError);
+          }
+          const invoiceData = (invoiceRows || [])[0] as any;
 
           // Check if paperwork is complete
           const { data: documentsData } = await supabase
@@ -200,14 +211,42 @@ export default function PickupDeliveryCoordinationPage() {
             .eq('lead_id', job.id)
             .eq('media_type', 'DOCUMENT');
 
-          // Use database checklist values if available, otherwise fall back to computed values
-          const deliveryInvoiceReady = job.delivery_invoice_ready !== null ? job.delivery_invoice_ready : (invoiceData?.status === 'PAID' || invoiceData?.status === 'GENERATED');
+          // Use DB checklist values if available, otherwise compute from invoice state.
+          // Some installs store paid state in `payment_status` while `status` remains legacy.
+          const invStatus = String(invoiceData?.status || '').toUpperCase();
+          const invPayStatus = String((invoiceData as any)?.payment_status || '').toUpperCase();
+          const deliveryInvoiceReady =
+            job.delivery_invoice_ready !== null
+              ? job.delivery_invoice_ready
+              : (invPayStatus === 'PAID' || invStatus === 'PAID' || invStatus === 'GENERATED');
+
+          const leadPaymentStatus = String((job as any)?.payment_status || '').toUpperCase();
+          const leadStatus = String((job as any)?.status || '').toUpperCase();
+          const isPaid = invPayStatus === 'PAID' || invStatus === 'PAID' || leadPaymentStatus === 'PAID';
+
+          // Best-effort auto-bump: if invoice is PAID but lead status is stuck (e.g. READY_FOR_BILLING),
+          // update lead status so pickup boy delivery flow becomes available.
+          if (
+            isPaid &&
+            !['READY_FOR_DELIVERY', 'COD_PENDING', 'DELIVERED_TO_CUSTOMER'].includes(leadStatus) &&
+            !(job as any)?.read_only
+          ) {
+            try {
+              await supabase
+                .from('service_leads')
+                .update({ status: 'READY_FOR_DELIVERY', updated_at: new Date().toISOString() } as any)
+                .eq('id', job.id);
+            } catch (e) {
+              // non-blocking
+              console.warn('Non-blocking: failed to auto-bump lead status to READY_FOR_DELIVERY:', e);
+            }
+          }
           const deliveryCarWashed = job.delivery_car_washed !== null ? job.delivery_car_washed : (job.status === 'READY_FOR_DELIVERY');
           const deliveryPaperworkComplete = job.delivery_paperwork_complete !== null ? job.delivery_paperwork_complete : ((documentsData?.length || 0) > 0);
 
           return {
             ...job,
-            job_status: job.status,
+            job_status: isPaid ? 'READY_FOR_DELIVERY' : job.status,
             assigned_mechanic: job.mechanic,
             customer_address: job.address,
             delivery_status: null,
@@ -266,11 +305,17 @@ export default function PickupDeliveryCoordinationPage() {
             .eq('assigned_pickup_boy_id', boy.id)
             .in('pickup_status', ['ASSIGNED', 'EN_ROUTE', 'AT_LOCATION']);
 
-          const { count: activeDeliveries } = await supabase
+          // Many DBs don't have `service_leads.delivery_status` (delivery tracking lives in `pickup_tracking.drop_status`).
+          // For this dashboard's "active tasks" counter, use lead status as a durable signal for delivery work.
+          const { count: activeDeliveries, error: activeDeliveriesError } = await supabase
             .from('service_leads')
             .select('*', { count: 'exact', head: true })
             .eq('assigned_pickup_boy_id', boy.id)
-            .in('delivery_status', ['ASSIGNED', 'EN_ROUTE', 'AT_LOCATION']);
+            .in('status', ['READY_FOR_DELIVERY', 'COD_PENDING']);
+          if (activeDeliveriesError) {
+            // eslint-disable-next-line no-console
+            console.warn('Active deliveries count failed (non-blocking):', activeDeliveriesError);
+          }
 
           return {
             ...boy,
@@ -764,6 +809,16 @@ export default function PickupDeliveryCoordinationPage() {
                     >
                       Mark Ready for Delivery
                     </button>
+                  )}
+
+                  {/* When already READY_FOR_DELIVERY, don't show "Mark..." again; show a clear state instead. */}
+                  {job.job_status === 'READY_FOR_DELIVERY' && (
+                    <div className="w-full rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs sm:text-sm text-green-800">
+                      <div className="font-semibold">Delivery Ready</div>
+                      <div className="text-[11px] sm:text-xs text-green-700 mt-0.5">
+                        Pickup boy ke dashboard me “Delivery Ready” tab me aa jayega.
+                      </div>
+                    </div>
                   )}
                   
                   <button

@@ -4,6 +4,15 @@ import { createNotification, notifyPickupBoy, notifyWorkshopRoles } from '@/lib/
 
 export const dynamic = 'force-dynamic';
 
+const REQUIRED_BEFORE_TYPES = [
+  'BEFORE_FRONT',
+  'BEFORE_REAR',
+  'BEFORE_LEFT',
+  'BEFORE_RIGHT',
+  'BEFORE_DASHBOARD',
+  'BEFORE_ENGINE_BAY',
+];
+
 /**
  * POST /api/pickup/tasks/[id]/arrived
  * Mark vehicle as arrived at workshop (status: VEHICLE_DROPPED_AT_WORKSHOP)
@@ -65,13 +74,6 @@ export async function POST(
 
     // Prevent overwriting COMPLETED or later statuses
     const protectedStatuses = ['COMPLETED', 'WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
-    if (protectedStatuses.includes(lead.status)) {
-      return NextResponse.json({ 
-        error: 'Cannot update status - work already completed',
-        current_status: lead.status,
-        message: 'Mechanic has already completed the work. Status cannot be changed.'
-      }, { status: 400 });
-    }
 
     // Verify current status is VEHICLE_IN_TRANSIT
     if (lead.pickup_status !== 'VEHICLE_IN_TRANSIT' && lead.status !== 'VEHICLE_IN_TRANSIT') {
@@ -82,35 +84,119 @@ export async function POST(
       }, { status: 400 });
     }
 
-    const now = new Date().toISOString();
+    // Enforce mandatory pickup photos (front/rear/left/right/dashboard/engine bay)
+    // before allowing "Arrived at Workshop". This matches BeforeInspectionUpload required slots.
+    try {
+      const { data: mediaRows, error: mediaError } = await supabase
+        .from('lead_media')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false })
+        .limit(200);
 
-    // Update service_leads status to VEHICLE_DROPPED_AT_WORKSHOP
-    const { error: updateLeadError } = await supabase
-      .from('service_leads')
-      .update({
-        pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
-        status: 'VEHICLE_DROPPED_AT_WORKSHOP',
-        updated_at: now
-      })
-      .eq('id', leadId);
+      if (mediaError) {
+        return NextResponse.json(
+          { error: 'Failed to verify mandatory pickup photos', details: mediaError.message },
+          { status: 500 }
+        );
+      }
 
-    if (updateLeadError) {
-      console.error('Error updating lead status:', updateLeadError);
-      return NextResponse.json({ 
-        error: 'Failed to update lead status', 
-        details: updateLeadError.message 
-      }, { status: 500 });
+      const inferSlot = (row: any) => {
+        const t = String(row?.photo_type || row?.category || '').trim().toUpperCase();
+        if (t) return t;
+        const fn = String(row?.file_name || '').trim();
+        const m = fn.match(/^(BEFORE_[A-Z0-9_]+)__+/);
+        return m?.[1] ? String(m[1]).toUpperCase() : '';
+      };
+
+      const beforeSet = new Set<string>();
+      for (const row of mediaRows || []) {
+        const slot = inferSlot(row);
+        if (slot && slot.startsWith('BEFORE_')) beforeSet.add(slot);
+      }
+
+      const missing = REQUIRED_BEFORE_TYPES.filter((t) => !beforeSet.has(t));
+      if (missing.length > 0) {
+        return NextResponse.json(
+          {
+            error: 'Mandatory pickup photos pending',
+            message: 'Please upload all compulsory pickup photos before marking Arrived at Workshop.',
+            missing_photos: missing,
+            required_photos: REQUIRED_BEFORE_TYPES,
+          },
+          { status: 400 }
+        );
+      }
+    } catch (e: any) {
+      return NextResponse.json(
+        { error: 'Failed to verify mandatory pickup photos', details: e?.message || String(e) },
+        { status: 500 }
+      );
     }
 
-    // Update pickup_tracking
+    const now = new Date().toISOString();
+
+    // Always persist tracking timestamps.
+    // If lead has already moved ahead (READY_FOR_BILLING/DELIVERY), do not change lead.status.
+    const isProtected = protectedStatuses.includes(String(lead.status || '').toUpperCase());
+    if (!isProtected) {
+      // Update service_leads status to VEHICLE_DROPPED_AT_WORKSHOP
+      const { error: updateLeadError } = await supabase
+        .from('service_leads')
+        .update({
+          pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
+          status: 'VEHICLE_DROPPED_AT_WORKSHOP',
+          updated_at: now
+        })
+        .eq('id', leadId);
+
+      if (updateLeadError) {
+        console.error('Error updating lead status:', updateLeadError);
+        return NextResponse.json({ 
+          error: 'Failed to update lead status', 
+          details: updateLeadError.message 
+        }, { status: 500 });
+      }
+    }
+
+    // Upsert pickup_tracking (some flows may not have created a tracking row yet)
     await supabase
       .from('pickup_tracking')
-      .update({
-        pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
-        pickup_arrival_time: now,
-        updated_at: now
-      })
-      .eq('lead_id', leadId);
+      .upsert(
+        {
+          lead_id: leadId,
+          pickup_required: true,
+          pickup_assigned_to: (lead as any)?.assigned_pickup_boy_id || userProfile.id,
+          pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
+          pickup_arrival_time: now,
+          // Treat arrival at workshop as handover time as well (keys handed)
+          pickup_handover_to_workshop_at: now,
+          updated_at: now,
+          created_at: now,
+        } as any,
+        { onConflict: 'lead_id' }
+      );
+
+    // Best-effort: persist timestamps on service_leads too (so supervisor UI can show time even if RLS blocks pickup_tracking)
+    // Some deployments may not have these columns; ignore unknown-column errors.
+    try {
+      const attempt = await supabase
+        .from('service_leads')
+        .update(
+          {
+            pickup_arrival_time: now,
+            pickup_handover_to_workshop_at: now,
+            updated_at: now,
+          } as any
+        )
+        .eq('id', leadId);
+      // @ts-ignore
+      if (attempt?.error && (attempt.error as any)?.code === '42703') {
+        // column does not exist
+      }
+    } catch {
+      // ignore
+    }
 
     // Log status change
     await supabase
@@ -207,7 +293,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: 'Vehicle marked as arrived at workshop',
-      status: 'VEHICLE_DROPPED_AT_WORKSHOP'
+      status: isProtected ? lead.status : 'VEHICLE_DROPPED_AT_WORKSHOP',
+      note: isProtected ? 'Lead status not changed (already progressed); tracking timestamps updated.' : undefined
     }, { status: 200 });
 
   } catch (error: any) {

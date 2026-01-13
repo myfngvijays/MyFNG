@@ -4,6 +4,15 @@ import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
+const REQUIRED_BEFORE_TYPES = [
+  'BEFORE_FRONT',
+  'BEFORE_REAR',
+  'BEFORE_LEFT',
+  'BEFORE_RIGHT',
+  'BEFORE_DASHBOARD',
+  'BEFORE_ENGINE_BAY',
+];
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -56,15 +65,10 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
-    // Prevent overwriting COMPLETED or later statuses
+    // If lead has already moved ahead (READY_FOR_BILLING/DELIVERY), do not change lead.status,
+    // but still persist pickup tracking fields (arrival time + pickup odometer reading).
     const protectedStatuses = ['COMPLETED', 'WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
-    if (protectedStatuses.includes(lead.status)) {
-      return NextResponse.json({ 
-        error: 'Cannot update status - work already completed',
-        current_status: lead.status,
-        message: 'Mechanic has already completed the work. Status cannot be changed.'
-      }, { status: 400 });
-    }
+    const isProtected = protectedStatuses.includes(String(lead.status || '').toUpperCase());
 
     // Verify pickup status is VEHICLE_IN_TRANSIT or VEHICLE_DROPPED_AT_WORKSHOP
     // Allow both statuses - VEHICLE_IN_TRANSIT means still driving, VEHICLE_DROPPED_AT_WORKSHOP means arrived
@@ -106,65 +110,129 @@ export async function POST(
       // ignore
     }
 
-    // Check if before images are uploaded
-    const { count: beforeImages } = await supabase
-      .from('lead_media')
-      .select('*', { count: 'exact', head: true })
-      .eq('lead_id', leadId)
-      .eq('category', 'BEFORE');
+    // Check if mandatory pickup photos are uploaded (matches BeforeInspectionUpload required slots).
+    // NOTE: pickup photos are stored in lead_media with category/photo_type like BEFORE_FRONT, BEFORE_DASHBOARD, etc.
+    let requiredUploadedCount = 0;
+    try {
+      const { data: mediaRows, error: mediaError } = await supabase
+        .from('lead_media')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false })
+        .limit(200);
 
-    if (!beforeImages || beforeImages < 1) {
-      return NextResponse.json({ 
-        error: 'Before images are required',
-        hint: 'Upload at least 1 before image'
-      }, { status: 400 });
+      if (mediaError) {
+        return NextResponse.json(
+          { error: 'Failed to verify mandatory pickup photos', details: mediaError.message },
+          { status: 500 }
+        );
+      }
+
+      const inferSlot = (row: any) => {
+        const t = String(row?.photo_type || row?.category || '').trim().toUpperCase();
+        if (t) return t;
+        const fn = String(row?.file_name || '').trim();
+        const m = fn.match(/^(BEFORE_[A-Z0-9_]+)__+/);
+        return m?.[1] ? String(m[1]).toUpperCase() : '';
+      };
+
+      const beforeSet = new Set<string>();
+      for (const row of mediaRows || []) {
+        const slot = inferSlot(row);
+        if (slot && slot.startsWith('BEFORE_')) beforeSet.add(slot);
+      }
+
+      const missing = REQUIRED_BEFORE_TYPES.filter((t) => !beforeSet.has(t));
+      requiredUploadedCount = REQUIRED_BEFORE_TYPES.filter((t) => beforeSet.has(t)).length;
+
+      if (missing.length > 0) {
+        return NextResponse.json(
+          {
+            error: 'Mandatory pickup photos pending',
+            message: 'Please upload all compulsory pickup photos before completing pickup.',
+            missing_photos: missing,
+            required_photos: REQUIRED_BEFORE_TYPES,
+          },
+          { status: 400 }
+        );
+      }
+    } catch (e: any) {
+      return NextResponse.json(
+        { error: 'Failed to verify mandatory pickup photos', details: e?.message || String(e) },
+        { status: 500 }
+      );
     }
 
     const now = new Date().toISOString();
 
     // Update lead status to VEHICLE_DROPPED_AT_WORKSHOP (vehicle at workshop, ready for service)
-    const { data: updatedLead, error: updateError } = await supabase
-      .from('service_leads')
-      .update({
-        pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP', // ✨ NEW: Updated status
-        status: 'VEHICLE_DROPPED_AT_WORKSHOP',
-        vehicle_odometer: odometer_reading || lead.vehicle_odometer,
-        updated_at: now
-      })
-      .eq('id', leadId)
-      .select()
-      .single();
+    // If lead is already progressed, only update odometer fields (best-effort) and keep status unchanged.
+    let updatedLead: any = lead;
+    if (!isProtected) {
+      const { data: up, error: updateError } = await supabase
+        .from('service_leads')
+        .update({
+          pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP', // ✨ NEW: Updated status
+          status: 'VEHICLE_DROPPED_AT_WORKSHOP',
+          vehicle_odometer: odometer_reading || lead.vehicle_odometer,
+          updated_at: now
+        })
+        .eq('id', leadId)
+        .select()
+        .single();
 
-    if (updateError) {
-      console.error('Error completing pickup:', updateError);
-      return NextResponse.json({ error: 'Failed to complete pickup' }, { status: 500 });
+      if (updateError) {
+        console.error('Error completing pickup:', updateError);
+        return NextResponse.json({ error: 'Failed to complete pickup' }, { status: 500 });
+      }
+      updatedLead = up;
+    } else {
+      // Best-effort odometer persist without touching status
+      if (odometer_reading) {
+        await supabase
+          .from('service_leads')
+          .update({
+            vehicle_odometer: (lead as any)?.vehicle_odometer || odometer_reading,
+            updated_at: now,
+          } as any)
+          .eq('id', leadId);
+      }
     }
 
     // Update pickup tracking with all new fields
+    // Upsert pickup_tracking (some flows may not have created a tracking row yet)
     await supabase
       .from('pickup_tracking')
-      .update({
-        pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP', // ✨ NEW: Updated status
-        pickup_arrival_time: now,
-        pickup_handover_to_workshop_at: now, // ✨ NEW: When keys handed over
-        pickup_odometer_reading: odometer_reading || null, // ✨ NEW: Odometer reading at pickup
-        pickup_notes: notes || 'Vehicle delivered to workshop',
-        updated_at: now
-      })
-      .eq('lead_id', leadId);
+      .upsert(
+        {
+          lead_id: leadId,
+          pickup_required: true,
+          pickup_assigned_to: (lead as any)?.assigned_pickup_boy_id || userProfile.id,
+          pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP', // ✨ NEW: Updated status
+          pickup_arrival_time: now,
+          pickup_handover_to_workshop_at: now, // ✨ NEW: When keys handed over
+          pickup_odometer_reading: odometer_reading || null, // ✨ NEW: Odometer reading at pickup
+          pickup_notes: notes || 'Vehicle delivered to workshop',
+          updated_at: now,
+          created_at: now,
+        } as any,
+        { onConflict: 'lead_id' }
+      );
 
-    // Log status change
-    await supabase
-      .from('lead_status_history')
-      .insert({
-        lead_id: leadId,
-        old_status: lead.status,
-        new_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
-        changed_by: userProfile.id,
-        changed_at: now,
-        reason: 'Vehicle delivered to workshop by pickup boy',
-        notes: notes || 'Vehicle dropped at workshop, ready for service'
-      });
+    // Log status change (only if we changed main lead status)
+    if (!isProtected) {
+      await supabase
+        .from('lead_status_history')
+        .insert({
+          lead_id: leadId,
+          old_status: lead.status,
+          new_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
+          changed_by: userProfile.id,
+          changed_at: now,
+          reason: 'Vehicle delivered to workshop by pickup boy',
+          notes: notes || 'Vehicle dropped at workshop, ready for service'
+        });
+    }
 
     // Create activity log
     await supabase
@@ -182,7 +250,7 @@ export async function POST(
           odometer_reading: odometer_reading,
           fuel_level: fuel_level,
           notes: notes,
-          before_images_count: beforeImages
+          before_images_count: requiredUploadedCount
         }
       });
 
@@ -243,8 +311,9 @@ export async function POST(
         delivered_at: now,
         odometer_reading: odometer_reading,
         fuel_level: fuel_level,
-        before_images_count: beforeImages
-      }
+        before_images_count: requiredUploadedCount
+      },
+      note: isProtected ? 'Lead status not changed (already progressed); tracking/odometer saved.' : undefined
     }, { status: 200 });
 
   } catch (error) {

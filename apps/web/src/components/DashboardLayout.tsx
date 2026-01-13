@@ -53,10 +53,27 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     checkAuth();
   }, []);
 
+  const withTimeout = async <T,>(p: PromiseLike<T>, ms: number, label: string): Promise<T> => {
+    const promise = Promise.resolve(p as any) as Promise<T>;
+    return await new Promise<T>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error(`Timeout: ${label}`)), ms);
+      promise.then((v) => {
+        clearTimeout(t);
+        resolve(v);
+      }).catch((e) => {
+        clearTimeout(t);
+        reject(e);
+      });
+    });
+  };
+
   const checkAuth = async () => {
     try {
       const supabase = createClient();
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+      // On some navigations the auth store can take a moment to hydrate.
+      // Use a timeout guard so the dashboard doesn't get stuck on spinner.
+      const sessionRes = await withTimeout(supabase.auth.getSession(), 8000, 'auth.getSession');
+      const authUser = sessionRes?.data?.session?.user || null;
 
       if (!authUser) {
         router.push('/login');
@@ -64,26 +81,69 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       }
 
       // Get user profile
-      const { data: profile } = await supabase
-        .from('users_login')
-        .select(`
+      const selectProfile = `
           *,
           role:roles(role_code, role_name),
           workshop:workshops(*)
-        `)
-        .eq('id', authUser.id)
-        .single();
+        `;
+
+      // Primary: users_login.id == auth user id (some installs)
+      let profile: any = null;
+      try {
+        const byId = await withTimeout(
+          supabase.from('users_login').select(selectProfile).eq('id', authUser.id).maybeSingle(),
+          8000,
+          'users_login by id'
+        );
+        profile = byId?.data || null;
+      } catch {
+        profile = null;
+      }
+
+      // Fallback: users_login mapped by email/phone (common in this codebase)
+      if (!profile) {
+        const email = (authUser.email || '').trim();
+        const phone = (authUser.phone || '').trim();
+        try {
+          if (email) {
+            const byEmail = await withTimeout(
+              supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle(),
+              8000,
+              'users_login by email'
+            );
+            profile = byEmail?.data || null;
+          }
+        } catch {
+          // ignore
+        }
+        try {
+          if (!profile && phone) {
+            const byPhone = await withTimeout(
+              supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle(),
+              8000,
+              'users_login by phone'
+            );
+            profile = byPhone?.data || null;
+          }
+        } catch {
+          // ignore
+        }
+      }
 
       if (profile) {
         setUser(authUser);
         setUserProfile(profile);
-        setRole(profile.role.role_code);
+        const roleCode = (profile?.role as any)?.role_code;
+        if (roleCode) setRole(roleCode);
 
         // Check if user has correct role for this page
         // For SUB_ADMIN, allow access to sub_admin routes
-        if (profile.role.role_code.toLowerCase() !== role.toLowerCase() && role.toLowerCase() !== 'sub_admin') {
-          router.push(`/dashboard/${profile.role.role_code.toLowerCase()}`);
+        if (roleCode && roleCode.toLowerCase() !== role.toLowerCase() && role.toLowerCase() !== 'sub_admin') {
+          router.push(`/dashboard/${roleCode.toLowerCase()}`);
         }
+      } else {
+        // If profile lookup fails (timeout/RLS), still allow rendering so navigation doesn't get stuck.
+        setUser(authUser);
       }
     } catch (error) {
       console.error('Auth check failed:', error);

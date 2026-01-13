@@ -184,6 +184,13 @@ export default function WorkshopPickupBoyDashboard() {
 
                     const handleNavigate = async () => {
                         console.log('Navigate button clicked for task:', task.id, task.lead_number);
+
+                        const isDeliveryReady = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';
+                        const ok = window.confirm(
+                          isDeliveryReady
+                            ? 'Navigate:\n\nKya aap DELIVERY karne ja rahe ho?\n\nOK = Delivery start (status change)\nCancel = Sirf location dekhna'
+                            : 'Navigate:\n\nKya aap PICKUP karne ja rahe ho?\n\nOK = Pickup start (status change)\nCancel = Sirf location dekhna'
+                        );
                         
                         // Open Google Maps - use coordinates if available, otherwise use address
                         const address = task.pickup_address || task.customer_address || task.address || '';
@@ -203,10 +210,12 @@ export default function WorkshopPickupBoyDashboard() {
                           return;
                         }
                         
-                        // Update lead status to ON_THE_WAY
+                        // Only update status if user confirmed they are actually starting pickup/delivery
+                        if (!ok) return;
+
+                        // Update lead status to ON_THE_WAY (or start delivery)
                         try {
                           console.log('Calling navigate API for task:', task.id);
-                          const isDeliveryReady = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';
                           const response = await fetch(isDeliveryReady ? `/api/pickup/tasks/${task.id}/drop/start` : `/api/pickup/${task.id}/navigate`, {
                             method: 'POST',
                             headers: {

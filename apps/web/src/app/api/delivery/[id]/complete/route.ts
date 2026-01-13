@@ -240,7 +240,8 @@ export async function POST(
 
     // Update lead with delivery completion (workflow-aligned)
     const updateData: any = {
-      status: 'DELIVERED_TO_CUSTOMER',
+      // IMPORTANT: DB trigger allows READY_FOR_DELIVERY -> DELIVERED (not DELIVERED_TO_CUSTOMER)
+      status: 'DELIVERED',
       pickup_status: 'DELIVERED',
       delivered_at: now,
       delivered_by: userProfile.id,
@@ -277,7 +278,7 @@ export async function POST(
       .insert({
         lead_id: leadId,
         old_status: lead.status,
-        new_status: 'DELIVERED_TO_CUSTOMER',
+        new_status: 'DELIVERED',
         changed_by: userProfile.id,
         changed_at: now,
         reason: 'Vehicle delivered to customer',
@@ -293,7 +294,7 @@ export async function POST(
         activity_type: 'VEHICLE_DELIVERED',
         description: 'Vehicle delivered to customer',
         old_status: lead.status,
-        new_status: 'DELIVERED_TO_CUSTOMER',
+        new_status: 'DELIVERED',
         metadata: {
           delivery_otp_verified: !!delivery_otp,
           otp_source: 'pickup_otps(DROP)',
@@ -308,7 +309,7 @@ export async function POST(
     // Lead event for analytics/audit
     await supabase.from('lead_events').insert({
       lead_id: leadId,
-      event_type: 'DELIVERED_TO_CUSTOMER',
+      event_type: 'DELIVERED',
       event_description: 'Vehicle delivered to customer (delivery API)',
       event_data: {
         delivered_by: userProfile.id,
@@ -373,7 +374,7 @@ export async function POST(
         ? 'Vehicle delivered. Damage reported and support ticket created.' 
         : 'Vehicle delivered successfully',
       lead_id: leadId,
-      status: 'DELIVERED_TO_CUSTOMER',
+      status: 'DELIVERED',
       support_ticket_id: supportTicketId,
       cse_followup_due: true,
       next_step: 'CSE will follow up within 24 hours',

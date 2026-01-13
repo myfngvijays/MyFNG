@@ -51,6 +51,22 @@ export default function LeadReviewPage() {
       : formatTime12h(d);
   };
 
+  // For fields like preferred_slot_start/end, some records are stored as "local wall-clock"
+  // but tagged with +00 (UTC). Formatting via Date() shifts the time (e.g. 04:46 -> 10:16 IST).
+  // This helper formats the HH:MM portion without timezone conversion.
+  const formatTimeWallClock = (value: any) => {
+    if (!value) return null;
+    const s = String(value);
+    const m = s.match(/(\d{2}):(\d{2})/);
+    if (!m) return null;
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    const h12 = ((hh + 11) % 12) + 1;
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    return `${h12}:${String(mm).padStart(2, '0')} ${ampm}`;
+  };
+
   const getPickupDateText = (l: any) =>
     formatDate(l?.pickup_tracking?.pickup_time_window_start) ||
     formatDate(l?.scheduled_pickup_date) ||
@@ -62,8 +78,8 @@ export default function LeadReviewPage() {
     l?.pickup_tracking?.pickup_time_slot ||
     l?.scheduled_pickup_time ||
     l?.preferred_time_slot ||
-    (formatTime(l?.preferred_slot_start) && formatTime(l?.preferred_slot_end)
-      ? `${formatTime(l?.preferred_slot_start)} - ${formatTime(l?.preferred_slot_end)}`
+    (formatTimeWallClock(l?.preferred_slot_start) && formatTimeWallClock(l?.preferred_slot_end)
+      ? `${formatTimeWallClock(l?.preferred_slot_start)} - ${formatTimeWallClock(l?.preferred_slot_end)}`
       : null) ||
     'Not scheduled';
 

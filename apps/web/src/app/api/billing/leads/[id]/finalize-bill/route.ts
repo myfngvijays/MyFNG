@@ -85,6 +85,24 @@ export async function POST(
       return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
     }
 
+    // Guard: once a TAX_INVOICE exists, we should not re-generate/overwrite CI from OS edits.
+    // (Workflow: CI -> payment -> TI. After TI, amounts must stay frozen.)
+    const { data: existingTI } = await supabase
+      .from('invoices')
+      .select('id')
+      .eq('lead_id', leadId)
+      .eq('invoice_type', 'TAX_INVOICE')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingTI?.id) {
+      return NextResponse.json(
+        { error: 'Tax Invoice already generated; cannot re-finalize bill', tax_invoice_id: existingTI.id },
+        { status: 400 }
+      );
+    }
+
     // Workshop scoping for workshop staff
     if (['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode)) {
       if (!userProfile.workshop_id || userProfile.workshop_id !== lead.workshop_id) {
@@ -245,6 +263,44 @@ export async function POST(
 
     const extraCharges = (Array.isArray(extraChargesRaw) ? extraChargesRaw : []).filter(isApprovedExtra);
 
+    // If ORDER_SUMMARY has edited included-items (service amount overridden),
+    // prefer OS invoice line_items as the source of truth for SERVICE amount.
+    // IMPORTANT: OS stored line_items might be missing ADDON lines (they may be hydrated only for display),
+    // so we merge add-ons from lead.subservice_ids when needed.
+    let osInvLineItems: any[] = [];
+    let osLines: any[] = [];
+    let osPartLines: any[] = [];
+    let osExtraLines: any[] = [];
+    try {
+      const { data: osInv } = await supabase
+        .from('invoices')
+        .select('id, invoice_type, line_items')
+        .eq('lead_id', leadId)
+        .eq('invoice_type', 'ORDER_SUMMARY')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const li = Array.isArray((osInv as any)?.line_items) ? (osInv as any).line_items : [];
+      osInvLineItems = li;
+      osLines = li.filter((x: any) => {
+        const c = String(x?.category || '').toUpperCase();
+        return c === 'SERVICE' || c === 'ADDON';
+      });
+      osPartLines = li.filter((x: any) => {
+        const c = String(x?.category || '').toUpperCase();
+        return c === 'PART' || c === 'PARTS';
+      });
+      osExtraLines = li.filter((x: any) => {
+        const c = String(x?.category || '').toUpperCase();
+        return c === 'EXTRA';
+      });
+    } catch {
+      osInvLineItems = [];
+      osLines = [];
+      osPartLines = [];
+      osExtraLines = [];
+    }
+
     const serviceLines = (pricingItems || []).map((it: any) => {
       const qty = getEffectiveQty(it, 1);
       const amount = getEffectivePricingItemAmount(it);
@@ -349,23 +405,52 @@ export async function POST(
       // ignore fallback errors; keep 0 if no sources available
     }
 
-    const effectiveServiceLines = (serviceLines?.length || 0) > 0 ? serviceLines : fallbackServiceLines;
+    // Merge OS service line overrides with addon lines from fallback (derived from lead.subservice_ids),
+    // so CI saved invoice matches what the UI shows (and what payment validation expects).
+    const normalizeCat = (c: any) => String(c || '').trim().toUpperCase();
+    const osServiceOnly = (osLines || []).filter((x: any) => normalizeCat(x?.category) === 'SERVICE');
+    const osAddonsOnly = (osLines || []).filter((x: any) => normalizeCat(x?.category) === 'ADDON');
+    const fallbackAddonsOnly = (fallbackServiceLines || []).filter((x: any) => normalizeCat(x?.category) === 'ADDON');
+    const expectedAddonCount = parseIdList((lead as any).subservice_ids).length;
 
-    const partLines = (jobCard?.job_card_parts || []).map((p: any) => ({
-      description: `${p.part_name || 'Part'}${p.part_number ? ` (${p.part_number})` : ''}`,
-      qty: p.quantity || 1,
-      rate: p.unit_price || 0,
-      amount: p.total_price || 0,
-      category: 'PART',
-    }));
+    const mergedOsWithAddons =
+      (osServiceOnly.length > 0 ? osServiceOnly : osLines).concat(
+        (expectedAddonCount > 0 && osAddonsOnly.length === 0) ? fallbackAddonsOnly : osAddonsOnly
+      );
 
-    const extraLines = (extraCharges || []).map((c: any) => ({
-      description: c.description || c.reason || 'Additional Request',
-      qty: 1,
-      rate: computeExtraAmount(c),
-      amount: computeExtraAmount(c),
-      category: 'EXTRA',
-    }));
+    const effectiveServiceLines =
+      (mergedOsWithAddons?.length || 0) > 0
+        ? mergedOsWithAddons
+        : (serviceLines?.length || 0) > 0
+          ? serviceLines
+          : fallbackServiceLines;
+
+    // Parts:
+    // If the OS invoice already has PART lines (possibly edited), treat that as source of truth.
+    // Otherwise, derive from job_card_parts.
+    const partLines =
+      (osPartLines?.length || 0) > 0
+        ? osPartLines
+        : (jobCard?.job_card_parts || []).map((p: any) => ({
+            description: `${p.part_name || 'Part'}${p.part_number ? ` (${p.part_number})` : ''}`,
+            qty: p.quantity || 1,
+            rate: p.unit_price || 0,
+            amount: p.total_price || 0,
+            category: 'PART',
+          }));
+
+    // Extras:
+    // If OS already has EXTRA lines (possibly edited), use those; else derive from approved extra charges.
+    const extraLines =
+      (osExtraLines?.length || 0) > 0
+        ? osExtraLines
+        : (extraCharges || []).map((c: any) => ({
+            description: c.description || c.reason || 'Additional Request',
+            qty: 1,
+            rate: computeExtraAmount(c),
+            amount: computeExtraAmount(c),
+            category: 'EXTRA',
+          }));
 
     const baseAmount = effectiveServiceLines.reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
     const partsCost = partLines.reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
@@ -491,12 +576,26 @@ export async function POST(
       ciInvoice = created;
     }
 
-    // Keep lead in PAYMENT_AWAITING (awaiting payment/confirmation) and lock edits.
+    // Update lead status after bill finalization.
+    // NOTE: Some DB installs enforce forward-only transitions via trigger (see database/83_prevent_status_overwrite_after_completion.sql)
+    // and do NOT allow custom statuses like PAYMENT_AWAITING from QC_APPROVED.
+    // So we move to READY_FOR_BILLING (allowed forward step) when coming from QC_APPROVED.
+    const currentStatus = String(lead.status || '').trim().toUpperCase();
+    const nextStatus =
+      currentStatus === 'QC_APPROVED'
+        ? 'READY_FOR_BILLING'
+        : currentStatus === 'READY_FOR_BILLING' ||
+          currentStatus === 'READY_FOR_DELIVERY' ||
+          currentStatus === 'DELIVERED' ||
+          currentStatus === 'CLOSED'
+        ? currentStatus
+        : // Default: keep existing to avoid backward/invalid transitions under DB triggers
+          currentStatus || lead.status;
+
     const leadUpdatePayload = {
-      status: lead.status === 'PAYMENT_AWAITING' ? lead.status : 'PAYMENT_AWAITING',
+      status: nextStatus,
       billing_locked_at: (lead as any).billing_locked_at || now,
       invoice_id: ciInvoice.id, // payable doc is CI
-      invoice_number: ciInvoice.invoice_number,
       invoice_generated_at: now,
       invoice_generated_by: userProfile.id,
       updated_at: now,

@@ -10,6 +10,7 @@ import {
   roundOff,
 } from '@/lib/utils/invoiceUtils';
 import { getEffectivePricingItemAmount, getEffectiveQty } from '@/lib/utils/pricing';
+import { resolveWorkshopServicePrice } from '@/lib/utils/workshopServicePricing';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { createNotification, notifyTelecallerTeamlead, notifyWorkshopRoles } from '@/lib/notifications';
 
@@ -165,7 +166,7 @@ export async function POST(
     if (lead.workshop_id) {
       const { data: workshopData, error: workshopError } = await supabase
         .from('workshops')
-        .select('id, name, address, city, state, state_code, phone, email, gst_number, bank_name, bank_account_name, bank_account_number, bank_ifsc, bank_branch')
+        .select('id, name, address, city, state, state_code, zone_id, phone, email, gst_number, bank_name, bank_account_name, bank_account_number, bank_ifsc, bank_branch')
         .eq('id', lead.workshop_id)
         .maybeSingle();
       
@@ -261,7 +262,7 @@ export async function POST(
       .eq('lead_id', leadId)
       .eq('status', 'ACTIVE');
 
-    // If no pricing items, fetch from workshop_service_pricing based on service_type_ids
+    // If no pricing items, resolve prices from workshop_service_pricing (city/zone/class-aware)
     let workshopPricingTotal = 0;
     if ((!pricingItems || pricingItems.length === 0) && lead.workshop_id && lead.service_type_ids) {
       try {
@@ -279,36 +280,80 @@ export async function POST(
         }
 
         if (serviceTypeIds.length > 0) {
-          console.log('[Generate Invoice API] Fetching workshop pricing for service types:', serviceTypeIds);
-          
-          // Fetch workshop-specific pricing for these service types
-          const { data: workshopPricing, error: pricingError } = await supabase
-            .from('workshop_service_pricing')
-            .select(`
-              *,
-              service_type:service_types(id, name)
-            `)
-            .eq('workshop_id', lead.workshop_id)
-            .in('service_type_id', serviceTypeIds)
-            .eq('is_active', true);
+          console.log('[Generate Invoice API] Resolving workshop pricing for service types:', serviceTypeIds);
 
-          if (pricingError) {
-            console.error('[Generate Invoice API] Error fetching workshop pricing:', pricingError);
-          } else if (workshopPricing && workshopPricing.length > 0) {
-            workshopPricingTotal = workshopPricing.reduce((sum, item) => 
-              sum + parseFloat(item.custom_price || '0'), 0);
-            console.log('[Generate Invoice API] Found workshop pricing:', {
-              count: workshopPricing.length,
-              total: workshopPricingTotal,
-              items: workshopPricing.map(p => ({
-                service_type_id: p.service_type_id,
-                price: p.custom_price,
-                service_name: p.service_type?.name
-              }))
-            });
-          } else {
-            console.warn('[Generate Invoice API] No workshop pricing found for service types:', serviceTypeIds);
+          // Resolve context: city/zone/class
+          const leadCityId = String((lead as any)?.city_id || '').trim() || null;
+          const leadCityName = String((lead as any)?.city || '').trim() || null;
+
+          let vehicleClass: string | null = null;
+          try {
+            const modelId = String((lead as any)?.model_id || '').trim();
+            if (modelId) {
+              const { data: cm } = await supabase.from('car_models').select('class').eq('id', modelId).maybeSingle();
+              vehicleClass = (cm as any)?.class || null;
+            } else if ((lead as any)?.vehicle_model) {
+              const { data: cm } = await supabase
+                .from('car_models')
+                .select('class')
+                .eq('model_name', (lead as any).vehicle_model)
+                .maybeSingle();
+              vehicleClass = (cm as any)?.class || null;
+            }
+          } catch {
+            // ignore (schema tolerance)
           }
+
+          const workshopZoneId = String((workshop as any)?.zone_id || '').trim() || null;
+
+          // Fetch service_types for base_price fallback (schema-tolerant)
+          let serviceTypes: any[] = [];
+          const { data: st1, error: stErr } = await supabase
+            .from('service_types')
+            .select('id, base_price, name')
+            .in('id', serviceTypeIds);
+          if (!stErr && st1) serviceTypes = st1 as any[];
+          else {
+            const { data: st2 } = await supabase.from('service_types').select('id, name').in('id', serviceTypeIds);
+            serviceTypes = (st2 || []) as any[];
+          }
+          const baseById = new Map<string, number>();
+          for (const st of serviceTypes || []) {
+            const id = String((st as any)?.id || '').trim();
+            const base = parseFloat(String((st as any)?.base_price || '0')) || 0;
+            if (id) baseById.set(id, base);
+          }
+
+          let total = 0;
+          for (const id of serviceTypeIds) {
+            const sid = String(id || '').trim();
+            if (!sid) continue;
+            let price = 0;
+            try {
+              price = await resolveWorkshopServicePrice({
+                supabase,
+                workshopId: String(lead.workshop_id),
+                serviceTypeId: sid,
+                cityId: leadCityId,
+                cityName: leadCityName,
+                workshopZoneId,
+                vehicleClass,
+              });
+            } catch {
+              price = 0;
+            }
+            const base = baseById.get(sid) || 0;
+            total += (price > 0 ? price : base);
+          }
+
+          workshopPricingTotal = total;
+          console.log('[Generate Invoice API] Resolved workshop pricing total:', {
+            total: workshopPricingTotal,
+            leadCityId,
+            leadCityName,
+            workshopZoneId,
+            vehicleClass,
+          });
         }
 
         // Also fetch pricing for subservices/addons if they exist

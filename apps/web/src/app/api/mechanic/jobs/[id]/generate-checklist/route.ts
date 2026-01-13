@@ -90,23 +90,38 @@ export async function POST(
       return NextResponse.json({ error: 'Job not found or not assigned to you' }, { status: 404 });
     }
 
-    // Check if checklist already exists
+    // Check if checklist already exists (UNIQUE is on lead_id, so checklist is lead-level)
     const { data: existingChecklist } = await supabase
       .from('service_checklists')
-      .select('id, checklist_items')
+      .select('*')
       .eq('lead_id', leadId)
-      .eq('mechanic_id', userProfile.id)
       .maybeSingle();
 
     if (existingChecklist) {
       // Check if checklist has items
       const items = existingChecklist.checklist_items;
-      if (items && (Array.isArray(items) ? items.length > 0 : JSON.parse(items).length > 0)) {
-        return NextResponse.json({ 
-          success: true,
-          message: 'Checklist already exists',
-          checklist: existingChecklist
-        }, { status: 200 });
+      try {
+        const parsed = Array.isArray(items) ? items : items ? JSON.parse(items) : [];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return NextResponse.json(
+            {
+              success: true,
+              message: 'Checklist already exists',
+              checklist: existingChecklist,
+            },
+            { status: 200 }
+          );
+        }
+      } catch {
+        // If parsing fails, still return existing record to avoid duplicate key errors.
+        return NextResponse.json(
+          {
+            success: true,
+            message: 'Checklist already exists',
+            checklist: existingChecklist,
+          },
+          { status: 200 }
+        );
       }
     }
 
@@ -166,7 +181,8 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Call database function to generate checklist
+    // Call database function to generate checklist.
+    // Some installs enforce UNIQUE(lead_id) at the table level; treat "duplicate key" as already-generated.
     const { data: checklistId, error: generateError } = await supabase.rpc(
       'generate_service_checklist',
       {
@@ -177,21 +193,58 @@ export async function POST(
     );
 
     if (generateError) {
+      const msg = String((generateError as any)?.message || '').toLowerCase();
+      const isDuplicate =
+        msg.includes('duplicate key') || msg.includes('unique constraint') || msg.includes('service_checklists_lead_id_key');
+
+      if (isDuplicate) {
+        const { data: existing } = await supabase
+          .from('service_checklists')
+          .select('*')
+          .eq('lead_id', leadId)
+          .maybeSingle();
+        if (existing) {
+          return NextResponse.json(
+            {
+              success: true,
+              message: 'Checklist already exists',
+              checklist: existing,
+            },
+            { status: 200 }
+          );
+        }
+      }
+
       console.error('Error generating checklist:', generateError);
-      return NextResponse.json({ 
-        error: 'Failed to generate checklist',
-        details: generateError.message
-      }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: 'Failed to generate checklist',
+          details: generateError.message,
+        },
+        { status: 500 }
+      );
     }
 
-    // Fetch the newly created checklist
-    const { data: newChecklist, error: fetchError } = await supabase
-      .from('service_checklists')
-      .select('*')
-      .eq('id', checklistId)
-      .single();
+    // Fetch the newly created checklist (prefer by returned id; fallback to lead_id)
+    let newChecklist: any = null;
+    try {
+      if (checklistId) {
+        const { data: byId } = await supabase.from('service_checklists').select('*').eq('id', checklistId).maybeSingle();
+        if (byId) newChecklist = byId;
+      }
+    } catch {
+      // ignore
+    }
+    if (!newChecklist) {
+      const { data: byLead } = await supabase
+        .from('service_checklists')
+        .select('*')
+        .eq('lead_id', leadId)
+        .maybeSingle();
+      if (byLead) newChecklist = byLead;
+    }
 
-    if (fetchError || !newChecklist) {
+    if (!newChecklist) {
       return NextResponse.json({ 
         error: 'Checklist generated but could not be fetched',
         checklist_id: checklistId

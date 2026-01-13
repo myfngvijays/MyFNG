@@ -42,6 +42,23 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [gpsWarning, setGpsWarning] = useState(false);
   const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
+  const bulkInputRef = useRef<HTMLInputElement | null>(null);
+  const bulkQueueRef = useRef<Array<{ index: number; file: File; type: string; label: string }>>([]);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const bulkUploadingRef = useRef(false);
+  const photosRef = useRef<PhotoState[]>([]);
+  const [bulkMapOpen, setBulkMapOpen] = useState(false);
+  const [bulkPicked, setBulkPicked] = useState<
+    Array<{ id: string; file: File; previewUrl: string; assignedType: string | null }>
+  >([]);
+
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+
+  useEffect(() => {
+    bulkUploadingRef.current = bulkUploading;
+  }, [bulkUploading]);
 
   useEffect(() => {
     if (photos.length === 0) {
@@ -222,6 +239,28 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
     }
   };
 
+  const cleanupBulkPickedPreviews = () => {
+    setBulkPicked((prev) => {
+      for (const p of prev) revokeIfBlobUrl(p.previewUrl);
+      return [];
+    });
+  };
+
+  const setSlotFile = (index: number, file: File) => {
+    setPhotos((prev) => {
+      const next = [...prev];
+      // cleanup old preview blob url if any
+      revokeIfBlobUrl(next[index]?.preview || null);
+      next[index] = {
+        ...next[index],
+        file,
+        preview: URL.createObjectURL(file),
+        uploaded: false,
+      };
+      return next;
+    });
+  };
+
   const handleFileSelect = async (index: number, file: File) => {
     // Check file size before processing (100MB limit for videos)
     const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
@@ -255,39 +294,40 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
       }
     }
 
-    // Optimize images before upload (keeps quality, reduces size)
-    const optimized = await optimizeUploadFile(file);
-    const actualFile = optimized.file;
-
-    setPhotos((prev) => {
-      const next = [...prev];
-      // cleanup old preview blob url if any
-      revokeIfBlobUrl(next[index]?.preview || null);
-      next[index] = {
-        ...next[index],
-        file: actualFile,
-        preview: URL.createObjectURL(actualFile),
-        uploaded: false,
-      };
-      return next;
-    });
+    // Set preview immediately; optimization is done right before upload.
+    setSlotFile(index, file);
 
       // If it's dashboard photo, show odometer input
-      if (photos[index].type === 'BEFORE_DASHBOARD') {
+      const slotType = REQUIRED_PHOTOS[index]?.type || photosRef.current?.[index]?.type;
+      if (slotType === 'BEFORE_DASHBOARD') {
         setSelectedPhotoIndex(index);
         setShowOdometerModal(true);
       } else {
-        uploadPhoto(index);
+        uploadPhoto(index, file, slotType || null, REQUIRED_PHOTOS[index]?.label || null);
       }
   };
 
-  const uploadPhoto = async (index: number) => {
-    const photo = photos[index];
-    if (!photo.file || photo.uploaded || photo.uploading) return;
+  const uploadPhoto = async (
+    index: number,
+    fileOverride?: File,
+    typeOverride?: string | null,
+    labelOverride?: string | null
+  ) => {
+    const photo = photosRef.current[index];
+    const effectiveType = typeOverride || photo?.type || REQUIRED_PHOTOS[index]?.type;
+    const effectiveLabel = labelOverride || photo?.label || REQUIRED_PHOTOS[index]?.label || 'Photo';
+    if (!effectiveType) return;
 
-    const newPhotos = [...photos];
-    newPhotos[index].uploading = true;
-    setPhotos(newPhotos);
+    const fileToUpload = fileOverride || photo?.file;
+    if (!fileToUpload) return;
+    if (photo?.uploaded || photo?.uploading) return;
+
+    setPhotos((prev) => {
+      const next = [...prev];
+      if (!next[index] || next[index].uploaded || next[index].uploading) return prev;
+      next[index] = { ...next[index], uploading: true };
+      return next;
+    });
 
     try {
       const supabase = createClient();
@@ -295,11 +335,15 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
       if (!session) throw new Error('Not authenticated');
 
       const formData = new FormData();
-      formData.append('file', photo.file);
-      formData.append('photo_type', photo.type);
+      // Optimize images before upload (keeps quality, reduces size)
+      const optimized = await optimizeUploadFile(fileToUpload);
+      const finalFile = optimized.file;
+
+      formData.append('file', finalFile);
+      formData.append('photo_type', effectiveType);
       formData.append('photo_category', 'before');
 
-      if (photo.type === 'BEFORE_DASHBOARD' && odometerReading) {
+      if (effectiveType === 'BEFORE_DASHBOARD' && odometerReading) {
         formData.append('odometer_reading', odometerReading);
       }
 
@@ -339,16 +383,169 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
         throw new Error(result.details || result.error || 'Failed to upload photo');
       }
 
-      newPhotos[index].uploading = false;
-      newPhotos[index].uploaded = true;
-      setPhotos(newPhotos);
-      toast.success(`${photo.label} uploaded successfully`);
+      setPhotos((prev) => {
+        const next = [...prev];
+        if (!next[index]) return prev;
+        next[index] = { ...next[index], uploading: false, uploaded: true };
+        return next;
+      });
+      toast.success(`${effectiveLabel} uploaded successfully`);
       onUploadComplete();
     } catch (error: any) {
-      newPhotos[index].uploading = false;
-      setPhotos(newPhotos);
+      setPhotos((prev) => {
+        const next = [...prev];
+        if (!next[index]) return prev;
+        next[index] = { ...next[index], uploading: false };
+        return next;
+      });
       toast.error(error.message || 'Failed to upload photo');
     }
+  };
+
+  const validateOdometer = () => {
+    const n = Number(String(odometerReading || '').trim());
+    return Number.isFinite(n) && n > 0;
+  };
+
+  const bulkNeedsOdometer = () => {
+    return bulkPicked.some((x) => String(x.assignedType || '').trim() === 'BEFORE_DASHBOARD');
+  };
+
+  const photoTypeOptions = REQUIRED_PHOTOS.map((p) => ({ type: p.type, label: p.label }));
+
+  const getSlotIndexByType = (t: string) => {
+    const current = photosRef.current.length ? photosRef.current : photos;
+    return current.findIndex((p) => p.type === t);
+  };
+
+  const isTypeAvailable = (t: string) => {
+    const idx = getSlotIndexByType(t);
+    if (idx < 0) return false;
+    const slot = (photosRef.current.length ? photosRef.current : photos)[idx];
+    if (!slot) return false;
+    // If already uploaded or uploading, don't allow remap
+    if (slot.uploaded || slot.uploading) return false;
+    return true;
+  };
+
+  const runBulkQueue = async () => {
+    if (!bulkQueueRef.current.length) return;
+    if (bulkUploadingRef.current) return;
+
+    bulkUploadingRef.current = true;
+    setBulkUploading(true);
+    try {
+      while (bulkQueueRef.current.length) {
+        const next = bulkQueueRef.current.shift();
+        if (!next) break;
+        const { index, file, type, label } = next;
+
+        // skip if slot already uploaded mid-flight
+        const slot = photosRef.current[index];
+        if (slot?.uploaded) continue;
+
+        // Ensure dashboard has odometer
+        if (type === 'BEFORE_DASHBOARD' && !validateOdometer()) {
+          // Pause bulk, ask odometer, resume after submit.
+          bulkQueueRef.current.unshift({ index, file, type, label });
+          setSelectedPhotoIndex(index);
+          setShowOdometerModal(true);
+          return;
+        }
+
+        await uploadPhoto(index, file, type, label);
+      }
+    } finally {
+      bulkUploadingRef.current = false;
+      setBulkUploading(false);
+    }
+  };
+
+  const handleBulkFilesSelected = (files: File[]) => {
+    if (!files || files.length === 0) return;
+    if (!photosRef.current.length && !photos.length) {
+      toast.error('Please wait… loading photo slots');
+      return;
+    }
+
+    const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+    const valid: File[] = [];
+    for (const f of files) {
+      if (f.size > MAX_FILE_SIZE) {
+        const mb = (f.size / (1024 * 1024)).toFixed(2);
+        toast.error(`File too large (${mb}MB). Max 100MB: ${f.name}`);
+        continue;
+      }
+      valid.push(f);
+    }
+    if (!valid.length) return;
+
+    setBulkPicked(
+      valid.map((file, i) => ({
+        id: `${Date.now()}-${i}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        assignedType: null,
+      }))
+    );
+    setBulkMapOpen(true);
+  };
+
+  const startBulkUploadFromMapping = async () => {
+    if (!bulkPicked.length) return;
+
+    // Validate mapping
+    const missing = bulkPicked.filter((x) => !x.assignedType);
+    if (missing.length) {
+      toast.error('Please select photo slot for every file');
+      return;
+    }
+
+    // If Dashboard & Odometer is selected for any file, odometer reading is mandatory
+    if (bulkNeedsOdometer() && !validateOdometer()) {
+      toast.error('Please enter odometer reading for Dashboard & Odometer photo');
+      // This odometer prompt is for bulk mapping, not for a specific slot upload.
+      setSelectedPhotoIndex(null);
+      setShowOdometerModal(true);
+      return;
+    }
+
+    const assigned = bulkPicked.map((x) => String(x.assignedType || '').trim()).filter(Boolean);
+    const unique = new Set(assigned);
+    if (unique.size !== assigned.length) {
+      toast.error('Each slot can be selected only once');
+      return;
+    }
+
+    // Validate availability
+    for (const t of assigned) {
+      if (!isTypeAvailable(t)) {
+        toast.error(`Slot not available: ${photoTypeOptions.find((o) => o.type === t)?.label || t}`);
+        return;
+      }
+      const idx = getSlotIndexByType(t);
+      const slot = (photosRef.current.length ? photosRef.current : photos)[idx];
+      if (slot?.file && !slot.uploaded) {
+        toast.error(`Slot already has a selected file: ${slot.label}. Remove it first.`);
+        return;
+      }
+    }
+
+    // Build queue + set previews
+    const queue: Array<{ index: number; file: File; type: string; label: string }> = [];
+    for (const item of bulkPicked) {
+      const t = item.assignedType!;
+      const idx = getSlotIndexByType(t);
+      const label = photoTypeOptions.find((o) => o.type === t)?.label || t;
+      setSlotFile(idx, item.file);
+      queue.push({ index: idx, file: item.file, type: t, label });
+    }
+
+    bulkQueueRef.current = [...bulkQueueRef.current, ...queue];
+    setBulkMapOpen(false);
+    cleanupBulkPickedPreviews();
+    toast.success(`Uploading ${queue.length} files…`);
+    await runBulkQueue();
   };
 
   const handleOdometerSubmit = () => {
@@ -359,6 +556,10 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
     setShowOdometerModal(false);
     if (selectedPhotoIndex !== null) {
       uploadPhoto(selectedPhotoIndex);
+    }
+    // If bulk queue was paused waiting for odometer, resume it
+    if (bulkQueueRef.current.length) {
+      runBulkQueue();
     }
   };
 
@@ -496,6 +697,148 @@ export default function BeforeInspectionUpload({ leadId, jobId, onUploadComplete
             <p className="text-xs text-green-700">
               {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Upload */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm text-gray-700">
+          <span className="font-semibold">Tip:</span> Bulk upload me aap files select karo, phir manual slot select karke upload start karo.
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={bulkInputRef}
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              // IMPORTANT: copy files BEFORE resetting input value (otherwise FileList can become empty)
+              const files = Array.from(e.target.files || []);
+              // reset input so selecting same files again triggers onChange
+              e.currentTarget.value = '';
+              handleBulkFilesSelected(files);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => bulkInputRef.current?.click()}
+            disabled={bulkUploading || photos.length === 0}
+            className={`btn-primary flex items-center gap-2 ${bulkUploading ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            <Upload className="w-4 h-4" />
+            {bulkUploading ? 'Uploading...' : 'Bulk Upload'}
+          </button>
+        </div>
+      </div>
+
+      {/* Bulk Mapping Modal (manual mapping) */}
+      {bulkMapOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-3xl w-full p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-800">Map selected files to slots</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkMapOpen(false);
+                  cleanupBulkPickedPreviews();
+                }}
+                className="px-2 py-1 rounded hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-[55vh] overflow-auto pr-1">
+              {bulkPicked.map((item, idx) => {
+                const assignedTypes = new Set(
+                  bulkPicked.map((p) => p.assignedType).filter(Boolean) as string[]
+                );
+                const currentAssigned = item.assignedType;
+                return (
+                  <div
+                    key={item.id}
+                    className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 border rounded-lg p-3"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-14 h-14 rounded-md overflow-hidden bg-gray-100 border flex-shrink-0">
+                        {item.file.type.startsWith('video/') ? (
+                          <video
+                            src={item.previewUrl}
+                            className="w-full h-full object-cover"
+                            muted
+                            playsInline
+                          />
+                        ) : (
+                          <img
+                            src={item.previewUrl}
+                            alt={item.file.name}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-gray-800 truncate">
+                          {idx + 1}. {item.file.name}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {(item.file.size / (1024 * 1024)).toFixed(2)} MB
+                        </div>
+                      </div>
+                    </div>
+                    <div className="w-full md:w-72">
+                      <select
+                        className="input w-full"
+                        value={currentAssigned || ''}
+                        onChange={(e) => {
+                          const nextType = e.target.value || null;
+                          setBulkPicked((prev) =>
+                            prev.map((p) => (p.id === item.id ? { ...p, assignedType: nextType } : p))
+                          );
+
+                          // If user selects Dashboard & Odometer, ask reading immediately (mandatory)
+                          if (nextType === 'BEFORE_DASHBOARD' && !validateOdometer()) {
+                            // This prompt is for bulk mapping, not a specific slot upload.
+                            setSelectedPhotoIndex(null);
+                            setShowOdometerModal(true);
+                          }
+                        }}
+                      >
+                        <option value="">Select slot…</option>
+                        {photoTypeOptions.map((opt) => {
+                          const disabled =
+                            !isTypeAvailable(opt.type) ||
+                            (assignedTypes.has(opt.type) && opt.type !== currentAssigned);
+                          return (
+                            <option key={opt.type} value={opt.type} disabled={disabled}>
+                              {opt.label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setBulkMapOpen(false);
+                  cleanupBulkPickedPreviews();
+                }}
+              >
+                Cancel
+              </button>
+              <button type="button" className="btn-primary" onClick={startBulkUploadFromMapping}>
+                Start Upload
+              </button>
+            </div>
           </div>
         </div>
       )}

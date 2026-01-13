@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime } from '@/lib/utils';
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
+import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
 import PartsUsedUpload from '@/components/mechanic/PartsUsedUpload';
 import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
 
@@ -137,9 +138,25 @@ export default function MechanicJobDetailPage() {
     byName: string | null;
   }>({ text: '', updatedAt: null, byName: null });
 
+  // Prevent "stuck loading" on first navigation by timing out long awaits
+  const fetchSeqRef = useRef(0);
+
+  const withTimeout = async <T,>(p: Promise<T>, ms: number, label: string): Promise<T> => {
+    return await new Promise<T>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error(`Timeout: ${label}`)), ms);
+      p.then((v) => {
+        clearTimeout(t);
+        resolve(v);
+      }).catch((e) => {
+        clearTimeout(t);
+        reject(e);
+      });
+    });
+  };
+
   useEffect(() => {
     if (leadId) {
-      fetchJobDetails();
+      fetchJobDetails({ silent: false });
 
       // Setup realtime subscription for this specific job
       const supabase = createClient();
@@ -154,7 +171,7 @@ export default function MechanicJobDetailPage() {
             filter: `lead_id=eq.${leadId}`
           },
           (payload) => {
-            fetchJobDetails();
+            fetchJobDetails({ silent: true });
           }
         )
         .on(
@@ -166,7 +183,7 @@ export default function MechanicJobDetailPage() {
             filter: `lead_id=eq.${leadId}`
           },
           (payload) => {
-            fetchJobDetails();
+            fetchJobDetails({ silent: true });
           }
         )
         .on(
@@ -180,7 +197,7 @@ export default function MechanicJobDetailPage() {
           (payload) => {
             // If status changed to IN_PROGRESS (sent back), refresh immediately
             if (payload.new && payload.new.status === 'IN_PROGRESS') {
-              fetchJobDetails();
+              fetchJobDetails({ silent: true });
             }
           }
         )
@@ -193,7 +210,7 @@ export default function MechanicJobDetailPage() {
             filter: `lead_id=eq.${leadId}`
           },
           (payload) => {
-            fetchJobDetails();
+            fetchJobDetails({ silent: true });
           }
         )
         .subscribe((status) => {
@@ -495,10 +512,14 @@ export default function MechanicJobDetailPage() {
     }
   }
 
-  async function fetchJobDetails() {
+  async function fetchJobDetails(opts?: { silent?: boolean }) {
+    const silent = opts?.silent ?? true;
+    const runId = ++fetchSeqRef.current;
     const supabase = createClient();
 
-    try {
+    if (!silent && !job) setLoading(true);
+
+    const run = async () => {
       
       // Get job details
       const { data: jobData, error: jobError } = await supabase
@@ -527,7 +548,8 @@ export default function MechanicJobDetailPage() {
           )
         `)
         .eq('lead_id', leadId)
-        .single();
+        // Avoid 406 on first open if row isn't visible yet
+        .maybeSingle();
 
       if (jobError) {
         console.error('Error fetching job from mechanic_jobs:', jobError);
@@ -775,7 +797,10 @@ export default function MechanicJobDetailPage() {
                       }, 1000);
                     }
                   } else {
-                    console.error('Error generating checklist:', result.error, result.details);
+                    // If checklist already exists or backend returned success without checklist, don't spam logs.
+                    if (!response.ok) {
+                      console.error('Error generating checklist:', result.error, result.details);
+                    }
                     // Don't retry automatically - let user click the button manually
                   }
                 } catch (error) {
@@ -900,11 +925,21 @@ export default function MechanicJobDetailPage() {
       }
 
       setExtraWorkRequests(extraWorkData || []);
+    };
 
-      setLoading(false);
+    try {
+      // Hard guard: never keep spinner forever (first-open sometimes hangs until refresh)
+      await withTimeout(run(), 12000, 'fetchJobDetails');
     } catch (error) {
       console.error('Error fetching job details:', error);
-      setLoading(false);
+      // If mechanic_jobs row is created asynchronously right after lead creation, do one quick retry.
+      if (!silent && !job) {
+        setTimeout(() => {
+          if (runId === fetchSeqRef.current) fetchJobDetails({ silent: true });
+        }, 800);
+      }
+    } finally {
+      if (!silent && runId === fetchSeqRef.current) setLoading(false);
     }
   }
 
@@ -2282,6 +2317,7 @@ export default function MechanicJobDetailPage() {
                       className="input w-full text-xs sm:text-sm"
                     >
                       <option value="PROGRESS">Work in Progress</option>
+                      <option value="AFTER">After Service</option>
                       <option value="PARTS_USED">Parts Used</option>
                     </select>
                   </div>
@@ -2295,6 +2331,23 @@ export default function MechanicJobDetailPage() {
                       Work in Progress Photos
                     </h2>
                     <DuringServiceUpload
+                      leadId={leadId}
+                      jobId={job.id}
+                      onUploadComplete={() => {
+                        fetchJobDetails();
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* AFTER Category - After Service Upload */}
+                {selectedCategory === 'AFTER' && job && job.id && (
+                  <div className="card border-2 border-green-300 p-3 sm:p-4 md:p-5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                      <Camera className="w-6 h-6 text-green-700" />
+                      After Service Photos
+                    </h2>
+                    <AfterServiceUpload
                       leadId={leadId}
                       jobId={job.id}
                       onUploadComplete={() => {

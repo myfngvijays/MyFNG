@@ -313,9 +313,30 @@ export default function PickupTaskDetailPage() {
   const openGoogleMaps = async () => {
     if (!task) return;
     
-    // For delivery-ready leads, start delivery (DROP) OTP; for pickup leads, start pickup navigation.
     try {
       const isDelivery = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';
+      const ok = window.confirm(
+        isDelivery
+          ? 'Navigate:\n\nKya aap DELIVERY karne ja rahe ho?\n\nOK = Delivery start (status change)\nCancel = Sirf location dekhna'
+          : 'Navigate:\n\nKya aap PICKUP karne ja rahe ho?\n\nOK = Pickup start (status change)\nCancel = Sirf location dekhna'
+      );
+
+      // Open maps in both cases (pickup start OR just viewing location)
+      const address = task.address || task.customer_address || task.pickup_address || '';
+      const city = task.city || '';
+      const pincode = task.pincode || '';
+      const fullAddress = `${address}, ${city}, ${pincode}`.trim();
+      if (!fullAddress) {
+        toast.error('No address available for navigation');
+        return;
+      }
+      const encodedAddress = encodeURIComponent(fullAddress);
+      window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
+
+      // Only update status / generate OTP when user confirms they are actually starting pickup/delivery
+      if (!ok) return;
+
+      // For delivery-ready leads, start delivery (DROP) OTP; for pickup leads, start pickup navigation.
       const response = await fetch(isDelivery ? `/api/pickup/tasks/${taskId}/drop/start` : `/api/pickup/${taskId}/navigate`, {
         method: 'POST',
         headers: {
@@ -330,14 +351,6 @@ export default function PickupTaskDetailPage() {
         throw new Error(data.error || 'Failed to update status');
       }
 
-      // Status updated and OTP generated, now open maps
-    const address = task.address || task.customer_address || task.pickup_address || '';
-    const city = task.city || '';
-    const pincode = task.pincode || '';
-    const fullAddress = `${address}, ${city}, ${pincode}`.trim();
-    const encodedAddress = encodeURIComponent(fullAddress);
-    window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
-      
       // Refresh task details to get the updated OTP
       fetchTaskDetails();
       

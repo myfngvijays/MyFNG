@@ -31,7 +31,8 @@ interface JobCardData {
   job_priority: string;
   sla_remaining_minutes: number;
   pickup_status: string;
-  before_images_count: number;
+  // Pickup/Visit photos (uploaded by pickup boy) are stored in lead_media (BEFORE_* categories).
+  pickup_visit_images_count: number;
   progress_images_count: number;
   after_images_count: number;
   has_pending_extra_work: boolean;
@@ -311,7 +312,7 @@ export default function WorkshopMechanicDashboard() {
           completed_at: mj.completed_at,
           sla_remaining_minutes: mj.sla_remaining_minutes,
           checklist_completed: mj.checklist_completed,
-          before_images_count: mj.before_images_count || 0,
+          pickup_visit_images_count: 0,
           progress_images_count: mj.progress_images_count || 0,
           after_images_count: mj.after_images_count || 0,
           pickup_status: mj.lead?.pickup_status || 'NOT_REQUIRED',
@@ -321,8 +322,27 @@ export default function WorkshopMechanicDashboard() {
         };
       });
 
-      // Check for pending additional job and parts
+      // Pickup/Visit images count from lead_media via server API (service role) to avoid RLS issues.
       const leadIds = dashboardData.map((j: any) => j.lead_id).filter((id: any) => id);
+      if (leadIds.length > 0) {
+        try {
+          const res = await fetch('/api/leads/media-counts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead_ids: leadIds }),
+          });
+          const json = await res.json().catch(() => ({}));
+          const counts = (json as any)?.counts || {};
+          dashboardData.forEach((job: any) => {
+            const c = counts[String(job.lead_id || '').trim()];
+            job.pickup_visit_images_count = Number(c?.required_uploaded || 0) || 0;
+          });
+        } catch (e) {
+          console.error('Error fetching pickup/visit images:', e);
+        }
+      }
+
+      // Check for pending additional job and parts
       if (leadIds.length > 0) {
         try {
           const { data: extraWork } = await supabase
@@ -715,12 +735,12 @@ export default function WorkshopMechanicDashboard() {
                       <td className="px-4 md:px-6 py-3 md:py-4">
                         <div className="flex items-center gap-2">
                           <div className="flex items-center gap-0.5">
-                    {job.before_images_count > 0 ? (
+                    {job.pickup_visit_images_count > 0 ? (
                               <CheckCircle className="w-3 h-3 text-green-600" />
                     ) : (
                               <Camera className="w-3 h-3 text-gray-300" />
                     )}
-                            <span className="text-[10px] text-gray-600">B</span>
+                            <span className="text-[10px] text-gray-600">PV</span>
                   </div>
                           <div className="flex items-center gap-0.5">
                             {job.progress_images_count > 0 ? (

@@ -1,8 +1,63 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
+
+function isMissingCol(err: any) {
+  const code = String(err?.code || '');
+  const msg = String(err?.message || '');
+  return (
+    code === '42703' || // postgres: undefined_column
+    code === 'PGRST204' || // postgrest: missing column in schema cache
+    /Could not find the '.*' column/i.test(msg) ||
+    /column .* does not exist/i.test(msg)
+  );
+}
+
+async function tryUpdateLeadDelivered(
+  supabaseAdmin: any,
+  leadId: string,
+  payload: Record<string, any>
+) {
+  // Try full payload first, then progressively drop columns that might not exist in some installs.
+  const candidates: Array<Record<string, any>> = [
+    payload,
+    // common missing cols on some DBs:
+    (() => {
+      const { delivered_at, ...rest } = payload;
+      return rest;
+    })(),
+    (() => {
+      const { delivered_by, ...rest } = payload;
+      return rest;
+    })(),
+    (() => {
+      const { read_only, ...rest } = payload;
+      return rest;
+    })(),
+    // minimal required: status + updated_at (and pickup_status if present)
+    {
+      status: payload.status,
+      pickup_status: payload.pickup_status,
+      updated_at: payload.updated_at,
+    },
+    { status: payload.status, updated_at: payload.updated_at },
+  ];
+
+  let lastErr: any = null;
+  for (const p of candidates) {
+    const { error } = await supabaseAdmin.from('service_leads').update(p).eq('id', leadId);
+    if (!error) return { ok: true as const };
+    lastErr = error;
+    if (!isMissingCol(error) && String(error?.code || '') !== '42501') {
+      // Not a missing-column or RLS error; stop retrying.
+      break;
+    }
+  }
+  return { ok: false as const, error: lastErr };
+}
 
 export async function POST(
   request: NextRequest,
@@ -10,6 +65,10 @@ export async function POST(
 ) {
   try {
     const supabase = await createClientFromRequest(request);
+    const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Server misconfigured', details: adminErr }, { status: 500 });
+    }
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -147,7 +206,7 @@ export async function POST(
     // IMPORTANT: even if we validated via test OTP (123456) or service_leads.pickup_otp fallback,
     // we still create/update a verified record so downstream APIs (pickup complete) won't fail.
     if (otpRecord) {
-      await supabase
+      await supabaseAdmin
         .from('pickup_otps')
         .update({
           is_verified: true,
@@ -156,7 +215,7 @@ export async function POST(
         })
         .eq('id', otpRecord.id);
     } else {
-      await supabase
+      await supabaseAdmin
         .from('pickup_otps')
         .insert({
           lead_id: leadId,
@@ -172,7 +231,7 @@ export async function POST(
 
     if (otpType === 'PICKUP') {
     // Update service_leads status to VEHICLE_IN_TRANSIT (vehicle picked up, driving to workshop)
-    const { error: updateLeadError } = await supabase
+    const { error: updateLeadError } = await supabaseAdmin
       .from('service_leads')
       .update({
         pickup_otp_verified_at: now,
@@ -188,7 +247,7 @@ export async function POST(
     }
 
     // Update pickup tracking
-    await supabase
+    await supabaseAdmin
       .from('pickup_tracking')
       .update({
         pickup_status: 'VEHICLE_IN_TRANSIT',
@@ -199,7 +258,7 @@ export async function POST(
       .eq('lead_id', leadId);
     } else {
       // DROP OTP verification: treat as final handover to customer => mark delivered.
-      await supabase
+      await supabaseAdmin
         .from('pickup_tracking')
         .upsert(
           {
@@ -215,36 +274,39 @@ export async function POST(
         );
 
       // Update lead status to delivered
-      const { error: updateLeadError } = await supabase
-        .from('service_leads')
-        .update({
-          status: 'DELIVERED_TO_CUSTOMER',
-          pickup_status: 'DELIVERED',
-          delivered_at: now,
-          delivered_by: userProfile.id,
-          read_only: true,
-          updated_at: now,
-        } as any)
-        .eq('id', leadId);
+      const updatePayload: any = {
+        // IMPORTANT: DB trigger allows READY_FOR_DELIVERY -> DELIVERED (not DELIVERED_TO_CUSTOMER)
+        status: 'DELIVERED',
+        pickup_status: 'DELIVERED',
+        delivered_at: now,
+        delivered_by: userProfile.id,
+        read_only: true,
+        updated_at: now,
+      };
 
-      if (updateLeadError) {
-        console.error('Error updating lead status to DELIVERED_TO_CUSTOMER:', updateLeadError);
+      const leadUpdate = await tryUpdateLeadDelivered(supabaseAdmin, leadId, updatePayload);
+      if (!leadUpdate.ok) {
+        console.error('Error updating lead status to DELIVERED:', leadUpdate.error);
         return NextResponse.json(
-          { error: 'Failed to update lead status', details: updateLeadError.message },
+          { error: 'Failed to update lead status', details: (leadUpdate.error as any)?.message, code: (leadUpdate.error as any)?.code },
           { status: 500 }
         );
       }
 
       // Log status change for delivery completion
-      await supabase.from('lead_status_history').insert({
-        lead_id: leadId,
-        old_status: lead.status,
-        new_status: 'DELIVERED_TO_CUSTOMER',
-        changed_by: userProfile.id,
-        changed_at: now,
-        reason: 'Delivery OTP verified - Vehicle delivered to customer',
-        notes: 'Delivery OTP verified successfully',
-      } as any);
+      try {
+        await supabaseAdmin.from('lead_status_history').insert({
+          lead_id: leadId,
+          old_status: lead.status,
+          new_status: 'DELIVERED',
+          changed_by: userProfile.id,
+          changed_at: now,
+          reason: 'Delivery OTP verified - Vehicle delivered to customer',
+          notes: 'Delivery OTP verified successfully',
+        } as any);
+      } catch (e) {
+        console.warn('Non-blocking: failed to insert lead_status_history for delivery:', e);
+      }
     }
 
     if (otpType === 'PICKUP') {
@@ -263,13 +325,17 @@ export async function POST(
     }
 
     // Create activity log
-    await supabase.from('lead_activities').insert({
-        lead_id: leadId,
-        user_id: userProfile.id,
-      activity_type: `${otpType}_OTP_VERIFIED`,
-      description: otpType === 'DROP' ? 'Delivery OTP verified - Vehicle delivered to customer' : 'Customer OTP verified - Vehicle picked up, driving to workshop',
-      metadata: { pickup_boy_id: userProfile.id, verified_at: now, otp_type: otpType },
-    } as any);
+    try {
+      await supabaseAdmin.from('lead_activities').insert({
+          lead_id: leadId,
+          user_id: userProfile.id,
+        activity_type: `${otpType}_OTP_VERIFIED`,
+        description: otpType === 'DROP' ? 'Delivery OTP verified - Vehicle delivered to customer' : 'Customer OTP verified - Vehicle picked up, driving to workshop',
+        metadata: { pickup_boy_id: userProfile.id, verified_at: now, otp_type: otpType },
+      } as any);
+    } catch (e) {
+      console.warn('Non-blocking: failed to insert lead_activities:', e);
+    }
 
     // Workshop Admin notification (final)
     try {

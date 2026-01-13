@@ -32,6 +32,38 @@ export default function ServiceTypePricingPage() {
   const [csvInfo, setCsvInfo] = useState<string>('');
 
   const supabase = createClientComponentClient();
+  const pricingBroadcastRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    // Broadcast channel: used to notify other pages (e.g., supervisor job page) to refresh prices
+    // even if Postgres realtime isn't enabled for pricing tables.
+    const ch = supabase.channel('pricing-updates');
+    ch.subscribe();
+    pricingBroadcastRef.current = ch;
+    return () => {
+      try {
+        supabase.removeChannel(ch);
+      } catch {
+        // ignore
+      }
+      pricingBroadcastRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const broadcastPricingUpdate = (payload: any) => {
+    try {
+      const ch = pricingBroadcastRef.current;
+      if (!ch) return;
+      ch.send({
+        type: 'broadcast',
+        event: 'workshop_service_pricing_updated',
+        payload: { ...payload, at: new Date().toISOString() },
+      });
+    } catch {
+      // non-blocking
+    }
+  };
 
   const escapeCsv = (value: any) => {
     const s = value === null || value === undefined ? '' : String(value);
@@ -416,6 +448,12 @@ export default function ServiceTypePricingPage() {
       });
 
       alert('Pricing updated successfully!');
+      broadcastPricingUpdate({
+        workshop_id: selectedWorkshop,
+        zone_id: selectedZone || null,
+        city_id: selectedCity || null,
+        vehicle_class: selectedClass || null,
+      });
     } catch (error: any) {
       alert('Error updating pricing: ' + error.message);
     } finally {
@@ -449,6 +487,12 @@ export default function ServiceTypePricingPage() {
       });
 
       alert(`Service pricing applied successfully to ${workshopIds.length} workshops!`);
+      broadcastPricingUpdate({
+        workshop_ids: workshopIds,
+        zone_id: selectedZone || null,
+        city_id: selectedCity || null,
+        vehicle_class: selectedClass || null,
+      });
       // Reset to show first workshop
       if (filteredWorkshops.length > 0) {
         setSelectedWorkshop(filteredWorkshops[0].id);

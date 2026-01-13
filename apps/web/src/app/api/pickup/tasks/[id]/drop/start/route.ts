@@ -36,7 +36,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     if (leadError || !lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     if (lead.read_only) return NextResponse.json({ error: 'Lead is archived/read-only' }, { status: 400 });
 
-    const allowedLeadStatuses = ['READY_FOR_DELIVERY', 'COD_PENDING'];
+    const allowedLeadStatuses = ['READY_FOR_DELIVERY', 'COD_PENDING', 'PAID'];
     if (!allowedLeadStatuses.includes(lead.status)) {
       return NextResponse.json(
         { error: 'Lead is not ready for delivery', current_status: lead.status, allowed_statuses: allowedLeadStatuses },

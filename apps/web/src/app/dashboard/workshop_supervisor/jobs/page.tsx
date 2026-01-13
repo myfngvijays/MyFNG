@@ -50,6 +50,7 @@ interface Job {
 function SupervisorJobsContent() {
   const searchParams = useSearchParams();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [pvCounts, setPvCounts] = useState<Record<string, { required_uploaded: number; required_total: number }>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -215,9 +216,32 @@ function SupervisorJobsContent() {
         if (holdJobs.length > 0) {
           console.log('📋 Jobs with HOLD status:', holdJobs.map((j: any) => ({ id: j.id, status: j.status })));
         }
-        setJobs(result.data.jobs);
+        const nextJobs = result.data.jobs as Job[];
+        setJobs(nextJobs);
         setTotal(result.data.pagination.total);
         setTotalPages(result.data.pagination.totalPages);
+
+        // Fetch Pickup/Visit (PV) image completion using service-role backed API (schema + RLS tolerant)
+        try {
+          const leadIds = (nextJobs || []).map((j: any) => String(j?.id || '').trim()).filter(Boolean);
+          if (leadIds.length > 0) {
+            const pvRes = await fetch('/api/leads/media-counts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ lead_ids: leadIds }),
+            });
+            const pvJson = await pvRes.json().catch(() => ({}));
+            if (pvRes.ok && (pvJson as any)?.success) {
+              setPvCounts(((pvJson as any)?.counts || {}) as any);
+            } else {
+              // keep existing pvCounts; non-blocking
+            }
+          } else {
+            setPvCounts({});
+          }
+        } catch {
+          // ignore
+        }
       } else {
         throw new Error(result.error || 'Unknown error');
       }
@@ -463,12 +487,18 @@ function SupervisorJobsContent() {
                         <td className="px-4 md:px-6 py-3 md:py-4">
                           <div className="flex items-center gap-2">
                             <div className="flex items-center gap-0.5">
-                              {job.images.before ? (
+                              {(() => {
+                                const c = pvCounts[String(job.id || '').trim()];
+                                const ok = c ? Number(c.required_uploaded || 0) >= Number(c.required_total || 6) : false;
+                                // Fallback to old "before" flag if counts not available
+                                const done = c ? ok : Boolean(job.images.before);
+                                return done ? (
                                 <span className="text-green-600 text-xs">✓</span>
                               ) : (
                                 <span className="text-gray-300 text-xs">✗</span>
-                              )}
-                              <span className="text-[10px] text-gray-600">B</span>
+                                );
+                              })()}
+                              <span className="text-[10px] text-gray-600">PV</span>
                             </div>
                             <div className="flex items-center gap-0.5">
                               {job.images.progress ? (

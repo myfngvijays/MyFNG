@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { calculateTaxes, getPlaceOfSupply, numberToWords, roundOff } from '@/lib/utils/invoiceUtils';
 import { getEffectivePricingItemAmount, getEffectiveQty } from '@/lib/utils/pricing';
-import { resolveWorkshopServicePriceBestAvailable } from '@/lib/utils/workshopServicePricing';
+import { resolveWorkshopServicePrice } from '@/lib/utils/workshopServicePricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -778,6 +778,37 @@ export async function GET(
     const ciHydratedById = new Map<string, any>();
     const tiHydratedById = new Map<string, any>();
 
+    // Extra work presence (used to decide if OS needs hydration to show "Additional work" lines)
+    let approvedExtraCount = 0;
+    try {
+      const { data: extraRows } = await supabase
+        .from('lead_extra_charges')
+        .select('id, status, customer_approved, amount')
+        .eq('lead_id', leadId);
+      const isApprovedExtra = (row: any) => {
+        const s = String(row?.status || '').trim().toUpperCase();
+        const customerApproved = row?.customer_approved === true;
+        return (
+          customerApproved ||
+          s === 'APPROVED' ||
+          s === 'CUSTOMER_APPROVED' ||
+          s === 'APPROVED_BY_CUSTOMER' ||
+          s === 'ACCEPTED'
+        );
+      };
+      approvedExtraCount = (extraRows || []).filter(isApprovedExtra).length;
+    } catch {
+      approvedExtraCount = 0;
+    }
+
+    // Add-on presence (used to decide if OS needs hydration to show Add-on lines)
+    let expectedAddonCount = 0;
+    try {
+      expectedAddonCount = parseIdList((leadMeta as any)?.subservice_ids).length;
+    } catch {
+      expectedAddonCount = 0;
+    }
+
     const osLooksStale = (inv: any) => {
       const li = Array.isArray(inv?.line_items) ? inv.line_items : [];
       if (li.length === 0) return true;
@@ -793,8 +824,21 @@ export async function GET(
       );
       const extraLi = li.filter((x: any) => String(x?.category || '').toUpperCase() === 'EXTRA');
       const hasZeroExtra = extraLi.some((x: any) => Number(x?.amount || 0) <= 0 && Number(x?.rate || 0) <= 0);
+      const missingExtraLines = approvedExtraCount > 0 && extraLi.length === 0;
+      const addonLi = li.filter((x: any) => {
+        const c = String(x?.category || '').toUpperCase();
+        return c === 'ADDON' || c === 'ADD_ON' || c === 'ADD-ON';
+      });
+      const missingAddonLines = expectedAddonCount > 0 && addonLi.length === 0;
       const totalsZero = Number(inv?.final_amount || inv?.total_amount || 0) <= 0;
-      return missingServiceLines || hasZeroService || hasZeroExtra || totalsZero;
+      return (
+        missingServiceLines ||
+        hasZeroService ||
+        missingAddonLines ||
+        missingExtraLines ||
+        hasZeroExtra ||
+        totalsZero
+      );
     };
 
     const ciLooksStale = (inv: any) => osLooksStale(inv);
@@ -875,6 +919,40 @@ export async function GET(
           const addonIds = parseIdList((leadFull as any).subservice_ids);
 
           if (serviceTypeIds.length > 0) {
+            // Resolve context for city/zone/class-aware service pricing (match supervisor "Service" tab behavior)
+            const leadCityId = String((leadFull as any)?.city_id || '').trim() || null;
+            const leadCityName = String((leadFull as any)?.city || '').trim() || null;
+
+            let vehicleClass: string | null = null;
+            try {
+              const modelId = String((leadFull as any)?.model_id || '').trim();
+              if (modelId) {
+                const { data: cm } = await supabase.from('car_models').select('class').eq('id', modelId).maybeSingle();
+                vehicleClass = (cm as any)?.class || null;
+              } else if ((leadFull as any)?.vehicle_model) {
+                const { data: cm } = await supabase
+                  .from('car_models')
+                  .select('class')
+                  .eq('model_name', (leadFull as any).vehicle_model)
+                  .maybeSingle();
+                vehicleClass = (cm as any)?.class || null;
+              }
+            } catch {
+              // ignore (schema tolerance)
+            }
+
+            let workshopZoneId: string | null = null;
+            try {
+              const { data: w } = await supabase
+                .from('workshops')
+                .select('zone_id')
+                .eq('id', String((leadFull as any).workshop_id))
+                .maybeSingle();
+              workshopZoneId = String((w as any)?.zone_id || '').trim() || null;
+            } catch {
+              // ignore
+            }
+
             // Load service type names (base_price optional)
             let serviceTypes: any[] = [];
             const { data: serviceTypesData, error: stErr } = await supabase
@@ -897,10 +975,14 @@ export async function GET(
               if (!id) continue;
               let price = 0;
               try {
-                price = await resolveWorkshopServicePriceBestAvailable({
+                price = await resolveWorkshopServicePrice({
                   supabase,
-                  workshopId: String(leadFull.workshop_id),
+                  workshopId: String((leadFull as any).workshop_id),
                   serviceTypeId: id,
+                  cityId: leadCityId,
+                  cityName: leadCityName,
+                  workshopZoneId,
+                  vehicleClass,
                 });
               } catch {
                 price = 0;
@@ -989,28 +1071,92 @@ export async function GET(
         const subTotal = Math.max(0, baseAmount + partsCost + extraChargesAmount);
         const leadDiscount = parseFloat(String((leadFull as any).discount_amount || '0')) || 0;
 
+        const extractIncludedOverrideMaps = (inv: any) => {
+          const byTypeId = new Map<string, { included: any[]; amount?: number; rate?: number }>();
+          const byNameKey = new Map<string, { included: any[]; amount?: number; rate?: number }>();
+          const li = Array.isArray(inv?.line_items) ? inv.line_items : [];
+          for (const row of li) {
+            const cat = String(row?.category || '').toUpperCase();
+            if (cat !== 'SERVICE') continue;
+            const includedOverrides = Array.isArray(row?.included_items) ? row.included_items : [];
+            if (!includedOverrides.length) continue;
+            const serviceTypeId = String(row?.service_type_id || '').trim();
+            const keyName = normalizeName(String(row?.description || ''));
+            const amount = row?.amount != null ? Number(row.amount) : undefined;
+            const rate = row?.rate != null ? Number(row.rate) : undefined;
+            const payload = { included: includedOverrides, amount, rate };
+            if (serviceTypeId) byTypeId.set(serviceTypeId, payload);
+            if (keyName) byNameKey.set(keyName, payload);
+          }
+          return { byTypeId, byNameKey };
+        };
+
+        const applyIncludedOverridesToHydratedLines = (inv: any, lines: any[]) => {
+          const { byTypeId, byNameKey } = extractIncludedOverrideMaps(inv);
+          if (byTypeId.size === 0 && byNameKey.size === 0) return lines;
+          return (lines || []).map((row: any) => {
+            const cat = String(row?.category || '').toUpperCase();
+            if (cat !== 'SERVICE') return row;
+            const sid = String(row?.service_type_id || '').trim();
+            const keyName = normalizeName(String(row?.description || ''));
+            const o = (sid && byTypeId.get(sid)) || (keyName && byNameKey.get(keyName)) || null;
+            if (!o) return row;
+            // Preserve any manual service amount/rate from the invoice (used by "Edit rates" delta logic),
+            // while still hydrating missing addon/extra lines.
+            const next: any = { ...row, included_items: o.included };
+            if (Number.isFinite(o.amount as any) && Number(o.amount) > 0) next.amount = Number(o.amount);
+            if (Number.isFinite(o.rate as any) && Number(o.rate) > 0) next.rate = Number(o.rate);
+            return next;
+          });
+        };
+
+        const calcTotalsFromLineItems = (lineItems: any[]) => {
+          const li = Array.isArray(lineItems) ? lineItems : [];
+          const norm = (c: any) => String(c || '').trim().toUpperCase();
+          const sumCat = (cats: string[]) =>
+            li
+              .filter((x: any) => cats.includes(norm(x?.category)))
+              .reduce((s: number, x: any) => s + (Number(x?.amount || 0) || 0), 0);
+          const base_amount = sumCat(['SERVICE', 'ADDON', 'ADD_ON', 'ADD-ON', 'LABOUR', 'LABOR']);
+          const parts_cost = sumCat(['PART', 'PARTS']);
+          const extra_charges = sumCat(['EXTRA']);
+          const sub_total = Math.max(0, base_amount + parts_cost + extra_charges);
+          return { base_amount, parts_cost, extra_charges, sub_total };
+        };
+
         const hydrateOS = (inv: any) => {
           const discountAmount = parseFloat(String((inv as any).discount_amount ?? leadDiscount ?? 0)) || 0;
-          const finalAmount = Math.max(0, subTotal - discountAmount);
+          const finalLineItems = [
+            ...applyIncludedOverridesToHydratedLines(inv, effectiveServiceLines),
+            ...partLines,
+            ...extraLines,
+          ];
+          const totals = calcTotalsFromLineItems(finalLineItems);
+          const finalAmount = Math.max(0, totals.sub_total - discountAmount);
           osHydratedById.set(inv.id, {
             ...inv,
-            base_amount: baseAmount,
-            parts_cost: partsCost,
-            extra_charges: extraChargesAmount,
-            extra_charges_amount: extraChargesAmount,
-            sub_total: subTotal,
-            subtotal: subTotal,
+            base_amount: totals.base_amount,
+            parts_cost: totals.parts_cost,
+            extra_charges: totals.extra_charges,
+            extra_charges_amount: totals.extra_charges,
+            sub_total: totals.sub_total,
             discount_amount: discountAmount,
             final_amount: finalAmount,
             total_amount: finalAmount,
             show_gst_breakup: false,
-            line_items: [...effectiveServiceLines, ...partLines, ...extraLines],
+            line_items: finalLineItems,
           });
         };
 
         const hydrateCIorTI = (inv: any, type: 'CUSTOMER_INVOICE' | 'TAX_INVOICE') => {
           const discountAmount = parseFloat(String((inv as any).discount_amount ?? leadDiscount ?? 0)) || 0;
-          const netTaxable = Math.max(0, subTotal - discountAmount);
+          const finalLineItems = [
+            ...applyIncludedOverridesToHydratedLines(inv, effectiveServiceLines),
+            ...partLines,
+            ...extraLines,
+          ];
+          const totals = calcTotalsFromLineItems(finalLineItems);
+          const netTaxable = Math.max(0, totals.sub_total - discountAmount);
           const taxes = calculateTaxes(netTaxable, place.useIGST);
           const preRoundTotal = netTaxable + taxes.totalTax;
           const roundedTotal = roundOff(preRoundTotal);
@@ -1019,12 +1165,11 @@ export async function GET(
           const amountInWords = numberToWords(finalAmount);
           const payload = {
             ...inv,
-            base_amount: baseAmount,
-            parts_cost: partsCost,
-            extra_charges: extraChargesAmount,
-            extra_charges_amount: extraChargesAmount,
-            sub_total: subTotal,
-            subtotal: subTotal,
+            base_amount: totals.base_amount,
+            parts_cost: totals.parts_cost,
+            extra_charges: totals.extra_charges,
+            extra_charges_amount: totals.extra_charges,
+            sub_total: totals.sub_total,
             discount_amount: discountAmount,
             cgst_percentage: place.useIGST ? 0 : 9,
             cgst_amount: taxes.cgstAmount,
@@ -1040,7 +1185,7 @@ export async function GET(
             place_of_supply: place.placeOfSupply,
             place_of_supply_state_code: place.stateCode,
             show_gst_breakup: type === 'TAX_INVOICE',
-            line_items: [...effectiveServiceLines, ...partLines, ...extraLines],
+            line_items: finalLineItems,
           };
           if (type === 'CUSTOMER_INVOICE') ciHydratedById.set(inv.id, payload);
           else tiHydratedById.set(inv.id, payload);

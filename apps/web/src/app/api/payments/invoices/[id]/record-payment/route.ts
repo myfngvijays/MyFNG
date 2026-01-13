@@ -8,7 +8,7 @@ import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js
 import { NextRequest, NextResponse } from 'next/server';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { createNotification, notifyCSETeam, notifyTelecallerTeamlead, notifyWorkshopRoles } from '@/lib/notifications';
-import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
+import { calculateTaxes, generateSeriesDocumentNumber, getPlaceOfSupply, roundOff } from '@/lib/utils/invoiceUtils';
 import type { Database } from '@/types/database';
 
 function getAdminClient() {
@@ -97,10 +97,13 @@ export async function POST(
     }
 
     // Verify invoice is ready for payment
-    if (!['APPROVED', 'AWAITING_PAYMENT', 'INVOICE_GENERATED'].includes(invoice.status)) {
+    // Some installs use legacy statuses like GENERATED / PENDING.
+    const invoiceStatus = String((invoice as any).status || '').trim().toUpperCase();
+    const allowedInvoiceStatuses = ['APPROVED', 'AWAITING_PAYMENT', 'INVOICE_GENERATED', 'GENERATED', 'PENDING', 'PARTIAL'];
+    if (invoiceStatus && !allowedInvoiceStatuses.includes(invoiceStatus)) {
       return NextResponse.json({ 
         error: 'Invoice not ready for payment',
-        current_status: invoice.status,
+        current_status: (invoice as any).status,
       }, { status: 400 });
     }
 
@@ -140,9 +143,74 @@ export async function POST(
       }
     }
 
-    const paidAmount = parseFloat(paid_amount);
-    const invoiceAmount = parseFloat(invoice.final_amount || '0');
-    const currentPaidAmount = parseFloat(invoice.paid_amount || '0');
+    const toNum = (v: any) => {
+      const n = typeof v === 'number' ? v : parseFloat(String(v ?? '0'));
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const paidAmount = toNum(paid_amount);
+    const finalAmountNum = toNum((invoice as any).final_amount);
+    const totalAmountNum = toNum((invoice as any).total_amount);
+    const storedSubTotalNum = toNum((invoice as any).sub_total ?? (invoice as any).subtotal);
+    const storedDiscountNum = toNum((invoice as any).discount_amount);
+    const storedRoundOffNum = toNum((invoice as any).round_off_amount);
+    const storedTaxNum =
+      toNum((invoice as any).total_tax) ||
+      (toNum((invoice as any).cgst_amount) + toNum((invoice as any).sgst_amount) + toNum((invoice as any).igst_amount));
+
+    // Compute from line_items (most reliable when DB totals are stale)
+    const li = Array.isArray((invoice as any).line_items) ? ((invoice as any).line_items as any[]) : [];
+    const lineItemsTotal = li.reduce((s: number, x: any) => {
+      const amt = toNum(x?.amount);
+      if (amt > 0) return s + amt;
+      const qty = toNum(x?.qty ?? 1) || 1;
+      const rate = toNum(x?.rate);
+      return s + (rate * qty);
+    }, 0);
+
+    // Best-effort recompute taxes if stored taxes are missing/incorrect
+    let computedTax = storedTaxNum;
+    let computedRoundOff = storedRoundOffNum;
+    let computedSubTotal = storedSubTotalNum || lineItemsTotal;
+    try {
+      const leadAny: any = (invoice as any).lead || {};
+      // Fetch workshop state for place-of-supply decision
+      let workshop: any = null;
+      try {
+        const { data: w } = await supabaseAdmin
+          .from('workshops')
+          .select('state, state_code')
+          .eq('id', (invoice as any).workshop_id)
+          .maybeSingle();
+        workshop = w;
+      } catch {
+        workshop = null;
+      }
+
+      const customerState = leadAny.customer_state || leadAny.state || '';
+      const customerStateCode = leadAny.customer_state_code || leadAny.state_code || '';
+      const workshopState = workshop?.state || '';
+      const workshopStateCode = workshop?.state_code || '';
+      const place = getPlaceOfSupply(customerState, customerStateCode, workshopState, workshopStateCode);
+
+      // Prefer line_items total for taxable base if available
+      const netTaxable = Math.max(0, (lineItemsTotal || computedSubTotal) - storedDiscountNum);
+      const taxes = calculateTaxes(netTaxable, place.useIGST);
+      computedTax = taxes.totalTax;
+      const preRoundTotal = netTaxable + taxes.totalTax;
+      const rounded = roundOff(preRoundTotal);
+      computedRoundOff = parseFloat((rounded - preRoundTotal).toFixed(2));
+    } catch {
+      // ignore; keep stored tax/roundOff
+    }
+
+    // Derived totals (several possible sources depending on schema)
+    const derivedPayableStored = Math.max(0, computedSubTotal - storedDiscountNum + storedTaxNum + storedRoundOffNum);
+    const derivedPayableComputed = Math.max(0, lineItemsTotal - storedDiscountNum + computedTax + computedRoundOff);
+
+    // Pick the best (largest) positive value to match what the UI shows.
+    const invoiceAmount = Math.max(finalAmountNum, totalAmountNum, derivedPayableStored, derivedPayableComputed, 0);
+    const currentPaidAmount = toNum((invoice as any).paid_amount);
     const balanceDue = invoiceAmount - currentPaidAmount;
 
     if (paidAmount <= 0) {
@@ -156,6 +224,10 @@ export async function POST(
         error: 'Payment amount exceeds balance due',
         balance_due: balanceDue,
         provided_amount: paidAmount,
+        invoice_amount: invoiceAmount,
+        invoice_final_amount: finalAmountNum,
+        invoice_total_amount: totalAmountNum,
+        invoice_derived_payable: derivedPayableComputed,
       }, { status: 400 });
     }
 
@@ -283,24 +355,40 @@ export async function POST(
     // Update lead status
     let taxInvoice: any = null;
     if (invoice.lead_id) {
-      // NEW FLOW: After full payment, mark lead PAID (delivery is a separate step). COD remains COD_PENDING.
+      // After full payment, the vehicle becomes eligible for delivery.
+      // Delivery flows (pickup boy / supervisor dashboards) key off READY_FOR_DELIVERY (or COD_PENDING).
       const newLeadStatus = is_cod 
         ? 'COD_PENDING'
         : isFullPayment 
-        ? 'PAID' 
+        ? 'READY_FOR_DELIVERY' 
         : 'PARTIAL_PAYMENT';
       
-      await supabaseAdmin
+      // IMPORTANT: schema tolerance
+      // Some installs do not have payment_* columns on service_leads (or custom triggers can reject multi-column updates).
+      // We always try to update `status` first (so delivery eligibility works), then best-effort update payment fields.
+      const { error: statusOnlyErr } = await supabaseAdmin
         .from('service_leads')
-        .update({
-          payment_status: is_cod ? 'COD_PENDING' : (isFullPayment ? 'PAID' : 'PARTIAL'),
-          payment_mode: payment_mode,
-          payment_txn_id: transactionId,
-          payment_collected_at: now,
-          status: newLeadStatus,
-          updated_at: now,
-        })
+        .update({ status: newLeadStatus, updated_at: now } as any)
         .eq('id', invoice.lead_id);
+      if (statusOnlyErr) {
+        console.warn('Non-blocking: failed to update lead status after payment:', statusOnlyErr);
+      }
+
+      const { error: paymentFieldsErr } = await supabaseAdmin
+        .from('service_leads')
+        .update(
+          {
+            payment_status: is_cod ? 'COD_PENDING' : (isFullPayment ? 'PAID' : 'PARTIAL'),
+            payment_mode: payment_mode,
+            payment_txn_id: transactionId,
+            payment_collected_at: now,
+            updated_at: now,
+          } as any
+        )
+        .eq('id', invoice.lead_id);
+      if (paymentFieldsErr) {
+        console.warn('Non-blocking: failed to update lead payment fields after payment:', paymentFieldsErr);
+      }
 
       // On full payment (non-COD), generate Tax Invoice (TI) using same series suffix
       if (isFullPayment && !is_cod) {
@@ -408,10 +496,18 @@ export async function POST(
           }
 
           if (taxInvoice?.id) {
-            await supabaseAdmin
+            // Some installs don't have `invoice_number` on leads; keep this schema-tolerant.
+            const { error: invRefErr1 } = await supabaseAdmin
               .from('service_leads')
-              .update({ invoice_id: taxInvoice.id, invoice_number: taxInvoice.invoice_number, updated_at: now })
+              .update({ invoice_id: taxInvoice.id, updated_at: now } as any)
               .eq('id', invoice.lead_id);
+            if (invRefErr1) console.warn('Non-blocking: failed to update lead.invoice_id:', invRefErr1);
+
+            const { error: invRefErr2 } = await supabaseAdmin
+              .from('service_leads')
+              .update({ invoice_number: taxInvoice.invoice_number, updated_at: now } as any)
+              .eq('id', invoice.lead_id);
+            if (invRefErr2) console.warn('Non-blocking: failed to update lead.invoice_number:', invRefErr2);
           }
         } else {
           console.warn('TI not generated: missing series (year/month/seq).', {
@@ -522,7 +618,7 @@ export async function POST(
           });
         }
 
-        if (newLeadStatus === 'PAID') {
+        if (newLeadStatus === 'READY_FOR_DELIVERY') {
           await notifyCSETeam(
             invoice.lead_id,
             leadNumber,

@@ -23,7 +23,7 @@ import {
   XCircle, ArrowLeftCircle, Camera, Edit, MapPin, AlertCircle
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { resolveWorkshopServicePriceBestAvailable } from '@/lib/utils/workshopServicePricing';
+import { resolveWorkshopServicePrice } from '@/lib/utils/workshopServicePricing';
 
 type MasterPartSuggestion = {
   id: string;
@@ -60,7 +60,16 @@ export default function SupervisorJobDetailPage() {
   const router = useRouter();
   const jobId = params.id as string;
 
-  type MainTab = 'overview' | 'service' | 'photos' | 'billing' | 'parts' | 'workflow' | 'additional-jobs' | 'qc';
+  type MainTab =
+    | 'overview'
+    | 'service'
+    | 'photos'
+    | 'billing'
+    | 'parts'
+    | 'workflow'
+    | 'report'
+    | 'additional-jobs'
+    | 'qc';
 
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -218,12 +227,58 @@ export default function SupervisorJobDetailPage() {
   const [partSuggestionsLoading, setPartSuggestionsLoading] = useState(false);
   const partSuggestFetchSeq = useRef(0);
   const partSuggestHideTimer = useRef<number | null>(null);
+  const pricingRefreshTimer = useRef<number | null>(null);
+  const tiRefreshTimer = useRef<number | null>(null);
+  const [tiMeta, setTiMeta] = useState<{ invoice_id: string; invoice_number: string; total_amount: number } | null>(null);
+  const [markingCustomerPickup, setMarkingCustomerPickup] = useState(false);
 
   const partNameQuery = useMemo(() => (partForm.part_name || '').trim(), [partForm.part_name]);
+
+  async function fetchTaxInvoiceMeta(leadId: string) {
+    try {
+      const res = await fetch(`/api/leads/${leadId}/invoice`, { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      const list = Array.isArray(json?.invoices) ? json.invoices : [];
+      const ti =
+        list.find((x: any) => String(x?.invoice_type || '').toUpperCase() === 'TAX_INVOICE') ||
+        null;
+      if (ti?.id && ti?.invoice_number) {
+        setTiMeta({
+          invoice_id: String(ti.id),
+          invoice_number: String(ti.invoice_number),
+          total_amount: Number(ti.final_amount || ti.total_amount || 0) || 0,
+        });
+      } else {
+        setTiMeta(null);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const markCustomerPickupDelivered = async () => {
+    if (!lead?.id) return;
+    if (!window.confirm('Customer ne gaadi pickup kar li? Mark as DELIVERED?')) return;
+    setMarkingCustomerPickup(true);
+    try {
+      const res = await fetch(`/api/leads/${lead.id}/customer-pickup/complete`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || data?.details || 'Failed to mark delivered');
+      }
+      await fetchJobDetails();
+      alert('✅ Marked as DELIVERED');
+    } catch (e: any) {
+      alert(e?.message || 'Failed to mark delivered');
+    } finally {
+      setMarkingCustomerPickup(false);
+    }
+  };
 
   useEffect(() => {
     if (jobId) {
       fetchJobDetails();
+      fetchTaxInvoiceMeta(jobId);
     }
 
     // Real-time updates for service_leads status changes
@@ -417,14 +472,110 @@ export default function SupervisorJobDetailPage() {
           fetchJobDetails();
         }
       )
+      // Make "Report" tab appear instantly when TI is generated (no manual refresh).
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoices',
+          filter: `lead_id=eq.${jobId}`,
+        },
+        (payload) => {
+          const nextType = String((payload as any)?.new?.invoice_type || (payload as any)?.old?.invoice_type || '').toUpperCase();
+          if (nextType === 'TAX_INVOICE') {
+            if (tiRefreshTimer.current) window.clearTimeout(tiRefreshTimer.current);
+            tiRefreshTimer.current = window.setTimeout(() => {
+              fetchTaxInvoiceMeta(jobId);
+            }, 200);
+          }
+        }
+      )
       .subscribe((status) => {
         console.log('Real-time subscription status:', status);
       });
 
     return () => {
+      if (tiRefreshTimer.current) {
+        window.clearTimeout(tiRefreshTimer.current);
+        tiRefreshTimer.current = null;
+      }
       supabase.removeChannel(channel);
     };
   }, [jobId]);
+
+  // Realtime: if Super Admin changes pricing, refresh Service Request prices here.
+  useEffect(() => {
+    const workshopId = String((lead as any)?.workshop_id || '').trim();
+    if (!jobId || !workshopId) return;
+
+    const supabase = createClient();
+
+    const scheduleRefresh = () => {
+      if (pricingRefreshTimer.current) window.clearTimeout(pricingRefreshTimer.current);
+      pricingRefreshTimer.current = window.setTimeout(() => {
+        fetchJobDetails();
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel(`pricing-${jobId}-${workshopId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'workshop_service_pricing', filter: `workshop_id=eq.${workshopId}` },
+        () => scheduleRefresh()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'workshop_service_addons_pricing', filter: `workshop_id=eq.${workshopId}` },
+        () => scheduleRefresh()
+      )
+      .subscribe();
+
+    return () => {
+      if (pricingRefreshTimer.current) {
+        window.clearTimeout(pricingRefreshTimer.current);
+        pricingRefreshTimer.current = null;
+      }
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, (lead as any)?.workshop_id]);
+
+  // Realtime fallback: broadcast channel from Super Admin pricing page.
+  // This works even if Postgres realtime isn't enabled for workshop_service_pricing table.
+  useEffect(() => {
+    const workshopId = String((lead as any)?.workshop_id || '').trim();
+    if (!jobId || !workshopId) return;
+
+    const supabase = createClient();
+
+    const scheduleRefresh = () => {
+      if (pricingRefreshTimer.current) window.clearTimeout(pricingRefreshTimer.current);
+      pricingRefreshTimer.current = window.setTimeout(() => {
+        fetchJobDetails();
+      }, 250);
+    };
+
+    const ch = supabase.channel('pricing-updates').on(
+      'broadcast',
+      { event: 'workshop_service_pricing_updated' },
+      (payload) => {
+        const p = (payload as any)?.payload || {};
+        const wid = String(p?.workshop_id || '').trim();
+        const wids = Array.isArray(p?.workshop_ids) ? p.workshop_ids.map((x: any) => String(x).trim()) : [];
+        if (wid === workshopId || wids.includes(workshopId)) {
+          scheduleRefresh();
+        }
+      }
+    );
+    ch.subscribe();
+
+    return () => {
+      supabase.removeChannel(ch);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, (lead as any)?.workshop_id]);
 
   // NOTE: Billing view is handled inside `InvoiceSection` (OS/CI/TI tabs),
   // so we intentionally don't keep a separate billingMode state here.
@@ -522,43 +673,69 @@ export default function SupervisorJobDetailPage() {
       }
       
       if (serviceTypeIds && Array.isArray(serviceTypeIds) && serviceTypeIds.length > 0) {
-        // Fetch service types (base_price may not exist in all deployments)
-        let serviceTypes: any[] = [];
+        // Fetch service types (avoid base_price column to prevent PostgREST 400 spam in schemas without it)
+        const { data: serviceTypesData } = await supabase
+          .from('service_types')
+          .select('id, name')
+          .in('id', serviceTypeIds);
+        const serviceTypes: any[] = (serviceTypesData || []) as any[];
+
+        // Compute workshop-based prices (match Super Admin pricing rules: city/zone/class aware)
+        const workshopId = String((data as any)?.workshop_id || '').trim();
+        const cityId = String((data as any)?.city_id || '').trim() || null;
+        const cityName = String((data as any)?.city || '').trim() || null;
+
+        // Resolve workshop zone_id (needed for pricing tier rules when lead.city_id is missing/incorrect)
+        let workshopZoneId: string | null = null;
         try {
-          const attempt = await supabase
-            .from('service_types')
-            .select('id, name, base_price')
-            .in('id', serviceTypeIds);
-          // @ts-ignore - supabase error type
-          if (attempt?.error && (attempt.error as any)?.code === '42703') {
-            const fallback = await supabase
-              .from('service_types')
-              .select('id, name')
-              .in('id', serviceTypeIds);
-            serviceTypes = (fallback.data || []) as any[];
-          } else {
-            serviceTypes = (attempt.data || []) as any[];
+          if (workshopId) {
+            const { data: wz } = await supabase
+              .from('workshops')
+              .select('zone_id')
+              .eq('id', workshopId)
+              .maybeSingle();
+            workshopZoneId = String((wz as any)?.zone_id || '').trim() || null;
           }
         } catch {
-          const fallback = await supabase
-            .from('service_types')
-            .select('id, name')
-            .in('id', serviceTypeIds);
-          serviceTypes = (fallback.data || []) as any[];
+          workshopZoneId = null;
         }
 
-        // Compute workshop-based prices (match public customer page behavior)
-        const workshopId = String((data as any)?.workshop_id || '').trim();
+        // Resolve vehicle class (used for class-based pricing rules)
+        let vehicleClass: string | null = null;
+        try {
+          const modelId = String((data as any)?.model_id || '').trim();
+          if (modelId) {
+            const { data: cm } = await supabase.from('car_models').select('class').eq('id', modelId).maybeSingle();
+            vehicleClass = (cm as any)?.class || null;
+          } else if ((data as any)?.vehicle_model) {
+            const { data: cm } = await supabase
+              .from('car_models')
+              .select('class')
+              .eq('model_name', (data as any).vehicle_model)
+              .maybeSingle();
+            vehicleClass = (cm as any)?.class || null;
+          }
+        } catch {
+          vehicleClass = null;
+        }
 
         const detailed = await Promise.all(
           (serviceTypes || []).map(async (st: any) => {
             const id = String(st?.id || '').trim();
             const name = String(st?.name || '').trim();
-            const base = Number((st as any)?.base_price ?? 0) || 0;
+            const base = 0;
             let resolved = 0;
             if (workshopId && id) {
               try {
-                resolved = await resolveWorkshopServicePriceBestAvailable({ supabase, workshopId, serviceTypeId: id });
+                resolved = await resolveWorkshopServicePrice({
+                  supabase,
+                  workshopId,
+                  serviceTypeId: id,
+                  cityId,
+                  cityName,
+                  workshopZoneId,
+                  vehicleClass,
+                });
               } catch {
                 resolved = 0;
               }
@@ -591,10 +768,32 @@ export default function SupervisorJobDetailPage() {
           .in('id', subserviceIds);
         
         if (serviceAddons && serviceAddons.length > 0) {
-          data.service_addon_names = serviceAddons.map((sa: any) => ({
-            name: sa.name,
-            price: sa.price
-          }));
+          const workshopId = String((data as any)?.workshop_id || '').trim();
+          let customByAddon: Record<string, number> = {};
+          try {
+            if (workshopId) {
+              const { data: wap } = await supabase
+                .from('workshop_service_addons_pricing')
+                .select('service_addon_id, custom_price')
+                .eq('workshop_id', workshopId)
+                .in('service_addon_id', subserviceIds)
+                .eq('is_active', true);
+              for (const row of wap || []) {
+                const id = String((row as any)?.service_addon_id || '').trim();
+                const p = Number((row as any)?.custom_price || 0) || 0;
+                if (id && p > 0) customByAddon[id] = p;
+              }
+            }
+          } catch {
+            customByAddon = {};
+          }
+
+          data.service_addon_names = serviceAddons.map((sa: any) => {
+            const id = String(sa?.id || '').trim();
+            const base = Number(sa?.price || 0) || 0;
+            const custom = id && customByAddon[id] ? customByAddon[id] : 0;
+            return { id, name: sa.name, price: custom > 0 ? custom : base };
+          });
         }
       }
       
@@ -673,6 +872,83 @@ export default function SupervisorJobDetailPage() {
           }
           if (!(data as any).pickup_handover_to_workshop_at && (pickupTracking as any).pickup_handover_to_workshop_at) {
             (data as any).pickup_handover_to_workshop_at = (pickupTracking as any).pickup_handover_to_workshop_at;
+          }
+        }
+
+        // Fallback: if "Arrived at Workshop" time is still missing but status shows dropped,
+        // use lead_status_history (it is always written by the arrived API).
+        const statusUpper = String((data as any)?.status || '').toUpperCase();
+        const needsArrivedFallback =
+          !((data as any)?.pickup_arrival_time || (data as any)?.pickup_handover_to_workshop_at) &&
+          (statusUpper === 'VEHICLE_DROPPED_AT_WORKSHOP' || String((data as any)?.pickup_status || '').toUpperCase() === 'VEHICLE_DROPPED_AT_WORKSHOP');
+
+        if (needsArrivedFallback) {
+          try {
+            const { data: hist } = await supabase
+              .from('lead_status_history')
+              .select('changed_at')
+              .eq('lead_id', jobId)
+              .eq('new_status', 'VEHICLE_DROPPED_AT_WORKSHOP')
+              .order('changed_at', { ascending: false })
+              .limit(1);
+            const ts = String((hist?.[0] as any)?.changed_at || '').trim();
+            if (ts) {
+              (data as any).pickup_arrival_time = ts;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        // Backfill pickup odometer from dashboard photo (pickup boy entry) if it wasn't saved earlier.
+        // Some older flows stored odometer only in lead_media.description like "Odometer: 12345".
+        const currentPickupOdo = Number((data as any)?.pickup_odometer_reading || 0) || 0;
+        if (currentPickupOdo <= 0) {
+          const parseOdometerFromDesc = (s: any) => {
+            const txt = String(s || '');
+            const m = txt.match(/odometer\s*:\s*([0-9][0-9,]*)/i);
+            if (!m?.[1]) return 0;
+            const n = Number(String(m[1]).replace(/,/g, ''));
+            return Number.isFinite(n) ? n : 0;
+          };
+
+          let parsed = 0;
+          try {
+            const { data: mediaRows } = await supabase
+              .from('lead_media')
+              .select('description, file_name, category, created_at')
+              .eq('lead_id', jobId)
+              .or('category.eq.BEFORE_DASHBOARD,file_name.ilike.BEFORE_DASHBOARD__%')
+              .order('created_at', { ascending: false })
+              .limit(5);
+
+            for (const row of mediaRows || []) {
+              const cat = String((row as any)?.category || '').toUpperCase();
+              const fn = String((row as any)?.file_name || '').toUpperCase();
+              if (cat === 'BEFORE_DASHBOARD' || fn.startsWith('BEFORE_DASHBOARD__')) {
+                parsed = parseOdometerFromDesc((row as any)?.description);
+                if (parsed > 0) break;
+              }
+            }
+          } catch {
+            // ignore
+          }
+
+          if (parsed > 0) {
+            (data as any).pickup_odometer_reading = parsed;
+            // Best-effort persist into pickup_tracking for future reads
+            try {
+              const upsert = await supabase
+                .from('pickup_tracking')
+                .upsert({ lead_id: jobId, pickup_odometer_reading: parsed, updated_at: new Date().toISOString() } as any, {
+                  onConflict: 'lead_id',
+                });
+              if (upsert.error) {
+                // ignore persistence errors (RLS/schema)
+              }
+            } catch {
+              // ignore
+            }
           }
         }
       }
@@ -1189,6 +1465,11 @@ export default function SupervisorJobDetailPage() {
     'NOT_ASSIGNED';
   // After pickup OTP is verified, pickup details should not be editable from supervisor/advisor.
   const pickupLocked = Boolean(lead?.pickup_otp_verified_at);
+  const selfPickup = Boolean(lead) && !Boolean((lead as any)?.pickup_required);
+  const paidForSelfPickup = Boolean(tiMeta?.invoice_number);
+  const leadStatusUpper = String((lead as any)?.status || '').trim().toUpperCase();
+  const canMarkCustomerPickupDelivered =
+    selfPickup && paidForSelfPickup && leadStatusUpper !== 'DELIVERED' && leadStatusUpper !== 'CLOSED';
 
   const tabBtn = (tab: MainTab) => {
     const base = 'btn !px-4 !py-2 text-xs sm:text-sm';
@@ -1235,6 +1516,23 @@ export default function SupervisorJobDetailPage() {
                 <ImageIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 <span className="hidden sm:inline">Validate Photos</span>
                 <span className="sm:hidden">Photos</span>
+              </button>
+            )}
+
+            {/* Customer Self Pickup (no pickup boy). Visible only after payment/TI. */}
+            {canMarkCustomerPickupDelivered && (
+              <button
+                type="button"
+                onClick={markCustomerPickupDelivered}
+                disabled={markingCustomerPickup}
+                className={`btn bg-green-600 hover:bg-green-700 text-white flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 ${
+                  markingCustomerPickup ? 'opacity-70 cursor-not-allowed' : ''
+                }`}
+                title="Customer pickup complete"
+              >
+                <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">{markingCustomerPickup ? 'Marking…' : 'Mark Delivered'}</span>
+                <span className="sm:hidden">{markingCustomerPickup ? '…' : 'Done'}</span>
               </button>
             )}
           </div>
@@ -1288,6 +1586,12 @@ export default function SupervisorJobDetailPage() {
             {qcPending && <span className="ml-1 text-yellow-700 font-semibold">(QC)</span>}
             {eventsCount > 0 && <span className="ml-1">({eventsCount})</span>}
           </button>
+          {/* 9. Report (visible after TI is generated) */}
+          {tiMeta?.invoice_number && (
+            <button type="button" className={tabBtn('report')} onClick={() => setActiveTab('report')}>
+              Report
+            </button>
+          )}
         </div>
 
         {activeTab === 'overview' && (
@@ -1355,9 +1659,9 @@ export default function SupervisorJobDetailPage() {
               )}
               {(() => {
                 const odo =
-                  (lead as any).vehicle_odometer ??
+                  // Vehicle Details should show the lead-creation odometer (not pickup dashboard reading)
                   (lead as any).odometer_km ??
-                  (lead as any).pickup_odometer_reading ??
+                  (lead as any).vehicle_odometer ??
                   null;
                 if (!odo) return null;
                 return (
@@ -1610,20 +1914,39 @@ export default function SupervisorJobDetailPage() {
                     </>
                   )}
                 </div>
+                    </td>
+                  </tr>
 
-                      {(['ARRIVED_AT_WORKSHOP', 'VEHICLE_DROPPED_AT_WORKSHOP', 'DROPPED_AT_WORKSHOP'].includes(String(effectivePickupStatus || '').toUpperCase())) && (
-                        <div className="mt-1 text-[11px] sm:text-xs text-gray-600 flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5 text-gray-400" />
-                          <span>
-                            Arrived at Workshop:{' '}
-                            <strong className="text-gray-800">
-                              {((lead as any)?.pickup_arrival_time || (lead as any)?.pickup_handover_to_workshop_at)
-                                ? formatDateTime((lead as any)?.pickup_arrival_time || (lead as any)?.pickup_handover_to_workshop_at)
-                                : '—'}
-                            </strong>
-                          </span>
-                        </div>
-                      )}
+                  {/* Pickup Time (OTP Verified) */}
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-gray-400" />
+                        Pickup Time
+                      </div>
+                    </td>
+                    <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
+                      <span className="font-semibold text-gray-900">
+                        {(lead as any)?.pickup_otp_verified_at ? formatDateTime((lead as any).pickup_otp_verified_at) : '—'}
+                      </span>
+                      <span className="text-[10px] text-gray-500 ml-2">(OTP verified)</span>
+                    </td>
+                  </tr>
+
+                  {/* Arrived / Handover Time at Workshop */}
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-gray-400" />
+                        Arrived at Workshop
+                      </div>
+                    </td>
+                    <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
+                      <span className="font-semibold text-gray-900">
+                        {((lead as any)?.pickup_arrival_time || (lead as any)?.pickup_handover_to_workshop_at)
+                          ? formatDateTime((lead as any)?.pickup_arrival_time || (lead as any)?.pickup_handover_to_workshop_at)
+                          : '—'}
+                      </span>
                     </td>
                   </tr>
 
@@ -1656,31 +1979,7 @@ export default function SupervisorJobDetailPage() {
                   </div>
                     </td>
                   </tr>
-
-                  {/* Pickup Scheduled */}
-                  <tr className="hover:bg-gray-50">
-                    <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-gray-400" />
-                        Pickup Scheduled
-                      </div>
-                    </td>
-                    <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
-                {lead.preferred_date || lead.preferred_time_slot ? (
-                        <span className="font-semibold text-gray-900">
-                    {lead.preferred_date ? formatDateDMY(lead.preferred_date) : '—'}
-                    {lead.preferred_time_slot ? ` • ${lead.preferred_time_slot}` : ''}
-                        </span>
-                ) : (
-                        <span className="text-gray-700">
-                    Not set.
-                    {!pickupLocked && (
-                            <> Click <strong>Update Pickup Details</strong> and add date/time.</>
-                    )}
-                        </span>
-                )}
-                    </td>
-                  </tr>
+                  {/* (Removed) Pickup Scheduled: user wants only 2 actual timestamps */}
 
                   {/* Assigned Pickup Boy */}
               {lead.pickup_boy && (
@@ -1698,19 +1997,9 @@ export default function SupervisorJobDetailPage() {
               )}
 
                   {/* Pickup Assigned At */}
-              {lead.pickup_assigned_at && (
-                    <tr className="hover:bg-gray-50">
-                      <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
-                        Pickup Assigned At
-                      </td>
-                      <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm font-semibold text-gray-900">
-                        {formatDateTime(lead.pickup_assigned_at)}
-                      </td>
-                    </tr>
-                  )}
+                  {/* (Removed) Pickup Assigned At: user wants only 2 timestamps */}
 
                   {/* Odometer Reading */}
-                  {(lead.vehicle_odometer || (lead as any)?.pickup_odometer_reading) && (
                     <tr className="hover:bg-gray-50">
                       <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
                         <div className="flex items-center gap-2">
@@ -1719,17 +2008,22 @@ export default function SupervisorJobDetailPage() {
                 </div>
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
-                        <span className="font-semibold text-gray-900">
-                          {Number(lead.vehicle_odometer || (lead as any)?.pickup_odometer_reading || 0).toLocaleString()} km
-                        </span>
-                        {(lead as any)?.pickup_odometer_reading && lead.vehicle_odometer && (lead as any).pickup_odometer_reading !== lead.vehicle_odometer && (
-                          <span className="text-[10px] text-gray-500 ml-2">
-                            (from pickup tracking)
-                          </span>
-                        )}
+                      {(() => {
+                        // User requirement: show ONLY pickup-boy entered odometer (at pickup photo upload time).
+                        // Source of truth: pickup_tracking.pickup_odometer_reading (backfilled from dashboard photo if needed).
+                        const n = Number((lead as any)?.pickup_odometer_reading || 0) || 0;
+                        const has = Number.isFinite(n) && n > 0;
+                        return (
+                          <>
+                            <span className="font-semibold text-gray-900">
+                              {has ? `${n.toLocaleString()} km` : '—'}
+                            </span>
+                            {has && <span className="text-[10px] text-gray-500 ml-2">(pickup dashboard)</span>}
+                          </>
+                        );
+                      })()}
                       </td>
                     </tr>
-              )}
 
                   {/* Pickup OTP */}
               {lead.pickup_otp && String(effectivePickupStatus).toUpperCase() !== 'COMPLETED' && (
@@ -2227,6 +2521,109 @@ export default function SupervisorJobDetailPage() {
             </button>
           </div>
         </div>
+        )}
+
+        {activeTab === 'report' && (
+          <div className="card">
+            <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Report</h2>
+            {!tiMeta?.invoice_number ? (
+              <div className="text-sm text-gray-600">
+                Tax Invoice (TI) is not generated yet. Generate TI after full payment.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* 1) Mechanic checklist (with remark) */}
+                <div className="card">
+                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                    Mechanic Checklist
+                  </h3>
+                  {mechanicChecklist.length === 0 ? (
+                    <div className="text-sm text-gray-600">No mechanic checklist found for this job.</div>
+                  ) : (
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-semibold w-16">#</th>
+                            <th className="px-4 py-3 text-left font-semibold">Item</th>
+                            <th className="px-4 py-3 text-left font-semibold w-32">Status</th>
+                            <th className="px-4 py-3 text-left font-semibold w-64">Remark</th>
+                            <th className="px-4 py-3 text-left font-semibold w-56">Completed At</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 bg-white">
+                          {mechanicChecklist.map((item: any, idx: number) => {
+                            const status = String(item?.status || 'PENDING').toUpperCase();
+                            const remark = String(item?.remark || item?.notes || '').trim() || '—';
+                            return (
+                              <tr key={item?.id || idx} className="align-top">
+                                <td className="px-4 py-3 text-gray-700 font-semibold">{idx + 1}</td>
+                                <td className="px-4 py-3">
+                                  <div className="font-semibold text-gray-900">
+                                    {item?.name || item?.item_name || `Item ${idx + 1}`}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span
+                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
+                                      status === 'COMPLETED'
+                                        ? 'bg-green-100 text-green-700'
+                                        : status === 'PENDING'
+                                          ? 'bg-yellow-100 text-yellow-700'
+                                          : 'bg-gray-100 text-gray-700'
+                                    }`}
+                                  >
+                                    {status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-gray-700">{remark}</td>
+                                <td className="px-4 py-3 text-gray-700">
+                                  {item?.completed_at ? formatDateTime(item.completed_at) : '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2) Supervisor observation */}
+                <div className="card">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <h3 className="text-base sm:text-lg font-semibold flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-gray-700" />
+                      Supervisor Observation
+                    </h3>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-outline text-xs sm:text-sm px-3 py-1.5"
+                        onClick={() => {
+                          setObservationText(String((lead as any)?.supervisor_observation || ''));
+                          setShowObservationModal(true);
+                        }}
+                      >
+                        {String((lead as any)?.supervisor_observation || '').trim() ? 'Edit' : 'Add'}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                    {String((lead as any)?.supervisor_observation || '').trim()
+                      ? (lead as any).supervisor_observation
+                      : 'No observation added yet.'}
+                  </p>
+                  {(lead as any)?.supervisor_observation_updated_at && (
+                    <p className="text-[11px] text-gray-500 mt-2">
+                      Last updated: {formatDateTime((lead as any).supervisor_observation_updated_at)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Invoice Section - should stay visible through billing/payment/delivery */}

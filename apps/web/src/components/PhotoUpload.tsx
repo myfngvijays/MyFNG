@@ -23,7 +23,8 @@ export default function PhotoUpload({
   required = false,
   uploadEndpoint,
   extraFormFields,
-  showGuidelines = true,
+  // Keep UI clean by default; enable explicitly when needed
+  showGuidelines = false,
   guidelinesPosition = 'bottom',
   stickyGuidelines = false,
 }: PhotoUploadProps) {

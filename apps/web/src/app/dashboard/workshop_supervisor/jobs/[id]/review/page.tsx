@@ -80,6 +80,7 @@ export default function QCReviewPage() {
   const [partsUsed, setPartsUsed] = useState<any[]>([]);
   const [checklist, setChecklist] = useState<any[]>([]);
   const [mechanic, setMechanic] = useState<any>(null);
+  const [lightbox, setLightbox] = useState<{ url: string; label?: string } | null>(null);
 
   const checklistItems = [
     'Before images uploaded',
@@ -866,48 +867,100 @@ export default function QCReviewPage() {
         {/* Tab Content: Photos */}
         {activeTab === 'photos' && (
           <div className="space-y-6">
-            <div className="flex items-center gap-2 flex-wrap">
-              <button type="button" className={photoTabButtonClass('pickup')} onClick={() => setActivePhotoTab('pickup')}>
-                Pickup/Visit ({beforePhotos.length})
-              </button>
-              <button type="button" className={photoTabButtonClass('during')} onClick={() => setActivePhotoTab('during')}>
-                During ({duringPhotos.length})
-              </button>
-              <button type="button" className={photoTabButtonClass('after')} onClick={() => setActivePhotoTab('after')}>
-                After ({afterPhotos.length})
-              </button>
+            <div className="card p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Photos</h3>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Click any photo to preview. Use “Show all” to expand a section.
+                  </p>
+                </div>
+                <div className="inline-flex rounded-lg bg-gray-100 p-1 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setActivePhotoTab('pickup')}
+                    className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition ${
+                      activePhotoTab === 'pickup' ? 'bg-white shadow text-blue-700' : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    Pickup/Visit <span className="ml-1 text-[11px] text-gray-500">({beforePhotos.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePhotoTab('during')}
+                    className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition ${
+                      activePhotoTab === 'during'
+                        ? 'bg-white shadow text-orange-700'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    During <span className="ml-1 text-[11px] text-gray-500">({duringPhotos.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePhotoTab('after')}
+                    className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition ${
+                      activePhotoTab === 'after'
+                        ? 'bg-white shadow text-green-700'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    After <span className="ml-1 text-[11px] text-gray-500">({afterPhotos.length})</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Pickup/Visit Photos */}
             {activePhotoTab === 'pickup' && (
-              <div className="card border-2 border-blue-300">
-                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2 text-blue-700">
-                  <Camera className="w-5 h-5" />
-                  Pickup/Visit Photos ({beforePhotos.length})
-                </h3>
-                {beforePhotos.length > 4 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllBeforePhotos(v => !v)}
-                    className="text-xs text-blue-700 underline mb-2"
-                  >
-                    {showAllBeforePhotos ? 'Show less' : 'Show all'}
-                  </button>
-                )}
+              <div className="card">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Camera className="w-4 h-4 text-blue-700" />
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                      Pickup/Visit Photos
+                    </h3>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      {beforePhotos.length}
+                    </span>
+                  </div>
+                  {beforePhotos.length > 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllBeforePhotos((v) => !v)}
+                      className="text-xs font-semibold text-blue-700 hover:underline whitespace-nowrap"
+                    >
+                      {showAllBeforePhotos ? 'Show less' : 'Show all'}
+                    </button>
+                  )}
+                </div>
                 {beforePhotos.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {(showAllBeforePhotos ? beforePhotos : beforePhotos.slice(0, 4)).map((photo: any, idx: number) => {
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {(showAllBeforePhotos ? beforePhotos : beforePhotos.slice(0, 8)).map((photo: any, idx: number) => {
                       const url = photoUrlFor(photo);
+                      const label = String(photo.photo_type || '').trim();
                       return (
-                        <div key={photo?.id || url || idx} className="relative">
-                          <img
-                            src={url}
-                            alt="Pickup/Visit"
-                            className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90"
-                            onClick={() => url && window.open(url, '_blank')}
-                          />
-                          <p className="text-xs text-gray-500 mt-1 truncate">{photo.photo_type}</p>
-                        </div>
+                        <button
+                          key={photo?.id || url || idx}
+                          type="button"
+                          onClick={() => url && setLightbox({ url, label })}
+                          className="text-left group"
+                        >
+                          <div className="relative rounded-lg overflow-hidden border bg-gray-50">
+                            <img
+                              src={url}
+                              alt={label || 'Pickup/Visit'}
+                              className="w-full h-28 sm:h-32 object-cover group-hover:opacity-95 transition"
+                            />
+                            {label && (
+                              <div className="absolute bottom-1 left-1 right-1">
+                                <span className="inline-flex max-w-full truncate text-[10px] px-2 py-1 rounded bg-black/60 text-white">
+                                  {label}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -922,34 +975,52 @@ export default function QCReviewPage() {
 
             {/* During Photos */}
             {activePhotoTab === 'during' && (
-              <div className="card border-2 border-orange-300">
-                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2 text-orange-700">
-                  <Camera className="w-5 h-5" />
-                  During Photos ({duringPhotos.length})
-                </h3>
-                {duringPhotos.length > 4 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllDuringPhotos(v => !v)}
-                    className="text-xs text-orange-700 underline mb-2"
-                  >
-                    {showAllDuringPhotos ? 'Show less' : 'Show all'}
-                  </button>
-                )}
+              <div className="card">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Camera className="w-4 h-4 text-orange-700" />
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">During Photos</h3>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
+                      {duringPhotos.length}
+                    </span>
+                  </div>
+                  {duringPhotos.length > 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllDuringPhotos((v) => !v)}
+                      className="text-xs font-semibold text-orange-700 hover:underline whitespace-nowrap"
+                    >
+                      {showAllDuringPhotos ? 'Show less' : 'Show all'}
+                    </button>
+                  )}
+                </div>
                 {duringPhotos.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {(showAllDuringPhotos ? duringPhotos : duringPhotos.slice(0, 4)).map((photo: any, idx: number) => {
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {(showAllDuringPhotos ? duringPhotos : duringPhotos.slice(0, 8)).map((photo: any, idx: number) => {
                       const url = photoUrlFor(photo);
+                      const label = String(photo.photo_type || '').trim();
                       return (
-                        <div key={photo?.id || url || idx} className="relative">
-                          <img
-                            src={url}
-                            alt="During"
-                            className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90"
-                            onClick={() => url && window.open(url, '_blank')}
-                          />
-                          <p className="text-xs text-gray-500 mt-1 truncate">{photo.photo_type}</p>
-                        </div>
+                        <button
+                          key={photo?.id || url || idx}
+                          type="button"
+                          onClick={() => url && setLightbox({ url, label })}
+                          className="text-left group"
+                        >
+                          <div className="relative rounded-lg overflow-hidden border bg-gray-50">
+                            <img
+                              src={url}
+                              alt={label || 'During'}
+                              className="w-full h-28 sm:h-32 object-cover group-hover:opacity-95 transition"
+                            />
+                            {label && (
+                              <div className="absolute bottom-1 left-1 right-1">
+                                <span className="inline-flex max-w-full truncate text-[10px] px-2 py-1 rounded bg-black/60 text-white">
+                                  {label}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -964,34 +1035,52 @@ export default function QCReviewPage() {
 
             {/* After Photos */}
             {activePhotoTab === 'after' && (
-              <div className="card border-2 border-green-300">
-                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2 text-green-700">
-                  <Camera className="w-5 h-5" />
-                  After Photos ({afterPhotos.length})
-                </h3>
-                {afterPhotos.length > 4 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllAfterPhotos(v => !v)}
-                    className="text-xs text-green-700 underline mb-2"
-                  >
-                    {showAllAfterPhotos ? 'Show less' : 'Show all'}
-                  </button>
-                )}
+              <div className="card">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Camera className="w-4 h-4 text-green-700" />
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">After Photos</h3>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">
+                      {afterPhotos.length}
+                    </span>
+                  </div>
+                  {afterPhotos.length > 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllAfterPhotos((v) => !v)}
+                      className="text-xs font-semibold text-green-700 hover:underline whitespace-nowrap"
+                    >
+                      {showAllAfterPhotos ? 'Show less' : 'Show all'}
+                    </button>
+                  )}
+                </div>
                 {afterPhotos.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {(showAllAfterPhotos ? afterPhotos : afterPhotos.slice(0, 4)).map((photo: any, idx: number) => {
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {(showAllAfterPhotos ? afterPhotos : afterPhotos.slice(0, 8)).map((photo: any, idx: number) => {
                       const url = photoUrlFor(photo);
+                      const label = String(photo.photo_type || '').trim();
                       return (
-                        <div key={photo?.id || url || idx} className="relative">
-                          <img
-                            src={url}
-                            alt="After"
-                            className="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90"
-                            onClick={() => url && window.open(url, '_blank')}
-                          />
-                          <p className="text-xs text-gray-500 mt-1 truncate">{photo.photo_type}</p>
-                        </div>
+                        <button
+                          key={photo?.id || url || idx}
+                          type="button"
+                          onClick={() => url && setLightbox({ url, label })}
+                          className="text-left group"
+                        >
+                          <div className="relative rounded-lg overflow-hidden border bg-gray-50">
+                            <img
+                              src={url}
+                              alt={label || 'After'}
+                              className="w-full h-28 sm:h-32 object-cover group-hover:opacity-95 transition"
+                            />
+                            {label && (
+                              <div className="absolute bottom-1 left-1 right-1">
+                                <span className="inline-flex max-w-full truncate text-[10px] px-2 py-1 rounded bg-black/60 text-white">
+                                  {label}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -1003,6 +1092,50 @@ export default function QCReviewPage() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Lightbox */}
+        {lightbox?.url && (
+          <div
+            className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4"
+            onClick={() => setLightbox(null)}
+          >
+            <div
+              className="relative max-w-5xl w-full"
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setLightbox(null)}
+                className="absolute -top-3 -right-3 bg-white rounded-full shadow p-2"
+              >
+                <XCircle className="w-5 h-5 text-gray-700" />
+              </button>
+              {lightbox.label && (
+                <div className="mb-2">
+                  <span className="inline-flex text-xs px-2 py-1 rounded bg-white/90 text-gray-800">
+                    {lightbox.label}
+                  </span>
+                </div>
+              )}
+              <img
+                src={lightbox.url}
+                alt={lightbox.label || 'Photo'}
+                className="w-full max-h-[80vh] object-contain rounded-lg bg-black"
+              />
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-white/90 hover:text-white underline"
+                  onClick={() => window.open(lightbox.url, '_blank')}
+                >
+                  Open in new tab
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1231,6 +1364,20 @@ export default function QCReviewPage() {
                 </p>
               </div>
 
+              {/* Photo Guidelines (shown once at top for clean UI) */}
+              <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Camera className="w-5 h-5 text-brand-primary" />
+                  <h4 className="font-semibold text-gray-900">Photo Guidelines</h4>
+                </div>
+                <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1">
+                  <li>Ensure good lighting for clear photos</li>
+                  <li>Capture all relevant angles</li>
+                  <li>Include close-ups of any damage or issues</li>
+                  <li>Photos should be clear and focused</li>
+                </ul>
+              </div>
+
               {/* Questions */}
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full text-sm">
@@ -1349,9 +1496,6 @@ export default function QCReviewPage() {
                                           extraFormFields={{ point: String(idx + 1), serial: String(item.serial) }}
                                           onUpload={(urls) => addProofUrls(item.serial, urls)}
                                           required
-                                          showGuidelines
-                                          guidelinesPosition="top"
-                                          stickyGuidelines
                                         />
                                       </div>
                                     </details>

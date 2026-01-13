@@ -191,6 +191,51 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       );
     }
 
+    // Persist pickup-boy odometer reading (so supervisor pickup details can display it).
+    // The odometer input is collected when uploading BEFORE_DASHBOARD photo.
+    try {
+      const odo = odometerReading == null ? NaN : Number(String(odometerReading).trim());
+      if (photoType === 'BEFORE_DASHBOARD' && Number.isFinite(odo) && odo > 0) {
+        // 1) pickup_tracking.pickup_odometer_reading (canonical for pickup flow)
+        // Some installs may not have created_at on pickup_tracking; be schema-tolerant.
+        const upsertWithCreatedAt = await supabaseAdmin
+          .from('pickup_tracking')
+          .upsert(
+            {
+              lead_id: leadId,
+              pickup_odometer_reading: odo,
+              updated_at: now,
+              created_at: now,
+            } as any,
+            { onConflict: 'lead_id' }
+          );
+        if (upsertWithCreatedAt.error && (upsertWithCreatedAt.error as any)?.code === '42703') {
+          await supabaseAdmin
+            .from('pickup_tracking')
+            .upsert(
+              {
+                lead_id: leadId,
+                pickup_odometer_reading: odo,
+                updated_at: now,
+              } as any,
+              { onConflict: 'lead_id' }
+            );
+        }
+
+        // 2) service_leads.vehicle_odometer (used across UI/invoice/PDF)
+        // Best-effort: don't overwrite an existing positive odometer.
+        const existingOdo = Number((lead as any)?.vehicle_odometer || 0) || 0;
+        if (!(existingOdo > 0)) {
+          await supabaseAdmin
+            .from('service_leads')
+            .update({ vehicle_odometer: odo, updated_at: now } as any)
+            .eq('id', leadId);
+        }
+      }
+    } catch {
+      // Non-blocking: odometer persistence is best-effort
+    }
+
     // Best-effort activity/event
     await supabaseAdmin.from('lead_events').insert({
       lead_id: leadId,

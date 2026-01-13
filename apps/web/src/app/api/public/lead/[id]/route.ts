@@ -229,7 +229,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
         const inVals: any[] = serviceIds.every(isNumericLike) ? serviceIds.map((x) => Number(x)) : serviceIds;
         // service_types schema differs across deployments (base_price may not exist)
         const attempt = await reader.from('service_types').select('id, name, base_price').in('id', inVals as any);
-        if (attempt.error && (attempt.error as any)?.code === '42703') {
+        if (attempt.error && ['42703', 'PGRST204'].includes(String((attempt.error as any)?.code || ''))) {
           const fallback = await reader.from('service_types').select('id, name').in('id', inVals as any);
           selectedServices = (fallback.data || []).map((r: any) => ({ ...r, base_price: 0 }));
         } else {

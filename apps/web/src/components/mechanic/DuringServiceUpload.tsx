@@ -40,6 +40,17 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [gpsWarning, setGpsWarning] = useState(false);
   const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
+  const photosRef = useRef<PhotoState[]>([]);
+
+  // Bulk upload (manual mapping)
+  const bulkInputRef = useRef<HTMLInputElement | null>(null);
+  const [bulkMapOpen, setBulkMapOpen] = useState(false);
+  const [bulkPicked, setBulkPicked] = useState<
+    Array<{ id: string; file: File; previewUrl: string; assignedType: string | null }>
+  >([]);
+  const bulkQueueRef = useRef<Array<{ index: number; file: File; type: string; label: string }>>([]);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const bulkUploadingRef = useRef(false);
 
   const revokeIfBlobUrl = (url: string | null) => {
     if (url && url.startsWith('blob:')) {
@@ -49,6 +60,21 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
         // ignore
       }
     }
+  };
+
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+
+  useEffect(() => {
+    bulkUploadingRef.current = bulkUploading;
+  }, [bulkUploading]);
+
+  const cleanupBulkPickedPreviews = () => {
+    setBulkPicked((prev) => {
+      for (const p of prev) revokeIfBlobUrl(p.previewUrl);
+      return [];
+    });
   };
 
   useEffect(() => {
@@ -167,33 +193,38 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
       }
     }
 
-    const optimized = await optimizeUploadFile(file);
-    const actualFile = optimized.file;
-
-      setPhotos((prev) =>
+    // Set preview immediately; optimization happens at upload time.
+    setPhotos((prev) =>
       prev.map((photo, idx) => {
         if (idx !== index) return photo;
         revokeIfBlobUrl(photo.preview);
         return {
                 ...photo,
-          file: actualFile,
-          preview: URL.createObjectURL(actualFile),
+          file,
+          preview: URL.createObjectURL(file),
                 uploaded: false,
         };
       })
       );
   };
 
-  const handleUpload = async (index: number) => {
-    const photo = photos[index];
-    if (!photo.file || !photo.preview) {
+  const uploadPhoto = async (index: number, fileOverride?: File, typeOverride?: string, labelOverride?: string) => {
+    const photo = photosRef.current[index];
+    const fileToUpload = fileOverride || photo?.file || null;
+    const typeToUpload = typeOverride || photo?.type || DURING_PHOTOS[index]?.type;
+    const labelToUpload = labelOverride || photo?.label || DURING_PHOTOS[index]?.label || 'Photo';
+
+    if (!fileToUpload || !typeToUpload) {
       toast.error('Please select a photo first');
       return;
     }
 
-    setPhotos((prev) =>
-      prev.map((p, idx) => (idx === index ? { ...p, uploading: true } : p))
-    );
+    setPhotos((prev) => {
+      const next = [...prev];
+      if (!next[index] || next[index].uploaded || next[index].uploading) return prev;
+      next[index] = { ...next[index], uploading: true };
+      return next;
+    });
 
     try {
       // Get session token for authorization
@@ -204,9 +235,12 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
         throw new Error('Authentication failed. Please login again.');
       }
 
+      const optimized = await optimizeUploadFile(fileToUpload);
+      const actualFile = optimized.file;
+
       const formData = new FormData();
-      formData.append('file', photo.file);
-      formData.append('photoType', photo.type);
+      formData.append('file', actualFile);
+      formData.append('photoType', typeToUpload);
       formData.append('photoCategory', 'during');
       if (location) {
         formData.append('latitude', location.latitude.toString());
@@ -244,27 +278,29 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
         throw new Error(result.error || result.details || 'Upload failed');
       }
 
-      setPhotos((prev) =>
-        prev.map((p, idx) =>
-          idx === index
-            ? {
-                ...p,
-                uploaded: true,
-                uploading: false,
-              }
-            : p
-        )
-      );
+      setPhotos((prev) => {
+        const next = [...prev];
+        if (!next[index]) return prev;
+        next[index] = { ...next[index], uploaded: true, uploading: false };
+        return next;
+      });
 
-      toast.success(`${photo.label} uploaded successfully`);
+      toast.success(`${labelToUpload} uploaded successfully`);
       onUploadComplete();
     } catch (error: any) {
       console.error('Upload error:', error);
       toast.error(error.message || 'Failed to upload photo');
-      setPhotos((prev) =>
-        prev.map((p, idx) => (idx === index ? { ...p, uploading: false } : p))
-      );
+      setPhotos((prev) => {
+        const next = [...prev];
+        if (!next[index]) return prev;
+        next[index] = { ...next[index], uploading: false };
+        return next;
+      });
     }
+  };
+
+  const handleUpload = async (index: number) => {
+    await uploadPhoto(index);
   };
 
   const handleRemove = (index: number) => {
@@ -275,6 +311,118 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
         return { ...photo, file: null, preview: null, uploaded: false };
       })
     );
+  };
+
+  const photoTypeOptions = DURING_PHOTOS.map((p) => ({ type: p.type, label: p.label }));
+
+  const getSlotIndexByType = (t: string) => {
+    const current = photosRef.current.length ? photosRef.current : photos;
+    return current.findIndex((p) => p.type === t);
+  };
+
+  const isTypeAvailable = (t: string) => {
+    const idx = getSlotIndexByType(t);
+    if (idx < 0) return false;
+    const slot = (photosRef.current.length ? photosRef.current : photos)[idx];
+    if (!slot) return false;
+    if (slot.uploaded || slot.uploading) return false;
+    if (slot.file && !slot.uploaded) return false; // already has selected file
+    return true;
+  };
+
+  const handleBulkFilesSelected = (files: File[]) => {
+    if (!files || files.length === 0) return;
+    if (!photosRef.current.length && !photos.length) {
+      toast.error('Please wait… loading photo slots');
+      return;
+    }
+
+    const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+    const valid: File[] = [];
+    for (const f of files) {
+      if (f.size > MAX_FILE_SIZE) {
+        const mb = (f.size / (1024 * 1024)).toFixed(2);
+        toast.error(`File too large (${mb}MB). Max 100MB: ${f.name}`);
+        continue;
+      }
+      valid.push(f);
+    }
+    if (!valid.length) return;
+
+    setBulkPicked(
+      valid.map((file, i) => ({
+        id: `${Date.now()}-${i}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        assignedType: null,
+      }))
+    );
+    setBulkMapOpen(true);
+  };
+
+  const runBulkQueue = async () => {
+    if (!bulkQueueRef.current.length) return;
+    if (bulkUploadingRef.current) return;
+
+    bulkUploadingRef.current = true;
+    setBulkUploading(true);
+    try {
+      while (bulkQueueRef.current.length) {
+        const next = bulkQueueRef.current.shift();
+        if (!next) break;
+        const { index, file, type, label } = next;
+        await uploadPhoto(index, file, type, label);
+      }
+    } finally {
+      bulkUploadingRef.current = false;
+      setBulkUploading(false);
+    }
+  };
+
+  const startBulkUploadFromMapping = async () => {
+    if (!bulkPicked.length) return;
+
+    const missing = bulkPicked.filter((x) => !x.assignedType);
+    if (missing.length) {
+      toast.error('Please select slot for every file');
+      return;
+    }
+
+    const assigned = bulkPicked.map((x) => String(x.assignedType || '').trim()).filter(Boolean);
+    const unique = new Set(assigned);
+    if (unique.size !== assigned.length) {
+      toast.error('Each slot can be selected only once');
+      return;
+    }
+
+    for (const t of assigned) {
+      if (!isTypeAvailable(t)) {
+        toast.error(`Slot not available: ${photoTypeOptions.find((o) => o.type === t)?.label || t}`);
+        return;
+      }
+    }
+
+    const queue: Array<{ index: number; file: File; type: string; label: string }> = [];
+    for (const item of bulkPicked) {
+      const t = item.assignedType!;
+      const idx = getSlotIndexByType(t);
+      const label = photoTypeOptions.find((o) => o.type === t)?.label || t;
+      // show preview in tile immediately
+      setPhotos((prev) => {
+        const next = [...prev];
+        if (!next[idx]) return prev;
+        revokeIfBlobUrl(next[idx].preview);
+        next[idx] = { ...next[idx], file: item.file, preview: URL.createObjectURL(item.file), uploaded: false };
+        return next;
+      });
+      queue.push({ index: idx, file: item.file, type: t, label });
+    }
+
+    bulkQueueRef.current = [...bulkQueueRef.current, ...queue];
+    setBulkMapOpen(false);
+    cleanupBulkPickedPreviews();
+    toast.success(`Uploading ${queue.length} files…`);
+    await runBulkQueue();
   };
 
   const requiredCount = photos.filter((p) => p.required).length;
@@ -406,6 +554,36 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
         </div>
       )}
 
+      {/* Bulk Upload (manual mapping) */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm text-gray-700">
+          <span className="font-semibold">Tip:</span> Bulk upload me files select karo, phir slot choose karke upload start karo.
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={bulkInputRef}
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files || []);
+              e.currentTarget.value = '';
+              handleBulkFilesSelected(files);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => bulkInputRef.current?.click()}
+            disabled={bulkUploading || photos.length === 0}
+            className={`btn-primary flex items-center gap-2 ${bulkUploading ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            <Upload className="w-4 h-4" />
+            {bulkUploading ? 'Uploading...' : 'Bulk Upload'}
+          </button>
+        </div>
+      </div>
+
       {/* Photo Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {photos.map((photo, index) => (
@@ -490,6 +668,100 @@ export default function DuringServiceUpload({ leadId, jobId, onUploadComplete }:
           </div>
         ))}
       </div>
+
+      {/* Bulk Mapping Modal */}
+      {bulkMapOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-3xl w-full p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-800">Map selected files to slots</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkMapOpen(false);
+                  cleanupBulkPickedPreviews();
+                }}
+                className="px-2 py-1 rounded hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-[55vh] overflow-auto pr-1">
+              {bulkPicked.map((item, idx) => {
+                const assignedTypes = new Set(
+                  bulkPicked.map((p) => p.assignedType).filter(Boolean) as string[]
+                );
+                const currentAssigned = item.assignedType;
+                return (
+                  <div
+                    key={item.id}
+                    className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 border rounded-lg p-3"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-14 h-14 rounded-md overflow-hidden bg-gray-100 border flex-shrink-0">
+                        {item.file.type.startsWith('video/') ? (
+                          <video src={item.previewUrl} className="w-full h-full object-cover" muted playsInline />
+                        ) : (
+                          <img src={item.previewUrl} alt={item.file.name} className="w-full h-full object-cover" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-gray-800 truncate">
+                          {idx + 1}. {item.file.name}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {(item.file.size / (1024 * 1024)).toFixed(2)} MB
+                        </div>
+                      </div>
+                    </div>
+                    <div className="w-full md:w-72">
+                      <select
+                        className="input w-full"
+                        value={currentAssigned || ''}
+                        onChange={(e) => {
+                          const nextType = e.target.value || null;
+                          setBulkPicked((prev) =>
+                            prev.map((p) => (p.id === item.id ? { ...p, assignedType: nextType } : p))
+                          );
+                        }}
+                      >
+                        <option value="">Select slot…</option>
+                        {photoTypeOptions.map((opt) => {
+                          const disabled =
+                            !isTypeAvailable(opt.type) ||
+                            (assignedTypes.has(opt.type) && opt.type !== currentAssigned);
+                          return (
+                            <option key={opt.type} value={opt.type} disabled={disabled}>
+                              {opt.label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setBulkMapOpen(false);
+                  cleanupBulkPickedPreviews();
+                }}
+              >
+                Cancel
+              </button>
+              <button type="button" className="btn-primary" onClick={startBulkUploadFromMapping}>
+                Start Upload
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

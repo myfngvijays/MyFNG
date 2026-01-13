@@ -17,7 +17,7 @@ interface QCJob {
   vehicle_model: string;
   mechanic_name: string;
   mechanic_completed_at: string;
-  before_images_count: number;
+  pv_images_count: number;
   after_images_count: number;
   work_summary: string;
   status: string;
@@ -299,16 +299,24 @@ export default function QCQueuePage() {
             .in('category', ['BEFORE', 'AFTER'])
         : { data: [] as any[] };
 
-      const leadMediaCounts = new Map<string, { before: number; after: number }>();
-      (leadMediaRows || []).forEach((m: any) => {
-        const leadId = m?.lead_id;
-        const cat = m?.category;
-        if (!leadId || (cat !== 'BEFORE' && cat !== 'AFTER')) return;
-        const prev = leadMediaCounts.get(leadId) || { before: 0, after: 0 };
-        if (cat === 'BEFORE') prev.before += 1;
-        if (cat === 'AFTER') prev.after += 1;
-        leadMediaCounts.set(leadId, prev);
-      });
+      // PV counts (Pickup/Visit) come from lead_media BEFORE_* slots.
+      // Use service-role backed API (schema + RLS tolerant).
+      let pvCounts: Record<string, { required_uploaded: number; required_total: number }> = {};
+      try {
+        if (leadIdsForCounts.length > 0) {
+          const pvRes = await fetch('/api/leads/media-counts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead_ids: leadIdsForCounts }),
+          });
+          const pvJson = await pvRes.json().catch(() => ({}));
+          if (pvRes.ok && (pvJson as any)?.success) {
+            pvCounts = ((pvJson as any)?.counts || {}) as any;
+          }
+        }
+      } catch {
+        pvCounts = {};
+      }
 
       const { data: mechanicMediaRows } = leadIdsForCounts.length
         ? await supabase
@@ -337,17 +345,19 @@ export default function QCQueuePage() {
           .eq('id', job.assigned_mechanic_id)
           .maybeSingle();
 
-        const legacyLead = leadMediaCounts.get(job.id) || { before: 0, after: 0 };
         const legacyMechanic = mechanicMediaCounts.get(job.id) || { before: 0, after: 0 };
 
         const mjId = leadIdToJobId.get(job.id);
         const jobPhoto = mjId ? (jobPhotoCounts.get(mjId) || { before: 0, after: 0 }) : { before: 0, after: 0 };
+        const pv = pvCounts[String(job.id || '').trim()];
+        const pvUploaded = Number(pv?.required_uploaded || 0) || 0;
 
         return {
           ...job,
           mechanic_name: mechanic?.full_name || 'Unknown',
-          before_images_count: legacyLead.before + legacyMechanic.before + jobPhoto.before,
-          after_images_count: legacyLead.after + legacyMechanic.after + jobPhoto.after,
+          pv_images_count: pvUploaded,
+          // After: keep existing aggregation (mechanic media + mechanic_job_photos)
+          after_images_count: legacyMechanic.after + jobPhoto.after,
           work_summary: job.notes || 'No summary provided'
         };
       }));
@@ -399,7 +409,7 @@ export default function QCQueuePage() {
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-sm text-gray-600">With Images</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-800">
-                  {jobs.filter(j => j.before_images_count > 0 && j.after_images_count > 0).length}
+                  {jobs.filter(j => j.pv_images_count > 0 && j.after_images_count > 0).length}
                 </p>
               </div>
             </div>
@@ -411,7 +421,7 @@ export default function QCQueuePage() {
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-sm text-gray-600">Missing Images</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-800">
-                  {jobs.filter(j => j.before_images_count === 0 || j.after_images_count === 0).length}
+                  {jobs.filter(j => j.pv_images_count === 0 || j.after_images_count === 0).length}
                 </p>
               </div>
             </div>
@@ -485,15 +495,15 @@ export default function QCQueuePage() {
                       <td className="px-4 md:px-6 py-3 md:py-4">
                         <div className="flex items-center gap-3">
                           <div className="flex items-center gap-1">
-                            {job.before_images_count > 0 ? (
+                            {job.pv_images_count > 0 ? (
                               <CheckCircle className="w-4 h-4 text-green-600" />
                             ) : (
                               <Camera className="w-4 h-4 text-red-500" />
                             )}
                             <span className={`text-xs font-medium ${
-                              job.before_images_count > 0 ? 'text-green-700' : 'text-red-700'
+                              job.pv_images_count > 0 ? 'text-green-700' : 'text-red-700'
                             }`}>
-                              Before: {job.before_images_count}
+                              PV: {job.pv_images_count}/6
                             </span>
                           </div>
                           <div className="flex items-center gap-1">

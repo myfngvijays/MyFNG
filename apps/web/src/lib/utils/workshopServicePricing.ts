@@ -10,10 +10,32 @@ function toNumber(v: any): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-async function fetchCityZoneId(supabase: any, cityId?: string | null) {
+async function fetchCityRow(supabase: any, cityId?: string | null) {
   if (!cityId) return null;
-  const { data } = await supabase.from('cities').select('zone_id').eq('id', cityId).maybeSingle();
-  return ((data as any)?.zone_id as string) || null;
+  const { data } = await supabase.from('cities').select('id, zone_id, name').eq('id', cityId).maybeSingle();
+  return (data as any) || null;
+}
+
+async function resolveCityIdByName(supabase: any, cityName?: string | null, zoneId?: string | null) {
+  const name = String(cityName || '').trim();
+  if (!name) return null;
+
+  // Try constrained by zone first (more accurate).
+  if (zoneId) {
+    const { data } = await supabase
+      .from('cities')
+      .select('id')
+      .eq('zone_id', zoneId)
+      .ilike('name', name)
+      .limit(1);
+    const id = String((data?.[0] as any)?.id || '').trim();
+    if (id) return id;
+  }
+
+  // Fallback: by name only.
+  const { data } = await supabase.from('cities').select('id').ilike('name', name).limit(1);
+  const id = String((data?.[0] as any)?.id || '').trim();
+  return id || null;
 }
 
 export async function resolveWorkshopServicePrice(input: {
@@ -21,13 +43,27 @@ export async function resolveWorkshopServicePrice(input: {
   workshopId: string;
   serviceTypeId: string;
   cityId?: string | null;
+  cityName?: string | null;
   zoneId?: string | null;
+  workshopZoneId?: string | null;
   vehicleClass?: string | null;
 }): Promise<number> {
   const { supabase, workshopId, serviceTypeId } = input;
-  const cityId = input.cityId || null;
+  const requestedCityId = input.cityId || null;
   const vehicleClass = input.vehicleClass || null;
-  const zoneId = input.zoneId || (await fetchCityZoneId(supabase, cityId));
+
+  // Resolve effective city_id + zone_id robustly:
+  // - Some leads have placeholder/incorrect city_id. In that case, try cityName + workshopZoneId to find cities.id.
+  const cityRow = await fetchCityRow(supabase, requestedCityId);
+  const effectiveZoneId =
+    input.zoneId ||
+    input.workshopZoneId ||
+    (String((cityRow as any)?.zone_id || '').trim() || null) ||
+    null;
+
+  const effectiveCityId =
+    (String((cityRow as any)?.id || '').trim() || null) ||
+    (await resolveCityIdByName(supabase, input.cityName || null, effectiveZoneId));
 
   async function tryPrice(filters: Record<string, any>) {
     let q = supabase
@@ -54,7 +90,7 @@ export async function resolveWorkshopServicePrice(input: {
       p_workshop_id: workshopId,
       p_service_type_id: serviceTypeId,
       p_vehicle_class: vehicleClass,
-      p_zone_id: zoneId,
+      p_zone_id: effectiveZoneId,
     } as any);
     const rpcPrice = toNumber(data);
     if (rpcPrice > 0) return rpcPrice;
@@ -63,23 +99,23 @@ export async function resolveWorkshopServicePrice(input: {
   }
 
   // 1) City + Class
-  if (cityId && vehicleClass) {
-    const p = await tryPrice({ city_id: cityId, class: vehicleClass });
+  if (effectiveCityId && vehicleClass) {
+    const p = await tryPrice({ city_id: effectiveCityId, class: vehicleClass });
     if (p) return p;
   }
   // 2) City only
-  if (cityId) {
-    const p = await tryPrice({ city_id: cityId, class: null });
+  if (effectiveCityId) {
+    const p = await tryPrice({ city_id: effectiveCityId, class: null });
     if (p) return p;
   }
   // 3) Zone + Class
-  if (zoneId && vehicleClass) {
-    const p = await tryPrice({ zone_id: zoneId, class: vehicleClass });
+  if (effectiveZoneId && vehicleClass) {
+    const p = await tryPrice({ zone_id: effectiveZoneId, class: vehicleClass });
     if (p) return p;
   }
   // 4) Zone only
-  if (zoneId) {
-    const p = await tryPrice({ zone_id: zoneId, class: null });
+  if (effectiveZoneId) {
+    const p = await tryPrice({ zone_id: effectiveZoneId, class: null });
     if (p) return p;
   }
   // 5) Class only
