@@ -20,7 +20,7 @@ import {
   ArrowLeft, Clock, User, Car, Calendar, Wrench, 
   CheckCircle, AlertTriangle, Image as ImageIcon, Package,
   DollarSign, FileText, MessageSquare, History, Loader2, Save,
-  XCircle, ArrowLeftCircle, Camera, Edit, MapPin, AlertCircle
+  XCircle, ArrowLeftCircle, Camera, Edit, MapPin, AlertCircle, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { resolveWorkshopServicePrice } from '@/lib/utils/workshopServicePricing';
@@ -75,6 +75,8 @@ export default function SupervisorJobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showQC, setShowQC] = useState(false);
+  const [activityOpenGroups, setActivityOpenGroups] = useState<Record<string, boolean>>({});
+  const [expandedActivityEventId, setExpandedActivityEventId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<MainTab>('overview');
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
@@ -651,6 +653,7 @@ export default function SupervisorJobDetailPage() {
           mechanic:assigned_mechanic_id(id, full_name, profile_image),
           supervisor:assigned_supervisor_id(id, full_name),
           pickup_boy:assigned_pickup_boy_id(id, full_name),
+          pickup_boy_alt:assigned_pickup_id(id, full_name),
           qc_performed_by_user:qc_performed_by(id, full_name, email),
           extra_charges:lead_extra_charges(*, requester:requested_by(full_name)),
           media:lead_media(*),
@@ -855,16 +858,33 @@ export default function SupervisorJobDetailPage() {
       }
 
       // Fetch pickup tracking data (odometer + arrival times)
-      if (data.pickup_required) {
+      // NOTE: even when pickup_required is false, some installs still assign pickup boy / write tracking.
+      const shouldLoadPickupTracking =
+        Boolean((data as any)?.pickup_required) ||
+        Boolean((data as any)?.assigned_pickup_boy_id) ||
+        Boolean((data as any)?.assigned_pickup_id) ||
+        Boolean((data as any)?.pickup_otp_verified_at) ||
+        Boolean((data as any)?.pickup_otp) ||
+        String((data as any)?.pickup_status || '').trim().length > 0;
+
+      if (shouldLoadPickupTracking) {
         const { data: pickupTracking, error: pickupTrackingError } = await supabase
           .from('pickup_tracking')
-          .select('pickup_odometer_reading, drop_odometer_reading, pickup_arrival_time, pickup_handover_to_workshop_at')
+          .select(
+            'pickup_odometer_reading, drop_odometer_reading, pickup_arrival_time, pickup_handover_to_workshop_at, pickup_status, pickup_assigned_to, pickup_assigned_at, drop_assigned_to, drop_completed_time, drop_otp_verified_at'
+          )
           .eq('lead_id', jobId)
           .maybeSingle();
         
         if (!pickupTrackingError && pickupTracking) {
           (data as any).pickup_odometer_reading = pickupTracking.pickup_odometer_reading;
           (data as any).drop_odometer_reading = pickupTracking.drop_odometer_reading;
+          (data as any).pickup_tracking_pickup_status = (pickupTracking as any).pickup_status;
+          (data as any).pickup_tracking_pickup_assigned_to = (pickupTracking as any).pickup_assigned_to;
+          (data as any).pickup_tracking_pickup_assigned_at = (pickupTracking as any).pickup_assigned_at;
+          (data as any).pickup_tracking_drop_assigned_to = (pickupTracking as any).drop_assigned_to;
+          (data as any).pickup_tracking_drop_completed_time = (pickupTracking as any).drop_completed_time;
+          (data as any).pickup_tracking_drop_otp_verified_at = (pickupTracking as any).drop_otp_verified_at;
 
           // Prefer service_leads columns if present, else fallback to pickup_tracking
           if (!(data as any).pickup_arrival_time && (pickupTracking as any).pickup_arrival_time) {
@@ -878,9 +898,16 @@ export default function SupervisorJobDetailPage() {
         // Fallback: if "Arrived at Workshop" time is still missing but status shows dropped,
         // use lead_status_history (it is always written by the arrived API).
         const statusUpper = String((data as any)?.status || '').toUpperCase();
+        const pickupStatusUpper = String((data as any)?.pickup_status || '').toUpperCase();
         const needsArrivedFallback =
           !((data as any)?.pickup_arrival_time || (data as any)?.pickup_handover_to_workshop_at) &&
-          (statusUpper === 'VEHICLE_DROPPED_AT_WORKSHOP' || String((data as any)?.pickup_status || '').toUpperCase() === 'VEHICLE_DROPPED_AT_WORKSHOP');
+          (
+            statusUpper === 'VEHICLE_DROPPED_AT_WORKSHOP' ||
+            pickupStatusUpper === 'VEHICLE_DROPPED_AT_WORKSHOP' ||
+            Boolean((data as any)?.pickup_otp_verified_at) ||
+            Boolean((data as any)?.assigned_pickup_boy_id) ||
+            Boolean((data as any)?.assigned_pickup_id)
+          );
 
         if (needsArrivedFallback) {
           try {
@@ -898,6 +925,33 @@ export default function SupervisorJobDetailPage() {
           } catch {
             // ignore
           }
+        }
+
+        // Delivery completion info (for "Delivered by pickup boy" display)
+        try {
+          const { data: deliveredHist } = await supabase
+            .from('lead_status_history')
+            .select('changed_at, changed_by')
+            .eq('lead_id', jobId)
+            .eq('new_status', 'DELIVERED')
+            .order('changed_at', { ascending: false })
+            .limit(1);
+          const deliveredAt = String((deliveredHist?.[0] as any)?.changed_at || '').trim();
+          const deliveredBy = String((deliveredHist?.[0] as any)?.changed_by || '').trim();
+          if (deliveredAt) (data as any).delivered_at = deliveredAt;
+          if (deliveredBy) (data as any).delivered_by = deliveredBy;
+          if (deliveredBy) {
+            const { data: deliveredUser } = await supabase
+              .from('users_login')
+              .select('full_name')
+              .eq('id', deliveredBy)
+              .maybeSingle();
+            if ((deliveredUser as any)?.full_name) {
+              (data as any).delivered_by_name = (deliveredUser as any).full_name;
+            }
+          }
+        } catch {
+          // ignore
         }
 
         // Backfill pickup odometer from dashboard photo (pickup boy entry) if it wasn't saved earlier.
@@ -1441,6 +1495,17 @@ export default function SupervisorJobDetailPage() {
   }
 
   const pendingExtraCharges = (lead.extra_charges || []).filter((c: any) => c.status === 'PENDING');
+  const approvedExtraCharges = (lead.extra_charges || []).filter((row: any) => {
+    const s = String(row?.status || '').trim().toUpperCase();
+    const customerApproved = row?.customer_approved === true;
+    return (
+      customerApproved ||
+      s === 'APPROVED' ||
+      s === 'CUSTOMER_APPROVED' ||
+      s === 'APPROVED_BY_CUSTOMER' ||
+      s === 'ACCEPTED'
+    );
+  });
   const mediaCount = Array.isArray(lead?.media) ? lead.media.length : 0;
   const eventsCount = Array.isArray(lead?.events) ? lead.events.length : 0;
   const qcPending = ['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING';
@@ -1457,12 +1522,23 @@ export default function SupervisorJobDetailPage() {
       'DELIVERED',
       'CLOSED',
     ].includes(String(lead.status || '').toUpperCase());
-  const effectivePickupStatus =
-    (lead?.pickup_status as string | undefined) ||
-    (lead?.pickup_otp_verified_at ? 'VEHICLE_IN_TRANSIT' : null) ||
-    (lead?.pickup_otp ? 'IN_PROGRESS' : null) ||
-    (lead?.assigned_pickup_boy_id ? 'ASSIGNED' : null) ||
-    'NOT_ASSIGNED';
+  const effectivePickupStatus = (() => {
+    const rawLead = String((lead as any)?.pickup_status || '').trim();
+    const leadStatus = rawLead.toUpperCase();
+    // Treat NOT_ASSIGNED as "empty" so derived signals can take over (OTP verified/assigned/etc.)
+    const hasExplicit = leadStatus && leadStatus !== 'NOT_ASSIGNED' && leadStatus !== 'PENDING';
+
+    const trackingStatus = String((lead as any)?.pickup_tracking_pickup_status || '').trim().toUpperCase();
+    const hasTracking = trackingStatus && trackingStatus !== 'NOT_ASSIGNED' && trackingStatus !== 'PENDING';
+
+    if (hasExplicit) return rawLead;
+    if (hasTracking) return trackingStatus;
+    if ((lead as any)?.pickup_otp_verified_at) return 'VEHICLE_IN_TRANSIT';
+    if ((lead as any)?.pickup_otp) return 'IN_PROGRESS';
+    if ((lead as any)?.assigned_pickup_boy_id || (lead as any)?.assigned_pickup_id || (lead as any)?.pickup_tracking_pickup_assigned_to)
+      return 'ASSIGNED';
+    return 'NOT_ASSIGNED';
+  })();
   // After pickup OTP is verified, pickup details should not be editable from supervisor/advisor.
   const pickupLocked = Boolean(lead?.pickup_otp_verified_at);
   const selfPickup = Boolean(lead) && !Boolean((lead as any)?.pickup_required);
@@ -1982,7 +2058,7 @@ export default function SupervisorJobDetailPage() {
                   {/* (Removed) Pickup Scheduled: user wants only 2 actual timestamps */}
 
                   {/* Assigned Pickup Boy */}
-              {lead.pickup_boy && (
+              {(lead.pickup_boy || (lead as any).pickup_boy_alt) && (
                     <tr className="hover:bg-gray-50">
                       <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
                         <div className="flex items-center gap-2">
@@ -1991,10 +2067,40 @@ export default function SupervisorJobDetailPage() {
                 </div>
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm font-semibold text-gray-900">
-                        {lead.pickup_boy.full_name}
+                        {String((lead.pickup_boy as any)?.full_name || (lead as any)?.pickup_boy_alt?.full_name || '—')}
                       </td>
                     </tr>
               )}
+
+                  {/* Delivered by pickup boy (if delivery completed) */}
+                  {((lead as any)?.delivered_at || ['DELIVERED', 'CLOSED'].includes(String((lead as any)?.status || '').toUpperCase())) && (
+                    <>
+                      <tr className="hover:bg-gray-50">
+                        <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-gray-400" />
+                            Delivered At
+                          </div>
+                        </td>
+                        <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
+                          <span className="font-semibold text-gray-900">
+                            {(lead as any)?.delivered_at ? formatDateTime((lead as any).delivered_at) : '—'}
+                          </span>
+                        </td>
+                      </tr>
+                      <tr className="hover:bg-gray-50">
+                        <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-gray-400" />
+                            Delivered By
+                          </div>
+                        </td>
+                        <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm font-semibold text-gray-900">
+                          {String((lead as any)?.delivered_by_name || (lead as any)?.delivered_by || '—')}
+                        </td>
+                      </tr>
+                    </>
+                  )}
 
                   {/* Pickup Assigned At */}
                   {/* (Removed) Pickup Assigned At: user wants only 2 timestamps */}
@@ -2040,7 +2146,8 @@ export default function SupervisorJobDetailPage() {
               )}
 
                   {/* Not Assigned Warning */}
-              {!lead.assigned_pickup_boy_id && (String(effectivePickupStatus).toUpperCase() === 'NOT_ASSIGNED') && (
+              {!((lead as any).assigned_pickup_boy_id || (lead as any).assigned_pickup_id || (lead as any).pickup_tracking_pickup_assigned_to) &&
+                (String(effectivePickupStatus).toUpperCase() === 'NOT_ASSIGNED') && (
                     <tr>
                       <td colSpan={2} className="px-4 md:px-6 py-3 md:py-4">
                         <div className="p-3 sm:p-4 bg-white border border-orange-200 rounded-lg">
@@ -2590,6 +2697,42 @@ export default function SupervisorJobDetailPage() {
                   )}
                 </div>
 
+                {/* 2) Additional work (approved) */}
+                {approvedExtraCharges.length > 0 && (
+                  <div className="card">
+                    <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                      <Wrench className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
+                      Additional Work
+                      <span className="text-xs text-gray-500 font-normal">({approvedExtraCharges.length})</span>
+                    </h3>
+
+                    <div className="space-y-2">
+                      {approvedExtraCharges.map((c: any) => (
+                        <div key={c.id} className="border border-gray-200 rounded-lg p-3 bg-white">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-semibold text-gray-900 break-words">
+                                {String(c?.description || c?.reason || 'Additional work')}
+                              </div>
+                              {(c?.requester?.full_name || c?.requested_by) && (
+                                <div className="text-[11px] text-gray-500 mt-0.5">
+                                  Requested by: {String(c?.requester?.full_name || c?.requested_by)}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <div className="font-bold text-gray-900">₹{Number(c?.amount || 0).toFixed(2)}</div>
+                              {c?.customer_approved === true && (
+                                <div className="text-[11px] text-green-700 font-semibold">Customer Approved</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* 2) Supervisor observation */}
                 <div className="card">
                   <div className="flex items-start justify-between gap-3 mb-2">
@@ -2686,57 +2829,7 @@ export default function SupervisorJobDetailPage() {
           />
         )}
 
-        {/* Section 8: Status Management */}
-        {activeTab === 'workflow' && (lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS' || lead.status === 'INSPECTED' || lead.status === 'QC_PENDING' || lead.status === 'COMPLETED' || lead.status === 'WORK_COMPLETED') && (
-          <div className="card bg-purple-50 border-purple-200">
-            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3">Change Job Status</h3>
-            <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-              Update the job status based on your inspection and validation
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
-              {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS') && (
-                <button
-                  onClick={() => changeJobStatus('IN_PROGRESS')}
-                  className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Mark as IN PROGRESS</span>
-                  <span className="sm:hidden">IN PROGRESS</span>
-                </button>
-              )}
-              {(lead.status === 'DELIVERED' || lead.status === 'IN_PROGRESS') && (
-                <button
-                  onClick={() => changeJobStatus('INSPECTED')}
-                  className="btn bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Mark as INSPECTED</span>
-                  <span className="sm:hidden">INSPECTED</span>
-                </button>
-              )}
-              {(lead.status === 'INSPECTED' || lead.status === 'WORK_COMPLETED' || lead.status === 'QC_PENDING') && (
-                <button
-                  onClick={() => changeJobStatus('QC_APPROVED')}
-                  className="btn bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">QC APPROVED</span>
-                  <span className="sm:hidden">QC OK</span>
-                </button>
-              )}
-              {lead.status === 'QC_APPROVED' && (
-                <button
-                  onClick={() => changeJobStatus('READY_FOR_DELIVERY')}
-                  className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">READY FOR DELIVERY</span>
-                  <span className="sm:hidden">Ready</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Status Management (removed as requested) */}
 
         {/* Section 9: QC Section - QC Tab */}
         {activeTab === 'qc' && (
@@ -3083,25 +3176,295 @@ export default function SupervisorJobDetailPage() {
         {/* Section 10: Activity Timeline (merged into Workflow tab) */}
         {activeTab === 'workflow' && lead.events && lead.events.length > 0 && (
           <div className="card">
-            <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-              <History className="w-4 h-4 sm:w-5 sm:h-5" />
-              Activity Timeline
-            </h3>
+            <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+              <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
+                <History className="w-4 h-4 sm:w-5 sm:h-5" />
+                Activity
+              </h3>
+              <span className="text-[10px] sm:text-xs text-gray-500">{lead.events.length} update(s)</span>
+            </div>
+
             <div className="max-h-[420px] overflow-y-auto pr-1">
-              <div className="space-y-2 sm:space-y-3">
-                {lead.events.map((event: any) => (
-                  <div key={event.id} className="flex gap-2 sm:gap-3 pb-2 sm:pb-3 border-b border-gray-200 last:border-0">
-                    <div className="flex-shrink-0 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-brand-primary mt-1.5 sm:mt-2"></div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs sm:text-sm font-medium">{event.event_description}</p>
-                      <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
-                        {formatDateTime(event.created_at)}
-                        {event.created_by_user && ` • by ${event.created_by_user.full_name}`}
-                      </p>
-                    </div>
+              {(() => {
+                const toDate = (v: any) => {
+                  const d = new Date(v);
+                  return isNaN(d.getTime()) ? null : d;
+                };
+
+                const relative = (iso: any) => {
+                  const d = toDate(iso);
+                  if (!d) return '';
+                  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+                  if (mins < 1) return 'just now';
+                  if (mins < 60) return `${mins}m ago`;
+                  const hrs = Math.floor(mins / 60);
+                  if (hrs < 24) return `${hrs}h ago`;
+                  const days = Math.floor(hrs / 24);
+                  return `${days}d ago`;
+                };
+
+                const dayLabel = (iso: any) => {
+                  const d = toDate(iso);
+                  if (!d) return 'Unknown date';
+                  const start = new Date(d);
+                  start.setHours(0, 0, 0, 0);
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const diffDays = Math.round((today.getTime() - start.getTime()) / 86400000);
+                  if (diffDays === 0) return 'Today';
+                  if (diffDays === 1) return 'Yesterday';
+                  return formatDateDMY(d.toISOString());
+                };
+
+                const categoryUI = (event: any) => {
+                  const cat = String(event?.event_category || '').trim().toUpperCase();
+                  const type = String(event?.event_type || '').trim().toLowerCase();
+                  const desc = String(event?.event_description || '').toLowerCase();
+
+                  // Prefer explicit event_category from DB, fallback to heuristics.
+                  const resolved =
+                    cat ||
+                    (type.includes('payment') || desc.includes('payment') || desc.includes('invoice') ? 'PAYMENT' : '') ||
+                    (type.includes('assign') || desc.includes('assigned') || desc.includes('reassigned') ? 'ASSIGNMENT' : '') ||
+                    (type.includes('status') || desc.includes('status') ? 'STATUS' : '') ||
+                    (type.includes('qc') || desc.includes('qc') ? 'AUDIT' : '') ||
+                    '';
+
+                  if (resolved === 'PAYMENT') {
+                    return { key: 'PAYMENT', label: 'Billing', Icon: DollarSign, wrapClass: 'bg-green-100', iconClass: 'text-green-700', pillClass: 'bg-green-100 text-green-800' };
+                  }
+                  if (resolved === 'ASSIGNMENT') {
+                    return { key: 'ASSIGNMENT', label: 'Assignment', Icon: User, wrapClass: 'bg-indigo-100', iconClass: 'text-indigo-700', pillClass: 'bg-indigo-100 text-indigo-800' };
+                  }
+                  if (resolved === 'STATUS') {
+                    return { key: 'STATUS', label: 'Status', Icon: CheckCircle, wrapClass: 'bg-blue-100', iconClass: 'text-blue-700', pillClass: 'bg-blue-100 text-blue-800' };
+                  }
+                  if (resolved === 'AUDIT') {
+                    return { key: 'AUDIT', label: 'QC / Audit', Icon: CheckCircle, wrapClass: 'bg-purple-100', iconClass: 'text-purple-700', pillClass: 'bg-purple-100 text-purple-800' };
+                  }
+                  if (resolved === 'SLA') {
+                    return { key: 'SLA', label: 'SLA', Icon: AlertTriangle, wrapClass: 'bg-red-100', iconClass: 'text-red-700', pillClass: 'bg-red-100 text-red-800' };
+                  }
+                  return { key: resolved || 'LEAD', label: 'Update', Icon: History, wrapClass: 'bg-gray-100', iconClass: 'text-gray-700', pillClass: 'bg-gray-100 text-gray-800' };
+                };
+
+                const pretty = (v: any) => {
+                  if (v === null || v === undefined) return '—';
+                  if (typeof v === 'string') {
+                    const s = v.trim();
+                    if (s.length <= 160) return s;
+                    return `${s.slice(0, 160)}…`;
+                  }
+                  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+                  try {
+                    const s = JSON.stringify(v);
+                    if (s.length <= 200) return s;
+                    return `${s.slice(0, 200)}…`;
+                  } catch {
+                    return String(v);
+                  }
+                };
+
+                const sorted = [...(lead.events || [])].sort((a: any, b: any) => {
+                  const da = toDate(a?.created_at)?.getTime() || 0;
+                  const db = toDate(b?.created_at)?.getTime() || 0;
+                  return db - da;
+                });
+
+                const dayGroups = sorted.reduce((acc: Record<string, any[]>, ev: any) => {
+                  const key = dayLabel(ev?.created_at);
+                  acc[key] = acc[key] || [];
+                  acc[key].push(ev);
+                  return acc;
+                }, {});
+
+                const orderedDays = Object.keys(dayGroups);
+
+                return (
+                  <div className="space-y-4">
+                    {orderedDays.map((day) => {
+                      const events = dayGroups[day] || [];
+
+                      // Group within the day by category (STATUS/BILLING/QC/...)
+                      const catGroups = events.reduce((acc: Record<string, any[]>, ev: any) => {
+                        const ui = categoryUI(ev);
+                        const k = ui.key || 'LEAD';
+                        acc[k] = acc[k] || [];
+                        acc[k].push(ev);
+                        return acc;
+                      }, {});
+
+                      const orderedCats = Object.keys(catGroups);
+
+                      return (
+                        <div key={day}>
+                          <div className="sticky top-0 z-[1] bg-white/90 backdrop-blur border border-gray-200 rounded-md px-2.5 py-1 text-[10px] sm:text-xs font-semibold text-gray-700 inline-flex items-center gap-2">
+                            <Clock className="w-3 h-3" />
+                            {day}
+                          </div>
+
+                          <div className="mt-2 space-y-2">
+                            {orderedCats.map((catKey) => {
+                              const list = catGroups[catKey] || [];
+                              const ui = categoryUI(list[0]);
+                              const groupKey = `${day}::${ui.key}`;
+                              const isOpen = activityOpenGroups[groupKey] ?? true;
+
+                              return (
+                                <div key={groupKey} className="border border-gray-200 rounded-lg overflow-hidden">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActivityOpenGroups((prev) => ({ ...prev, [groupKey]: !(prev[groupKey] ?? true) }));
+                                    }}
+                                    className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100"
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      {isOpen ? <ChevronDown className="w-4 h-4 text-gray-600" /> : <ChevronRight className="w-4 h-4 text-gray-600" />}
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold ${ui.pillClass}`}>
+                                        {ui.label}
+                                      </span>
+                                      <span className="text-xs sm:text-sm font-semibold text-gray-800 truncate">
+                                        {list.length} item(s)
+                                      </span>
+                                    </div>
+                                  </button>
+
+                                  {isOpen && (
+                                    <div className="p-2 space-y-2 bg-white">
+                                      {list.map((event: any) => {
+                                        const eui = categoryUI(event);
+                                        const Icon = eui.Icon as any;
+                                        const title = String(event?.event_description || 'Update');
+                                        const when = relative(event?.created_at);
+                                        const by =
+                                          String(event?.actor_name || '').trim() ||
+                                          String(event?.created_by_user?.full_name || '').trim() ||
+                                          (String(event?.actor || '').trim() ? String(event.actor).trim() : '');
+                                        const isExpanded = expandedActivityEventId === event.id;
+
+                                        const meta = event?.metadata;
+                                        const metaEntries =
+                                          meta && typeof meta === 'object' && !Array.isArray(meta)
+                                            ? (Object.entries(meta) as Array<[string, any]>)
+                                            : [];
+
+                                        return (
+                                          <div key={event.id} className="border border-gray-200 rounded-lg">
+                                            <button
+                                              type="button"
+                                              onClick={() => setExpandedActivityEventId((prev) => (prev === event.id ? null : event.id))}
+                                              className="w-full flex gap-2.5 sm:gap-3 p-2.5 sm:p-3 hover:bg-gray-50 text-left"
+                                              aria-expanded={isExpanded}
+                                            >
+                                              <div className={`flex-shrink-0 w-9 h-9 rounded-full ${eui.wrapClass} flex items-center justify-center`}>
+                                                <Icon className={`w-4 h-4 ${eui.iconClass}`} />
+                                              </div>
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-start justify-between gap-2">
+                                                  <p className="text-xs sm:text-sm font-semibold text-gray-900 leading-snug break-words">
+                                                    {title}
+                                                  </p>
+                                                  <span className="text-[10px] sm:text-xs text-gray-500 whitespace-nowrap">{when}</span>
+                                                </div>
+                                                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                                  <span className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold ${eui.pillClass}`}>
+                                                    {eui.label}
+                                                  </span>
+                                                  <span className="text-[10px] sm:text-xs text-gray-500">
+                                                    {formatDateTime(event.created_at)}
+                                                    {by ? ` • by ${by}` : ''}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            </button>
+
+                                            {isExpanded && (
+                                              <div className="px-3 pb-3">
+                                                <div className="mt-1 p-2.5 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] sm:text-xs">
+                                                    <div>
+                                                      <span className="text-gray-500">Category:</span>{' '}
+                                                      <span className="font-semibold text-gray-800">{pretty(event?.event_category || '—')}</span>
+                                                    </div>
+                                                    <div>
+                                                      <span className="text-gray-500">Type:</span>{' '}
+                                                      <span className="font-semibold text-gray-800">{pretty(event?.event_type || '—')}</span>
+                                                    </div>
+                                                    <div className="sm:col-span-2">
+                                                      <span className="text-gray-500">Actor:</span>{' '}
+                                                      <span className="font-semibold text-gray-800">
+                                                        {pretty(event?.actor_name || by || '—')}
+                                                      </span>
+                                                      {event?.actor_role ? (
+                                                        <span className="text-gray-500">
+                                                          {' '}
+                                                          ({String(event.actor_role)})
+                                                        </span>
+                                                      ) : null}
+                                                    </div>
+                                                  </div>
+
+                                                  {(lead?.mechanic || lead?.supervisor || lead?.pickup_boy || lead?.pickup_boy_alt) && (
+                                                    <div className="mt-2 pt-2 border-t border-gray-200">
+                                                      <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">Current assignment</div>
+                                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] sm:text-xs text-gray-700">
+                                                        <div>
+                                                          <span className="text-gray-500">Mechanic:</span>{' '}
+                                                          <span className="font-semibold">{pretty(lead?.mechanic?.full_name || '—')}</span>
+                                                        </div>
+                                                        <div>
+                                                          <span className="text-gray-500">Supervisor:</span>{' '}
+                                                          <span className="font-semibold">{pretty(lead?.supervisor?.full_name || '—')}</span>
+                                                        </div>
+                                                        <div>
+                                                          <span className="text-gray-500">Pickup:</span>{' '}
+                                                          <span className="font-semibold">{pretty(lead?.pickup_boy?.full_name || lead?.pickup_boy_alt?.full_name || '—')}</span>
+                                                        </div>
+                                                        <div>
+                                                          <span className="text-gray-500">Status:</span>{' '}
+                                                          <span className="font-semibold">{pretty(lead?.status || '—')}</span>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {metaEntries.length > 0 && (
+                                                    <div className="mt-2 pt-2 border-t border-gray-200">
+                                                      <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">Event details</div>
+                                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        {metaEntries.slice(0, 10).map(([k, v]) => (
+                                                          <div key={k} className="text-[10px] sm:text-xs">
+                                                            <div className="text-gray-500">{k}</div>
+                                                            <div className="font-semibold text-gray-800 break-words">{pretty(v)}</div>
+                                                          </div>
+                                                        ))}
+                                                      </div>
+                                                      {metaEntries.length > 10 && (
+                                                        <div className="text-[10px] sm:text-xs text-gray-500 mt-2">
+                                                          + {metaEntries.length - 10} more field(s)
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
+                );
+              })()}
             </div>
           </div>
         )}

@@ -30,6 +30,18 @@ export default function UserManagementPage() {
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
   const [managers, setManagers] = useState<any[]>([]);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [roleUser, setRoleUser] = useState<any>(null);
+  const [roleForm, setRoleForm] = useState({
+    role_id: '',
+    workshop_id: '',
+    assigned_manager_id: '',
+    department: ''
+  });
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordUser, setPasswordUser] = useState<any>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [savingAction, setSavingAction] = useState(false);
   const [newUser, setNewUser] = useState({
     full_name: '',
     email: '',
@@ -56,7 +68,8 @@ export default function UserManagementPage() {
         .order('created_at', { ascending: false });
 
       if (filterRole !== 'all') {
-        query = query.eq('role_code', filterRole);
+        // users_login doesn't have role_code; filter via joined roles table.
+        query = query.eq('role.role_code', filterRole);
       }
 
       const { data, error } = await query;
@@ -120,6 +133,113 @@ export default function UserManagementPage() {
       }
     } catch (error) {
       console.error('Error fetching managers:', error);
+    }
+  };
+
+  const openRoleModal = (user: any) => {
+    setRoleUser(user);
+    setRoleForm({
+      role_id: user?.role_id || '',
+      workshop_id: user?.workshop_id || '',
+      assigned_manager_id: user?.assigned_manager_id || '',
+      department: user?.department || ''
+    });
+    setShowRoleModal(true);
+  };
+
+  const handleChangeRole = async () => {
+    if (!roleUser?.id) return;
+    if (!roleForm.role_id) {
+      alert('Please select a role');
+      return;
+    }
+
+    const selectedRole = roles.find(r => r.id === roleForm.role_id);
+    const roleCode = selectedRole?.role_code;
+
+    const needsWorkshop = roleCode?.startsWith('WORKSHOP_') || roleCode === 'PICKUP_BOY';
+    const needsManager = roleCode === 'TELECALLER';
+    const needsDepartment = roleCode === 'SUB_ADMIN';
+
+    if (needsWorkshop && !roleForm.workshop_id) {
+      alert('Please select a workshop for this role');
+      return;
+    }
+    if (needsManager && !roleForm.assigned_manager_id) {
+      alert('Please select a team manager for this role');
+      return;
+    }
+    if (needsDepartment && !roleForm.department) {
+      alert('Please select a department for this role');
+      return;
+    }
+
+    setSavingAction(true);
+    try {
+      const res = await fetch(`/api/admin/users/${roleUser.id}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role_id: roleForm.role_id,
+          workshop_id: roleForm.workshop_id || null,
+          assigned_manager_id: roleForm.assigned_manager_id || null,
+          department: roleForm.department || null,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        alert(`Error: ${json.error || 'Failed to change role'}`);
+        return;
+      }
+
+      alert('Role updated successfully!');
+      setShowRoleModal(false);
+      setRoleUser(null);
+      fetchUsers();
+    } catch (e: any) {
+      console.error('Error changing role:', e);
+      alert(`Failed to change role: ${e.message || 'Unknown error'}`);
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
+  const openPasswordModal = (user: any) => {
+    setPasswordUser(user);
+    setNewPassword('');
+    setShowPasswordModal(true);
+  };
+
+  const handleResetPassword = async () => {
+    if (!passwordUser?.id) return;
+    if (!newPassword || newPassword.length < 6) {
+      alert('Password must be at least 6 characters');
+      return;
+    }
+
+    setSavingAction(true);
+    try {
+      const res = await fetch(`/api/admin/users/${passwordUser.id}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: newPassword }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        alert(`Error: ${json.error || 'Failed to reset password'}`);
+        return;
+      }
+
+      alert('Password reset successfully!');
+      setShowPasswordModal(false);
+      setPasswordUser(null);
+      setNewPassword('');
+    } catch (e: any) {
+      console.error('Error resetting password:', e);
+      alert(`Failed to reset password: ${e.message || 'Unknown error'}`);
+    } finally {
+      setSavingAction(false);
     }
   };
 
@@ -333,7 +453,7 @@ export default function UserManagementPage() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredUsers.map((user) => {
-                  const roleColor = getRoleColor(user.role_code);
+                  const roleColor = getRoleColor(user.role?.role_code || user.role_code);
                   return (
                     <tr key={user.id} className="hover:bg-gray-50">
                       <td className="px-4 md:px-6 py-3 md:py-4">
@@ -357,7 +477,7 @@ export default function UserManagementPage() {
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4">
                         <span className={`px-2 sm:px-3 py-0.5 sm:py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-${roleColor}-100 text-${roleColor}-800`}>
-                          {user.role?.role_name || user.role_code}
+                          {user.role?.role_name || user.role?.role_code || user.role_code}
                         </span>
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4">
@@ -376,10 +496,16 @@ export default function UserManagementPage() {
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4 text-right text-xs sm:text-sm font-medium">
                         <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1 sm:gap-2">
-                          <button className="text-blue-600 hover:text-blue-900 whitespace-nowrap">
+                          <button
+                            onClick={() => openRoleModal(user)}
+                            className="text-blue-600 hover:text-blue-900 whitespace-nowrap"
+                          >
                             Change Role
                           </button>
-                          <button className="text-orange-600 hover:text-orange-900 whitespace-nowrap">
+                          <button
+                            onClick={() => openPasswordModal(user)}
+                            className="text-orange-600 hover:text-orange-900 whitespace-nowrap"
+                          >
                             Reset Password
                           </button>
                           {user.is_active ? (
@@ -420,7 +546,7 @@ export default function UserManagementPage() {
         {/* Users Cards - Mobile/Tablet */}
         <div className="lg:hidden space-y-3 sm:space-y-4">
           {filteredUsers.map((user) => {
-            const roleColor = getRoleColor(user.role_code);
+            const roleColor = getRoleColor(user.role?.role_code || user.role_code);
             return (
               <div key={user.id} className="bg-white rounded-lg shadow p-3 sm:p-4 border border-gray-100">
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -454,7 +580,7 @@ export default function UserManagementPage() {
                   <div className="flex items-center justify-between text-xs sm:text-sm">
                     <span className="text-gray-500">Role:</span>
                     <span className={`px-2 py-0.5 inline-flex text-xs font-semibold rounded-full bg-${roleColor}-100 text-${roleColor}-800`}>
-                      {user.role?.role_name || user.role_code}
+                      {user.role?.role_name || user.role?.role_code || user.role_code}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-xs sm:text-sm">
@@ -464,10 +590,16 @@ export default function UserManagementPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
-                  <button className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-900 border border-blue-200 rounded-lg hover:bg-blue-50">
+                  <button
+                    onClick={() => openRoleModal(user)}
+                    className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-900 border border-blue-200 rounded-lg hover:bg-blue-50"
+                  >
                     Change Role
                   </button>
-                  <button className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-orange-600 hover:text-orange-900 border border-orange-200 rounded-lg hover:bg-orange-50">
+                  <button
+                    onClick={() => openPasswordModal(user)}
+                    className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-orange-600 hover:text-orange-900 border border-orange-200 rounded-lg hover:bg-orange-50"
+                  >
                     Reset Password
                   </button>
                   {user.is_active ? (
@@ -724,6 +856,195 @@ export default function UserManagementPage() {
                   className="flex-1 px-4 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Create User
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Change Role Modal */}
+        {showRoleModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Change Role</h3>
+
+              <div className="space-y-3 sm:space-y-4">
+                <div className="bg-gray-50 border rounded-lg p-3">
+                  <div className="text-sm font-medium text-gray-900">{roleUser?.full_name}</div>
+                  <div className="text-xs text-gray-600">{roleUser?.email}</div>
+                </div>
+
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                    Role *
+                  </label>
+                  <select
+                    value={roleForm.role_id}
+                    onChange={(e) => {
+                      const nextRoleId = e.target.value;
+                      setRoleForm({
+                        role_id: nextRoleId,
+                        workshop_id: '',
+                        assigned_manager_id: '',
+                        department: ''
+                      });
+                    }}
+                    className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select Role</option>
+                    {roles.map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.role_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Workshop Selection - for workshop roles */}
+                {(() => {
+                  const selectedRole = roles.find(r => r.id === roleForm.role_id);
+                  const roleCode = selectedRole?.role_code;
+                  const needsWorkshop = roleCode?.startsWith('WORKSHOP_') || roleCode === 'PICKUP_BOY';
+                  if (!needsWorkshop) return null;
+                  return (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                        Workshop *
+                      </label>
+                      <select
+                        value={roleForm.workshop_id}
+                        onChange={(e) => setRoleForm({ ...roleForm, workshop_id: e.target.value })}
+                        className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                      >
+                        <option value="">Select Workshop</option>
+                        {workshops.map((workshop) => (
+                          <option key={workshop.id} value={workshop.id}>
+                            {workshop.name} - {workshop.city}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })()}
+
+                {/* Department Selection - for SUB_ADMIN */}
+                {(() => {
+                  const selectedRole = roles.find(r => r.id === roleForm.role_id);
+                  const roleCode = selectedRole?.role_code;
+                  if (roleCode !== 'SUB_ADMIN') return null;
+                  return (
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 sm:p-4">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                        Department *
+                      </label>
+                      <select
+                        value={roleForm.department}
+                        onChange={(e) => setRoleForm({ ...roleForm, department: e.target.value })}
+                        className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                      >
+                        <option value="">Select Department</option>
+                        <option value="CSE">CSE - Customer Service Manager</option>
+                        <option value="TELECALLER">TELECALLER - Telecalling Manager</option>
+                        <option value="AUDITOR">AUDITOR - Audit Manager</option>
+                      </select>
+                    </div>
+                  );
+                })()}
+
+                {/* Team Manager Selection - for TELECALLER */}
+                {(() => {
+                  const selectedRole = roles.find(r => r.id === roleForm.role_id);
+                  const roleCode = selectedRole?.role_code;
+                  if (roleCode !== 'TELECALLER') return null;
+                  return (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                        Team Manager *
+                      </label>
+                      <select
+                        value={roleForm.assigned_manager_id}
+                        onChange={(e) => setRoleForm({ ...roleForm, assigned_manager_id: e.target.value })}
+                        className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white"
+                      >
+                        <option value="">Select Team Manager</option>
+                        {managers.map((manager) => (
+                          <option key={manager.id} value={manager.id}>
+                            {manager.full_name} - {manager.role?.role_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6">
+                <button
+                  onClick={() => {
+                    setShowRoleModal(false);
+                    setRoleUser(null);
+                  }}
+                  disabled={savingAction}
+                  className="flex-1 px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleChangeRole}
+                  disabled={savingAction}
+                  className="flex-1 px-4 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {savingAction ? 'Updating...' : 'Update Role'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reset Password Modal */}
+        {showPasswordModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Reset Password</h3>
+
+              <div className="space-y-3 sm:space-y-4">
+                <div className="bg-gray-50 border rounded-lg p-3">
+                  <div className="text-sm font-medium text-gray-900">{passwordUser?.full_name}</div>
+                  <div className="text-xs text-gray-600">{passwordUser?.email}</div>
+                </div>
+
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                    New Password *
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="Minimum 6 characters"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6">
+                <button
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setPasswordUser(null);
+                    setNewPassword('');
+                  }}
+                  disabled={savingAction}
+                  className="flex-1 px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleResetPassword}
+                  disabled={savingAction}
+                  className="flex-1 px-4 py-2 text-sm sm:text-base bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {savingAction ? 'Resetting...' : 'Reset Password'}
                 </button>
               </div>
             </div>
