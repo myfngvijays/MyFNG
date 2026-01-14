@@ -12,6 +12,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
+import toast from 'react-hot-toast';
 
 type FilterType = 'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'HOLD' | 'COMPLETED' | 'NEED_APPROVAL';
 
@@ -46,6 +47,7 @@ export default function WorkshopMechanicDashboard() {
   const [jobs, setJobs] = useState<JobCardData[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<JobCardData[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterType>('ALL');
+  const [startingLeadId, setStartingLeadId] = useState<string | null>(null);
   const [stats, setStats] = useState({
     assigned_today: 0,
     in_progress: 0,
@@ -114,6 +116,44 @@ export default function WorkshopMechanicDashboard() {
   useEffect(() => {
     filterJobs(activeFilter);
   }, [activeFilter, jobs]);
+
+  async function startJobFromDashboard(leadId: string) {
+    if (!leadId) return;
+    setStartingLeadId(leadId);
+    try {
+      const response = await fetch(`/api/mechanic/jobs/${leadId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'IN_PROGRESS',
+          notes: 'Started from mechanic dashboard',
+        }),
+      });
+
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        toast.error((json as any)?.error || 'Failed to start job');
+        return;
+      }
+
+      // Optimistic UI update (realtime + refetch will also correct if needed)
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.lead_id === leadId
+            ? { ...j, mechanic_status: 'IN_PROGRESS', lead_status: 'IN_PROGRESS' }
+            : j
+        )
+      );
+
+      toast.success('Job started');
+      router.push(`/dashboard/workshop_mechanic/jobs/${leadId}`);
+    } catch (e) {
+      console.error('Start job error:', e);
+      toast.error('Failed to start job');
+    } finally {
+      setStartingLeadId(null);
+    }
+  }
 
   async function fetchMechanicData() {
     const supabase = createClient();
@@ -776,11 +816,12 @@ export default function WorkshopMechanicDashboard() {
                               className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded font-medium transition-colors flex items-center justify-center gap-1"
                       onClick={(e) => {
                         e.stopPropagation();
-                        router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`);
+                        void startJobFromDashboard(job.lead_id);
                       }}
+                              disabled={startingLeadId === job.lead_id}
                     >
                               <PlayCircle className="w-3 h-3" />
-                              Start
+                              {startingLeadId === job.lead_id ? 'Starting...' : 'Start'}
                       </button>
                     )}
                   {job.mechanic_status === 'IN_PROGRESS' && (

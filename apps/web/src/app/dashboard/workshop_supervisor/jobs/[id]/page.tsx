@@ -72,6 +72,7 @@ export default function SupervisorJobDetailPage() {
     | 'qc';
 
   const [lead, setLead] = useState<any>(null);
+  const [workshopInfo, setWorkshopInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showQC, setShowQC] = useState(false);
@@ -94,6 +95,8 @@ export default function SupervisorJobDetailPage() {
   const [pickupFormAddress, setPickupFormAddress] = useState('');
   const [pickupFormDate, setPickupFormDate] = useState(''); // YYYY-MM-DD
   const [pickupFormTimeSlot, setPickupFormTimeSlot] = useState(''); // "10:00 AM - 12:00 PM"
+  const reportPdfRef = useRef<HTMLDivElement | null>(null);
+  const [pdfExporting, setPdfExporting] = useState<'view' | 'download' | null>(null);
   const PICKUP_TIME_SLOTS = useMemo(
     () => [
       '09:00 AM - 11:00 AM',
@@ -111,6 +114,66 @@ export default function SupervisorJobDetailPage() {
     ],
     []
   );
+
+  async function exportReportPdf(mode: 'view' | 'download') {
+    if (!reportPdfRef.current) return;
+    if (pdfExporting) return;
+
+    setPdfExporting(mode);
+    try {
+      const [{ jsPDF }, html2canvasModule] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ]);
+      const html2canvas = (html2canvasModule as any).default as any;
+
+      const fileName = `Comprehensive-Report-${String(tiMeta?.invoice_number || lead?.lead_number || jobId)}.pdf`;
+
+      // Render DOM -> canvas
+      const canvas = await html2canvas(reportPdfRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        scrollY: -window.scrollY,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      // Fit image width to page; paginate by shifting Y
+      const imgProps = pdf.getImageProperties(imgData);
+      const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pdfHeight;
+      }
+
+      if (mode === 'download') {
+        pdf.save(fileName);
+      } else {
+        const blob = pdf.output('blob');
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank', 'noopener,noreferrer');
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+    } catch (e) {
+      console.error('Report PDF export failed:', e);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setPdfExporting(null);
+    }
+  }
 
   const [parts, setParts] = useState<any[]>([]);
   const [showAddPartModal, setShowAddPartModal] = useState(false);
@@ -694,13 +757,15 @@ export default function SupervisorJobDetailPage() {
           if (workshopId) {
             const { data: wz } = await supabase
               .from('workshops')
-              .select('zone_id')
+              .select('id, name, workshop_name, address, short_address, landmark, city, state, pincode, phone, email, gst_number, zone_id')
               .eq('id', workshopId)
               .maybeSingle();
             workshopZoneId = String((wz as any)?.zone_id || '').trim() || null;
+            setWorkshopInfo(wz || null);
           }
         } catch {
           workshopZoneId = null;
+          setWorkshopInfo(null);
         }
 
         // Resolve vehicle class (used for class-based pricing rules)
@@ -2632,13 +2697,195 @@ export default function SupervisorJobDetailPage() {
 
         {activeTab === 'report' && (
           <div className="card">
-            <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Report</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 sm:mb-4">
+              <h2 className="text-lg sm:text-xl font-semibold">Comprehensive Report</h2>
+              {tiMeta?.invoice_number && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline text-xs sm:text-sm px-3 py-1.5"
+                    onClick={() => exportReportPdf('view')}
+                    disabled={!!pdfExporting}
+                    title="Open PDF in new tab"
+                  >
+                    {pdfExporting === 'view' ? 'Opening…' : 'PDF View'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary text-xs sm:text-sm px-3 py-1.5"
+                    onClick={() => exportReportPdf('download')}
+                    disabled={!!pdfExporting}
+                    title="Download PDF"
+                  >
+                    {pdfExporting === 'download' ? 'Downloading…' : 'Download PDF'}
+                  </button>
+                </div>
+              )}
+            </div>
             {!tiMeta?.invoice_number ? (
               <div className="text-sm text-gray-600">
                 Tax Invoice (TI) is not generated yet. Generate TI after full payment.
               </div>
             ) : (
-              <div className="space-y-4">
+              <div ref={reportPdfRef} className="space-y-4 bg-white">
+                {/* PDF Header: Company + Workshop */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src="/logo.png"
+                          alt="MY FNG"
+                          className="h-10 w-10 object-contain"
+                          onError={(e) => {
+                            (e.currentTarget as any).style.display = 'none';
+                          }}
+                        />
+                        <div className="min-w-0">
+                          <div className="text-lg sm:text-xl font-bold text-gray-900">MY FNG</div>
+                          <div className="text-xs sm:text-sm text-gray-600">Comprehensive Report</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-[11px] sm:text-xs text-gray-600 leading-relaxed">
+                        <div className="font-semibold text-gray-800">Head Office</div>
+                        <div>123, Start-up Hub, Tech Park, Bangalore, Karnataka - 560102</div>
+                        <div className="mt-1">
+                          <span className="font-semibold text-gray-700">Email:</span> support@myfng.in{' '}
+                          <span className="mx-1 text-gray-300">|</span>
+                          <span className="font-semibold text-gray-700">Website:</span> www.myfng.in{' '}
+                          <span className="mx-1 text-gray-300">|</span>
+                          <span className="font-semibold text-gray-700">GSTIN:</span> 29AAAAA0000A1Z5
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="w-full sm:w-[360px] flex-shrink-0">
+                      <div className="text-sm font-semibold text-gray-900 mb-1">Workshop</div>
+                      <div className="text-xs sm:text-sm text-gray-700 space-y-0.5">
+                        <div className="font-semibold break-words">
+                          {String(
+                            (workshopInfo as any)?.workshop_name ||
+                              (workshopInfo as any)?.name ||
+                              (lead as any)?.workshop_name ||
+                              '—'
+                          )}
+                        </div>
+                        <div className="text-[11px] sm:text-xs text-gray-600 break-words">
+                          {String(
+                            (workshopInfo as any)?.short_address ||
+                              (workshopInfo as any)?.address ||
+                              '—'
+                          )}
+                          {((workshopInfo as any)?.city || (workshopInfo as any)?.state || (workshopInfo as any)?.pincode) && (
+                            <>
+                              {' '}
+                              {String((workshopInfo as any)?.city || '')}
+                              {String((workshopInfo as any)?.state || '') ? `, ${String((workshopInfo as any)?.state)}` : ''}
+                              {String((workshopInfo as any)?.pincode || '') ? ` - ${String((workshopInfo as any)?.pincode)}` : ''}
+                            </>
+                          )}
+                        </div>
+                        <div className="text-[11px] sm:text-xs text-gray-600">
+                          <span className="font-semibold text-gray-700">Phone:</span> {String((workshopInfo as any)?.phone || '—')}
+                        </div>
+                        <div className="text-[11px] sm:text-xs text-gray-600 break-words">
+                          <span className="font-semibold text-gray-700">Email:</span> {String((workshopInfo as any)?.email || '—')}
+                        </div>
+                        <div className="text-[11px] sm:text-xs text-gray-600">
+                          <span className="font-semibold text-gray-700">GSTIN:</span> {String((workshopInfo as any)?.gst_number || '—')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] sm:text-xs text-gray-700">
+                    <div>
+                      <span className="text-gray-600">Lead #:</span> <span className="font-semibold">{String(lead?.lead_number || '—')}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Tax Invoice #:</span>{' '}
+                      <span className="font-semibold">{String(tiMeta?.invoice_number || '—')}</span>
+                    </div>
+                    <div className="sm:text-right">
+                      <span className="text-gray-600">Generated:</span>{' '}
+                      <span className="font-semibold">{formatDateTime(new Date().toISOString())}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 0) Customer + Vehicle details */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="card bg-white">
+                    <h3 className="text-base sm:text-lg font-semibold mb-2 flex items-center gap-2">
+                      <User className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
+                      Customer Details
+                    </h3>
+                    <div className="space-y-1.5 text-xs sm:text-sm text-gray-700">
+                      <p>
+                        <span className="text-gray-600">Name:</span>{' '}
+                        <strong>{lead?.customer_name || '—'}</strong>
+                      </p>
+                      <p>
+                        <span className="text-gray-600">Phone:</span>{' '}
+                        <strong>{lead?.customer_phone || '—'}</strong>
+                      </p>
+                      {(lead as any)?.customer_email && (
+                        <p className="break-words">
+                          <span className="text-gray-600">Email:</span>{' '}
+                          {String((lead as any).customer_email)}
+                        </p>
+                      )}
+                      <p className="break-words">
+                        <span className="text-gray-600">Address:</span>{' '}
+                        {String((lead as any)?.pickup_address || (lead as any)?.customer_address || (lead as any)?.address || '—')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="card bg-white">
+                    <h3 className="text-base sm:text-lg font-semibold mb-2 flex items-center gap-2">
+                      <Car className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
+                      Vehicle Details
+                    </h3>
+                    <div className="space-y-1.5 text-xs sm:text-sm text-gray-700">
+                      <p>
+                        <span className="text-gray-600">Number:</span>{' '}
+                        <strong>{lead?.vehicle_number || '—'}</strong>
+                      </p>
+                      <p className="break-words">
+                        <span className="text-gray-600">Make/Model:</span>{' '}
+                        {String([lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ') || '—')}
+                      </p>
+                      {(lead as any)?.vehicle_variant && (
+                        <p className="break-words">
+                          <span className="text-gray-600">Variant:</span>{' '}
+                          {String((lead as any).vehicle_variant)}
+                        </p>
+                      )}
+                      {(lead as any)?.vehicle_year && (
+                        <p>
+                          <span className="text-gray-600">Year:</span>{' '}
+                          {String((lead as any).vehicle_year)}
+                        </p>
+                      )}
+                      {(lead as any)?.vehicle_fuel_type && (
+                        <p>
+                          <span className="text-gray-600">Fuel:</span>{' '}
+                          {String((lead as any).vehicle_fuel_type)}
+                        </p>
+                      )}
+                      <p>
+                        <span className="text-gray-600">Odometer:</span>{' '}
+                        {String(
+                          (lead as any)?.vehicle_odometer ??
+                            (lead as any)?.vehicle_odometer_reading ??
+                            '—'
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* 1) Mechanic checklist (with remark) */}
                 <div className="card">
                   <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">

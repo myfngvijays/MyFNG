@@ -13,6 +13,51 @@ function getAdminClient() {
   return { supabaseAdmin, error: null };
 }
 
+async function readLeadMediaTypes(
+  client: any,
+  leadId: string
+): Promise<{ ok: boolean; detected: string[]; error?: string }> {
+  const requiredTypes = ['BEFORE_FRONT', 'BEFORE_REAR', 'BEFORE_LEFT', 'BEFORE_RIGHT', 'BEFORE_DASHBOARD', 'BEFORE_ENGINE_BAY'];
+  try {
+    // lead_media schema varies; try multiple selects
+    const selects = ['file_url, file_name, category', 'file_url, file_name', 'file_url, category', 'file_url'] as const;
+    let mediaRows: any[] = [];
+
+    for (const sel of selects) {
+      const { data, error } = (await client
+        .from('lead_media')
+        .select(sel as any)
+        .eq('lead_id', leadId)
+        .limit(200)) as any;
+      if (!error && Array.isArray(data)) {
+        mediaRows = data;
+        break;
+      }
+    }
+
+    const leadTypes = (mediaRows || [])
+      .map((m: any) => {
+        const t = String(m?.category || '').toUpperCase().trim();
+        if (t) return t;
+        const fn = String(m?.file_name || '');
+        const mm = fn.match(/^(BEFORE_[A-Z0-9_]+)__+/);
+        if (mm?.[1]) return String(mm[1]).toUpperCase();
+        const url = String(m?.file_url || '');
+        const mu = url.match(/(BEFORE_[A-Z0-9_]+)_\d{4,}/);
+        return (mu?.[1] || '').toUpperCase();
+      })
+      .filter((t: string) => requiredTypes.includes(t));
+
+    const set = new Set<string>(leadTypes);
+    const detected = Array.from(set);
+    const ok = requiredTypes.every((t) => set.has(t));
+
+    return { ok, detected };
+  } catch (e: any) {
+    return { ok: false, detected: [], error: e?.message || String(e) };
+  }
+}
+
 // POST - Update job status
 export async function POST(
   request: NextRequest,
@@ -119,44 +164,28 @@ export async function POST(
             const photoCount = validationResult?.photo_count || 0;
             const minRequired = validationResult?.min_required || 6;
             let leadMediaDetected: string[] = [];
+            let leadMediaUserRead: { ok: boolean; detected: string[]; error?: string } | null = null;
+            let leadMediaAdminRead: { ok: boolean; detected: string[]; error?: string } | null = null;
+            let leadMediaAdminReason: string | null = null;
+
+            // First try as the logged-in mechanic (works if RLS permits)
+            leadMediaUserRead = await readLeadMediaTypes(supabase as any, leadId);
+            if (leadMediaUserRead.ok) {
+              leadMediaDetected = leadMediaUserRead.detected;
+              updates.before_inspection_complete = true;
+              if (!currentJob.started_at) updates.started_at = now;
+              break;
+            }
 
             // Fallback: accept Pickup/Visit photos stored in lead_media (uploaded by supervisor/pickup boy)
             try {
-              const { supabaseAdmin } = getAdminClient();
-              if (!supabaseAdmin) throw new Error('No admin client');
-              const requiredTypes = ['BEFORE_FRONT', 'BEFORE_REAR', 'BEFORE_LEFT', 'BEFORE_RIGHT', 'BEFORE_DASHBOARD', 'BEFORE_ENGINE_BAY'];
-              // lead_media schema varies; try multiple selects
-              const selects = ['file_url, file_name, category', 'file_url, file_name', 'file_url, category', 'file_url'] as const;
-              let mediaRows: any[] = [];
-              for (const sel of selects) {
-                const { data, error: e } = (await supabaseAdmin
-                  .from('lead_media')
-                  .select(sel as any)
-                  .eq('lead_id', leadId)
-                  .limit(200)) as any;
-                if (!e && Array.isArray(data)) {
-                  mediaRows = data;
-                  break;
-                }
-              }
+              const { supabaseAdmin, error: adminErr } = getAdminClient();
+              leadMediaAdminReason = adminErr || null;
+              if (!supabaseAdmin) throw new Error(adminErr || 'No admin client');
 
-              const leadTypes = (mediaRows || [])
-                .map((m: any) => {
-                  const t = String(m?.category || '').toUpperCase().trim();
-                  if (t) return t;
-                  const fn = String(m?.file_name || '');
-                  const mm = fn.match(/^(BEFORE_[A-Z0-9_]+)__+/);
-                  if (mm?.[1]) return String(mm[1]).toUpperCase();
-                  const url = String(m?.file_url || '');
-                  const mu = url.match(/(BEFORE_[A-Z0-9_]+)_\d{4,}/);
-                  return (mu?.[1] || '').toUpperCase();
-                })
-                .filter((t: string) => requiredTypes.includes(t));
-
-              const set = new Set<string>(leadTypes);
-              leadMediaDetected = Array.from(set);
-              const ok = requiredTypes.every((t) => set.has(t));
-              if (ok) {
+              leadMediaAdminRead = await readLeadMediaTypes(supabaseAdmin as any, leadId);
+              if (leadMediaAdminRead.ok) {
+                leadMediaDetected = leadMediaAdminRead.detected;
                 updates.before_inspection_complete = true;
                 if (!currentJob.started_at) updates.started_at = now;
                 break;
@@ -187,7 +216,12 @@ export async function POST(
                 photo_count: photoCount,
                 min_required: minRequired,
                 missing_photos: missingPhotos,
-                lead_media_detected: leadMediaDetected
+                lead_media_detected: leadMediaDetected,
+                lead_media_fallback: {
+                  user_read: leadMediaUserRead,
+                  admin_read: leadMediaAdminRead,
+                  admin_reason: leadMediaAdminReason,
+                },
               }
             }, { status: 400 });
           }

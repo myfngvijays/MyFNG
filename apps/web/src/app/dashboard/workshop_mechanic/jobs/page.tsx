@@ -7,6 +7,7 @@ import { Wrench, Clock, Camera, CheckCircle, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
 import { formatDateTime } from "@/lib/utils";
+import toast from 'react-hot-toast';
 
 export default function MechanicJobsPage() {
   const router = useRouter();
@@ -190,30 +191,27 @@ export default function MechanicJobsPage() {
   }
 
   async function updateJobStatus(leadId: string, newStatus: string) {
-    const supabase = createClient();
-    
-    const updates: any = {
-      mechanic_status: newStatus,
-      updated_at: new Date().toISOString()
-    };
+    try {
+      const response = await fetch(`/api/mechanic/jobs/${leadId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: newStatus,
+          notes: `Status changed to ${newStatus}`,
+        }),
+      });
 
-    if (newStatus === 'IN_PROGRESS') {
-      updates.started_at = new Date().toISOString();
-    }
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        toast.error((json as any)?.error || 'Failed to update status');
+        return;
+      }
 
-    if (newStatus === 'COMPLETED') {
-      updates.completed_at = new Date().toISOString();
-    }
-
-    const { error } = await supabase
-      .from('mechanic_jobs')
-      .update(updates)
-      .eq('lead_id', leadId);
-
-    if (error) {
-      console.error('Error updating job status:', error);
-    } else {
+      toast.success('Status updated');
       fetchJobs();
+    } catch (e) {
+      console.error('Error updating job status:', e);
+      toast.error('Failed to update status');
     }
   }
 
