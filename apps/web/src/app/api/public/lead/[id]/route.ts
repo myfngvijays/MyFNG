@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
+import { resolveWorkshopServicePrice } from '@/lib/utils/workshopServicePricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
         status,
         created_at,
         workshop_id,
+        city_id,
+        model_id,
         customer_public_enabled,
         customer_public_enabled_at,
         customer_name,
@@ -68,6 +71,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
         status,
         created_at,
         workshop_id,
+        city_id,
+        model_id,
         customer_public_enabled,
         customer_public_enabled_at,
         customer_name,
@@ -237,57 +242,61 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
         }
       }
 
-      // If base_price is missing/0, try workshop_service_pricing (or get_service_price function)
-      if (lead.workshop_id && Array.isArray(selectedServices) && selectedServices.length) {
-        for (const s of selectedServices) {
-          if (Number(s?.base_price ?? 0) > 0) continue;
-          const serviceTypeId = s?.id;
-          if (!serviceTypeId) continue;
-          let price = 0;
-          try {
-            const { data } = await reader.rpc('get_service_price', {
-              p_workshop_id: lead.workshop_id,
-              p_service_type_id: serviceTypeId,
-              p_vehicle_class: null,
-              p_zone_id: null,
-            } as any);
-            price = Number(data ?? 0);
-          } catch {
-            // ignore
-          }
-          if (!price) {
-            // Pricing table may include zone_id/city_id/class specificity; pick best available row.
-            try {
-              const attempt = await reader
-                .from('workshop_service_pricing')
-                .select('custom_price, city_id, zone_id, class, created_at')
-                .eq('workshop_id', lead.workshop_id)
-                .eq('service_type_id', serviceTypeId)
-                .eq('is_active', true)
-                // Prefer most specific row: city > zone > class > default
-                .order('city_id', { ascending: false, nullsFirst: false } as any)
-                .order('zone_id', { ascending: false, nullsFirst: false } as any)
-                .order('class', { ascending: false, nullsFirst: false } as any)
-                .order('created_at', { ascending: false } as any)
-                .limit(1);
+      // Resolve workshop-based prices (match internal pages) so public totals match everywhere.
+      // This accounts for city/zone/class tiering and active workshop pricing.
+      const workshopId = String((lead as any)?.workshop_id || '').trim();
+      if (workshopId && Array.isArray(selectedServices) && selectedServices.length) {
+        const cityId = String((lead as any)?.city_id || '').trim() || null;
+        const cityName = String((lead as any)?.city || '').trim() || null;
 
-              if (attempt.error && (attempt.error as any)?.code === '42703') {
-                const fallback = await reader
-                  .from('workshop_service_pricing')
-                  .select('custom_price')
-                  .eq('workshop_id', lead.workshop_id)
-                  .eq('service_type_id', serviceTypeId)
-                  .limit(1);
-                price = Number((fallback.data?.[0] as any)?.custom_price ?? 0);
-              } else {
-                price = Number((attempt.data?.[0] as any)?.custom_price ?? 0);
-              }
+        let workshopZoneId: string | null = null;
+        try {
+          const { data: wz } = await reader.from('workshops').select('zone_id').eq('id', workshopId).maybeSingle();
+          workshopZoneId = String((wz as any)?.zone_id || '').trim() || null;
+        } catch {
+          workshopZoneId = null;
+        }
+
+        let vehicleClass: string | null = null;
+        try {
+          const modelId = String((lead as any)?.model_id || '').trim();
+          if (modelId) {
+            const { data: cm } = await reader.from('car_models').select('class').eq('id', modelId).maybeSingle();
+            vehicleClass = (cm as any)?.class || null;
+          } else if ((lead as any)?.vehicle_model) {
+            const { data: cm } = await reader
+              .from('car_models')
+              .select('class')
+              .eq('model_name', (lead as any).vehicle_model)
+              .maybeSingle();
+            vehicleClass = (cm as any)?.class || null;
+          }
+        } catch {
+          vehicleClass = null;
+        }
+
+        // Batch resolve prices (best-effort; keep base_price if resolver returns 0)
+        await Promise.all(
+          selectedServices.map(async (s: any) => {
+            const serviceTypeId = String(s?.id || '').trim();
+            if (!serviceTypeId) return;
+            try {
+              const resolved = await resolveWorkshopServicePrice({
+                supabase: reader as any,
+                workshopId,
+                serviceTypeId,
+                cityId,
+                cityName,
+                workshopZoneId,
+                vehicleClass,
+              });
+              const price = Number(resolved || 0) || 0;
+              if (price > 0) s.base_price = price;
             } catch {
               // ignore
             }
-          }
-          s.base_price = Number.isFinite(price) ? price : 0;
-        }
+          })
+        );
       }
 
       if (!lead.service_type_name) {
@@ -312,6 +321,36 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
           selectedAddons = (fallback.data || []).map((r: any) => ({ ...r, base_price: 0 }));
         } else {
           selectedAddons = (attempt.data || []).map((r: any) => ({ id: r.id, name: r.name, base_price: Number(r?.price ?? 0) }));
+        }
+      }
+
+      // Apply workshop-specific add-on custom pricing (same rule as internal pages)
+      const workshopId = String((lead as any)?.workshop_id || '').trim();
+      if (workshopId && selectedAddons.length > 0) {
+        try {
+          const ids = selectedAddons.map((a: any) => String(a?.id || '').trim()).filter(Boolean);
+          if (ids.length) {
+            const { data: wap } = await reader
+              .from('workshop_service_addons_pricing')
+              .select('service_addon_id, custom_price')
+              .eq('workshop_id', workshopId)
+              .in('service_addon_id', ids as any)
+              .eq('is_active', true);
+
+            const customById: Record<string, number> = {};
+            for (const row of wap || []) {
+              const id = String((row as any)?.service_addon_id || '').trim();
+              const p = Number((row as any)?.custom_price || 0) || 0;
+              if (id && p > 0) customById[id] = p;
+            }
+
+            selectedAddons.forEach((a: any) => {
+              const id = String(a?.id || '').trim();
+              if (id && customById[id]) a.base_price = customById[id];
+            });
+          }
+        } catch {
+          // ignore
         }
       }
 

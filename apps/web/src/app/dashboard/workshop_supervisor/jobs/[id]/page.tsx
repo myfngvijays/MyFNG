@@ -2513,41 +2513,7 @@ export default function SupervisorJobDetailPage() {
           </div>
         )}
 
-        {/* Section 6: Extra Charges - Also show in Billing tab */}
-        {activeTab === 'billing' && pendingExtraCharges.length > 0 && (
-          <div id="pending-additional-jobs" className="card bg-orange-50 border-orange-200">
-            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
-              <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
-              Pending Additional Jobs Approval
-            </h3>
-            <div className="space-y-2 sm:space-y-3">
-              {pendingExtraCharges.map((charge: any) => (
-                <div key={charge.id} className="bg-white p-3 sm:p-4 rounded-lg border border-orange-200">
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm sm:text-base">{charge.description}</p>
-                      <p className="text-xl sm:text-2xl font-bold text-brand-primary mt-0.5 sm:mt-1">
-                        ₹{charge.amount.toLocaleString()}
-                      </p>
-                      <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{charge.reason}</p>
-                    </div>
-                    <button
-                      onClick={() =>
-                        setSelectedExtraCharge({
-                          ...charge,
-                          requested_by_name: (charge as any)?.requester?.full_name || (charge as any)?.requested_by_name,
-                        })
-                      }
-                      className="btn bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
-                    >
-                      Review
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Section 6: Extra Charges - intentionally hidden in Billing tab (use "Additional Jobs" tab) */}
 
         {/* Section 6: Media */}
         {activeTab === 'photos' && lead.media && lead.media.length > 0 && (
