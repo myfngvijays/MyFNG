@@ -112,6 +112,18 @@ const navigationItems: NavItem[] = [
     description: 'User & Role Management'
   },
   {
+    name: 'Manual Invoice',
+    href: '/dashboard/super_admin/manual-invoices',
+    icon: FileText,
+    description: 'CSV upload & manual invoices'
+  },
+  {
+    name: 'Telecaller Distribution',
+    href: '/dashboard/super_admin/telecaller-distribution',
+    icon: Users,
+    description: 'Auto-assignment allocation settings'
+  },
+  {
     name: 'AI Learning Inbox',
     href: '/dashboard/super_admin/kb-questions',
     icon: MessageSquare,

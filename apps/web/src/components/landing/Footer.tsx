@@ -62,6 +62,12 @@ export default function Footer() {
               <li><Link href="/terms" className="hover:text-white transition">Terms and Condition</Link></li>
               <li><Link href="/privacy" className="hover:text-white transition">Privacy</Link></li>
             </ul>
+            <Link
+              href="/pay-now"
+              className="mt-4 inline-flex items-center justify-center rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-primary-hover"
+            >
+              Pay Now
+            </Link>
           </div>
           
           {/* Book Service Column */}

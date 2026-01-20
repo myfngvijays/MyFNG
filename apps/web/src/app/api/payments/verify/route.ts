@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import crypto from 'crypto';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
@@ -336,6 +337,52 @@ export async function POST(request: Request) {
       }
     }
 
+    // For direct Pay Now (no invoice), store in direct-pay table
+    let directPayUpdated = false;
+    let directPayError: string | null = null;
+    if (!invoiceId) {
+      const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
+      if (supabaseAdmin && orderId) {
+        try {
+          const { data: existingRow } = await supabaseAdmin
+            .from('Razorpay_Direct_pay_RSA')
+            .select('customer_name, customer_email, customer_phone, notes')
+            .eq('order_id', orderId)
+            .maybeSingle();
+
+          const { error: upErr } = await supabaseAdmin
+            .from('Razorpay_Direct_pay_RSA')
+            .upsert(
+              {
+                order_id: orderId,
+                payment_id: paymentId,
+                signature: signature,
+                amount: paymentDetails.amount ? parseFloat(paymentDetails.amount) / 100 : null,
+                amount_paise: paymentDetails.amount ? parseInt(paymentDetails.amount, 10) : null,
+                currency: paymentDetails.currency || 'INR',
+                status: 'SUCCESS',
+                customer_name: existingRow?.customer_name || 'Customer',
+                customer_email: existingRow?.customer_email || null,
+                customer_phone: existingRow?.customer_phone || '',
+                notes: existingRow?.notes || { purpose: 'PAY_NOW' },
+                razorpay_payload: paymentDetails,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'order_id' }
+            );
+          if (upErr) {
+            directPayError = upErr.message;
+          } else {
+            directPayUpdated = true;
+          }
+        } catch (e: any) {
+          directPayError = e?.message || 'Failed to update direct pay record';
+        }
+      } else {
+        directPayError = adminErr || 'Supabase admin not configured';
+      }
+    }
+
     // Payment verified successfully
     return NextResponse.json({
       verified: true,
@@ -344,6 +391,8 @@ export async function POST(request: Request) {
       order_id: orderId,
       amount: paymentDetails.amount ? parseFloat(paymentDetails.amount) / 100 : null,
       status: paymentDetails.status,
+      direct_pay_updated: directPayUpdated,
+      direct_pay_error: directPayError,
     });
 
   } catch (error: any) {
