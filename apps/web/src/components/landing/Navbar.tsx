@@ -279,7 +279,28 @@ export default function Navbar() {
           
           <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
             <Link href="/" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Home</Link>
-            <Link href="/services" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Services</Link>
+            <div className="relative group">
+              <Link
+                href="/services"
+                className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap inline-flex items-center gap-1"
+              >
+                Services
+                <ChevronDown className="w-4 h-4 text-text-body group-hover:text-brand-primary transition" />
+              </Link>
+              <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                <div className="py-2">
+                  <Link href="/car-services/periodic-car-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Periodic Car Service</Link>
+                  <Link href="/car-services/car-engine-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Engine Service</Link>
+                  <Link href="/car-services/car-ac-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car AC Service</Link>
+                  <Link href="/car-services/car-battery" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Battery Service</Link>
+                  <Link href="/car-services/car-brake-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Brake Service</Link>
+                  <Link href="/car-services/car-clutch-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Clutch Service</Link>
+                  <Link href="/car-services/tyre-wheel-care" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Tyre &amp; Wheel Care</Link>
+                  <Link href="/car-services/car-detailing-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Detailing Service</Link>
+                  <Link href="/car-services/car-denting-painting" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Denting &amp; Painting</Link>
+                </div>
+              </div>
+            </div>
             <Link href="/about" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
             <Link href="/roadside-assistance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
             <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>

@@ -11,9 +11,12 @@ export default function ContactPage() {
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           {/* Header */}
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4 text-brand-secondary">Get In Touch</h1>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4 text-brand-secondary">
+              Your Car Needs Help? We're On It
+            </h1>
             <p className="text-sm sm:text-base md:text-lg text-gray-600 max-w-2xl mx-auto px-4">
-              We're here to help. Whether it's a question about your car, feedback, or partnership inquiry.
+              We're here to help with car service queries, feedback, or partnership discussions. Reach out to our team and get
+              clear, timely assistance.
             </p>
           </div>
 
@@ -29,7 +32,7 @@ export default function ContactPage() {
                       <Phone className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Customer Support</h3>
+                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1 text-white">Customer Support</h3>
                       <a
                         href="tel:+919167779696"
                         className="block text-blue-100 mb-0.5 sm:mb-1 text-sm sm:text-base hover:text-white transition"
@@ -51,7 +54,7 @@ export default function ContactPage() {
                       <Mail className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Support / Inquiry</h3>
+                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1 text-white">Support / Inquiry</h3>
                       <a
                         href="mailto:info@myfng.in"
                         className="block text-blue-100 text-sm sm:text-base break-all hover:text-white transition"
@@ -74,7 +77,7 @@ export default function ContactPage() {
                       <MapPin className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Address</h3>
+                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1 text-white">Address</h3>
                       <p className="text-blue-100 text-sm sm:text-base">
                         A/309, Centrum Business Square, Road No 16, Wagle Industrial Estate, Thane (W), Thane-400604, Maharashtra
                       </p>
@@ -86,7 +89,7 @@ export default function ContactPage() {
                       <Clock className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Office Hours</h3>
+                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1 text-white">Office Hours</h3>
                       <div className="text-blue-100 text-sm sm:text-base space-y-1">
                         <div className="flex items-center justify-between gap-4">
                           <span>Monday - Saturday</span>

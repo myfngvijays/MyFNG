@@ -6,31 +6,22 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { findServiceBySlug } from '@/lib/services/catalog';
 
-const INTERNAL_TO_MARKETING: Record<string, string> = {
-  'periodic-service': 'periodic-car-service',
-  'engine-service': 'car-engine-service',
-  'ac-service': 'car-ac-service',
-  'battery-service': 'car-battery',
-  'brake-service': 'car-brake-service',
-  'clutch-service': 'car-clutch-service',
+const MARKETING_SLUG_TO_INTERNAL: Record<string, string> = {
+  'periodic-car-service': 'periodic-service',
+  'car-engine-service': 'engine-service',
+  'car-ac-service': 'ac-service',
+  'car-battery': 'battery-service',
+  'car-brake-service': 'brake-service',
+  'car-clutch-service': 'clutch-service',
   'tyre-wheel-care': 'tyre-wheel-care',
-  'detailing-service': 'car-detailing-service',
-  'denting-painting': 'car-denting-painting',
+  'car-detailing-service': 'detailing-service',
+  'car-denting-painting': 'denting-painting',
 };
 
-export function generateMetadata({ params }: { params: { slug: string } }) {
-  const marketingSlug = INTERNAL_TO_MARKETING[params?.slug];
-  if (!marketingSlug) return {};
-  return {
-    alternates: {
-      canonical: `https://myfng.in/car-services/${marketingSlug}`,
-    },
-  };
-}
-
-export default function ServiceDetailPage({ params }: { params: { slug: string } }) {
-  const slug = params?.slug;
-  const service = findServiceBySlug(slug);
+export default function CarServiceDetailPage({ params }: { params: { slug: string } }) {
+  const marketingSlug = params?.slug;
+  const internalSlug = MARKETING_SLUG_TO_INTERNAL[marketingSlug];
+  const service = internalSlug ? findServiceBySlug(internalSlug) : null;
   const IconComponent = service?.icon;
 
   if (!service) {
@@ -40,7 +31,7 @@ export default function ServiceDetailPage({ params }: { params: { slug: string }
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
-      
+
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 text-white py-12 sm:py-16 md:py-20 mt-16 sm:mt-18 md:mt-20">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
@@ -60,9 +51,7 @@ export default function ServiceDetailPage({ params }: { params: { slug: string }
               )}
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white">{service.title}</h1>
             </div>
-            <p className="text-base sm:text-lg md:text-xl text-gray-200 max-w-2xl">
-              {service.longDescription}
-            </p>
+            <p className="text-base sm:text-lg md:text-xl text-gray-200 max-w-2xl">{service.longDescription}</p>
           </div>
         </div>
       </section>
@@ -115,10 +104,7 @@ export default function ServiceDetailPage({ params }: { params: { slug: string }
                 </div>
 
                 {/* CTA Button */}
-                <Link
-                  href="/book-service"
-                  className="btn btn-primary inline-flex items-center gap-2 text-sm sm:text-base px-6 sm:px-8 py-3 sm:py-4"
-                >
+                <Link href="/book-service" className="btn btn-primary inline-flex items-center gap-2 text-sm sm:text-base px-6 sm:px-8 py-3 sm:py-4">
                   Book {service.title}
                   <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
                 </Link>
@@ -127,12 +113,7 @@ export default function ServiceDetailPage({ params }: { params: { slug: string }
               {/* Image */}
               <div>
                 <div className="relative h-[300px] sm:h-[400px] md:h-[500px] rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl">
-                  <Image
-                    src={service.image}
-                    alt={service.title}
-                    fill
-                    className="object-cover"
-                  />
+                  <Image src={service.image} alt={service.title} fill className="object-cover" />
                 </div>
               </div>
             </div>

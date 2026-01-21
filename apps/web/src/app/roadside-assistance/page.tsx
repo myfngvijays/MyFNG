@@ -359,19 +359,50 @@ export default function RSAPage() {
 
             <div className="mt-12 sm:mt-16 md:mt-20 lg:mt-24">
               <div className="text-center mb-8 sm:mb-10 md:mb-12">
-                 <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">Comprehensive Coverage</span>
-                 <h2 className="text-2xl sm:text-3xl font-bold mt-2 text-brand-secondary">Everything We Cover</h2>
+                <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">Comprehensive Coverage</span>
+                <h2 className="text-2xl sm:text-3xl font-bold mt-2 text-brand-secondary">Everything We Cover</h2>
+                <p className="mt-3 text-sm sm:text-base text-gray-600 max-w-3xl mx-auto px-4">
+                  End-to-end roadside support covering breakdowns, emergencies, and unexpected car issues across India.
+                </p>
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
-                <RSAItem icon={<Truck />} title="Flatbed Towing" desc="Safe transport for major breakdowns" />
-                <RSAItem icon={<Battery />} title="Battery Jumpstart" desc="Dead battery revival" />
-                <RSAItem icon={<Settings />} title="Flat Tyre Change" desc="Stepney replacement or repair" />
-                <RSAItem icon={<Key />} title="Key Lockout" desc="Key retrieval and unlocking" />
-                <RSAItem icon={<Settings />} title="Minor Repairs" desc="On-spot fixes for small issues" />
-                <RSAItem icon={<Phone />} title="Tele-Assistance" desc="Expert guidance over call" />
-                <RSAItem icon={<Zap />} title="EV Charging" desc="Emergency charge for EVs" />
-                <RSAItem icon={<Shield />} title="Wrong Fueling" desc="Assistance for fuel mix-ups" />
+                <RSAItem
+                  icon={<Truck />}
+                  title="Flatbed Towing"
+                  desc="Secure flatbed towing for safe transport during major breakdowns or accidents."
+                />
+                <RSAItem
+                  icon={<Battery />}
+                  title="Battery Jumpstart"
+                  desc="Quick jumpstart service to revive a dead or drained car battery."
+                />
+                <RSAItem
+                  icon={<Settings />}
+                  title="Flat Tyre Change"
+                  desc="On-spot tyre replacement using stepney or minor puncture repair assistance."
+                />
+                <RSAItem icon={<Key />} title="Key Lockout" desc="Safe unlocking support to retrieve keys locked inside the car." />
+                <RSAItem
+                  icon={<Settings />}
+                  title="Minor Repairs"
+                  desc="Immediate on-spot fixes for small mechanical or electrical issues."
+                />
+                <RSAItem
+                  icon={<Phone />}
+                  title="Tele-Assistance"
+                  desc="Real-time expert guidance over phone to resolve basic car problems."
+                />
+                <RSAItem
+                  icon={<Zap />}
+                  title="EV Charging"
+                  desc="Emergency charging support to help electric cars reach the nearest charging point."
+                />
+                <RSAItem
+                  icon={<Shield />}
+                  title="Wrong Fueling"
+                  desc="Professional assistance for safe fuel draining and correction in case of fuel mix-ups."
+                />
               </div>
             </div>
           </div>
