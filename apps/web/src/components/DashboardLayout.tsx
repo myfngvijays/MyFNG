@@ -232,7 +232,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       ],
       'TELECALLER': [
         { href: '/dashboard/telecaller', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
-        { href: '/dashboard/telecaller/enquiry-leads', icon: <FileText className="w-5 h-5" />, label: 'Enquiry Leads' },
+        { href: '/dashboard/telecaller/enquiry-leads', icon: <FileText className="w-5 h-5" />, label: 'Enquiry' },
         { href: '/dashboard/telecaller/leads', icon: <FileText className="w-5 h-5" />, label: 'My Leads' },
         { href: '/dashboard/telecaller/leads/create', icon: <ClipboardList className="w-5 h-5" />, label: 'Create Lead' },
         { href: '/dashboard/telecaller/profile', icon: <Users className="w-5 h-5" />, label: 'My Profile' },
@@ -375,7 +375,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       </aside>
 
       {/* Main Content */}
-      <main className="lg:ml-56 sm:lg:ml-64 pt-14 sm:pt-16 min-h-screen">
+      <main className="lg:ml-64 pt-14 sm:pt-16 min-h-screen">
         <div className="p-3 sm:p-4 md:p-6">
           {children}
         </div>

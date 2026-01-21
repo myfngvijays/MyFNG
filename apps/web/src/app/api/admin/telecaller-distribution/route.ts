@@ -89,22 +89,58 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: '% total must be 100 for ACTIVE telecallers', total: activeSum }, { status: 400 });
     }
 
-    // Upsert active rows
-    const payload = cleaned.map((r: any) => ({
-      kind: 'ALLOCATION',
-      telecaller_id: r.telecaller_id,
-      allocation_percent: r.allocation_percent,
-      allocation_status: r.allocation_status,
-      daily_limit: r.daily_limit,
-      is_active: true,
-      updated_at: new Date().toISOString(),
-    }));
-
-    const { error: upErr } = await supabaseAdmin
+    // Upsert by primary key to avoid requiring a unique constraint on telecaller_id.
+    const { data: existingAllocations, error: existingErr } = await supabaseAdmin
       .from('enquiry_hub')
-      .upsert(payload, { onConflict: 'telecaller_id' });
+      .select('id, telecaller_id')
+      .eq('kind', 'ALLOCATION');
 
-    if (upErr) throw upErr;
+    if (existingErr) throw existingErr;
+
+    const idByTelecaller = new Map(
+      (existingAllocations || []).map((row: any) => [String(row.telecaller_id), String(row.id)])
+    );
+
+    const nowIso = new Date().toISOString();
+    const toUpdate = cleaned.filter((r: any) => idByTelecaller.has(r.telecaller_id));
+    const toInsert = cleaned.filter((r: any) => !idByTelecaller.has(r.telecaller_id));
+
+    if (toUpdate.length > 0) {
+      const updatePayload = toUpdate.map((r: any) => ({
+        id: idByTelecaller.get(r.telecaller_id),
+        kind: 'ALLOCATION',
+        telecaller_id: r.telecaller_id,
+        allocation_percent: r.allocation_percent,
+        allocation_status: r.allocation_status,
+        daily_limit: r.daily_limit,
+        is_active: true,
+        updated_at: nowIso,
+      }));
+
+      const { error: upErr } = await supabaseAdmin
+        .from('enquiry_hub')
+        .upsert(updatePayload, { onConflict: 'id' });
+
+      if (upErr) throw upErr;
+    }
+
+    if (toInsert.length > 0) {
+      const insertPayload = toInsert.map((r: any) => ({
+        kind: 'ALLOCATION',
+        telecaller_id: r.telecaller_id,
+        allocation_percent: r.allocation_percent,
+        allocation_status: r.allocation_status,
+        daily_limit: r.daily_limit,
+        is_active: true,
+        updated_at: nowIso,
+      }));
+
+      const { error: insertErr } = await supabaseAdmin
+        .from('enquiry_hub')
+        .insert(insertPayload);
+
+      if (insertErr) throw insertErr;
+    }
 
     // Deactivate allocations not in payload
     const ids = cleaned.map((r: any) => r.telecaller_id);

@@ -21,6 +21,7 @@ type AllocationRow = {
 export default function TelecallerDistributionPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [telecallers, setTelecallers] = useState<Telecaller[]>([]);
   const [rows, setRows] = useState<AllocationRow[]>([]);
   const [apiOpen, setApiOpen] = useState(false);
@@ -189,6 +190,23 @@ export default function TelecallerDistributionPage() {
     }
   }
 
+  async function handleBackfill() {
+    const confirmed = window.confirm('Backfill unassigned leads now? This will auto-assign existing leads.');
+    if (!confirmed) return;
+
+    setBackfilling(true);
+    try {
+      const res = await fetch('/api/admin/telecaller-distribution/backfill', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to backfill leads');
+      alert(`Backfill complete. Assigned: ${json.assignedCount}, Skipped: ${json.skippedCount}`);
+    } catch (e: any) {
+      alert(e?.message || 'Failed to backfill leads');
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -207,6 +225,13 @@ export default function TelecallerDistributionPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleBackfill}
+            disabled={backfilling}
+            className="btn btn-secondary flex items-center gap-2 px-3 py-2 text-sm"
+          >
+            {backfilling ? 'Backfilling...' : 'Backfill Leads'}
+          </button>
           <button
             onClick={() => setApiOpen((prev) => !prev)}
             className="btn btn-secondary flex items-center gap-2 px-3 py-2 text-sm"

@@ -77,18 +77,37 @@ async function writeAllocatorState(state: AllocatorState) {
   const { supabaseAdmin, error } = getSupabaseAdmin();
   if (!supabaseAdmin) throw new Error(error || 'Supabase admin not configured');
 
-  const payload = {
-    kind: 'ALLOCATOR_STATE',
-    state_key: ALLOCATOR_STATE_KEY,
-    state,
-    is_active: true,
-  };
-
-  const { error: upErr } = await supabaseAdmin
+  const { data: existing, error: existingErr } = await supabaseAdmin
     .from(ENQUIRY_TABLE)
-    .upsert(payload, { onConflict: 'state_key' });
+    .select('id')
+    .eq('kind', 'ALLOCATOR_STATE')
+    .eq('state_key', ALLOCATOR_STATE_KEY)
+    .maybeSingle();
 
-  if (upErr) throw new Error(upErr.message);
+  if (existingErr) throw new Error(existingErr.message);
+
+  if (existing?.id) {
+    const { error: updateErr } = await supabaseAdmin
+      .from(ENQUIRY_TABLE)
+      .update({ state, is_active: true, updated_at: new Date().toISOString() })
+      .eq('id', existing.id);
+
+    if (updateErr) throw new Error(updateErr.message);
+  } else {
+    const payload = {
+      kind: 'ALLOCATOR_STATE',
+      state_key: ALLOCATOR_STATE_KEY,
+      state,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: insertErr } = await supabaseAdmin
+      .from(ENQUIRY_TABLE)
+      .insert(payload);
+
+    if (insertErr) throw new Error(insertErr.message);
+  }
 }
 
 function normalizeAllocations(rows: AllocationRow[]) {
