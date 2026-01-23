@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import type { Metadata, Viewport } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
@@ -8,8 +9,14 @@ import { ArrowLeft, Calendar, Clock, Eye, Facebook, Linkedin, MessageCircle, Tag
 import { formatDateDMY } from "@/lib/utils";
 import ViewCounter from '@/components/blog/ViewCounter';
 import CopyLinkButton from '@/components/blog/CopyLinkButton';
+import { isPuneOrPcmcCity, resolveLocalAreas, PUNE_PCMC_AREAS, normalizeCity } from '@/lib/blog/localSeo';
 
 export const dynamic = 'force-dynamic';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+};
 
 type BlogTag = { name: string; slug: string } | null;
 type BlogCategory = { id: string; name: string; slug: string } | null;
@@ -60,6 +67,13 @@ function buildSchemas(blog: Blog) {
   const publishedAt = blog.published_at || blog.created_at || null;
   const authorName = String(seo?.author_name || blog.author?.full_name || 'MyFNG').trim();
   const featuredImage = blog.featured_image || seo?.og_image || null;
+  const city = normalizeCity(seo?.local_city) || 'Pune';
+  const areas = resolveLocalAreas(seo);
+
+  const lat = Number(seo?.geo_lat);
+  const lng = Number(seo?.geo_lng);
+  const hasLatLng = Number.isFinite(lat) && Number.isFinite(lng);
+  const geo: any = hasLatLng ? { '@type': 'GeoCoordinates', latitude: lat, longitude: lng } : undefined;
 
   const graph: any[] = [];
 
@@ -111,10 +125,135 @@ function buildSchemas(blog: Blog) {
     });
   }
 
+  // LocalBusiness (AutoRepair) – full template style (best-effort)
+  graph.push({
+    '@type': 'AutoRepair',
+    '@id': `${url}#localbusiness`,
+    name: `MYFNG Car Service ${city || 'India'}`.trim(),
+    alternateName: 'MYFNG - Car Service & Repairs',
+    description: desc || undefined,
+    url,
+    telephone: '+91-9152307030',
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: city || 'Pune',
+      addressRegion: String(seo?.geo_placename || '').includes(',') ? String(seo?.geo_placename || '').split(',').slice(-1)[0].trim() : undefined,
+      addressCountry: 'IN',
+    },
+    geo,
+    areaServed: (isPuneOrPcmcCity(city) ? PUNE_PCMC_AREAS : areas).slice(0, 35),
+    priceRange: '₹₹',
+  });
+
+  // Breadcrumbs
+  graph.push({
+    '@type': 'BreadcrumbList',
+    '@id': `${url}#breadcrumbs`,
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://myfng.in' },
+      { '@type': 'ListItem', position: 2, name: 'Blogs', item: 'https://myfng.in/blogs' },
+      { '@type': 'ListItem', position: 3, name: title, item: url },
+    ],
+  });
+
   if (!graph.length) return null;
   return {
     '@context': 'https://schema.org',
     '@graph': graph,
+  };
+}
+
+async function fetchPublishedBlogForMeta(slug: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const { data } = await supabase
+    .from('blogs')
+    .select('id, slug, title, excerpt, featured_image, published_at, created_at, seo_data')
+    .eq('slug', slug)
+    .eq('status', 'published')
+    .maybeSingle();
+  return data as any;
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const blog = await fetchPublishedBlogForMeta(slug);
+  if (!blog) return {};
+
+  const seo = (blog.seo_data || {}) as any;
+  const title = String(seo?.meta_title || blog.title || '').trim();
+  const description = String(seo?.meta_description || blog.excerpt || '').trim();
+  const keywords = String(seo?.keywords || '')
+    .split(',')
+    .map((x: string) => x.trim())
+    .filter(Boolean);
+
+  const canonical = String(seo?.canonical_url || `https://myfng.in/blogs/${encodeURIComponent(blog.slug)}`).trim();
+  const ogTitle = String(seo?.og_title || title || blog.title || '').trim();
+  const ogDesc = String(seo?.og_description || description).trim();
+  const ogImage = String(seo?.og_image || blog.featured_image || '').trim() || undefined;
+
+  const city = normalizeCity(seo?.local_city) || 'Pune';
+  const areas = resolveLocalAreas(seo);
+
+  // Geo fallback for Pune if not cached (best coverage)
+  const lat = Number.isFinite(Number(seo?.geo_lat)) ? Number(seo.geo_lat) : (isPuneOrPcmcCity(city) ? 18.5204 : undefined);
+  const lng = Number.isFinite(Number(seo?.geo_lng)) ? Number(seo.geo_lng) : (isPuneOrPcmcCity(city) ? 73.8567 : undefined);
+  const geo_position = lat != null && lng != null ? `${lat};${lng}` : undefined;
+  const icbm = lat != null && lng != null ? `${lat},${lng}` : undefined;
+  const geo_region = String(seo?.geo_region || (isPuneOrPcmcCity(city) ? 'IN-MH' : '')).trim() || undefined;
+  const geo_placename = String(seo?.geo_placename || (isPuneOrPcmcCity(city) ? 'Pune, Maharashtra' : city)).trim() || undefined;
+
+  const keyphrase = String(seo?.keyphrase || (keywords[0] || '')).trim() || undefined;
+  const keyphraseDesc = String(seo?.keyphrase_description || '').trim() || undefined;
+  const googleAiOverview = String(seo?.google_ai_overview || description).trim() || undefined;
+  const serpTag = String(seo?.serp_tag || '').trim() || undefined;
+
+  const robotsIndex = seo?.robots_index !== undefined ? Boolean(seo.robots_index) : true;
+  const robotsFollow = seo?.robots_follow !== undefined ? Boolean(seo.robots_follow) : true;
+
+  return {
+    title,
+    description,
+    keywords: keywords.length ? keywords : undefined,
+    alternates: { canonical },
+    robots: {
+      index: robotsIndex,
+      follow: robotsFollow,
+    },
+    openGraph: {
+      type: 'article',
+      title: ogTitle,
+      description: ogDesc || undefined,
+      url: canonical,
+      siteName: 'MYFNG - Car Service & Repairs in India',
+      locale: 'en_IN',
+      images: ogImage ? [{ url: ogImage }] : undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: ogTitle,
+      description: ogDesc || undefined,
+      images: ogImage ? [ogImage] : undefined,
+    },
+    other: {
+      ...(googleAiOverview ? { google_ai_overview: googleAiOverview } : {}),
+      ...(geo_region ? { 'geo.region': geo_region } : {}),
+      ...(geo_placename ? { 'geo.placename': geo_placename } : {}),
+      ...(geo_position ? { 'geo.position': geo_position } : {}),
+      ...(icbm ? { ICBM: icbm } : {}),
+      ...(keyphrase ? { keyphrase } : {}),
+      ...(keyphraseDesc ? { 'keyphrase description': keyphraseDesc } : {}),
+      ...(areas.length ? { 'local-areas': areas.join(', ') } : {}),
+      ...(serpTag ? { 'serp-tag': serpTag } : {}),
+      author: canonical,
+      copyright: `MYFNG - Best Car Service & Repairs in ${city || 'India'}`,
+      rating: 'general',
+      distribution: 'Global',
+      'revisit-after': '7 days',
+    },
   };
 }
 

@@ -541,6 +541,59 @@ async function getUsersInWorkshopByRoleCodes(workshopId: string, roleCodes: stri
   return (data || []) as Array<{ id: string; full_name?: string }>;
 }
 
+/**
+ * Notify all active users that match role codes (global, no workshop filter).
+ * Useful for Digital Marketing workflows like blog review.
+ */
+export async function notifyRoleCodesGlobal(params: {
+  roleCodes: string[];
+  type: NotificationType;
+  title: string;
+  message: string;
+  priority?: NotificationPriority;
+  actionUrl?: string;
+  metadata?: Record<string, any>;
+}) {
+  const { roleCodes, type, title, message, priority, actionUrl, metadata } = params;
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return;
+
+  const roleIds = await getRoleIds(roleCodes);
+  if (roleIds.length === 0) return;
+
+  const { data: users, error } = await supabaseAdmin
+    .from('users_login')
+    .select('id')
+    .in('role_id', roleIds)
+    .eq('is_active', true);
+
+  if (error) {
+    console.warn('[notifyRoleCodesGlobal] Failed to fetch users:', error);
+    return;
+  }
+
+  const ids: string[] = Array.from(
+    new Set(
+      (users || [])
+        .map((u: any) => u?.id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+    )
+  );
+  if (!ids.length) return;
+
+  await createBulkNotifications(
+    ids.map((id) => ({
+      userId: id,
+      type,
+      title,
+      message,
+      priority: priority || 'MEDIUM',
+      actionUrl,
+      metadata,
+    }))
+  );
+}
+
 export async function notifyWorkshopRoles(params: {
   workshopId: string;
   roleCodes: string[];

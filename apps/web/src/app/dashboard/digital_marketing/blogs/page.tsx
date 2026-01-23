@@ -132,6 +132,8 @@ export default function BlogsPage() {
         return <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Published</span>;
       case 'draft':
         return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-semibold flex items-center gap-1"><Clock className="w-3 h-3" /> Draft</span>;
+      case 'pending_review':
+        return <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold flex items-center gap-1"><Clock className="w-3 h-3" /> Pending Review</span>;
       case 'archived':
         return <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold flex items-center gap-1"><XCircle className="w-3 h-3" /> Archived</span>;
       default:
@@ -149,6 +151,12 @@ export default function BlogsPage() {
             <p className="text-text-body mt-1">Create, edit, and manage blog posts</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Link href="/dashboard/digital_marketing/blogs/categories">
+              <button className="btn btn-outline flex items-center gap-2 w-full sm:w-auto">
+                <Tag className="w-5 h-5" />
+                Manage Categories
+              </button>
+            </Link>
             <Link href="/dashboard/digital_marketing/blogs/ai-create">
               <button className="btn btn-outline flex items-center gap-2 w-full sm:w-auto">
                 <Sparkles className="w-5 h-5" />
@@ -187,6 +195,7 @@ export default function BlogsPage() {
             >
               <option value="all">All Status</option>
               <option value="draft">Drafts</option>
+              <option value="pending_review">Pending Review</option>
               <option value="published">Published</option>
               <option value="archived">Archived</option>
             </select>
@@ -304,13 +313,13 @@ export default function BlogsPage() {
                             <span className="text-xs sm:text-sm">Edit</span>
                           </button>
                         </Link>
-                        {blog.status === 'draft' && (
+                        {(blog.status === 'draft' || blog.status === 'pending_review') && (
                           <button
                             onClick={() => handlePublish(blog.id)}
                             className="btn btn-sm btn-primary flex-1 sm:flex-none w-full sm:w-auto flex items-center justify-center gap-1"
                           >
                             <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span className="text-xs sm:text-sm">Publish</span>
+                            <span className="text-xs sm:text-sm">{blog.status === 'pending_review' ? 'Approve & Publish' : 'Publish'}</span>
                           </button>
                         )}
                         <button

@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { ArrowLeft, Eye, Loader2, Plus, Save, Sparkles, Trash2, UploadCloud } from 'lucide-react';
 import RichTextEditor from '@/components/blog/RichTextEditor';
 import LimitHint from '@/components/blog/LimitHint';
+import KeywordIntentBreakdown from '@/components/blog/KeywordIntentBreakdown';
 import { extractKeywordsFromSummary } from '@/lib/blog/seo';
 import { collectHeadingWordWarnings, stripHtmlToText } from '@/lib/blog/text';
 
@@ -956,6 +957,13 @@ export default function CreateBlogPage() {
                 <option>Commercial/Transactional</option>
                 <option>Local / Navigational</option>
               </select>
+
+              <KeywordIntentBreakdown
+                title={String(formData.title || '')}
+                excerpt={String(formData.excerpt || '')}
+                contentHtml={generatedHtml}
+                focusKeywords={String((formData.seo_data as any).keywords || '')}
+              />
             </div>
 
             {/* AI & Schema */}
@@ -1166,8 +1174,8 @@ export default function CreateBlogPage() {
                 <LimitHint value={wordText} mode="words" label="Word count" recommended={{ min: 800 }} />
                 {headingWarnings.length ? (
                   <div className="text-[11px] text-amber-700 mt-1">
-                    {headingWarnings.slice(0, 3).map((w) => (
-                      <div key={w}>• {w}</div>
+                    {headingWarnings.slice(0, 3).map((w, idx) => (
+                      <div key={`${w}-${idx}`}>• {w}</div>
                     ))}
                   </div>
                 ) : null}

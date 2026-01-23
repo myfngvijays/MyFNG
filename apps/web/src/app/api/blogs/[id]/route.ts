@@ -9,6 +9,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateBlogImageName } from '@/lib/blog/imageNaming';
 import { collectHeadingWordWarnings, computeReadTimeFromHtml, countWords, validateAllImgHaveAlt } from '@/lib/blog/text';
+import { notifyRoleCodesGlobal } from '@/lib/notifications';
+import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
+import { resolveCityGeoAndLocalities } from '@/lib/blog/googlePlaces';
 
 export async function GET(
   request: NextRequest,
@@ -116,6 +119,7 @@ export async function PUT(
     if (fetchError || !existingBlog) {
       return NextResponse.json({ error: 'Blog not found' }, { status: 404 });
     }
+    const prevStatus = String(existingBlog.status || '');
 
     // Parse request body first
     const body = await request.json();
@@ -155,6 +159,10 @@ export async function PUT(
     } = body;
 
     const faqs = Array.isArray(body?.faqs) ? body.faqs : (Array.isArray((seo_data || {})?.faqs) ? (seo_data as any).faqs : undefined);
+
+    // Normalize optional UUID/text fields (avoid sending empty string to DB UUID columns)
+    const normalizedCategoryId =
+      typeof category_id === 'string' ? (category_id.trim() ? category_id.trim() : null) : (category_id ?? null);
 
     // Check slug uniqueness if changed
     if (slug && slug !== existingBlog.slug) {
@@ -225,7 +233,7 @@ export async function PUT(
       updateData.read_time = minutes;
     }
     if (seo_data !== undefined) updateData.seo_data = seo_data;
-    if (category_id !== undefined) updateData.category_id = category_id;
+    if (category_id !== undefined) updateData.category_id = normalizedCategoryId;
     if (featured_image !== undefined) updateData.featured_image = featured_image;
     if (status !== undefined) {
       // Only Digital Marketing and Super Admin can change status to published
@@ -245,6 +253,42 @@ export async function PUT(
     if (is_featured !== undefined) updateData.is_featured = is_featured;
     if (is_premium !== undefined) updateData.is_premium = is_premium;
 
+    // If we're transitioning to published, run publish-time Local SEO enrichment (best-effort)
+    try {
+      if (status === 'published' && existingBlog.status !== 'published' && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN')) {
+        const baseSeo = (seo_data !== undefined ? seo_data : (existingBlog.seo_data || {})) as any;
+        let nextSeo = { ...baseSeo };
+
+        const city = String(nextSeo?.local_city || '').trim();
+        const isPune = isPuneOrPcmcCity(city);
+        const key = String(process.env.GOOGLE_MAPS_API_KEY || '').trim();
+
+        if (!isPune && city && key) {
+          const resolved = await resolveCityGeoAndLocalities({ city, country: 'IN', key });
+          if (resolved.geo_lat != null && resolved.geo_lng != null) {
+            nextSeo = {
+              ...nextSeo,
+              geo_region: resolved.geo_region || nextSeo.geo_region,
+              geo_placename: resolved.geo_placename || nextSeo.geo_placename,
+              geo_lat: resolved.geo_lat,
+              geo_lng: resolved.geo_lng,
+              geo_position: `${resolved.geo_lat};${resolved.geo_lng}`,
+              icbm: `${resolved.geo_lat},${resolved.geo_lng}`,
+              local_areas_resolved: (resolved.local_areas_resolved || []).slice(0, 60),
+              local_areas_resolved_at: new Date().toISOString(),
+            };
+          }
+        }
+
+        const areas = resolveLocalAreas(nextSeo);
+        if (areas.length) nextSeo = { ...nextSeo, local_areas_render: areas.slice(0, 60) };
+
+        updateData.seo_data = nextSeo;
+      }
+    } catch (e) {
+      console.warn('Local SEO enrichment failed (non-blocking):', e);
+    }
+
     // Update blog
     const { data: updatedBlog, error: updateError } = await supabase
       .from('blogs')
@@ -255,6 +299,18 @@ export async function PUT(
 
     if (updateError) {
       console.error('Blog update error:', updateError);
+      const msg = String(updateError.message || '');
+      // Common: local DB still has blogs_status_check that doesn't include 'pending_review'
+      if (msg.toLowerCase().includes('blogs_status_check') && String(updateData?.status) === 'pending_review') {
+        return NextResponse.json(
+          {
+            error: `Your database schema doesn't allow status "pending_review" yet.`,
+            details:
+              'Run `database/93_blog_marketing_requirements.sql` (Step 2: Blogs status) to update the blogs_status_check constraint.',
+          },
+          { status: 400 }
+        );
+      }
       return NextResponse.json({ error: 'Failed to update blog', details: updateError.message }, { status: 500 });
     }
 
@@ -385,6 +441,24 @@ export async function PUT(
       ...completeBlog,
       tags: completeBlog.tags?.map((t: any) => t.tag) || []
     } : updatedBlog;
+
+    // Workflow: when Digital Author sends blog for review → notify Digital Marketing
+    try {
+      const nextStatus = String(updateData?.status ?? prevStatus);
+      if (prevStatus !== 'pending_review' && nextStatus === 'pending_review' && roleCode === 'DIGITAL_AUTHOR') {
+        await notifyRoleCodesGlobal({
+          roleCodes: ['DIGITAL_MARKETING'],
+          type: 'SYSTEM_ALERT',
+          title: 'Blog pending review',
+          message: `${String(userProfile.full_name || 'Author')} sent a blog for review: ${String(existingBlog.title || transformedBlog?.title || '').trim()}`,
+          priority: 'HIGH',
+          actionUrl: `/dashboard/digital_marketing/blogs/${blogId}/edit`,
+          metadata: { blog_id: blogId, status: 'pending_review' },
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to notify Digital Marketing (non-blocking):', e);
+    }
 
     return NextResponse.json({ blog: transformedBlog, warnings });
   } catch (error: any) {

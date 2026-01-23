@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
+import KeywordIntentBreakdown from '@/components/blog/KeywordIntentBreakdown';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Loader2, Sparkles, Save, Eye } from 'lucide-react';
@@ -234,6 +235,13 @@ export default function AICreateBlogPage() {
                 <option>Commercial/Transactional</option>
                 <option>Local / Navigational</option>
               </select>
+
+              <KeywordIntentBreakdown
+                title={String(draft?.title || topic || '')}
+                excerpt={String(draft?.excerpt || '')}
+                contentHtml={String(draft?.content_html || '')}
+                focusKeywords={String(draft?.seo?.keywords || focusKeyword || '')}
+              />
 
               <label className="block text-sm font-medium text-text-heading mt-3 mb-1">Tone</label>
               <select

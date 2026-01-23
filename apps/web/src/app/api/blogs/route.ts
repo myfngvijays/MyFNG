@@ -9,6 +9,8 @@ import { createClient } from '@/lib/supabase/server';
 import { validateBlogImageName } from '@/lib/blog/imageNaming';
 import { collectHeadingWordWarnings, computeReadTimeFromHtml, countWords, validateAllImgHaveAlt } from '@/lib/blog/text';
 import { autoFillSeoFromSummary } from '@/lib/blog/seo';
+import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
+import { resolveCityGeoAndLocalities } from '@/lib/blog/googlePlaces';
 
 export async function GET(request: NextRequest) {
   try {
@@ -279,7 +281,38 @@ export async function POST(request: NextRequest) {
     const primaryCategoryId = normalizedCategoryIds[0] || normalizedCategoryId;
 
     // Server-side auto-fill: meta_description + keywords from AI Summary if empty.
-    const finalSeoData = autoFillSeoFromSummary(excerpt, seo_data || {});
+    let finalSeoData: any = autoFillSeoFromSummary(excerpt, seo_data || {});
+
+    // If creating as published (DM/SUPER only), enrich Local SEO (best-effort)
+    try {
+      if (finalStatus === 'published' && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN')) {
+        const city = String(finalSeoData?.local_city || '').trim();
+        const isPune = isPuneOrPcmcCity(city);
+        const key = String(process.env.GOOGLE_MAPS_API_KEY || '').trim();
+
+        if (!isPune && city && key) {
+          const resolved = await resolveCityGeoAndLocalities({ city, country: 'IN', key });
+          if (resolved.geo_lat != null && resolved.geo_lng != null) {
+            finalSeoData = {
+              ...finalSeoData,
+              geo_region: resolved.geo_region || finalSeoData.geo_region,
+              geo_placename: resolved.geo_placename || finalSeoData.geo_placename,
+              geo_lat: resolved.geo_lat,
+              geo_lng: resolved.geo_lng,
+              geo_position: `${resolved.geo_lat};${resolved.geo_lng}`,
+              icbm: `${resolved.geo_lat},${resolved.geo_lng}`,
+              local_areas_resolved: (resolved.local_areas_resolved || []).slice(0, 60),
+              local_areas_resolved_at: new Date().toISOString(),
+            };
+          }
+        }
+
+        const areas = resolveLocalAreas(finalSeoData);
+        if (areas.length) finalSeoData = { ...finalSeoData, local_areas_render: areas.slice(0, 60) };
+      }
+    } catch (e) {
+      console.warn('Local SEO enrichment failed (non-blocking):', e);
+    }
 
     // Create blog
     const { data: blog, error: blogError } = await supabase

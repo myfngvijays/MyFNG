@@ -11,7 +11,56 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    // For public access, use anonymous Supabase client
+    const searchParams = request.nextUrl.searchParams;
+    const status = searchParams.get('status');
+    const manage = searchParams.get('manage') === '1';
+
+    // Management listing: require auth + DIGITAL_MARKETING / SUPER_ADMIN
+    if (manage) {
+      const { createClient: createServerClient } = await import('@/lib/supabase/server');
+      const supabase = await createServerClient();
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users_login')
+        .select('id, roles!inner(role_code)')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError || !userProfile) {
+        return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+      }
+
+      const roleCode = (userProfile.roles as any)?.role_code;
+      if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+
+      let query = supabase
+        .from('blog_categories')
+        .select('*')
+        .order('name', { ascending: true });
+
+      // Optional status filter (for admin views)
+      if (status !== null) {
+        const parsed = parseInt(status);
+        if (!Number.isNaN(parsed)) query = query.eq('status', parsed);
+      }
+
+      const { data: categories, error } = await query;
+      if (error) {
+        console.error('Categories fetch error:', error);
+        return NextResponse.json({ error: 'Failed to fetch categories', details: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ categories: categories || [] });
+    }
+
+    // Public access: use anonymous Supabase client (active categories only by default)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     
@@ -26,9 +75,6 @@ export async function GET(request: NextRequest) {
       auth: { persistSession: false }
     });
 
-    const searchParams = request.nextUrl.searchParams;
-    const status = searchParams.get('status');
-
     let query = supabase
       .from('blog_categories')
       .select('*')
@@ -36,7 +82,8 @@ export async function GET(request: NextRequest) {
 
     // Filter by status if provided
     if (status !== null) {
-      query = query.eq('status', parseInt(status));
+      const parsed = parseInt(status);
+      if (!Number.isNaN(parsed)) query = query.eq('status', parsed);
     } else {
       // Default: only active categories for public access
       query = query.eq('status', 1);

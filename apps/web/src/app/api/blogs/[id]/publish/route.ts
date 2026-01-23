@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateBlogImageName } from '@/lib/blog/imageNaming';
 import { validateAllImgHaveAlt } from '@/lib/blog/text';
+import { createNotification } from '@/lib/notifications';
+import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
+import { resolveCityGeoAndLocalities } from '@/lib/blog/googlePlaces';
 
 export async function POST(
   request: NextRequest,
@@ -88,13 +91,45 @@ export async function POST(
       }
     }
 
+    // Publish-time Local SEO enrichment (best-effort; never blocks publish)
+    let nextSeo = (existingBlog.seo_data || {}) as any;
+    try {
+      const city = String(nextSeo?.local_city || '').trim();
+      const isPune = isPuneOrPcmcCity(city);
+      const key = String(process.env.GOOGLE_MAPS_API_KEY || '').trim();
+
+      if (!isPune && city && key) {
+        const resolved = await resolveCityGeoAndLocalities({ city, country: 'IN', key });
+        if (resolved.geo_lat != null && resolved.geo_lng != null) {
+          nextSeo = {
+            ...nextSeo,
+            geo_region: resolved.geo_region || nextSeo.geo_region,
+            geo_placename: resolved.geo_placename || nextSeo.geo_placename,
+            geo_lat: resolved.geo_lat,
+            geo_lng: resolved.geo_lng,
+            geo_position: `${resolved.geo_lat};${resolved.geo_lng}`,
+            icbm: `${resolved.geo_lat},${resolved.geo_lng}`,
+            local_areas_resolved: (resolved.local_areas_resolved || []).slice(0, 60),
+            local_areas_resolved_at: new Date().toISOString(),
+          };
+        }
+      }
+
+      // If still no local areas resolved, keep manual. (Pune is handled at render-time via master list.)
+      const areas = resolveLocalAreas(nextSeo);
+      if (areas.length) nextSeo = { ...nextSeo, local_areas_render: areas.slice(0, 60) };
+    } catch (e) {
+      console.warn('Local SEO enrichment failed (non-blocking):', e);
+    }
+
     // Publish the blog
     const { data: publishedBlog, error: publishError } = await supabase
       .from('blogs')
       .update({
         status: 'published',
         published_at: new Date().toISOString(),
-        updated_by: userProfile.id
+        updated_by: userProfile.id,
+        seo_data: nextSeo,
       })
       .eq('id', blogId)
       .select(`
@@ -122,6 +157,24 @@ export async function POST(
       tags: publishedBlog.tags?.map((t: any) => t.tag) || [],
       categories: (publishedBlog as any).categories?.map((c: any) => c?.category).filter(Boolean) || [],
     } : null;
+
+    // Notify author (best-effort)
+    try {
+      const authorId = String((publishedBlog as any)?.author_id || existingBlog?.author_id || '');
+      if (authorId) {
+        await createNotification({
+          userId: authorId,
+          type: 'SYSTEM_ALERT',
+          title: 'Your blog is published',
+          message: `Your blog "${String(existingBlog?.title || '').trim()}" was approved and published by Digital Marketing.`,
+          priority: 'HIGH',
+          actionUrl: `/dashboard/digital_author/blogs/${existingBlog.id}/edit`,
+          metadata: { blog_id: existingBlog.id, status: 'published' },
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to notify author (non-blocking):', e);
+    }
 
     return NextResponse.json({ 
       message: 'Blog published successfully',

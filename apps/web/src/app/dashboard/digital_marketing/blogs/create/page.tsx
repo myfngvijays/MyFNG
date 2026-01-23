@@ -423,8 +423,8 @@ export default function DigitalMarketingCreateBlogPage() {
             <LimitHint value={wordText} mode="words" label="Word count" recommended={{ min: 800 }} />
             {headingWarnings.length ? (
               <div className="text-[11px] text-amber-700 mt-1">
-                {headingWarnings.slice(0, 3).map((w) => (
-                  <div key={w}>• {w}</div>
+                {headingWarnings.slice(0, 3).map((w, idx) => (
+                  <div key={`${w}-${idx}`}>• {w}</div>
                 ))}
               </div>
             ) : null}

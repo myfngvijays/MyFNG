@@ -19,7 +19,7 @@ function getAdminClient() {
 }
 
 const MAX_BYTES = 200 * 1024; // 200KB
-const TARGET_W = 1980;
+const TARGET_W = 1920;
 const TARGET_H = 1080;
 
 async function toWebpUnderSize(input: Buffer): Promise<{ webp: Buffer; quality: number }> {
@@ -67,6 +67,15 @@ export async function POST(request: NextRequest) {
     const aspectOff = originalRatio ? Math.abs(originalRatio - targetRatio) > 0.02 : false;
 
     const { webp, quality } = await toWebpUnderSize(input);
+    if (webp.byteLength > MAX_BYTES) {
+      return NextResponse.json(
+        {
+          error: 'Featured image must be under 200KB after conversion. Please upload a simpler image (less detail), or compress it before upload.',
+          details: { bytes: webp.byteLength, limit: MAX_BYTES, resized_to: `${TARGET_W}x${TARGET_H}`, quality },
+        },
+        { status: 400 }
+      );
+    }
 
     // IMPORTANT: filename must match slug for backend validation (.webp enforced)
     const filePath = `blog-images/${slug}.webp`;
@@ -93,7 +102,7 @@ export async function POST(request: NextRequest) {
           quality,
           bytes: webp.byteLength,
           resized_to: `${TARGET_W}x${TARGET_H}`,
-          aspect_ratio_warning: aspectOff ? 'Original aspect ratio differs; image was center-cropped to 1980x1080.' : null,
+          aspect_ratio_warning: aspectOff ? `Original aspect ratio differs; image was center-cropped to ${TARGET_W}x${TARGET_H}.` : null,
         },
       },
       { status: 200 }
