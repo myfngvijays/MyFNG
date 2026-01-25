@@ -553,6 +553,7 @@ export async function GET(
     const included_service_items: Array<{
       service_type_id: string;
       service_name: string;
+      service_price?: number;
       items: Array<{
         product_id: string;
         name: string;
@@ -697,14 +698,27 @@ export async function GET(
           : [];
 
       if (serviceTypeIds.length > 0) {
-        const { data: svcTypes } = await supabase
-          .from('service_types')
-          .select('id, name')
-          .in('id', serviceTypeIds);
+        let svcTypes: any[] = [];
+        try {
+          const { data } = await supabase
+            .from('service_types')
+            .select('id, name, base_price')
+            .in('id', serviceTypeIds);
+          svcTypes = data || [];
+        } catch {
+          const { data } = await supabase
+            .from('service_types')
+            .select('id, name')
+            .in('id', serviceTypeIds);
+          svcTypes = data || [];
+        }
         const nameById = new Map<string, string>();
+        const basePriceById = new Map<string, number>();
         for (const st of svcTypes || []) {
           const id = String((st as any).id || '');
           if (id) nameById.set(id, String((st as any).name || ''));
+          const bp = parseFloat(String((st as any).base_price || '0')) || 0;
+          if (id && bp > 0) basePriceById.set(id, bp);
         }
 
         const { data: svcItems } = await supabase
@@ -726,9 +740,42 @@ export async function GET(
         for (const sid of serviceTypeIds) {
           const raw = byService[sid] || [];
           if (!raw.length) continue;
+          let servicePrice = 0;
+          try {
+            const leadCityId = String((leadMeta as any)?.city_id || '').trim() || null;
+            const leadCityName = String((leadMeta as any)?.city || '').trim() || null;
+            let workshopZoneId: string | null = null;
+            try {
+              if (workshopId) {
+                const { data: w } = await supabase
+                  .from('workshops')
+                  .select('zone_id')
+                  .eq('id', workshopId)
+                  .maybeSingle();
+                workshopZoneId = (w as any)?.zone_id || null;
+              }
+            } catch {
+              workshopZoneId = null;
+            }
+            servicePrice = await resolveWorkshopServicePrice({
+              supabase,
+              workshopId,
+              serviceTypeId: sid,
+              cityId: leadCityId,
+              cityName: leadCityName,
+              workshopZoneId,
+              vehicleClass,
+            });
+          } catch {
+            servicePrice = 0;
+          }
+          if (!servicePrice) {
+            servicePrice = basePriceById.get(sid) || 0;
+          }
           included_service_items.push({
             service_type_id: sid,
             service_name: nameById.get(sid) || '',
+            service_price: servicePrice,
             items: raw
               .map((r: any) => {
                 const product_id = String(r?.product?.id || '');
@@ -812,6 +859,8 @@ export async function GET(
     const osLooksStale = (inv: any) => {
       const li = Array.isArray(inv?.line_items) ? inv.line_items : [];
       if (li.length === 0) return true;
+      const hasOsEdits = li.some((row: any) => row?.os_edited);
+      if (hasOsEdits) return false;
       const serviceLi = li.filter((x: any) => {
         const c = String(x?.category || '').toUpperCase();
         return c === 'SERVICE' || c === 'ADDON';
@@ -1191,9 +1240,15 @@ export async function GET(
           else tiHydratedById.set(inv.id, payload);
         };
 
-        for (const os of osInvoices) hydrateOS(os);
-        for (const ci of ciInvoices) hydrateCIorTI(ci, 'CUSTOMER_INVOICE');
-        for (const ti of tiInvoices) hydrateCIorTI(ti, 'TAX_INVOICE');
+        for (const os of osInvoices) {
+          if (osLooksStale(os)) hydrateOS(os);
+        }
+        for (const ci of ciInvoices) {
+          if (ciLooksStale(ci)) hydrateCIorTI(ci, 'CUSTOMER_INVOICE');
+        }
+        for (const ti of tiInvoices) {
+          if (tiLooksStale(ti)) hydrateCIorTI(ti, 'TAX_INVOICE');
+        }
       }
     }
 
@@ -1201,14 +1256,50 @@ export async function GET(
       if (!inv) return null;
       const hydrated = osHydratedById.get(inv.id) || ciHydratedById.get(inv.id) || tiHydratedById.get(inv.id);
       const src = hydrated || inv;
+      let lineItemsForTotals = Array.isArray((src as any).line_items) ? (src as any).line_items : [];
+      const isOS = String((src as any)?.invoice_type || '').toUpperCase() === 'ORDER_SUMMARY';
+      if (isOS) {
+        const priceByTypeId = new Map<string, number>();
+        const priceByName = new Map<string, number>();
+        for (const svc of included_service_items || []) {
+          const sid = String((svc as any)?.service_type_id || '').trim();
+          const sname = normalizeName(String((svc as any)?.service_name || ''));
+          const sp = Number((svc as any)?.service_price || 0) || 0;
+          if (sid && sp > 0) priceByTypeId.set(sid, sp);
+          if (sname && sp > 0) priceByName.set(sname, sp);
+        }
+        lineItemsForTotals = lineItemsForTotals.map((row: any) => {
+          const cat = String(row?.category || '').toUpperCase();
+          if (cat !== 'SERVICE') return row;
+          const amount = Number(row?.amount || 0) || 0;
+          if (amount > 0) return row;
+          const sid = String(row?.service_type_id || '').trim();
+          const keyName = normalizeName(String(row?.description || ''));
+          const price = (sid && priceByTypeId.get(sid)) || priceByName.get(keyName) || 0;
+          if (!price) return row;
+          const qty = Number(row?.qty || 1) || 1;
+          return { ...row, amount: price, rate: price / qty };
+        });
+      }
+
+      const norm = (c: any) => String(c || '').trim().toUpperCase();
+      const sumCat = (cats: string[]) =>
+        lineItemsForTotals
+          .filter((x: any) => cats.includes(norm(x?.category)))
+          .reduce((s: number, x: any) => s + (Number(x?.amount || 0) || 0), 0);
+      const base_amount = sumCat(['SERVICE', 'ADDON', 'ADD_ON', 'ADD-ON', 'LABOUR', 'LABOR']);
+      const parts_cost = sumCat(['PART', 'PARTS']);
+      const extra_charges = sumCat(['EXTRA']);
+      const sub_total = Math.max(0, base_amount + parts_cost + extra_charges);
+      const discount_amount = (src as any).discount_amount || (src as any).discount || 0;
+      const final_amount = Math.max(0, sub_total - (Number(discount_amount || 0) || 0));
+
       return {
         ...src,
         parts_amount: (src as any).parts_cost || 0,
         extra_charges_amount: (src as any).extra_charges || 0,
-        subtotal:
-          (src as any).sub_total ||
-          ((src as any).base_amount || 0) + ((src as any).extra_charges || 0) - ((src as any).discount_amount || (src as any).discount || 0),
-        sub_total: (src as any).sub_total,
+        subtotal: isOS ? sub_total : (src as any).sub_total || sub_total,
+        sub_total: isOS ? sub_total : (src as any).sub_total || sub_total,
         cgst: (src as any).cgst_amount || 0,
         cgst_amount: (src as any).cgst_amount || 0,
         sgst: (src as any).sgst_amount || 0,
@@ -1218,8 +1309,8 @@ export async function GET(
         total_tax: (src as any).total_tax || 0,
         round_off_amount: (src as any).round_off_amount || 0,
         discount_amount: (src as any).discount_amount || (src as any).discount || 0,
-        total_amount: (src as any).final_amount || (src as any).total_amount || 0,
-        final_amount: (src as any).final_amount || (src as any).total_amount || 0,
+        total_amount: isOS ? final_amount : (src as any).final_amount || (src as any).total_amount || final_amount,
+        final_amount: isOS ? final_amount : (src as any).total_amount || (src as any).final_amount || final_amount,
         amount_in_words: (src as any).amount_in_words,
         invoice_date: (src as any).invoice_date || (src as any).created_at || new Date().toISOString(),
         due_date: (src as any).due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -1227,6 +1318,7 @@ export async function GET(
         payment_mode: (src as any).payment_mode,
         payment_txn_id: (src as any).payment_txn_id,
         payment_remarks: (src as any).payment_remarks,
+        line_items: lineItemsForTotals,
       };
     };
 
@@ -1265,8 +1357,8 @@ export async function GET(
           .replace(/\s+/g, ' ')
           .trim();
 
-      const svcOverrideByTypeId = new Map<string, Map<string, number>>();
-      const svcOverrideByName = new Map<string, Map<string, number>>();
+      const svcOverrideByTypeId = new Map<string, Map<string, { unit_price: number; quantity?: number; amount?: number }>>();
+      const svcOverrideByName = new Map<string, Map<string, { unit_price: number; quantity?: number; amount?: number }>>();
       const li = Array.isArray((mappedInvoice as any)?.line_items) ? (mappedInvoice as any).line_items : [];
       for (const row of li) {
         const cat = String(row?.category || '').toUpperCase();
@@ -1275,11 +1367,19 @@ export async function GET(
         const keyName = normalizeName(String(row?.description || ''));
         const includedOverrides = Array.isArray(row?.included_items) ? row.included_items : [];
         if (!includedOverrides.length) continue;
-        const m = new Map<string, number>();
+        const m = new Map<string, { unit_price: number; quantity?: number; amount?: number }>();
         for (const o of includedOverrides) {
           const pid = String(o?.product_id || '').trim();
           const p = Number(o?.unit_price || 0) || 0;
-          if (pid && p >= 0) m.set(pid, p);
+          const q = Number(o?.quantity);
+          const a = Number(o?.amount);
+          if (pid && p >= 0) {
+            m.set(pid, {
+              unit_price: p,
+              quantity: Number.isFinite(q) ? q : undefined,
+              amount: Number.isFinite(a) ? a : undefined,
+            });
+          }
         }
         if (m.size === 0) continue;
         if (serviceTypeId) svcOverrideByTypeId.set(serviceTypeId, m);
@@ -1289,17 +1389,25 @@ export async function GET(
       for (const svc of included_service_items) {
         const sid = String((svc as any)?.service_type_id || '').trim();
         const snameKey = normalizeName(String((svc as any)?.service_name || ''));
-        const overrideMap = (sid && svcOverrideByTypeId.get(sid)) || (snameKey && svcOverrideByName.get(snameKey)) || null;
+        const overrideMap =
+          (sid && svcOverrideByTypeId.get(sid)) || (snameKey && svcOverrideByName.get(snameKey)) || null;
         if (!overrideMap) continue;
         for (const it of (svc as any).items || []) {
           const pid = String(it?.product_id || '').trim();
           if (!pid) continue;
           if (!overrideMap.has(pid)) continue;
-          const unitPrice = overrideMap.get(pid) as number;
-          it.unit_price = unitPrice;
+          const override = overrideMap.get(pid) as { unit_price: number; quantity?: number; amount?: number };
+          it.unit_price = override.unit_price;
           it.price_source = 'invoice_override';
+          if (override.quantity != null && Number.isFinite(override.quantity)) {
+            it.quantity = override.quantity;
+          }
           const qty = Number(it?.quantity || 1) || 1;
-          it.amount = (Number(unitPrice || 0) || 0) * qty;
+          if (override.amount != null && Number.isFinite(override.amount)) {
+            it.amount = override.amount;
+          } else {
+            it.amount = (Number(it.unit_price || 0) || 0) * qty;
+          }
         }
       }
     } catch {

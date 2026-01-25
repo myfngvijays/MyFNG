@@ -191,36 +191,40 @@ export default function TrackLeadPage() {
 
   // Potential totals for pending items (customer choice)
   const pendingExtraWorkTotalOem = pendingExtraWork.reduce(
-    (sum, r) => sum + (Number(r?.oem_price ?? 0) + Number(r?.labour_price ?? 0)),
+    (sum, r) => {
+      const parts = Number(r?.oem_price ?? 0);
+      const labour = Number(r?.labour_price ?? 0);
+      return sum + (parts > 0 ? (parts + labour) : 0);
+    },
     0
   );
   const pendingExtraWorkTotalOes = pendingExtraWork.reduce(
-    (sum, r) => sum + (Number(r?.oes_price ?? 0) + Number(r?.labour_price ?? 0)),
+    (sum, r) => {
+      const parts = Number(r?.oes_price ?? 0);
+      const labour = Number(r?.labour_price ?? 0);
+      return sum + (parts > 0 ? (parts + labour) : 0);
+    },
     0
   );
 
-  const GST_RATE = 0.18;
   const fmt = (n: number) => `₹${Number(n || 0).toFixed(2)}`;
 
+  // All prices shown to customer are GST-inclusive (no separate GST calculation on public page)
   const serviceAddonSubtotal = serviceTotal + addonTotal;
-  const serviceAddonGst = serviceAddonSubtotal * GST_RATE;
-  const serviceAddonTotal = serviceAddonSubtotal + serviceAddonGst;
+  const serviceAddonTotal = serviceAddonSubtotal;
 
   // Approved additional work gets added into estimate total (based on selected part_price_type)
   const approvedExtraWorkSubtotal = approvedExtraWork.reduce((sum, r) => {
     const choice = String(r?.part_price_type || 'OEM').toUpperCase() === 'OES' ? 'OES' : 'OEM';
     const parts = choice === 'OES' ? Number(r?.oes_price ?? 0) : Number(r?.oem_price ?? 0);
     const labour = Number(r?.labour_price ?? 0);
-    return sum + (parts + labour);
+    return sum + (parts > 0 ? (parts + labour) : 0);
   }, 0);
-  const approvedExtraWorkGst = approvedExtraWorkSubtotal * GST_RATE;
-  const approvedExtraWorkTotal = approvedExtraWorkSubtotal + approvedExtraWorkGst;
+  const approvedExtraWorkTotal = approvedExtraWorkSubtotal;
 
   // Pending additional work (for information only)
-  const pendingExtraWorkGstOem = pendingExtraWorkTotalOem * GST_RATE;
-  const pendingExtraWorkGstOes = pendingExtraWorkTotalOes * GST_RATE;
-  const pendingExtraWorkTotalWithGstOem = pendingExtraWorkTotalOem + pendingExtraWorkGstOem;
-  const pendingExtraWorkTotalWithGstOes = pendingExtraWorkTotalOes + pendingExtraWorkGstOes;
+  const pendingExtraWorkTotalWithGstOem = pendingExtraWorkTotalOem;
+  const pendingExtraWorkTotalWithGstOes = pendingExtraWorkTotalOes;
 
   const getExtraWorkDecisionLabel = (req: any) => {
     const status = String(req?.status || 'PENDING').toUpperCase();
@@ -402,7 +406,7 @@ export default function TrackLeadPage() {
             <div className="mt-6 rounded-lg border overflow-hidden">
               <div className="px-4 py-3 bg-gray-50 flex items-center justify-between">
                 <div className="font-semibold text-gray-900">Estimate Items</div>
-                <div className="text-xs text-gray-600">GST: 18%</div>
+                <div className="text-xs text-gray-600">All prices include GST</div>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
@@ -413,15 +417,11 @@ export default function TrackLeadPage() {
                       <th className="text-right py-2 px-3">Qty</th>
                       <th className="text-right py-2 px-3">Rate</th>
                       <th className="text-right py-2 px-3">Amount</th>
-                      <th className="text-right py-2 px-3">GST</th>
-                      <th className="text-right py-2 px-3">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {[...displayServiceItems.map((x) => ({ ...x, _type: 'Service' })), ...displayAddonItems.map((x) => ({ ...x, _type: 'Add-on' }))].map((it) => {
                       const amount = it.price * it.qty;
-                      const gst = amount * GST_RATE;
-                      const total = amount + gst;
                       return (
                         <tr key={`${it._type}-${it.id}`}>
                           <td className="py-2 px-3">
@@ -432,9 +432,7 @@ export default function TrackLeadPage() {
                           <td className="py-2 px-3 font-medium text-gray-900">{it.name}</td>
                           <td className="py-2 px-3 text-right">{it.qty}</td>
                           <td className="py-2 px-3 text-right">{fmt(it.price)}</td>
-                          <td className="py-2 px-3 text-right font-semibold">{fmt(amount)}</td>
-                          <td className="py-2 px-3 text-right">{fmt(gst)}</td>
-                          <td className="py-2 px-3 text-right font-bold">{fmt(total)}</td>
+                          <td className="py-2 px-3 text-right font-bold">{fmt(amount)}</td>
                         </tr>
                       );
                     })}
@@ -457,8 +455,6 @@ export default function TrackLeadPage() {
                           <th className="text-left py-2 px-3">Type</th>
                           <th className="text-right py-2 px-3">Parts</th>
                           <th className="text-right py-2 px-3">Labour</th>
-                          <th className="text-right py-2 px-3">Amount</th>
-                          <th className="text-right py-2 px-3">GST</th>
                           <th className="text-right py-2 px-3">Total</th>
                         </tr>
                       </thead>
@@ -468,8 +464,6 @@ export default function TrackLeadPage() {
                           const parts = choice === 'OES' ? Number(r?.oes_price ?? 0) : Number(r?.oem_price ?? 0);
                           const labour = Number(r?.labour_price ?? 0);
                           const amount = parts + labour;
-                          const gst = amount * GST_RATE;
-                          const total = amount + gst;
                           return (
                             <tr key={`approved-${r.id}`}>
                               <td className="py-2 px-3 font-medium text-gray-900">{r.description}</td>
@@ -480,9 +474,7 @@ export default function TrackLeadPage() {
                               </td>
                               <td className="py-2 px-3 text-right">{fmt(parts)}</td>
                               <td className="py-2 px-3 text-right">{fmt(labour)}</td>
-                              <td className="py-2 px-3 text-right font-semibold">{fmt(amount)}</td>
-                              <td className="py-2 px-3 text-right">{fmt(gst)}</td>
-                              <td className="py-2 px-3 text-right font-bold">{fmt(total)}</td>
+                              <td className="py-2 px-3 text-right font-bold">{fmt(amount)}</td>
                             </tr>
                           );
                         })}
@@ -502,16 +494,12 @@ export default function TrackLeadPage() {
                       <span className="text-gray-600">Subtotal</span>
                       <span className="font-semibold text-gray-900">{fmt(serviceAddonSubtotal)}</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">GST (18%)</span>
-                      <span className="font-semibold text-gray-900">{fmt(serviceAddonGst)}</span>
-                    </div>
                     <div className="flex items-center justify-between pt-2 border-t">
-                      <span className="text-gray-600">Total (incl. GST)</span>
+                      <span className="text-gray-600">Total</span>
                       <span className="font-bold text-gray-900">{fmt(serviceAddonTotal)}</span>
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t">
-                      <span className="text-gray-600">Approved Additional Work (incl. GST)</span>
+                      <span className="text-gray-600">Approved Additional Work</span>
                       <span className="font-semibold text-gray-900">{fmt(approvedExtraWorkTotal)}</span>
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t">
@@ -615,7 +603,8 @@ export default function TrackLeadPage() {
                         const decisionLabel = getExtraWorkDecisionLabel(req);
                         const { choice, locked, canOem, canOes, oem, oes } = getCustomerPartChoice(req);
                         const labour = Number(req.labour_price ?? 0);
-                        const total = (choice === 'OES' ? oes : oem) + labour;
+                        const parts = choice === 'OES' ? oes : oem;
+                        const total = parts > 0 ? (parts + labour) : 0;
                         const acting = Boolean(actingByRequestId[req.id]);
                         const isHigh = Boolean(req.is_urgent);
                         return (
@@ -791,7 +780,8 @@ export default function TrackLeadPage() {
                     const decisionLabel = getExtraWorkDecisionLabel(req);
                     const { choice, locked, canOem, canOes, oem, oes } = getCustomerPartChoice(req);
                     const labour = Number(req.labour_price ?? 0);
-                    const total = (choice === 'OES' ? oes : oem) + labour;
+                    const parts = choice === 'OES' ? oes : oem;
+                    const total = parts > 0 ? (parts + labour) : 0;
                     const acting = Boolean(actingByRequestId[req.id]);
                     const isHigh = Boolean(req.is_urgent);
                     return (

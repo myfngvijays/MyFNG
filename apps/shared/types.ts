@@ -21,6 +21,7 @@ export type VehiclePhotoType =
   | 'DROP_REAR'
   | 'DROP_INTERIOR'
   | 'DROP_ODOMETER'
+  | 'DROP_HANDOVER'
   // After-service / signature
   | 'AFTER_WORK'
   | 'DELIVERY_SIGNATURE';

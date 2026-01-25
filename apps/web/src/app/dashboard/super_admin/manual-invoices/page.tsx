@@ -15,6 +15,9 @@ type ManualInvoice = {
   payment_mode?: string | null;
   payment_reference?: string | null;
   paid_at?: string | null;
+  customer_gstin?: string | null;
+  car_number?: string | null;
+  car_model?: string | null;
 };
 
 export default function ManualInvoicesPage() {
@@ -35,10 +38,15 @@ export default function ManualInvoicesPage() {
     customer_city: '',
     customer_state: '',
     customer_pincode: '',
+    customer_gstin: '',
+    customer_tax_type: '',
+    place_of_supply: '',
+    car_number: '',
+    car_model: '',
     payment_mode: 'UPI',
     payment_reference: '',
     payment_notes: '',
-    items: [{ item_name: '', item_description: '', qty: 1, unit_price: 0, tax_percent: 0, discount: 0 }],
+    items: [{ item_name: '', item_description: '', hsn_sac_code: '', qty: 1, unit_price: 0, tax_percent: 0, discount: 0 }],
   });
 
   useEffect(() => {
@@ -61,10 +69,10 @@ export default function ManualInvoicesPage() {
 
   const templateCsv = useMemo(() => {
     return [
-      'invoice_number,invoice_date,due_date,customer_name,customer_phone,customer_email,customer_address,customer_city,customer_state,customer_pincode,item_name,item_description,qty,unit_price,tax_percent,discount,payment_mode,payment_reference,payment_notes,paid_at',
-      'INV-1001,2026-01-20,2026-01-27,John Doe,9999999999,john@example.com,Andheri West,Mumbai,Maharashtra,400053,Engine Service,Full engine service,1,2000,18,0,UPI,UPI123,Received full payment,2026-01-20',
-      'INV-1001,2026-01-20,2026-01-27,John Doe,9999999999,john@example.com,Andheri West,Mumbai,Maharashtra,400053,Oil Change,Premium oil,1,500,18,0,UPI,UPI123,Received full payment,2026-01-20',
-      'INV-1002,2026-01-20,2026-01-27,Jane Doe,8888888888,jane@example.com,Bandra East,Mumbai,Maharashtra,400051,Brake Pads,Front pads,1,1500,18,100,CASH,CASH-01,Counter payment,2026-01-20',
+      'invoice_number,invoice_date,due_date,customer_name,customer_phone,customer_email,customer_address,customer_city,customer_state,customer_pincode,customer_gstin,customer_tax_type,place_of_supply,car_number,car_model,item_name,item_description,hsn_sac_code,qty,unit_price,tax_percent,discount,payment_mode,payment_reference,payment_notes,paid_at',
+      'INV-1001,2026-01-20,2026-01-27,John Doe,9999999999,john@example.com,Andheri West,Mumbai,Maharashtra,400053,27ABCDE1234F1Z5,registered,Maharashtra,MH12AB1234,Hyundai i20,Engine Service,Full engine service,998729,1,2000,18,0,UPI,UPI123,Received full payment,2026-01-20',
+      'INV-1001,2026-01-20,2026-01-27,John Doe,9999999999,john@example.com,Andheri West,Mumbai,Maharashtra,400053,27ABCDE1234F1Z5,registered,Maharashtra,MH12AB1234,Hyundai i20,Oil Change,Premium oil,998729,1,500,18,0,UPI,UPI123,Received full payment,2026-01-20',
+      'INV-1002,2026-01-20,2026-01-27,Jane Doe,8888888888,jane@example.com,Bandra East,Mumbai,Maharashtra,400051,,unregistered,Maharashtra,MH01CD5678,Maruti Swift,Brake Pads,Front pads,870899,1,1500,18,100,CASH,CASH-01,Counter payment,2026-01-20',
     ].join('\n');
   }, []);
 
@@ -152,54 +160,168 @@ export default function ManualInvoicesPage() {
         </p>
       </div>
 
-      <div className="bg-white rounded-lg border p-4 space-y-3">
+      <div className="bg-white rounded-lg border p-4 space-y-4">
         <div className="text-sm font-semibold">Create Single Invoice (Paid)</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="Invoice Number"
-            value={form.invoice_number} onChange={(e) => setForm({ ...form, invoice_number: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="Invoice Date (YYYY-MM-DD)"
-            value={form.invoice_date} onChange={(e) => setForm({ ...form, invoice_date: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="Due Date (YYYY-MM-DD)"
-            value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="Customer Name"
-            value={form.customer_name} onChange={(e) => setForm({ ...form, customer_name: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="Customer Phone"
-            value={form.customer_phone} onChange={(e) => setForm({ ...form, customer_phone: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="Customer Email"
-            value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="Address"
-            value={form.customer_address} onChange={(e) => setForm({ ...form, customer_address: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="City"
-            value={form.customer_city} onChange={(e) => setForm({ ...form, customer_city: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="State"
-            value={form.customer_state} onChange={(e) => setForm({ ...form, customer_state: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="Pincode"
-            value={form.customer_pincode} onChange={(e) => setForm({ ...form, customer_pincode: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="Payment Mode"
-            value={form.payment_mode} onChange={(e) => setForm({ ...form, payment_mode: e.target.value })} />
-          <input className="border rounded-md px-2 py-2 text-sm" placeholder="Payment Reference"
-            value={form.payment_reference} onChange={(e) => setForm({ ...form, payment_reference: e.target.value })} />
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <label className="text-xs text-gray-600 flex flex-col gap-1">
+            Invoice Number
+            <input className="border rounded-md px-2 py-2 text-sm" placeholder="INV-1001"
+              value={form.invoice_number} onChange={(e) => setForm({ ...form, invoice_number: e.target.value })} />
+          </label>
+          <label className="text-xs text-gray-600 flex flex-col gap-1">
+            Invoice Date
+            <input className="border rounded-md px-2 py-2 text-sm" placeholder="YYYY-MM-DD"
+              value={form.invoice_date} onChange={(e) => setForm({ ...form, invoice_date: e.target.value })} />
+          </label>
+          <label className="text-xs text-gray-600 flex flex-col gap-1">
+            Due Date
+            <input className="border rounded-md px-2 py-2 text-sm" placeholder="YYYY-MM-DD"
+              value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
+          </label>
         </div>
-        <div className="text-xs text-gray-600">Line Items</div>
-        {form.items.map((it: any, idx: number) => (
-          <div key={idx} className="grid grid-cols-1 sm:grid-cols-6 gap-2">
-            <input className="border rounded-md px-2 py-2 text-sm" placeholder="Item Name"
-              value={it.item_name} onChange={(e) => updateItem(idx, { item_name: e.target.value })} />
-            <input className="border rounded-md px-2 py-2 text-sm" placeholder="Description"
-              value={it.item_description} onChange={(e) => updateItem(idx, { item_description: e.target.value })} />
-            <input className="border rounded-md px-2 py-2 text-sm" placeholder="Qty" type="number"
-              value={it.qty} onChange={(e) => updateItem(idx, { qty: Number(e.target.value) })} />
-            <input className="border rounded-md px-2 py-2 text-sm" placeholder="Unit Price" type="number"
-              value={it.unit_price} onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) })} />
-            <input className="border rounded-md px-2 py-2 text-sm" placeholder="Tax %" type="number"
-              value={it.tax_percent} onChange={(e) => updateItem(idx, { tax_percent: Number(e.target.value) })} />
-            <input className="border rounded-md px-2 py-2 text-sm" placeholder="Discount" type="number"
-              value={it.discount} onChange={(e) => updateItem(idx, { discount: Number(e.target.value) })} />
+
+        <div className="border-t pt-3">
+          <div className="text-xs font-semibold text-gray-700 mb-2">Customer Details</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Customer Name
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="Name"
+                value={form.customer_name} onChange={(e) => setForm({ ...form, customer_name: e.target.value })} />
+            </label>
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Customer Phone
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="Phone"
+                value={form.customer_phone} onChange={(e) => setForm({ ...form, customer_phone: e.target.value })} />
+            </label>
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Customer Email
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="Email"
+                value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} />
+            </label>
+            <label className="text-xs text-gray-600 flex flex-col gap-1 sm:col-span-2">
+              Address
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="Street / Area"
+                value={form.customer_address} onChange={(e) => setForm({ ...form, customer_address: e.target.value })} />
+            </label>
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              City
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="City"
+                value={form.customer_city} onChange={(e) => setForm({ ...form, customer_city: e.target.value })} />
+            </label>
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              State
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="State"
+                value={form.customer_state} onChange={(e) => setForm({ ...form, customer_state: e.target.value })} />
+            </label>
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Pincode
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="Pincode"
+                value={form.customer_pincode} onChange={(e) => setForm({ ...form, customer_pincode: e.target.value })} />
+            </label>
           </div>
-        ))}
-        <button onClick={() => setForm((prev: any) => ({ ...prev, items: [...prev.items, { item_name: '', item_description: '', qty: 1, unit_price: 0, tax_percent: 0, discount: 0 }] }))}
-          className="btn btn-secondary text-xs">Add Item</button>
-        <button onClick={handleSingleCreate} className="btn btn-primary text-sm">Create Paid Invoice</button>
+        </div>
+
+        <div className="border-t pt-3">
+          <div className="text-xs font-semibold text-gray-700 mb-2">GST & Compliance</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Customer GSTIN
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="27ABCDE1234F1Z5"
+                value={form.customer_gstin} onChange={(e) => setForm({ ...form, customer_gstin: e.target.value })} />
+            </label>
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Customer Tax Type
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="registered/unregistered"
+                value={form.customer_tax_type} onChange={(e) => setForm({ ...form, customer_tax_type: e.target.value })} />
+            </label>
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Place of Supply
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="State"
+                value={form.place_of_supply} onChange={(e) => setForm({ ...form, place_of_supply: e.target.value })} />
+            </label>
+          </div>
+        </div>
+
+        <div className="border-t pt-3">
+          <div className="text-xs font-semibold text-gray-700 mb-2">Vehicle Details</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Car Number
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="MH12AB1234"
+                value={form.car_number} onChange={(e) => setForm({ ...form, car_number: e.target.value })} />
+            </label>
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Car Model
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="Hyundai i20"
+                value={form.car_model} onChange={(e) => setForm({ ...form, car_model: e.target.value })} />
+            </label>
+          </div>
+        </div>
+
+        <div className="border-t pt-3">
+          <div className="text-xs font-semibold text-gray-700 mb-2">Payment Details</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <label className="text-xs text-gray-600 flex flex-col gap-1">
+              Payment Mode
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="UPI / CASH"
+                value={form.payment_mode} onChange={(e) => setForm({ ...form, payment_mode: e.target.value })} />
+            </label>
+            <label className="text-xs text-gray-600 flex flex-col gap-1 sm:col-span-2">
+              Payment Reference
+              <input className="border rounded-md px-2 py-2 text-sm" placeholder="UPI Ref / Receipt No."
+                value={form.payment_reference} onChange={(e) => setForm({ ...form, payment_reference: e.target.value })} />
+            </label>
+          </div>
+        </div>
+
+        <div className="border-t pt-3">
+          <div className="text-xs font-semibold text-gray-700 mb-2">Line Items</div>
+          {form.items.map((it: any, idx: number) => (
+            <div key={idx} className="grid grid-cols-1 sm:grid-cols-8 gap-2">
+              <label className="text-xs text-gray-600 flex flex-col gap-1 sm:col-span-2">
+                Item Name
+                <input className="border rounded-md px-2 py-2 text-sm" placeholder="Item Name"
+                  value={it.item_name} onChange={(e) => updateItem(idx, { item_name: e.target.value })} />
+              </label>
+              <label className="text-xs text-gray-600 flex flex-col gap-1 sm:col-span-2">
+                Description
+                <input className="border rounded-md px-2 py-2 text-sm" placeholder="Description"
+                  value={it.item_description} onChange={(e) => updateItem(idx, { item_description: e.target.value })} />
+              </label>
+              <label className="text-xs text-gray-600 flex flex-col gap-1">
+                HSN/SAC
+                <input className="border rounded-md px-2 py-2 text-sm" placeholder="HSN/SAC"
+                  value={it.hsn_sac_code} onChange={(e) => updateItem(idx, { hsn_sac_code: e.target.value })} />
+              </label>
+              <label className="text-xs text-gray-600 flex flex-col gap-1">
+                Qty
+                <input className="border rounded-md px-2 py-2 text-sm" placeholder="1" type="number"
+                  value={it.qty} onChange={(e) => updateItem(idx, { qty: Number(e.target.value) })} />
+              </label>
+              <label className="text-xs text-gray-600 flex flex-col gap-1">
+                Unit Price
+                <input className="border rounded-md px-2 py-2 text-sm" placeholder="0" type="number"
+                  value={it.unit_price} onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) })} />
+              </label>
+              <label className="text-xs text-gray-600 flex flex-col gap-1">
+                Tax %
+                <input className="border rounded-md px-2 py-2 text-sm" placeholder="0" type="number"
+                  value={it.tax_percent} onChange={(e) => updateItem(idx, { tax_percent: Number(e.target.value) })} />
+              </label>
+              <label className="text-xs text-gray-600 flex flex-col gap-1">
+                Discount
+                <input className="border rounded-md px-2 py-2 text-sm" placeholder="0" type="number"
+                  value={it.discount} onChange={(e) => updateItem(idx, { discount: Number(e.target.value) })} />
+              </label>
+            </div>
+          ))}
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setForm((prev: any) => ({ ...prev, items: [...prev.items, { item_name: '', item_description: '', hsn_sac_code: '', qty: 1, unit_price: 0, tax_percent: 0, discount: 0 }] }))}
+              className="btn btn-secondary text-xs">Add Item</button>
+            <button onClick={handleSingleCreate} className="btn btn-primary text-sm">Create Paid Invoice</button>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg border p-4 space-y-3">
@@ -240,6 +362,8 @@ export default function ManualInvoicesPage() {
               <th className="px-4 py-3">Invoice #</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Phone</th>
+              <th className="px-4 py-3">GSTIN</th>
+              <th className="px-4 py-3">Vehicle</th>
               <th className="px-4 py-3">Total</th>
               <th className="px-4 py-3">Payment</th>
               <th className="px-4 py-3">Status</th>
@@ -249,14 +373,14 @@ export default function ManualInvoicesPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={9} className="px-4 py-6 text-center text-gray-500">
                   Loading...
                 </td>
               </tr>
             )}
             {!loading && invoices.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={9} className="px-4 py-6 text-center text-gray-500">
                   No manual invoices yet.
                 </td>
               </tr>
@@ -266,6 +390,10 @@ export default function ManualInvoicesPage() {
                 <td className="px-4 py-3">{inv.invoice_number}</td>
                 <td className="px-4 py-3">{inv.customer_name || '—'}</td>
                 <td className="px-4 py-3">{inv.customer_phone || '—'}</td>
+                <td className="px-4 py-3">{inv.customer_gstin || '—'}</td>
+                <td className="px-4 py-3">
+                  {inv.car_number || '—'}{inv.car_model ? ` / ${inv.car_model}` : ''}
+                </td>
                 <td className="px-4 py-3">
                   {inv.total_amount != null ? `₹${Number(inv.total_amount).toFixed(2)}` : '—'}
                 </td>

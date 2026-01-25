@@ -48,7 +48,7 @@ export default function QCReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'photos' | 'qc'>('details');
-  const [activePhotoTab, setActivePhotoTab] = useState<'pickup' | 'during' | 'after'>('pickup');
+  const [activePhotoTab, setActivePhotoTab] = useState<'pickup' | 'during' | 'scanning' | 'after'>('pickup');
   
   // QC Form state
   const [qualityScore, setQualityScore] = useState(5);
@@ -74,9 +74,11 @@ export default function QCReviewPage() {
   const [beforePhotos, setBeforePhotos] = useState<any[]>([]);
   const [afterPhotos, setAfterPhotos] = useState<any[]>([]);
   const [duringPhotos, setDuringPhotos] = useState<any[]>([]);
+  const [carScanningPhotos, setCarScanningPhotos] = useState<any[]>([]);
   const [showAllBeforePhotos, setShowAllBeforePhotos] = useState(false);
   const [showAllDuringPhotos, setShowAllDuringPhotos] = useState(false);
   const [showAllAfterPhotos, setShowAllAfterPhotos] = useState(false);
+  const [showAllCarScanningPhotos, setShowAllCarScanningPhotos] = useState(false);
   const [partsUsed, setPartsUsed] = useState<any[]>([]);
   const [checklist, setChecklist] = useState<any[]>([]);
   const [mechanic, setMechanic] = useState<any>(null);
@@ -231,6 +233,7 @@ export default function QCReviewPage() {
       const beforeCollected: any[] = [];
       const afterCollected: any[] = [];
       const duringCollected: any[] = [];
+      const scanningCollected: any[] = [];
 
       // Fetch photos from mechanic_job_photos table (primary source)
       // IMPORTANT: In this codebase mechanic_job_photos is keyed by job_id (see mechanic manage page),
@@ -300,6 +303,22 @@ export default function QCReviewPage() {
             photo_url: p.file_url,
             photo_type: inferSlotKey(p) || p.photo_type || p.category || 'PICKUP/BEFORE',
           })); // Map file_url to photo_url + infer slot key
+        const scanningFromLeadMedia = photosData
+          .filter((p: any) => {
+            const slot = inferSlotKey(p);
+            const cat = String(p?.category || '').toUpperCase();
+            const type = String(p?.photo_type || p?.media_category || '').toUpperCase();
+            return (
+              cat.includes('CAR_SCANNING') ||
+              type.includes('CAR_SCANNING') ||
+              slot.startsWith('CAR_SCANNING_')
+            );
+          })
+          .map((p: any) => ({
+            ...p,
+            photo_url: p.file_url,
+            photo_type: inferSlotKey(p) || p.photo_type || p.category || 'CAR_SCANNING',
+          }));
         const afterFromLeadMedia = photosData
           .filter(p => p.category === 'AFTER')
           .map(p => ({ ...p, photo_url: p.file_url }));
@@ -310,6 +329,7 @@ export default function QCReviewPage() {
         beforeCollected.push(...beforeFromLeadMedia);
         afterCollected.push(...afterFromLeadMedia);
         duringCollected.push(...duringFromLeadMedia);
+        scanningCollected.push(...scanningFromLeadMedia);
       }
 
       // Also try fetching from mechanic_media table as additional fallback
@@ -327,6 +347,17 @@ export default function QCReviewPage() {
             return mc === 'BEFORE' || mc === 'PICKUP' || mc === 'VISIT' || slot.startsWith('BEFORE_') || slot.startsWith('PICKUP_');
           })
           .map(p => ({ ...p, photo_url: p.media_url })); // Map media_url to photo_url
+        const scanningFromMechanic = mechanicMediaData
+          .filter((p: any) => {
+            const mc = String(p?.media_category || '').toUpperCase();
+            const slot = inferSlotKey(p);
+            return mc.includes('CAR_SCANNING') || slot.startsWith('CAR_SCANNING_');
+          })
+          .map((p: any) => ({
+            ...p,
+            photo_url: p.media_url,
+            photo_type: p.media_category || inferSlotKey(p) || 'CAR_SCANNING',
+          }));
         const afterFromMechanic = mechanicMediaData
           .filter(p => p.media_category === 'AFTER')
           .map(p => ({ ...p, photo_url: p.media_url }));
@@ -337,6 +368,7 @@ export default function QCReviewPage() {
         beforeCollected.push(...beforeFromMechanic);
         afterCollected.push(...afterFromMechanic);
         duringCollected.push(...duringFromMechanic);
+        scanningCollected.push(...scanningFromMechanic);
       }
 
       // Pickup boy mobile uploads are stored in vehicle_condition_photos (PICKUP_* / DROP_* / AFTER_WORK / DELIVERY_SIGNATURE)
@@ -371,6 +403,10 @@ export default function QCReviewPage() {
             duringCollected.push(mapped);
             continue;
           }
+          if (t.startsWith('CAR_SCANNING_')) {
+            scanningCollected.push(mapped);
+            continue;
+          }
         }
       }
 
@@ -378,6 +414,7 @@ export default function QCReviewPage() {
       setBeforePhotos(dedupePhotos(beforeCollected));
       setAfterPhotos(dedupePhotos(afterCollected));
       setDuringPhotos(dedupePhotos(duringCollected));
+      setCarScanningPhotos(dedupePhotos(scanningCollected));
 
       // Fetch parts used
       const { data: partsData, error: partsError } = await supabase
@@ -566,7 +603,7 @@ export default function QCReviewPage() {
     );
   }
 
-  const photosTotal = beforePhotos.length + duringPhotos.length + afterPhotos.length;
+  const photosTotal = beforePhotos.length + duringPhotos.length + carScanningPhotos.length + afterPhotos.length;
   const advisorAnsweredAll = ADVISOR_QC_ITEMS.every(i => advisorAnswers[i.serial] === 'YES' || advisorAnswers[i.serial] === 'NO');
   const advisorProofsOk = proofRequiredSerials.every(s => {
     if (advisorAnswers[s] !== 'YES') return true;
@@ -588,7 +625,7 @@ export default function QCReviewPage() {
     return activeTab === tab ? `${base} btn-primary` : `${base} btn-outline bg-white`;
   };
 
-  const photoTabButtonClass = (tab: 'pickup' | 'during' | 'after') => {
+  const photoTabButtonClass = (tab: 'pickup' | 'during' | 'scanning' | 'after') => {
     const base = 'btn !px-4 !py-2 text-sm';
     return activePhotoTab === tab ? `${base} btn-primary` : `${base} btn-outline bg-white`;
   };
@@ -898,6 +935,17 @@ export default function QCReviewPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setActivePhotoTab('scanning')}
+                    className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition ${
+                      activePhotoTab === 'scanning'
+                        ? 'bg-white shadow text-purple-700'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    Car Scanning <span className="ml-1 text-[11px] text-gray-500">({carScanningPhotos.length})</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setActivePhotoTab('after')}
                     className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition ${
                       activePhotoTab === 'after'
@@ -1028,6 +1076,66 @@ export default function QCReviewPage() {
                   <div className="text-center py-8 text-gray-400">
                     <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
                     <p className="text-sm">No during photos</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Car Scanning Photos */}
+            {activePhotoTab === 'scanning' && (
+              <div className="card">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Camera className="w-4 h-4 text-purple-700" />
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">Car Scanning Photos</h3>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                      {carScanningPhotos.length}
+                    </span>
+                  </div>
+                  {carScanningPhotos.length > 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllCarScanningPhotos((v) => !v)}
+                      className="text-xs font-semibold text-purple-700 hover:underline whitespace-nowrap"
+                    >
+                      {showAllCarScanningPhotos ? 'Show less' : 'Show all'}
+                    </button>
+                  )}
+                </div>
+                {carScanningPhotos.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {(showAllCarScanningPhotos ? carScanningPhotos : carScanningPhotos.slice(0, 8)).map((photo: any, idx: number) => {
+                      const url = photoUrlFor(photo);
+                      const label = String(photo.photo_type || '').trim();
+                      return (
+                        <button
+                          key={photo?.id || url || idx}
+                          type="button"
+                          onClick={() => url && setLightbox({ url, label })}
+                          className="text-left group"
+                        >
+                          <div className="relative rounded-lg overflow-hidden border bg-gray-50">
+                            <img
+                              src={url}
+                              alt={label || 'Car Scanning'}
+                              className="w-full h-28 sm:h-32 object-cover group-hover:opacity-95 transition"
+                            />
+                            {label && (
+                              <div className="absolute bottom-1 left-1 right-1">
+                                <span className="inline-flex max-w-full truncate text-[10px] px-2 py-1 rounded bg-black/60 text-white">
+                                  {label}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
+                    <p className="text-sm">No car scanning photos</p>
                   </div>
                 )}
               </div>

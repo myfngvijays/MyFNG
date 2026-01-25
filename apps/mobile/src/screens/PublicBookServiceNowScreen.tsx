@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import { ENV } from '../config/environment';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicPillNav';
 
@@ -129,6 +130,12 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
   const [pricing, setPricing] = useState<Record<string, number>>({});
   const [pricingLoading, setPricingLoading] = useState(false);
 
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponMeta, setCouponMeta] = useState<any | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponApplying, setCouponApplying] = useState(false);
+
   const [workshops, setWorkshops] = useState<WorkshopRow[]>([]);
   const [workshopLoading, setWorkshopLoading] = useState(false);
   const [workshopModal, setWorkshopModal] = useState(false);
@@ -163,6 +170,27 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
   const totalPrice = useMemo(() => {
     return form.selectedServices.reduce((sum, id) => sum + (pricing[id] || 0), 0);
   }, [form.selectedServices, pricing]);
+
+  const serviceItemsForCoupon = useMemo(() => {
+    return form.selectedServices.map((serviceId) => {
+      const service = serviceTypes.find((s) => s.id === serviceId);
+      return {
+        service_type_id: serviceId,
+        label: service?.name || null,
+        price: pricing[serviceId] || 0,
+      };
+    });
+  }, [form.selectedServices, pricing, serviceTypes]);
+
+  const couponAdjustedTotal = Math.max(totalPrice - (couponDiscount || 0), 0);
+
+  useEffect(() => {
+    if (couponMeta && form.selectedServices.length > 0) {
+      setCouponMeta(null);
+      setCouponDiscount(0);
+      setCouponError('Coupon cleared. Please re-apply after changing services.');
+    }
+  }, [form.selectedServices, couponMeta]);
 
   const steps = [
     { title: "Let's get started!", subtitle: 'Select your location and car model' },
@@ -325,6 +353,52 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
     }
   }
 
+  async function applyCoupon() {
+    const code = couponCode.trim();
+    if (!code) {
+      setCouponError('Please enter a coupon code.');
+      return;
+    }
+    setCouponApplying(true);
+    setCouponError(null);
+    try {
+      const response = await fetch(`${ENV.API_URL}/api/coupons/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          lead_context: {
+            subtotal: totalPrice,
+            service_type_ids: form.selectedServices,
+            service_items: serviceItemsForCoupon,
+            customer_phone: form.customerPhone,
+          },
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json?.valid) {
+        throw new Error(json?.error || 'Coupon validation failed.');
+      }
+      setCouponMeta(json.coupon_meta || null);
+      setCouponDiscount(Number(json.discount_amount || 0));
+      setCouponError(null);
+      Alert.alert('Coupon applied', `Code: ${json?.coupon?.code || code}`);
+    } catch (error: any) {
+      setCouponMeta(null);
+      setCouponDiscount(0);
+      setCouponError(error?.message || 'Invalid coupon.');
+    } finally {
+      setCouponApplying(false);
+    }
+  }
+
+  function clearCoupon() {
+    setCouponCode('');
+    setCouponMeta(null);
+    setCouponDiscount(0);
+    setCouponError(null);
+  }
+
   async function submitLead() {
     if (!form.city || !form.carModel) return;
     if (!form.customerPhone.trim()) {
@@ -348,36 +422,56 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
       if (form.landmark.trim()) addressParts.push(form.landmark.trim());
       const completeAddress = addressParts.filter((p) => p.length > 0).join(', ');
 
-      const payload: any = {
-        lead_number: leadNumber,
-        created_from: 'MOBILE_PUBLIC',
-        status: 'NEW',
-        customer_name: form.customerName || null,
-        customer_phone: form.customerPhone.trim(),
-        vehicle_number: form.vehicleNumber || null,
-        city: form.city.name,
-        city_id: form.city.id,
-        vehicle_make: form.carModel.make,
-        model_id: form.carModel.id,
-        vehicle_model: form.carModel.model_name,
-        vehicle_variant: form.carModel.variant || null,
-        service_type_ids: form.selectedServices.length > 0 ? form.selectedServices : null,
-        pickup_required: form.pickupRequired,
-        assigned_workshop_id: form.pickupRequired ? null : form.selectedWorkshop?.id || null,
-        address: form.pickupRequired ? completeAddress : form.selectedWorkshop?.address || null,
-        customer_address: form.pickupRequired ? completeAddress : form.selectedWorkshop?.address || null,
-        pickup_address: form.pickupRequired ? completeAddress : null,
-        preferred_slot_start:
-          form.pickupRequired && form.pickupDate && form.pickupTime ? `${form.pickupDate}T${form.pickupTime}:00` : null,
-        estimated_amount: totalPrice > 0 ? totalPrice : null,
-        lead_priority: 'NORMAL',
-        created_at: new Date().toISOString(),
-      };
+      const response = await fetch(`${ENV.API_URL}/api/public/bookings/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead: {
+            lead_number: leadNumber,
+            created_from: 'MOBILE_PUBLIC',
+            status: 'NEW',
+            lead_type: 'CAR_SERVICE',
+            lead_source: 'App Booking',
+            customer_name: form.customerName || null,
+            customer_phone: form.customerPhone.trim(),
+            vehicle_number: form.vehicleNumber || null,
+            city: form.city.name,
+            city_id: form.city.id,
+            vehicle_make: form.carModel.make,
+            model_id: form.carModel.id,
+            vehicle_model: form.carModel.model_name,
+            vehicle_variant: form.carModel.variant || null,
+            service_type_ids: form.selectedServices.length > 0 ? form.selectedServices : null,
+            pickup_required: form.pickupRequired,
+            workshop_id: form.pickupRequired ? null : form.selectedWorkshop?.id || null,
+            address: form.pickupRequired ? completeAddress : form.selectedWorkshop?.address || null,
+            customer_address: form.pickupRequired ? completeAddress : form.selectedWorkshop?.address || null,
+            pickup_address: form.pickupRequired ? completeAddress : null,
+            preferred_slot_start:
+              form.pickupRequired && form.pickupDate && form.pickupTime
+                ? `${form.pickupDate}T${form.pickupTime}:00`
+                : null,
+            estimated_amount: totalPrice > 0 ? totalPrice : null,
+            lead_priority: 'NORMAL',
+            created_at: new Date().toISOString(),
+          },
+          coupon: couponMeta
+            ? {
+                code: couponCode,
+                lead_context: {
+                  subtotal: totalPrice,
+                  service_type_ids: form.selectedServices,
+                  service_items: serviceItemsForCoupon,
+                  customer_phone: form.customerPhone,
+                },
+              }
+            : undefined,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || 'Failed to create booking');
 
-      const { data, error } = await supabase.from('service_leads').insert([payload]).select().single();
-      if (error) throw error;
-
-      Alert.alert('Booking created', `Lead: ${(data as any)?.lead_number || leadNumber}\n\nWe will contact you shortly.`);
+      Alert.alert('Booking created', `Lead: ${json?.lead?.lead_number || leadNumber}\n\nWe will contact you shortly.`);
       // Reset to step 0 for now
       setForm((prev) => ({
         ...prev,
@@ -747,6 +841,36 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
                   </TouchableOpacity>
                 ))}
 
+                <View style={styles.couponBox}>
+                  <Text style={styles.label}>Apply Coupon</Text>
+                  <View style={styles.couponRow}>
+                    <TextInput
+                      value={couponCode}
+                      onChangeText={(t) => setCouponCode(t.toUpperCase())}
+                      style={[styles.input, styles.couponInput]}
+                      placeholder="Coupon code"
+                      placeholderTextColor={COLORS.gray[500]}
+                      autoCapitalize="characters"
+                    />
+                    <TouchableOpacity
+                      style={[styles.couponBtn, couponApplying || !couponCode.trim() ? styles.couponBtnDisabled : null]}
+                      onPress={applyCoupon}
+                      disabled={couponApplying || !couponCode.trim()}
+                    >
+                      <Text style={styles.couponBtnText}>{couponApplying ? 'Applying…' : 'Apply'}</Text>
+                    </TouchableOpacity>
+                    {couponMeta ? (
+                      <TouchableOpacity style={styles.couponRemoveBtn} onPress={clearCoupon}>
+                        <Text style={styles.couponRemoveText}>Remove</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                  {couponError ? <Text style={styles.errorText}>{couponError}</Text> : null}
+                  {couponMeta ? (
+                    <Text style={styles.successText}>Coupon applied: {couponMeta.code}</Text>
+                  ) : null}
+                </View>
+
                 <View style={styles.reviewBox}>
                   <Text style={styles.reviewTitle}>Summary</Text>
                   <Text style={styles.reviewLine}>
@@ -754,6 +878,12 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
                   </Text>
                   <Text style={styles.reviewLine}>{form.selectedServices.length} service(s) selected</Text>
                   <Text style={styles.reviewLine}>Estimated: {totalPrice ? inr(totalPrice) : '—'}</Text>
+                  {couponMeta ? (
+                    <>
+                      <Text style={styles.reviewLine}>Discount: -{inr(couponDiscount || 0)}</Text>
+                      <Text style={styles.reviewLine}>Payable: {inr(couponAdjustedTotal)}</Text>
+                    </>
+                  ) : null}
                 </View>
               </>
             ) : null}
@@ -1060,6 +1190,35 @@ const styles = StyleSheet.create({
   payTitleActive: { color: '#fff' },
   paySub: { marginTop: 2, fontSize: 11, fontWeight: '700', color: COLORS.gray[600] },
   paySubActive: { color: 'rgba(255,255,255,0.8)' },
+  couponBox: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+    backgroundColor: '#fff',
+  },
+  couponRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  couponInput: { flex: 1 },
+  couponBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+  },
+  couponBtnDisabled: { backgroundColor: COLORS.gray[300] },
+  couponBtnText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  couponRemoveBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    backgroundColor: '#fff',
+  },
+  couponRemoveText: { fontSize: 12, fontWeight: '900', color: COLORS.gray[700] },
+  errorText: { marginTop: 6, fontSize: 11, fontWeight: '700', color: '#DC2626' },
+  successText: { marginTop: 6, fontSize: 11, fontWeight: '800', color: '#059669' },
   reviewBox: {
     marginTop: 6,
     padding: 12,

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
@@ -25,7 +25,8 @@ import {
   ClipboardCheck,
   Car,
   MessageSquare,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Ticket
 } from 'lucide-react';
 
 type NavItem = {
@@ -124,6 +125,12 @@ const navigationItems: NavItem[] = [
     description: 'Auto-assignment allocation settings'
   },
   {
+    name: 'Coupons',
+    href: '/dashboard/super_admin/coupons',
+    icon: Ticket,
+    description: 'Create/manage coupons'
+  },
+  {
     name: 'AI Learning Inbox',
     href: '/dashboard/super_admin/kb-questions',
     icon: MessageSquare,
@@ -180,7 +187,7 @@ export default function SuperAdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start expanded by default
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [websiteImagesOpen, setWebsiteImagesOpen] = useState(true);

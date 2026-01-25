@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from('enquiry_hub')
       .select(
-        'id, lead_number, lead_type, lead_status, lead_priority, lead_source, customer_name, customer_phone, assigned_at, next_follow_up_at, total_calls'
+        'id, lead_number, lead_type, lead_status, lead_priority, lead_source, customer_name, customer_phone, assigned_at, next_follow_up_at, total_calls, meta'
       )
       .eq('kind', 'LEAD')
       .eq('assigned_telecaller_id', userProfile?.id)

@@ -5,7 +5,6 @@ import {
   generateInvoiceNumber,
   getHSNCode,
   getPlaceOfSupply,
-  calculateTaxes,
   numberToWords,
   roundOff,
 } from '@/lib/utils/invoiceUtils';
@@ -87,6 +86,8 @@ export async function POST(
         current_role: roleCode
       }, { status: 403 });
     }
+
+    const canOverrideCoupon = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode);
 
     const leadId = params.id;
     
@@ -502,17 +503,50 @@ export async function POST(
     const overrideDiscountAmount = billingPayload?.discount_amount;
     const overrideCouponCode = billingPayload?.coupon_code;
 
+    const leadDiscount = parseFloat(lead.discount_amount || '0') || 0;
+    const leadCoupon = lead.coupon_code || null;
+    const requestedDiscount =
+      typeof overrideDiscountAmount === 'number' ? overrideDiscountAmount : leadDiscount;
+    const requestedCoupon = overrideCouponCode || leadCoupon;
+
+    if (
+      !canOverrideCoupon &&
+      (overrideDiscountAmount !== undefined || overrideCouponCode !== undefined) &&
+      (requestedDiscount !== leadDiscount || requestedCoupon !== leadCoupon)
+    ) {
+      return NextResponse.json(
+        { error: 'Coupon changes are restricted. Please contact a manager.' },
+        { status: 403 }
+      );
+    }
+
     const finalBaseAmount =
       typeof overrideBaseAmount === 'number' && overrideBaseAmount >= 0
         ? overrideBaseAmount
         : computedBaseAmount;
     
-    const discount =
+    let discount =
       typeof overrideDiscountAmount === 'number'
         ? overrideDiscountAmount
         : parseFloat(lead.discount_amount || '0');
 
     const couponCode = overrideCouponCode || lead.coupon_code || null;
+    const couponMeta = (lead as any)?.coupon_meta || null;
+    const freeServiceLabel = couponMeta?.free_service?.matched_label
+      ? String(couponMeta.free_service.matched_label).toLowerCase()
+      : null;
+    let freeServiceDiscount = 0;
+    if (freeServiceLabel && (pricingItems?.length || 0) > 0) {
+      freeServiceDiscount = (pricingItems || []).reduce((sum, item) => {
+        if (String(item.item_name || '').toLowerCase().includes(freeServiceLabel)) {
+          return sum + getEffectivePricingItemAmount(item);
+        }
+        return sum;
+      }, 0);
+    }
+    if (!discount && freeServiceDiscount > 0) {
+      discount = freeServiceDiscount;
+    }
 
     // Calculate subtotal (base amount + parts + extra charges - discount)
     const subtotal = finalBaseAmount + extraChargesTotal + partsTotal - discount;
@@ -546,17 +580,14 @@ export async function POST(
       workshopStateCode
     );
 
-    // Calculate taxes (CGST 9% + SGST 9% or IGST 18%)
-    const { cgstAmount, sgstAmount, igstAmount, totalTax } = calculateTaxes(
-      subtotal,
-      useIGST,
-      9, // CGST 9%
-      9, // SGST 9%
-      18 // IGST 18%
-    );
+    // GST-inclusive totals: do not add tax on top
+    const cgstAmount = 0;
+    const sgstAmount = 0;
+    const igstAmount = 0;
+    const totalTax = 0;
 
     // Calculate final amount
-    const finalAmountBeforeRound = subtotal + totalTax;
+    const finalAmountBeforeRound = subtotal;
     const finalAmount = roundOff(finalAmountBeforeRound);
     const roundOffAmount = finalAmount - finalAmountBeforeRound;
     
@@ -580,13 +611,22 @@ export async function POST(
       const hsnCode = getHSNCode(item.item_name, true);
       const qty = getEffectiveQty(item, 1);
       const amt = getEffectivePricingItemAmount(item);
+      let adjustedAmount = amt;
+      let isFreeService = false;
+      if (freeServiceLabel && String(item.item_name || '').toLowerCase().includes(freeServiceLabel)) {
+        adjustedAmount = 0;
+        isFreeService = true;
+        freeServiceDiscount += amt;
+      }
       lineItems.push({
         description: item.item_name,
         hsn_sac: hsnCode,
         qty,
-        rate: qty ? amt / qty : amt,
-        amount: amt,
+        rate: qty ? adjustedAmount / qty : adjustedAmount,
+        amount: adjustedAmount,
         is_addon: item.is_addon || false,
+        free_service: isFreeService || undefined,
+        original_amount: isFreeService ? amt : undefined,
       });
       if (!hsnSacCodes.includes(hsnCode)) {
         hsnSacCodes.push(hsnCode);
@@ -672,16 +712,17 @@ export async function POST(
         coupon_code: couponCode,
         discount_percentage: discount > 0 ? (discount / subtotal) * 100 : 0,
         discount_amount: discount,
+        coupon_meta: couponMeta,
         
         // Round off
         round_off_amount: roundOffAmount,
         
         // Taxes
-        cgst_percentage: useIGST ? 0 : 9,
+        cgst_percentage: 0,
         cgst_amount: cgstAmount,
-        sgst_percentage: useIGST ? 0 : 9,
+        sgst_percentage: 0,
         sgst_amount: sgstAmount,
-        igst_percentage: useIGST ? 18 : 0,
+        igst_percentage: 0,
         igst_amount: igstAmount,
         total_tax: totalTax,
         
@@ -736,6 +777,20 @@ export async function POST(
         error: 'Failed to generate invoice',
         details: invoiceError.message 
       }, { status: 500 });
+    }
+
+    // Best-effort: link coupon redemption rows to this invoice
+    try {
+      const couponId = couponMeta?.coupon_id || null;
+      let q = supabase
+        .from('coupon_redemptions')
+        .update({ invoice_id: invoice.id })
+        .eq('service_lead_id', leadId)
+        .is('invoice_id', null);
+      if (couponId) q = q.eq('coupon_id', couponId);
+      await q;
+    } catch {
+      // ignore
     }
 
     // Record billing finalization checklist snapshot (optional)

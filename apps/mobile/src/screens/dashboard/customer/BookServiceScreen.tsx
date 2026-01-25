@@ -6,9 +6,9 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
+import { ENV } from '../../../config/environment';
 
 export default function BookServiceScreen({ navigation }: any) {
   const { userProfile } = useAuth();
@@ -17,17 +17,97 @@ export default function BookServiceScreen({ navigation }: any) {
     vehicle_number: '', vehicle_model: '', service_type: '', description: '',
     name: userProfile?.full_name || '', phone: userProfile?.phone || '', address: ''
   });
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponMeta, setCouponMeta] = useState<any | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponApplying, setCouponApplying] = useState(false);
+
+  const applyCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code) {
+      setCouponError('Please enter a coupon code.');
+      return;
+    }
+    setCouponApplying(true);
+    setCouponError(null);
+    try {
+      const response = await fetch(`${ENV.API_URL}/api/coupons/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          lead_context: {
+            subtotal: 0,
+            service_type_ids: [],
+            service_items: [],
+            customer_phone: formData.phone,
+          },
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json?.valid) {
+        throw new Error(json?.error || 'Coupon validation failed.');
+      }
+      setCouponMeta(json.coupon_meta || null);
+      setCouponDiscount(Number(json.discount_amount || 0));
+      setCouponError(null);
+      Alert.alert('Coupon applied', `Code: ${json?.coupon?.code || code}`);
+    } catch (error: any) {
+      setCouponMeta(null);
+      setCouponDiscount(0);
+      setCouponError(error?.message || 'Invalid coupon.');
+    } finally {
+      setCouponApplying(false);
+    }
+  };
+
+  const clearCoupon = () => {
+    setCouponCode('');
+    setCouponMeta(null);
+    setCouponDiscount(0);
+    setCouponError(null);
+  };
 
   const handleSubmit = async () => {
     try {
-      const { error } = await supabase.from('leads').insert({
-        customer_id: userProfile?.id, vehicle_number: formData.vehicle_number,
-        vehicle_model: formData.vehicle_model, service_type: formData.service_type,
-        description: formData.description, customer_name: formData.name,
-        customer_phone: formData.phone, pickup_address: formData.address,
-        status: 'NEW', lead_source: 'MOBILE_APP'
+      const response = await fetch(`${ENV.API_URL}/api/public/bookings/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead: {
+            lead_number: `L-${Date.now().toString().slice(-8)}`,
+            created_from: 'MOBILE_APP',
+            status: 'NEW',
+            lead_type: 'CAR_SERVICE',
+            lead_source: 'App Booking',
+            customer_name: formData.name,
+            customer_phone: formData.phone,
+            customer_address: formData.address,
+            vehicle_number: formData.vehicle_number,
+            vehicle_model: formData.vehicle_model,
+            service_type: formData.service_type,
+            problem_description: formData.description,
+            pickup_required: true,
+            pickup_address: formData.address,
+            lead_priority: 'NORMAL',
+          },
+          coupon: couponMeta
+            ? {
+                code: couponCode,
+                lead_context: {
+                  subtotal: 0,
+                  service_type_ids: [],
+                  service_items: [],
+                  customer_phone: formData.phone,
+                },
+              }
+            : undefined,
+        }),
       });
-      if (error) throw error;
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || 'Failed to create booking');
+
       Alert.alert('Success', 'Service booking created!');
       navigation?.goBack?.();
     } catch (error: any) {
@@ -60,6 +140,17 @@ export default function BookServiceScreen({ navigation }: any) {
           <Text style={styles.stepTitle}>Service Details</Text>
           <TextInput style={styles.input} placeholder="Service Type" value={formData.service_type} onChangeText={text => setFormData({ ...formData, service_type: text })} />
           <TextInput style={styles.input} placeholder="Description" value={formData.description} onChangeText={text => setFormData({ ...formData, description: text })} multiline />
+          <TextInput style={styles.input} placeholder="Coupon Code (optional)" value={couponCode} onChangeText={text => setCouponCode(text.toUpperCase())} />
+          <TouchableOpacity style={styles.btn} onPress={applyCoupon} disabled={couponApplying || !couponCode.trim()}>
+            <Text style={styles.btnText}>{couponApplying ? 'Applying...' : 'Apply Coupon'}</Text>
+          </TouchableOpacity>
+          {couponMeta ? (
+            <TouchableOpacity style={styles.btnOutline} onPress={clearCoupon}>
+              <Text style={styles.btnOutlineText}>Remove Coupon</Text>
+            </TouchableOpacity>
+          ) : null}
+          {couponError ? <Text style={styles.errorText}>{couponError}</Text> : null}
+          {couponMeta ? <Text style={styles.successText}>Coupon applied: {couponMeta.code}</Text> : null}
           <TouchableOpacity style={styles.btn} onPress={() => setStep(3)}><Text style={styles.btnText}>Next</Text></TouchableOpacity>
         </View>
       )}
@@ -90,5 +181,9 @@ const styles = StyleSheet.create({
   btn: { backgroundColor: COLORS.primary, padding: SPACING.md, borderRadius: SIZES.sm, alignItems: 'center', marginTop: SPACING.md },
   btnSuccess: { backgroundColor: COLORS.success, padding: SPACING.md, borderRadius: SIZES.sm, alignItems: 'center', marginTop: SPACING.md },
   btnText: { color: COLORS.white, fontSize: SIZES.md, fontWeight: '600' },
+  btnOutline: { borderWidth: 1, borderColor: COLORS.gray[300], padding: SPACING.md, borderRadius: SIZES.sm, alignItems: 'center', marginTop: SPACING.sm },
+  btnOutlineText: { color: COLORS.gray[700], fontSize: SIZES.md, fontWeight: '600' },
+  errorText: { color: '#DC2626', fontSize: SIZES.sm, marginTop: SPACING.sm },
+  successText: { color: '#059669', fontSize: SIZES.sm, marginTop: SPACING.sm },
 });
 

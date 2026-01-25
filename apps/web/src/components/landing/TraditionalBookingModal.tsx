@@ -32,6 +32,13 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
     selectedServices: []
   });
 
+  // Coupon State
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponMeta, setCouponMeta] = useState<any | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+
   // Location State
   const [cities, setCities] = useState<any[]>([]);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
@@ -527,6 +534,52 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
     }, 300);
   };
 
+  const applyCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code) {
+      setCouponError('Please enter a coupon code.');
+      return;
+    }
+    setIsValidatingCoupon(true);
+    setCouponError(null);
+    try {
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          lead_context: {
+            subtotal: totalPrice,
+            service_type_ids: formData.selectedServices,
+            service_items: serviceItemsForCoupon,
+            customer_phone: formData.customerPhone,
+          },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.valid) {
+        throw new Error(json?.error || 'Coupon validation failed.');
+      }
+      setCouponMeta(json.coupon_meta || null);
+      setCouponDiscount(Number(json.discount_amount || 0));
+      setCouponError(null);
+      toast.success('Coupon applied.');
+    } catch (error: any) {
+      setCouponMeta(null);
+      setCouponDiscount(0);
+      setCouponError(error?.message || 'Invalid coupon.');
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const clearCoupon = () => {
+    setCouponCode('');
+    setCouponMeta(null);
+    setCouponDiscount(0);
+    setCouponError(null);
+  };
+
   const handleSubmit = async () => {
     if (!formData.city || !formData.carModel || !formData.customerName || !formData.customerPhone) {
       toast.error('Please complete all required fields');
@@ -536,31 +589,49 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
     setIsSubmitting(true);
     
     try {
-      const supabase = createClient();
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
 
-      const { data: lead, error: leadError } = await supabase
-        .from('service_leads')
-        .insert([{
-          lead_number: leadNumber,
-          created_from: 'WEB',
-          status: 'NEW',
-          customer_name: formData.customerName,
-          customer_phone: formData.customerPhone,
-          vehicle_number: formData.vehicleNumber || null,
-          city: formData.city.name,
-          city_id: formData.city.id,
-          vehicle_make: formData.carModel.make,
-          model_id: formData.carModel.id,
-          vehicle_model: formData.carModel.model_name,
-          vehicle_variant: formData.carModel.variant || null,
-          lead_priority: 'NORMAL',
-          created_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-
-      if (leadError) throw leadError;
+      const response = await fetch('/api/public/bookings/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead: {
+            lead_number: leadNumber,
+            created_from: 'WEB',
+            status: 'NEW',
+            lead_type: 'CAR_SERVICE',
+            lead_source: 'Website',
+            customer_name: formData.customerName,
+            customer_phone: formData.customerPhone,
+            vehicle_number: formData.vehicleNumber || null,
+            city: formData.city.name,
+            city_id: formData.city.id,
+            vehicle_make: formData.carModel.make,
+            model_id: formData.carModel.id,
+            vehicle_model: formData.carModel.model_name,
+            vehicle_variant: formData.carModel.variant || null,
+            lead_priority: 'NORMAL',
+            estimated_amount: totalPrice > 0 ? totalPrice : null,
+            created_at: new Date().toISOString(),
+          },
+          coupon: couponMeta
+            ? {
+                code: couponCode,
+                lead_context: {
+                  subtotal: totalPrice,
+                  service_type_ids: formData.selectedServices,
+                  service_items: serviceItemsForCoupon,
+                  customer_phone: formData.customerPhone,
+                },
+              }
+            : undefined,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json?.error || 'Failed to create booking');
+      }
+      const lead = json?.lead;
 
       setTimeout(() => {
         setIsSubmitting(false);
@@ -590,6 +661,25 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
   const totalPrice = formData.selectedServices.reduce((sum, serviceId) => {
     return sum + (servicePricing[serviceId] || 0);
   }, 0);
+
+  const serviceItemsForCoupon = formData.selectedServices.map((serviceId) => {
+    const service = serviceTypes.find((s: any) => s.id === serviceId);
+    return {
+      service_type_id: serviceId,
+      label: service?.name || null,
+      price: servicePricing[serviceId] || 0,
+    };
+  });
+
+  const couponAdjustedTotal = Math.max(totalPrice - (couponDiscount || 0), 0);
+
+  useEffect(() => {
+    if (couponMeta && formData.selectedServices.length > 0) {
+      setCouponMeta(null);
+      setCouponDiscount(0);
+      setCouponError('Coupon cleared. Please re-apply after changing services.');
+    }
+  }, [formData.selectedServices, couponMeta]);
 
   const handleServiceToggle = (serviceId: string) => {
     setFormData(prev => {
@@ -1002,7 +1092,7 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
                             <div>
                               <p className="text-sm text-gray-600">Total Price</p>
                               <p className="text-3xl font-bold text-green-700">
-                                ₹{totalPrice.toLocaleString('en-IN')}
+                                ₹{couponAdjustedTotal.toLocaleString('en-IN')}
                               </p>
                             </div>
                           </div>
@@ -1015,8 +1105,50 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
                             </p>
                           </div>
                         </div>
+                        {couponMeta && (
+                          <div className="mt-3 text-xs text-green-700">
+                            Coupon {couponMeta.code} applied — discount ₹{Number(couponDiscount || 0).toLocaleString('en-IN')}
+                          </div>
+                        )}
                       </div>
                     )}
+
+                    {/* Coupon */}
+                    <div className="mt-4 p-4 border rounded-xl bg-white">
+                      <div className="text-sm font-semibold text-gray-900 mb-2">Apply Coupon</div>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          placeholder="Enter coupon code"
+                          className="flex-1 px-3 py-2 border rounded-lg text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={applyCoupon}
+                          disabled={isValidatingCoupon || !couponCode.trim()}
+                          className="px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-semibold disabled:opacity-60"
+                        >
+                          {isValidatingCoupon ? 'Applying...' : 'Apply'}
+                        </button>
+                        {couponMeta && (
+                          <button
+                            type="button"
+                            onClick={clearCoupon}
+                            className="px-3 py-2 rounded-lg border text-sm font-semibold"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      {couponError && <div className="text-xs text-red-600 mt-2">{couponError}</div>}
+                      {couponMeta && (
+                        <div className="text-xs text-green-700 mt-2">
+                          Coupon applied: <strong>{couponMeta.code}</strong>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </div>

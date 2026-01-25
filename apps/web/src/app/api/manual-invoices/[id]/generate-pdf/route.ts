@@ -58,6 +58,11 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
   const customerCity = invoice.customer_city || '';
   const customerState = invoice.customer_state || '';
   const customerPincode = invoice.customer_pincode || '';
+  const customerGstin = invoice.customer_gstin || '';
+  const customerTaxType = invoice.customer_tax_type || '';
+  const placeOfSupply = invoice.place_of_supply || '';
+  const carNumber = invoice.car_number || '';
+  const carModel = invoice.car_model || '';
 
   const rows = lineItems
     .map((item: any, idx: number) => {
@@ -76,6 +81,7 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
             <div class="item-name">${item.item_name || ''}</div>
             <div class="item-desc">${item.item_description || ''}</div>
           </td>
+          <td class="num">${item.hsn_sac_code || '—'}</td>
           <td class="num">${qty}</td>
           <td class="num">₹${unit.toFixed(2)}</td>
           <td class="num">${taxPercent.toFixed(2)}%</td>
@@ -99,29 +105,32 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
         <meta charset="utf-8" />
         <title>Invoice ${invoice.invoice_number}</title>
         <style>
-          body { font-family: Arial, sans-serif; background: #f4f6fb; color: #111; }
-          .page { max-width: 860px; margin: 24px auto; background: #fff; padding: 28px 32px; border-radius: 12px; box-shadow: 0 8px 24px rgba(16,24,40,0.08); }
-          .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-          .logo-row { display: flex; align-items: center; gap: 12px; }
-          .brand { font-size: 22px; font-weight: 700; color: #0b5ac2; }
+          body { font-family: "Inter", Arial, sans-serif; background: #f4f6fb; color: #101828; }
+          .page { max-width: 900px; margin: 28px auto; background: #fff; padding: 28px 34px; border-radius: 14px; box-shadow: 0 10px 30px rgba(16,24,40,0.12); }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+          .logo-row { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+          .logo { height: 44px; width: auto; display: block; }
           .muted { color: #667085; font-size: 12px; }
-          .chip { display: inline-block; padding: 4px 10px; border-radius: 999px; background: #e8f0ff; color: #1d4ed8; font-size: 12px; font-weight: 600; }
-          .meta { text-align: right; font-size: 12px; }
+          .chip { display: inline-block; padding: 4px 12px; border-radius: 999px; background: #e8f0ff; color: #1d4ed8; font-size: 12px; font-weight: 700; letter-spacing: 0.2px; }
+          .meta { text-align: right; font-size: 12px; line-height: 1.6; }
           .section { margin-top: 18px; }
-          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+          .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; background: #fbfbfd; }
+          .card h4 { margin: 0 0 6px 0; font-size: 12px; color: #475467; font-weight: 700; letter-spacing: 0.2px; }
           table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          th, td { border-bottom: 1px solid #e5e7eb; padding: 10px 8px; font-size: 12px; vertical-align: top; }
-          th { text-align: left; color: #475467; font-weight: 600; background: #f8fafc; }
+          th, td { border-bottom: 1px solid #eaecf0; padding: 10px 8px; font-size: 12px; vertical-align: top; }
+          th { text-align: left; color: #475467; font-weight: 700; background: #f8fafc; }
           .num { text-align: right; white-space: nowrap; }
-          .item-name { font-weight: 600; }
+          .item-name { font-weight: 600; color: #101828; }
           .item-desc { color: #667085; font-size: 11px; margin-top: 2px; }
           .totals { margin-top: 12px; display: flex; justify-content: flex-end; }
           .totals table { width: 320px; border: none; }
           .totals td { border: none; padding: 6px 0; }
           .totals .label { color: #667085; }
-          .totals .grand { font-size: 14px; font-weight: 700; }
+          .totals .grand { font-size: 15px; font-weight: 800; color: #111827; }
           .footer { margin-top: 18px; font-size: 11px; color: #667085; display: flex; justify-content: space-between; }
           .gst { font-size: 11px; color: #475467; margin-top: 4px; }
+          .divider { height: 1px; background: #eaecf0; margin: 14px 0; }
         </style>
       </head>
       <body>
@@ -129,8 +138,7 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
           <div class="header">
             <div>
               <div class="logo-row">
-                <img src="/logo.png" alt="MyFNG" style="height:36px" />
-                <div class="brand">MY FNG</div>
+                <img class="logo" src="/logo.png" alt="MyFNG" />
               </div>
               <div class="muted">${company.name}</div>
               <div class="muted">${company.address}, ${company.city}, ${company.state} ${company.pincode}</div>
@@ -146,15 +154,19 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
           </div>
 
           <div class="section grid">
-            <div>
-              <div class="muted">Bill To</div>
+            <div class="card">
+              <h4>Bill To</h4>
               <div><strong>${invoice.customer_name || ''}</strong></div>
               <div class="muted">${invoice.customer_phone || ''}${invoice.customer_email ? ` | ${invoice.customer_email}` : ''}</div>
               <div class="muted">${customerAddress}</div>
               <div class="muted">${customerCity}${customerState ? `, ${customerState}` : ''} ${customerPincode}</div>
+              ${customerGstin ? `<div class="muted">GSTIN: ${customerGstin}</div>` : ''}
+              ${customerTaxType ? `<div class="muted">Customer Type: ${customerTaxType}</div>` : ''}
+              ${placeOfSupply ? `<div class="muted">Place of Supply: ${placeOfSupply}</div>` : ''}
+              ${(carNumber || carModel) ? `<div class="muted">Vehicle: ${carNumber || '—'}${carModel ? ` | ${carModel}` : ''}</div>` : ''}
             </div>
-            <div>
-              <div class="muted">Payment Received</div>
+            <div class="card">
+              <h4>Payment Received</h4>
               <div><strong>₹${Number(invoice.paid_amount || invoice.total_amount || 0).toFixed(2)}</strong></div>
               <div class="muted">Mode: ${invoice.payment_mode || '—'}</div>
               <div class="muted">Reference: ${invoice.payment_reference || '—'}</div>
@@ -168,6 +180,7 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
                 <tr>
                   <th style="width:40px">#</th>
                   <th>Item</th>
+                  <th class="num" style="width:90px">HSN/SAC</th>
                   <th class="num">Qty</th>
                   <th class="num">Unit Price</th>
                   <th class="num">Tax %</th>

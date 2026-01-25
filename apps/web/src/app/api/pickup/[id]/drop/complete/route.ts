@@ -138,6 +138,28 @@ export async function POST(
       }, { status: 400 });
     }
 
+    // NEW: Require receiver/handover proof photo so we know who received the vehicle.
+    const { count: handoverCount, error: handoverErr } = await supabase
+      .from('vehicle_condition_photos')
+      .select('*', { count: 'exact', head: true })
+      .eq('lead_id', leadId)
+      .eq('photo_type', 'DROP_HANDOVER');
+
+    if (handoverErr) {
+      return NextResponse.json({ error: 'Failed to check handover photo' }, { status: 500 });
+    }
+
+    if ((handoverCount || 0) < 1) {
+      return NextResponse.json(
+        {
+          error: 'Receiver photo (handover proof) required',
+          required_photos: ['DROP_HANDOVER'],
+          hint: 'Upload receiver photo from Delivery Photos screen, then complete delivery',
+        },
+        { status: 400 }
+      );
+    }
+
     // Update drop tracking with all new fields
     const updateData: any = {
       drop_status: 'DELIVERED',

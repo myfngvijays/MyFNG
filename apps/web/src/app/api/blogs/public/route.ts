@@ -49,7 +49,8 @@ export async function GET(request: NextRequest) {
           tag:blog_tags(*)
         )
       `, { count: 'exact' })
-      .eq('status', 'published'); // Only published blogs
+      // Only published blogs (case-insensitive; handles legacy data)
+      .ilike('status', 'published');
 
     // Apply filters
     // Multi-category filtering is applied after fetch using blog_category_mapping.

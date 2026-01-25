@@ -101,8 +101,9 @@ export async function POST(
       metadata: { photo_type: photoType, photo_url: photoUrl },
     });
 
-    // NEW: If this is delivery signature, attach URL to lead.attachments for invoice linking (best-effort)
-    if (String(photoType).toUpperCase() === 'DELIVERY_SIGNATURE') {
+    // Attach select delivery proof URLs to lead.attachments (best-effort)
+    const photoTypeUpper = String(photoType).toUpperCase();
+    if (photoTypeUpper === 'DELIVERY_SIGNATURE' || photoTypeUpper === 'DROP_HANDOVER') {
       try {
         const { data: leadRow } = await supabase
           .from('service_leads')
@@ -110,14 +111,25 @@ export async function POST(
           .eq('id', leadId)
           .maybeSingle();
         const existing = (leadRow as any)?.attachments || {};
+
+        const nextAttachments: any = {
+          ...(typeof existing === 'object' && existing ? existing : {}),
+        };
+
+        if (photoTypeUpper === 'DELIVERY_SIGNATURE') {
+          nextAttachments.delivery_signature_url = photoUrl;
+          nextAttachments.delivery_signature_at = new Date().toISOString();
+        }
+
+        if (photoTypeUpper === 'DROP_HANDOVER') {
+          nextAttachments.delivery_handover_photo_url = photoUrl;
+          nextAttachments.delivery_handover_photo_at = new Date().toISOString();
+        }
+
         await supabase
           .from('service_leads')
           .update({
-            attachments: {
-              ...(typeof existing === 'object' && existing ? existing : {}),
-              delivery_signature_url: photoUrl,
-              delivery_signature_at: new Date().toISOString(),
-            },
+            attachments: nextAttachments,
           })
           .eq('id', leadId);
       } catch {

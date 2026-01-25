@@ -33,6 +33,7 @@ export default function GenerateInvoicePage() {
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [roleCode, setRoleCode] = useState<string | null>(null);
 
   const [baseAmount, setBaseAmount] = useState(0);
   const [extraCharges, setExtraCharges] = useState<InvoiceItem[]>([]);
@@ -58,6 +59,21 @@ export default function GenerateInvoicePage() {
     setLoading(true);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const email = (user.email || '').trim();
+        const phone = (user.phone || '').trim();
+        const selectProfile = 'id, email, phone, roles!role_id(role_code)';
+        const { data: byEmail } = email
+          ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+          : { data: null };
+        const { data: byPhone } = !byEmail && phone
+          ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+          : { data: null };
+        const profile = byEmail || byPhone;
+        setRoleCode((profile?.roles as any)?.role_code || null);
+      }
+
       const { data: leadData, error: leadError } = await supabase
         .from('service_leads')
         .select('*')
@@ -72,6 +88,10 @@ export default function GenerateInvoicePage() {
 
       setLead(leadData);
       setBaseAmount(leadData.estimated_cost || 0);
+      if (leadData?.coupon_code || Number(leadData?.discount_amount || 0) > 0) {
+        setDiscountType('fixed');
+        setDiscountValue(Number(leadData?.discount_amount || 0));
+      }
 
       // Fetch approved extra charges
       const { data: extraChargesData } = await supabase
@@ -186,6 +206,10 @@ export default function GenerateInvoicePage() {
     );
   }
 
+  const canEditCoupon =
+    !!roleCode && ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode);
+  const couponLocked = Boolean(lead?.coupon_code) && !canEditCoupon;
+
   const totals = calculateTotals();
 
   return (
@@ -295,10 +319,24 @@ export default function GenerateInvoicePage() {
                 <Percent className="w-5 h-5 text-orange-600" />
                 Discount (Optional)
               </h3>
+              {lead?.coupon_code && (
+                <div className="text-sm text-gray-600 mb-3">
+                  Coupon applied: <strong>{lead.coupon_code}</strong>
+                  {lead?.coupon_meta?.free_service?.matched_label
+                    ? ` • Free Service: ${lead.coupon_meta.free_service.matched_label}`
+                    : ''}
+                </div>
+              )}
+              {couponLocked && (
+                <div className="text-xs text-orange-600 mb-3">
+                  Coupon discounts are locked for billing users. Contact a manager to modify.
+                </div>
+              )}
               <div className="space-y-4">
                 <div className="flex gap-2">
                   <button
                     onClick={() => setDiscountType('percentage')}
+                    disabled={couponLocked}
                     className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
                       discountType === 'percentage'
                         ? 'bg-brand-primary text-white'
@@ -309,6 +347,7 @@ export default function GenerateInvoicePage() {
                   </button>
                   <button
                     onClick={() => setDiscountType('fixed')}
+                    disabled={couponLocked}
                     className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
                       discountType === 'fixed'
                         ? 'bg-brand-primary text-white'
@@ -323,6 +362,7 @@ export default function GenerateInvoicePage() {
                   value={discountValue}
                   onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
                   className="input w-full"
+                  disabled={couponLocked}
                   min="0"
                   step="0.01"
                   placeholder={discountType === 'percentage' ? '0%' : '₹0.00'}
@@ -397,6 +437,13 @@ export default function GenerateInvoicePage() {
                   <span className="font-medium">Subtotal:</span>
                   <span className="font-bold">₹{totals.subtotal.toFixed(2)}</span>
                 </div>
+
+                {lead?.coupon_code && (
+                  <div className="flex justify-between pb-2">
+                    <span className="text-gray-600">Coupon Applied:</span>
+                    <span className="font-semibold">{lead.coupon_code}</span>
+                  </div>
+                )}
 
                 {discountValue > 0 && (
                   <div className="flex justify-between pb-2">

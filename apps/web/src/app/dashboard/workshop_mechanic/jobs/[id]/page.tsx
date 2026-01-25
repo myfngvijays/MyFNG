@@ -101,6 +101,8 @@ export default function MechanicJobDetailPage() {
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [parts, setParts] = useState<PartsItem[]>([]);
   const [extraWorkRequests, setExtraWorkRequests] = useState<any[]>([]);
+  const [extraWorkCompletionRemarkById, setExtraWorkCompletionRemarkById] = useState<Record<string, string>>({});
+  const [completingExtraWorkById, setCompletingExtraWorkById] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -1004,6 +1006,31 @@ export default function MechanicJobDetailPage() {
     }
   }
 
+  async function markExtraWorkCompleted(extraWorkId: string) {
+    if (!leadId) return;
+    const remark = String(extraWorkCompletionRemarkById[extraWorkId] || '').trim();
+    try {
+      setCompletingExtraWorkById((p) => ({ ...p, [extraWorkId]: true }));
+      const res = await fetch(`/api/mechanic/jobs/${leadId}/extra-work/${extraWorkId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remark }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(String(data?.error || data?.details || 'Failed to mark completed'));
+        return;
+      }
+
+      // Refresh list (silent)
+      await fetchJobDetails({ silent: true });
+    } catch (e: any) {
+      alert(e?.message || 'Failed to mark completed');
+    } finally {
+      setCompletingExtraWorkById((p) => ({ ...p, [extraWorkId]: false }));
+    }
+  }
+
   async function updateChecklistItem(itemId: string, status: string, notes: string = '', remark: string = '') {
     try {
       // Call API to update checklist item (it will handle completion calculation)
@@ -1055,15 +1082,18 @@ export default function MechanicJobDetailPage() {
     try {
       for (const file of Array.from(files)) {
         // Validate file
-        if (file.size > 10 * 1024 * 1024) {
-          alert(`File ${file.name} is too large. Maximum size is 10MB.`);
+        const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB (videos can be large)
+        if (file.size > MAX_FILE_SIZE) {
+          const mb = (file.size / (1024 * 1024)).toFixed(2);
+          alert(`File ${file.name} is too large (${mb}MB). Maximum size is 100MB.`);
           continue;
         }
 
         // Upload to storage
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${leadId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const filePath = `mechanic_media/${fileName}`;
+        const fileExt = file.name.split('.').pop() || (file.type.startsWith('image') ? 'jpg' : 'mp4');
+        const safeCategory = String(selectedCategory || 'OTHER').replace(/[^A-Z0-9_]+/gi, '_');
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `mechanic_media/${leadId}/${safeCategory}/${fileName}`;
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('service-media')
@@ -1110,6 +1140,8 @@ export default function MechanicJobDetailPage() {
       alert('Error uploading media. Please try again.');
     } finally {
       setUploadingMedia(false);
+      // allow re-selecting same file(s)
+      event.target.value = '';
     }
   }
 
@@ -1420,7 +1452,7 @@ export default function MechanicJobDetailPage() {
                 <button 
                   onClick={() => {
                     if (!job.checklist_completed) {
-                      alert('Please complete all checklist items before marking job as complete.');
+                      alert('Please complete all PDI checklist items before marking job as complete.');
                       setActiveTab('checklist');
                     } else if (job.after_images_count < job.min_after_images) {
                       alert(`Please upload all required after service photos (${job.min_after_images} required, ${job.after_images_count} uploaded). Go to Manage tab to upload photos.`);
@@ -1441,7 +1473,7 @@ export default function MechanicJobDetailPage() {
                   <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span className="hidden sm:inline">
                     {!job.checklist_completed 
-                      ? 'Complete Checklist First'
+                      ? 'Complete PDI Checklist First'
                       : job.after_images_count < job.min_after_images
                       ? `Complete (${job.after_images_count}/${job.min_after_images} photos)`
                       : 'Mark Completed'}
@@ -1485,7 +1517,7 @@ export default function MechanicJobDetailPage() {
           <div className="flex gap-2 sm:gap-3 md:gap-4 min-w-max">
             {([
               { key: 'overview', label: 'Overview' },
-              { key: 'checklist', label: 'Checklist' },
+              { key: 'checklist', label: 'PDI Checklist' },
               { key: 'media', label: 'Media' },
               { key: 'parts', label: 'Parts' },
               { key: 'notes', label: 'Notes' },
@@ -1646,7 +1678,7 @@ export default function MechanicJobDetailPage() {
                     : 'bg-purple-50 border-purple-300'
                 }`}>
                   <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 mx-auto mb-1.5 sm:mb-2 text-purple-600" />
-                  <p className="text-xs sm:text-sm text-gray-600">Checklist</p>
+                  <p className="text-xs sm:text-sm text-gray-600">PDI Checklist</p>
                   <p className={`text-xl sm:text-2xl font-bold ${
                     job.checklist_completed ? 'text-green-700' : 'text-red-700'
                   }`}>
@@ -1737,9 +1769,9 @@ export default function MechanicJobDetailPage() {
                             <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-xs sm:text-sm flex-shrink-0 mt-0.5">1</span>
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-800 text-xs sm:text-sm">Complete Service Checklist</p>
+                            <p className="font-semibold text-gray-800 text-xs sm:text-sm">Complete PDI Checklist</p>
                             <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
-                              All checklist items must be marked as completed
+                              All PDI checklist items must be marked as completed
                             </p>
                           </div>
                         </div>
@@ -1748,7 +1780,7 @@ export default function MechanicJobDetailPage() {
                             onClick={() => setActiveTab('checklist')}
                             className="btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 cursor-pointer w-full sm:w-auto"
                           >
-                            View Checklist
+                            View PDI Checklist
                           </button>
                         )}
                       </div>
@@ -1799,13 +1831,13 @@ export default function MechanicJobDetailPage() {
         {activeTab === 'checklist' && (
           <div className="card p-3 sm:p-4 md:p-5">
             <div className="flex items-center justify-between mb-3 sm:mb-4">
-              <h2 className="text-lg sm:text-xl font-bold">Service Checklist</h2>
+              <h2 className="text-lg sm:text-xl font-bold">PDI Checklist</h2>
             </div>
             
             {checklist.length === 0 ? (
               <div className="text-center py-6 sm:py-8 text-gray-500">
-                <p className="mb-2 sm:mb-4 text-xs sm:text-sm">No checklist available for this job.</p>
-                <p className="text-xs sm:text-sm">Checklist will be automatically generated when a mechanic is assigned.</p>
+                <p className="mb-2 sm:mb-4 text-xs sm:text-sm">No PDI checklist available for this job.</p>
+                <p className="text-xs sm:text-sm">PDI Checklist will be automatically generated when a mechanic is assigned.</p>
               </div>
             ) : (
               /* Group by category if categories exist */
@@ -2317,6 +2349,8 @@ export default function MechanicJobDetailPage() {
                       className="input w-full text-xs sm:text-sm"
                     >
                       <option value="PROGRESS">Work in Progress</option>
+                      <option value="CAR_SCANNING_BEFORE">Car Scanning (Before)</option>
+                      <option value="CAR_SCANNING_AFTER">Car Scanning (After)</option>
                       <option value="AFTER">After Service</option>
                       <option value="PARTS_USED">Parts Used</option>
                     </select>
@@ -2337,6 +2371,60 @@ export default function MechanicJobDetailPage() {
                         fetchJobDetails();
                       }}
                     />
+                  </div>
+                )}
+
+                {/* CAR SCANNING BEFORE Category */}
+                {selectedCategory === 'CAR_SCANNING_BEFORE' && (
+                  <div className="card border-2 border-sky-300 p-3 sm:p-4 md:p-5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                      <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-sky-700 flex-shrink-0" />
+                      Car Scanning (Before)
+                    </h2>
+                    <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
+                      Upload multiple car scanning photos/videos taken before service.
+                    </p>
+                    <div>
+                      <label className="btn btn-primary cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+                        <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
+                        {uploadingMedia ? 'Uploading...' : 'Upload Scanning Photos (Before)'}
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,video/*"
+                          onChange={handleMediaUpload}
+                          disabled={uploadingMedia}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* CAR SCANNING AFTER Category */}
+                {selectedCategory === 'CAR_SCANNING_AFTER' && (
+                  <div className="card border-2 border-teal-300 p-3 sm:p-4 md:p-5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                      <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-teal-700 flex-shrink-0" />
+                      Car Scanning (After)
+                    </h2>
+                    <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
+                      Upload multiple car scanning photos/videos taken after service completion.
+                    </p>
+                    <div>
+                      <label className="btn btn-primary cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+                        <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
+                        {uploadingMedia ? 'Uploading...' : 'Upload Scanning Photos (After)'}
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,video/*"
+                          onChange={handleMediaUpload}
+                          disabled={uploadingMedia}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
                   </div>
                 )}
 
@@ -2893,6 +2981,9 @@ export default function MechanicJobDetailPage() {
                       <th className="text-left py-2 px-3 whitespace-nowrap">Priority</th>
                       <th className="text-left py-2 px-3">Note</th>
                       <th className="text-left py-2 px-3 whitespace-nowrap">Status</th>
+                      <th className="text-left py-2 px-3 whitespace-nowrap">Done</th>
+                      <th className="text-left py-2 px-3 whitespace-nowrap">Completion Remark</th>
+                      <th className="text-left py-2 px-3 whitespace-nowrap">Completed</th>
                       <th className="text-left py-2 px-3 whitespace-nowrap">Requested</th>
                     </tr>
                   </thead>
@@ -2900,15 +2991,19 @@ export default function MechanicJobDetailPage() {
                     {extraWorkRequests.map((request: any) => {
                       const status = String(request.status || 'PENDING').toUpperCase();
                       const byCustomer = Boolean(request.customer_approved_at);
+                      const customerApproved = Boolean(request.customer_approved);
+                      const isOverrideApproved = status === 'APPROVED' && byCustomer && !customerApproved;
                       const decisionLabel =
                         status === 'REJECTED'
                           ? byCustomer
                             ? 'REJECTED • Customer'
                             : 'REJECTED • Advisor'
                           : status === 'APPROVED'
-                            ? byCustomer
+                            ? customerApproved && byCustomer
                               ? `APPROVED • Customer (${String(request.part_price_type || 'OEM').toUpperCase()})`
-                              : 'APPROVED • Advisor'
+                              : isOverrideApproved
+                                ? `APPROVED • Override (${String(request.part_price_type || 'OEM').toUpperCase()})`
+                                : 'APPROVED • Advisor'
                             : 'PENDING';
 
                       const priority = request.is_urgent ? 'HIGH' : 'MEDIUM';
@@ -2917,6 +3012,14 @@ export default function MechanicJobDetailPage() {
                         (status === 'REJECTED' && byCustomer
                           ? `Customer: ${request.rejection_reason || ''}`
                           : request.rejection_reason);
+
+                      const isApproved = status === 'APPROVED';
+                      const isWorkCompleted = Boolean(request.work_completed || request.work_completed_at);
+                      const busy = Boolean(completingExtraWorkById[request.id]);
+                      const completionRemark =
+                        extraWorkCompletionRemarkById[request.id] !== undefined
+                          ? extraWorkCompletionRemarkById[request.id]
+                          : String(request.work_completion_remark || '');
 
                       return (
                         <tr
@@ -2955,7 +3058,9 @@ export default function MechanicJobDetailPage() {
                             <span
                               className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${
                                 status === 'APPROVED'
-                                  ? 'bg-green-100 text-green-800'
+                                  ? isOverrideApproved
+                                    ? 'bg-orange-100 text-orange-800'
+                                    : 'bg-green-100 text-green-800'
                                   : status === 'REJECTED'
                                     ? 'bg-red-100 text-red-800'
                                     : 'bg-yellow-100 text-yellow-800'
@@ -2963,6 +3068,44 @@ export default function MechanicJobDetailPage() {
                             >
                               {decisionLabel}
                             </span>
+                          </td>
+                          <td className="py-3 px-3 align-top whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4"
+                              checked={isWorkCompleted}
+                              disabled={!isApproved || isWorkCompleted || busy}
+                              onChange={(e) => {
+                                if (e.target.checked) markExtraWorkCompleted(request.id);
+                              }}
+                              title={
+                                !isApproved
+                                  ? 'Can be completed after approval'
+                                  : isWorkCompleted
+                                    ? 'Already completed'
+                                    : 'Mark this additional job as completed'
+                              }
+                            />
+                          </td>
+                          <td className="py-3 px-3 align-top min-w-[260px]">
+                            <input
+                              type="text"
+                              className="input w-full text-xs sm:text-sm"
+                              value={completionRemark}
+                              disabled={!isApproved || isWorkCompleted || busy}
+                              onChange={(e) =>
+                                setExtraWorkCompletionRemarkById((p) => ({ ...p, [request.id]: e.target.value }))
+                              }
+                              placeholder="Optional remark (e.g. done / replaced / checked)"
+                            />
+                            {isWorkCompleted && String(request.work_completion_remark || '').trim() ? (
+                              <div className="mt-1 text-[10px] sm:text-xs text-gray-600">
+                                Saved: {String(request.work_completion_remark)}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="py-3 px-3 align-top whitespace-nowrap text-xs text-gray-600">
+                            {isWorkCompleted && request.work_completed_at ? formatDateTime(request.work_completed_at) : '—'}
                           </td>
                           <td className="py-3 px-3 align-top whitespace-nowrap text-xs text-gray-600">
                             {formatDateTime(request.created_at)}

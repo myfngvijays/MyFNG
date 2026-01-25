@@ -7,9 +7,9 @@ import { formatDateDMY, formatDateTime } from "@/lib/utils";
  * Task: WA-702
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import React from 'react';
-import { FileText, Download, Printer, Send, CheckCircle, Clock, RefreshCw, CreditCard, DollarSign } from 'lucide-react';
+import { FileText, Download, Printer, Send, CheckCircle, Clock, RefreshCw, CreditCard, DollarSign, User, Car } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 interface InvoiceSectionProps {
@@ -83,20 +83,192 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const [loading, setLoading] = useState(false);
   const [includedByServiceTypeId, setIncludedByServiceTypeId] = useState<Record<string, any[]>>({});
   const [includedByServiceNameKey, setIncludedByServiceNameKey] = useState<Record<string, any[]>>({});
+  const [servicePriceByTypeId, setServicePriceByTypeId] = useState<Record<string, number>>({});
+  const [servicePriceByNameKey, setServicePriceByNameKey] = useState<Record<string, number>>({});
   const [editingIncludedFor, setEditingIncludedFor] = useState<string | null>(null);
   const [includedRateDraft, setIncludedRateDraft] = useState<Record<string, string>>({});
+  const [includedQtyDraft, setIncludedQtyDraft] = useState<Record<string, string>>({});
+  const [includedNameDraft, setIncludedNameDraft] = useState<Record<string, string>>({});
+  const [lineItemDrafts, setLineItemDrafts] = useState<Record<string, { qty?: string; rate?: string }>>({});
+  const [savingLineItems, setSavingLineItems] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [activating, setActivating] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentMode, setPaymentMode] = useState<'CASH' | 'POS' | 'UPI' | 'CARD'>('CASH');
   const [staffName, setStaffName] = useState('');
+  const [workshopStaff, setWorkshopStaff] = useState<Array<{ id: string; full_name: string; role_code?: string | null }>>([]);
   const [paymentRemarks, setPaymentRemarks] = useState('');
   const [paymentRef, setPaymentRef] = useState('');
   const [paying, setPaying] = useState(false);
+  const [workshopInfo, setWorkshopInfo] = useState<any>(null);
+
+  const [nextServiceKm, setNextServiceKm] = useState<string>('');
+  const [nextServiceDate, setNextServiceDate] = useState<string>(''); // YYYY-MM-DD
+  const [savingNextService, setSavingNextService] = useState(false);
+  const [gstEnabled, setGstEnabled] = useState(false);
+  const [customerGstin, setCustomerGstin] = useState('');
+  const [customerLegalName, setCustomerLegalName] = useState('');
+  const [customerBillingAddress, setCustomerBillingAddress] = useState('');
+  const [customerBillingStateCode, setCustomerBillingStateCode] = useState('');
+  const [savingGst, setSavingGst] = useState(false);
+  const autoTiAttemptedRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchInvoice();
   }, [lead.id]);
+
+  useEffect(() => {
+    setLineItemDrafts({});
+    setEditingIncludedFor(null);
+    setIncludedRateDraft({});
+    setIncludedQtyDraft({});
+    setIncludedNameDraft({});
+  }, [invoice?.id]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchWorkshop = async () => {
+      const workshopId = String(lead?.workshop_id || '').trim();
+      if (!workshopId) {
+        if (isMounted) setWorkshopInfo(null);
+        return;
+      }
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('workshops')
+          .select('id, name, workshop_name, address, short_address, city, state, pincode, phone, email, gst_number')
+          .eq('id', workshopId)
+          .maybeSingle();
+        if (isMounted) setWorkshopInfo(data || null);
+      } catch {
+        if (isMounted) setWorkshopInfo(null);
+      }
+    };
+    fetchWorkshop();
+    return () => {
+      isMounted = false;
+    };
+  }, [lead?.workshop_id]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchStaff = async () => {
+      try {
+        const res = await fetch('/api/workshop/staff', { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        if (mounted) setWorkshopStaff(Array.isArray(data?.staff) ? data.staff : []);
+      } catch {
+        // ignore
+      }
+    };
+    fetchStaff();
+    return () => {
+      mounted = false;
+    };
+  }, [lead?.workshop_id]);
+
+  const computeNextServiceDefaults = useMemo(() => {
+    const odoRaw =
+      (lead as any)?.vehicle_odometer ??
+      (lead as any)?.vehicle_odometer_reading ??
+      (lead as any)?.odometer_km ??
+      null;
+    const odo = odoRaw == null || odoRaw === '' ? null : Number(odoRaw);
+    const baseOdo = Number.isFinite(odo as any) ? (odo as number) : null;
+
+    const leadKm = (lead as any)?.next_service_km;
+    const km =
+      leadKm != null && leadKm !== ''
+        ? Number(leadKm)
+        : baseOdo != null
+          ? baseOdo + 10000
+          : null;
+
+    const leadDateRaw = String((lead as any)?.next_service_date || '').trim();
+    const daily = Number((lead as any)?.daily_running_km || 0) || 0;
+    let dt = leadDateRaw;
+    if (!dt && daily > 0) {
+      const days = Math.max(1, Math.ceil(10000 / daily));
+      const base = invoice?.created_at ? new Date(invoice.created_at) : new Date();
+      const d2 = new Date(base.getTime());
+      d2.setDate(d2.getDate() + days);
+      // YYYY-MM-DD
+      dt = d2.toISOString().slice(0, 10);
+    }
+
+    return {
+      km: km != null && Number.isFinite(km) ? String(Math.round(km)) : '',
+      date: dt || '',
+    };
+  }, [lead, invoice?.created_at]);
+
+  useEffect(() => {
+    // Hydrate drafts from lead (or computed defaults)
+    setNextServiceKm((prev) => (prev ? prev : computeNextServiceDefaults.km));
+    setNextServiceDate((prev) => (prev ? prev : computeNextServiceDefaults.date));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead?.id, invoice?.id]);
+
+  useEffect(() => {
+    const gstin = String((lead as any)?.customer_gstin || '').trim();
+    const legal = String((lead as any)?.customer_legal_name || '').trim();
+    const addr = String((lead as any)?.customer_billing_address || '').trim();
+    const stateCode = String((lead as any)?.customer_billing_state_code || '').trim();
+    setCustomerGstin(gstin);
+    setCustomerLegalName(legal);
+    setCustomerBillingAddress(addr);
+    setCustomerBillingStateCode(stateCode);
+    setGstEnabled(Boolean(gstin));
+  }, [lead?.id]);
+
+  async function saveNextService(updates: { next_service_km?: number | null; next_service_date?: string | null }) {
+    if (savingNextService) return;
+    setSavingNextService(true);
+    try {
+      const res = await fetch(`/api/workshop/leads/${lead.id}/update-details`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(String(data?.error || data?.details || 'Failed to save next service details'));
+      }
+      onUpdate?.();
+    } catch (e: any) {
+      alert(e?.message || 'Failed to save next service details');
+    } finally {
+      setSavingNextService(false);
+    }
+  }
+
+  async function saveCustomerGst(updates: {
+    customer_gstin?: string | null;
+    customer_legal_name?: string | null;
+    customer_billing_address?: string | null;
+    customer_billing_state_code?: string | null;
+  }) {
+    if (savingGst) return;
+    setSavingGst(true);
+    try {
+      const res = await fetch(`/api/workshop/leads/${lead.id}/update-details`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(String(data?.error || data?.details || 'Failed to save GST details'));
+      }
+      onUpdate?.();
+    } catch (e: any) {
+      alert(e?.message || 'Failed to save GST details');
+    } finally {
+      setSavingGst(false);
+    }
+  }
 
   const normalizeName = (s: string) =>
     String(s || '')
@@ -105,6 +277,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+
+  const isCustomServiceName = (s: string) => normalizeName(s) === 'custom service';
 
   async function fetchInvoice() {
     setLoading(true);
@@ -119,15 +293,22 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
         const included = Array.isArray(data?.included_service_items) ? data.included_service_items : [];
         const byId: Record<string, any[]> = {};
         const byName: Record<string, any[]> = {};
+        const priceById: Record<string, number> = {};
+        const priceByName: Record<string, number> = {};
         for (const s of included) {
           const sid = String(s?.service_type_id || '').trim();
           const sname = String(s?.service_name || '').trim();
           const items = Array.isArray(s?.items) ? s.items : [];
           if (sid) byId[sid] = items;
           if (sname) byName[normalizeName(sname)] = items;
+          const sp = Number(s?.service_price);
+          if (sid && Number.isFinite(sp) && sp > 0) priceById[sid] = sp;
+          if (sname && Number.isFinite(sp) && sp > 0) priceByName[normalizeName(sname)] = sp;
         }
         setIncludedByServiceTypeId(byId);
         setIncludedByServiceNameKey(byName);
+        setServicePriceByTypeId(priceById);
+        setServicePriceByNameKey(priceByName);
         setInvoiceList(list);
 
         // Keep current selected type if user chose; otherwise default to best invoice returned.
@@ -151,28 +332,44 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
 
   const buildIncludedDraft = (includedItems: any[]) => {
     const next: Record<string, string> = {};
+    const nextQty: Record<string, string> = {};
+    const nextNames: Record<string, string> = {};
     for (const it of includedItems || []) {
       const pid = String(it?.product_id || '').trim();
       if (!pid) continue;
       const p = it?.unit_price != null ? Number(it.unit_price) : 0;
+      const q = it?.quantity != null ? Number(it.quantity) : 1;
+      const name = String(it?.name || '').trim();
       next[pid] = Number.isFinite(p) ? String(p) : '';
+      nextQty[pid] = Number.isFinite(q) ? String(q) : '';
+      nextNames[pid] = name || '';
     }
     setIncludedRateDraft(next);
+    setIncludedQtyDraft(nextQty);
+    setIncludedNameDraft(nextNames);
   };
 
   async function saveIncludedRates(serviceDescription: string, includedItems: any[], serviceTypeId?: string | null) {
     if (!invoice?.id) return;
     try {
+      const isCustomService = isCustomServiceName(serviceDescription);
       const items = (includedItems || [])
         .map((it: any) => {
           const pid = String(it?.product_id || '').trim();
           if (!pid) return null;
-          const qty = Number(it?.quantity || 1) || 1;
+          const qtyRaw = includedQtyDraft[pid];
+          const qtyNum = qtyRaw === '' || qtyRaw == null ? Number(it?.quantity || 1) : Number(qtyRaw);
+          const qty = Number.isFinite(qtyNum) ? qtyNum : Number(it?.quantity || 1) || 1;
           const base_unit_price = Number(it?.unit_price || 0) || 0;
           const raw = includedRateDraft[pid];
           const unit_price = raw === '' || raw == null ? 0 : Number(raw);
+          const nameRaw = includedNameDraft[pid];
+          const name =
+            isCustomService && nameRaw != null
+              ? String(nameRaw || '').trim()
+              : String(it?.name || '').trim();
           return Number.isFinite(unit_price)
-            ? { product_id: pid, unit_price, base_unit_price, quantity: qty }
+            ? { product_id: pid, name: name || undefined, unit_price, base_unit_price, quantity: qty }
             : null;
         })
         .filter(Boolean);
@@ -208,7 +405,62 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
   }
 
+  const getDraftValue = (rowIndex: number, field: 'qty' | 'rate', fallback: number) => {
+    const key = String(rowIndex);
+    const raw = lineItemDrafts[key]?.[field];
+    if (raw == null) return fallback;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : fallback;
+  };
+
+  async function saveLineItems() {
+    if (!invoice?.id) return;
+    if (savingLineItems) return;
+    setSavingLineItems(true);
+    try {
+      const next = lineItems.map((row: any, idx: number) => {
+        const qty = getDraftValue(idx, 'qty', Number(row?.qty ?? 1) || 1);
+        const rateFallback =
+          Number.isFinite(Number(row?.amount)) && qty ? Number(row.amount) / qty : 0;
+        const rate = getDraftValue(idx, 'rate', Number(row?.rate ?? rateFallback) || 0);
+        const amount = qty * rate;
+        return { ...row, qty, rate, amount };
+      });
+
+      const res = await fetch(`/api/billing/invoices/${invoice.id}/update-line-items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ line_items: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const parts = [
+          data?.error || 'Failed to save line items',
+          data?.details ? `Details: ${data.details}` : null,
+          data?.code ? `Code: ${data.code}` : null,
+        ].filter(Boolean);
+        throw new Error(parts.join(' | '));
+      }
+
+      await fetchInvoice();
+
+      const hasCI = Boolean(byType['CUSTOMER_INVOICE']);
+      const hasTI = Boolean(byType['TAX_INVOICE']);
+      if (hasCI && !hasTI) {
+        await finalizeBill({ silent: true });
+      }
+    } catch (e: any) {
+      alert(e?.message || 'Failed to save');
+    } finally {
+      setSavingLineItems(false);
+    }
+  }
+
   async function finalizeBill(opts?: { silent?: boolean }) {
+    if (hasServiceMismatch) {
+      alert('Included items total must match the service price before proceeding.');
+      return;
+    }
     setFinalizing(true);
     try {
       const res = await fetch(`/api/billing/leads/${lead.id}/finalize-bill`, {
@@ -360,6 +612,47 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
   }
 
+  const isInvoicePaid = (invAny: any) => {
+    if (!invAny) return false;
+    const ps = String(invAny?.payment_status || '').toUpperCase();
+    const st = String(invAny?.status || '').toUpperCase();
+    if (ps === 'PAID' || st === 'PAID') return true;
+    const finalAmt = Number(invAny?.final_amount ?? invAny?.total_amount ?? 0) || 0;
+    const paidAmt = Number(invAny?.paid_amount ?? 0) || 0;
+    const bal = invAny?.balance_due != null ? Number(invAny.balance_due) : Math.max(0, finalAmt - paidAmt);
+    if (finalAmt > 0 && (paidAmt + 0.01 >= finalAmt)) return true;
+    if (finalAmt > 0 && bal <= 0.01) return true;
+    return false;
+  };
+
+  // Auto-generate TI once when CI is PAID but TI is missing (silent).
+  useEffect(() => {
+    const leadId = String(lead?.id || '').trim();
+    if (!leadId) return;
+    if (autoTiAttemptedRef.current[leadId]) return;
+
+    const ci = (invoiceList || []).find((i: any) => String(i?.invoice_type || '').toUpperCase() === 'CUSTOMER_INVOICE');
+    const ti = (invoiceList || []).find((i: any) => String(i?.invoice_type || '').toUpperCase() === 'TAX_INVOICE');
+    const ciPaid = isInvoicePaid(ci);
+
+    if (ciPaid && !ti) {
+      autoTiAttemptedRef.current[leadId] = true;
+      (async () => {
+        try {
+          const res = await fetch(`/api/billing/leads/${leadId}/ensure-tax-invoice`, { method: 'POST' });
+          if (res.ok) {
+            await fetchInvoice();
+          } else {
+            const data = await res.json().catch(() => ({}));
+            console.warn('Auto ensure-tax-invoice failed:', data);
+          }
+        } catch (e) {
+          console.warn('Auto ensure-tax-invoice errored:', e);
+        }
+      })();
+    }
+  }, [lead?.id, invoiceList]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function printInvoice() {
     if (!invoice) {
       alert('Invoice not found');
@@ -505,7 +798,13 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const isTI = invoiceType === 'TAX_INVOICE';
 
   const lineItems = (Array.isArray((invoice as any)?.line_items) ? ((invoice as any).line_items as any[]) : []) as any[];
+  const lineItemsWithIndex = lineItems.map((it: any, idx: number) => ({ ...it, _idx: idx }));
   const hasLineItems = lineItems.length > 0;
+  const grossAfterDiscount =
+    ((invoice?.subtotal ?? invoice?.sub_total ?? 0) - (invoice?.discount_amount ?? 0));
+  const taxableValue = showGst
+    ? Math.max(0, (((invoice?.final_amount ?? invoice?.total_amount ?? 0) - (invoice?.total_tax ?? 0))))
+    : grossAfterDiscount;
 
   const money = (n: any) => {
     const v = typeof n === 'number' ? n : parseFloat(String(n || '0'));
@@ -525,7 +824,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const categoryOrder = ['SERVICE', 'ADDON', 'PART', 'LABOUR', 'EXTRA'];
   const grouped = (() => {
     const map: Record<string, any[]> = {};
-    for (const it of lineItems) {
+    for (const it of lineItemsWithIndex) {
       const cat = normalizeCategory(it?.category) || 'ITEMS';
       if (!map[cat]) map[cat] = [];
       map[cat].push(it);
@@ -543,6 +842,122 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     return keys.map((k) => ({ key: k, items: map[k] }));
   })();
 
+  const getIncludedItems = (it: any) => {
+    const cat = String(it?.category || '').toUpperCase();
+    if (cat !== 'SERVICE') return [];
+    return (it?.service_type_id && includedByServiceTypeId[String(it.service_type_id)])
+      ? includedByServiceTypeId[String(it.service_type_id)]
+      : includedByServiceNameKey[normalizeName(String(it?.description || ''))] || [];
+  };
+
+  const getServicePrice = (it: any) => {
+    const byType = it?.service_type_id ? servicePriceByTypeId[String(it.service_type_id)] : undefined;
+    const byName = servicePriceByNameKey[normalizeName(String(it?.description || ''))];
+    const fromLine =
+      Number(it?.amount ?? 0) > 0
+        ? Number(it.amount)
+        : (Number(it?.rate ?? 0) || 0) * (Number(it?.qty ?? 1) || 1);
+    return Number.isFinite(byType) && (byType as number) > 0
+      ? (byType as number)
+      : Number.isFinite(byName) && (byName as number) > 0
+        ? (byName as number)
+        : (Number.isFinite(fromLine) ? fromLine : 0);
+  };
+
+  const computeIncludedTotal = (serviceRow: any, includedItems: any[], isEditingThis: boolean) => {
+    return (includedItems || []).reduce((s: number, p: any) => {
+      const pid = String(p?.product_id || '').trim();
+      const qtyBase = Number(p?.quantity || 1) || 1;
+      const unitPriceBase = Number(p?.unit_price || 0) || 0;
+      const qtyDraftRaw = isEditingThis ? includedQtyDraft[pid] : null;
+      const rateDraftRaw = isEditingThis ? includedRateDraft[pid] : null;
+      const qty =
+        isEditingThis && qtyDraftRaw != null && qtyDraftRaw !== ''
+          ? Number(qtyDraftRaw)
+          : qtyBase;
+      const unitPrice =
+        isEditingThis && rateDraftRaw != null && rateDraftRaw !== ''
+          ? Number(rateDraftRaw)
+          : unitPriceBase;
+      const amountDraft = Number(p?.amount);
+      const amt =
+        Number.isFinite(amountDraft) && !isEditingThis
+          ? amountDraft
+          : (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unitPrice) ? unitPrice : 0);
+      return s + amt;
+    }, 0);
+  };
+
+  const applyProRata = (serviceRow: any, includedItems: any[]) => {
+    const servicePrice = getServicePrice(serviceRow);
+    if (!Number.isFinite(servicePrice) || servicePrice <= 0) {
+      alert('Service price is missing or invalid.');
+      return;
+    }
+    const desc = String(serviceRow?.description || '');
+    const isEditingThis = editingIncludedFor === desc;
+    const currentTotal = computeIncludedTotal(serviceRow, includedItems, isEditingThis);
+    if (!Number.isFinite(currentTotal) || currentTotal <= 0) {
+      alert('Included items total is zero; cannot apply pro-rata.');
+      return;
+    }
+    const factor = servicePrice / currentTotal;
+    const nextRates: Record<string, string> = {};
+    const nextQty: Record<string, string> = {};
+    for (const p of includedItems || []) {
+      const pid = String(p?.product_id || '').trim();
+      if (!pid) continue;
+      const qtyBase = Number(p?.quantity || 1) || 1;
+      const unitPriceBase = Number(p?.unit_price || 0) || 0;
+      const qtyDraftRaw = isEditingThis ? includedQtyDraft[pid] : null;
+      const rateDraftRaw = isEditingThis ? includedRateDraft[pid] : null;
+      const qty =
+        isEditingThis && qtyDraftRaw != null && qtyDraftRaw !== ''
+          ? Number(qtyDraftRaw)
+          : qtyBase;
+      const unitPrice =
+        isEditingThis && rateDraftRaw != null && rateDraftRaw !== ''
+          ? Number(rateDraftRaw)
+          : unitPriceBase;
+      const amount = (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unitPrice) ? unitPrice : 0);
+      const adjustedAmount = amount * factor;
+      const nextRate = (Number.isFinite(qty) && qty > 0) ? adjustedAmount / qty : 0;
+      nextRates[pid] = Number.isFinite(nextRate) ? nextRate.toFixed(2) : '0';
+      nextQty[pid] = Number.isFinite(qty) ? String(qty) : '1';
+    }
+    setEditingIncludedFor(desc);
+    setIncludedRateDraft(nextRates);
+    setIncludedQtyDraft(nextQty);
+  };
+
+  const serviceMismatchTotal = useMemo(() => {
+    if (!isOS) return 0;
+    return lineItemsWithIndex.reduce((sum: number, it: any) => {
+      const cat = String(it?.category || '').toUpperCase();
+      if (cat !== 'SERVICE') return sum;
+      if (isCustomServiceName(String(it?.description || ''))) return sum;
+      const includedItems = getIncludedItems(it);
+      if (!Array.isArray(includedItems) || includedItems.length === 0) return sum;
+      const isEditingThis = editingIncludedFor === String(it?.description || '');
+      const includedTotal = computeIncludedTotal(it, includedItems, isEditingThis);
+      const serviceAmount = getServicePrice(it);
+      const diff = Math.abs(includedTotal - serviceAmount);
+      return sum + (diff > 0.5 ? diff : 0);
+    }, 0);
+  }, [
+    isOS,
+    lineItemsWithIndex,
+    includedByServiceTypeId,
+    includedByServiceNameKey,
+    includedQtyDraft,
+    includedRateDraft,
+    editingIncludedFor,
+    servicePriceByTypeId,
+    servicePriceByNameKey,
+  ]);
+
+  const hasServiceMismatch = isOS && serviceMismatchTotal > 0.5;
+
   const byType = useMemo(() => {
     const map: Record<string, Invoice> = {};
     for (const inv of invoiceList || []) {
@@ -555,6 +970,10 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
 
   const hasOS = Boolean(byType['ORDER_SUMMARY']);
   const hasTI = Boolean(byType['TAX_INVOICE']);
+  const ciInv = byType['CUSTOMER_INVOICE'] as any;
+  const tiInv = byType['TAX_INVOICE'] as any;
+  const ciPaid = isInvoicePaid(ciInv);
+  const canGenerateTI = ciPaid && !tiInv;
 
   const typeTabs: Array<{ key: 'ORDER_SUMMARY' | 'CUSTOMER_INVOICE' | 'TAX_INVOICE'; label: string }> = [
     { key: 'ORDER_SUMMARY', label: 'Order Summary (OS)' },
@@ -612,33 +1031,18 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   </button>
                 );
               })}
+              {(canGenerateTI || tiInv) && (
+                <button
+                  type="button"
+                  onClick={ensureTaxInvoice}
+                  className="btn btn-primary text-xs sm:text-sm px-3 py-2"
+                  title={canGenerateTI ? 'Generate Tax Invoice' : 'View Tax Invoice'}
+                >
+                  {canGenerateTI ? 'Generate Tax Invoice' : 'View Tax Invoice'}
+                </button>
+              )}
             </div>
           )}
-          {/* Invoice Header */}
-          <div className="flex justify-between items-start p-4 bg-gradient-to-r from-brand-primary to-brand-secondary rounded-lg text-white">
-            <div>
-              <h3 className="text-2xl font-bold">{invoice.invoice_number}</h3>
-              <p className="text-sm opacity-90">Invoice Date: {formatDateDMY(invoice.invoice_date)}</p>
-              <p className="text-sm opacity-90">Due Date: {formatDateDMY(invoice.due_date)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm opacity-90">Total Amount</p>
-              <p className="text-3xl font-bold">₹{((invoice.final_amount || invoice.total_amount) || 0).toFixed(2)}</p>
-              <span
-                className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mt-2 ${
-                  invoice.payment_status === 'PAID'
-                    ? 'bg-green-100 text-green-800'
-                    : invoice.payment_status === 'OVERDUE'
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-yellow-100 text-yellow-800'
-                }`}
-              >
-                {invoice.payment_status === 'PAID' && <CheckCircle className="w-3 h-3 inline mr-1" />}
-                {invoice.payment_status === 'PENDING' && <Clock className="w-3 h-3 inline mr-1" />}
-                {invoice.payment_status}
-              </span>
-            </div>
-          </div>
 
           {/* Invoice Breakdown */}
           <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -663,44 +1067,77 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                           </td>
                         </tr>
                         {g.items.map((it: any, idx: number) => {
-                          const qty = Number(it?.qty ?? 1) || 1;
-                          const rate = it?.rate != null ? Number(it.rate) : qty ? Number(it?.amount || 0) / qty : Number(it?.amount || 0);
-                          const amt = Number(it?.amount ?? 0) || 0;
-                          const sr = idx + 1;
+                          const rowIndex = Number(it?._idx ?? idx);
+                          const qtyBase = Number(it?.qty ?? 1) || 1;
+                          const rateBase =
+                            it?.rate != null ? Number(it.rate) : qtyBase ? Number(it?.amount || 0) / qtyBase : Number(it?.amount || 0);
                           const cat = String(it?.category || '').toUpperCase();
-                          const includedItems =
-                            cat === 'SERVICE'
-                              ? (it?.service_type_id && includedByServiceTypeId[String(it.service_type_id)])
-                                ? includedByServiceTypeId[String(it.service_type_id)]
-                                : includedByServiceNameKey[normalizeName(String(it?.description || ''))]
-                              : [];
+                          const isService = cat === 'SERVICE';
+                          const qty = isOS && !isService ? getDraftValue(rowIndex, 'qty', qtyBase) : qtyBase;
+                          const rate = isOS && !isService ? getDraftValue(rowIndex, 'rate', rateBase || 0) : rateBase;
+                          const amt = isOS && !isService ? qty * rate : Number(it?.amount ?? 0) || 0;
+                          const sr = idx + 1;
+                          const includedItems = getIncludedItems(it);
                           const canEditIncluded = isOS && cat === 'SERVICE' && Array.isArray(includedItems) && includedItems.length > 0;
+                          const isCustomService = isCustomServiceName(String(it?.description || ''));
                           const isEditingThis = canEditIncluded && editingIncludedFor === String(it?.description || '');
+                          const includedTotal = computeIncludedTotal(it, includedItems, isEditingThis);
+                          const servicePrice = isService ? getServicePrice(it) : amt;
+                          const diffSigned = includedTotal - servicePrice;
+                          const mismatch =
+                            cat === 'SERVICE' &&
+                            Array.isArray(includedItems) &&
+                            includedItems.length > 0 &&
+                            !isCustomService &&
+                            Math.abs(includedTotal - servicePrice) > 0.5;
                           return (
                             <tr key={`${g.key}-${idx}`}>
                               <td className="px-4 py-3 text-gray-600">{sr}</td>
                               <td className="px-4 py-3">
-                                <div>{it?.description || '-'}</div>
+                                <div className="flex items-center gap-2">
+                                  <span>{it?.description || '-'}</span>
+                                  {isService && (
+                                    <span className="text-[11px] text-gray-500">
+                                      (Service Price: {money(servicePrice)})
+                                    </span>
+                                  )}
+                                </div>
+                                {isOS && mismatch && (
+                                  <div className="mt-1 text-[11px] text-red-600">
+                                    Included total {money(includedTotal)} does not match service price {money(servicePrice)} (diff {diffSigned >= 0 ? '+' : '-'}{money(Math.abs(diffSigned))})
+                                  </div>
+                                )}
                                 {Array.isArray(includedItems) && includedItems.length > 0 && (
                                   <div className="mt-1 text-[11px] text-gray-500">
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="font-semibold">Included:</div>
                                       {canEditIncluded && (
-                                        <button
-                                          type="button"
-                                          className="text-[11px] text-blue-700 hover:underline"
-                                          onClick={() => {
-                                            const desc = String(it?.description || '');
-                                            if (editingIncludedFor === desc) {
-                                              setEditingIncludedFor(null);
-                                              return;
-                                            }
-                                            setEditingIncludedFor(desc);
-                                            buildIncludedDraft(includedItems);
-                                          }}
-                                        >
-                                          {isEditingThis ? 'Cancel' : 'Edit rates'}
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                          {mismatch && (
+                                            <button
+                                              type="button"
+                                              className="text-[11px] text-blue-700 hover:underline"
+                                              onClick={() => applyProRata(it, includedItems)}
+                                            >
+                                              Pro-rate match
+                                            </button>
+                                          )}
+                                          <button
+                                            type="button"
+                                            className="text-[11px] text-blue-700 hover:underline"
+                                            onClick={() => {
+                                              const desc = String(it?.description || '');
+                                              if (editingIncludedFor === desc) {
+                                                setEditingIncludedFor(null);
+                                                return;
+                                              }
+                                              setEditingIncludedFor(desc);
+                                              buildIncludedDraft(includedItems);
+                                            }}
+                                          >
+                                            {isEditingThis ? 'Cancel' : 'Edit rates'}
+                                          </button>
+                                        </div>
                                       )}
                                     </div>
 
@@ -717,23 +1154,69 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                         </thead>
                                         <tbody className="divide-y">
                                           {(includedItems || []).slice(0, 12).map((p: any, i: number) => {
-                                            const qtyI = Number(p?.quantity || 1) || 1;
-                                            const unitPrice = Number(p?.unit_price || 0) || 0;
-                                            const amtI = Number(p?.amount ?? unitPrice * qtyI) || 0;
+                                            const qtyBase = Number(p?.quantity || 1) || 1;
+                                            const unitPriceBase = Number(p?.unit_price || 0) || 0;
                                             const pid = String(p?.product_id || i);
+                                            const qtyDraftRaw = includedQtyDraft[pid];
+                                            const rateDraftRaw = includedRateDraft[pid];
+                                            const qtyI =
+                                              isEditingThis && qtyDraftRaw != null && qtyDraftRaw !== ''
+                                                ? Number(qtyDraftRaw)
+                                                : qtyBase;
+                                            const unitPrice =
+                                              isEditingThis && rateDraftRaw != null && rateDraftRaw !== ''
+                                                ? Number(rateDraftRaw)
+                                                : unitPriceBase;
+                                            const amtI = (Number.isFinite(qtyI) ? qtyI : 0) * (Number.isFinite(unitPrice) ? unitPrice : 0);
                                             return (
                                               <tr key={pid} className="text-gray-700">
                                                 <td className="pr-2 py-1">
-                                                  {String(p?.name || 'Item')}
-                                                  {p?.part_number ? ` (${String(p.part_number)})` : ''}
+                                                  {isEditingThis && isCustomService ? (
+                                                    <input
+                                                      type="text"
+                                                      className="w-44 rounded border border-gray-200 px-2 py-0.5"
+                                                      value={includedNameDraft[pid] ?? String(p?.name || '')}
+                                                      onChange={(e) =>
+                                                        setIncludedNameDraft((prev) => ({
+                                                          ...prev,
+                                                          [pid]: e.target.value,
+                                                        }))
+                                                      }
+                                                      placeholder="Item name"
+                                                    />
+                                                  ) : (
+                                                    <>
+                                                      {String(p?.name || 'Item')}
+                                                      {p?.part_number ? ` (${String(p.part_number)})` : ''}
+                                                    </>
+                                                  )}
                                                 </td>
                                                 <td className="pr-2 py-1">{String(p?.type || '—')}</td>
-                                                <td className="pr-2 py-1 text-right">{qtyI}</td>
                                                 <td className="pr-2 py-1 text-right">
                                                   {isEditingThis ? (
                                                     <input
+                                                      type="number"
+                                                      step="0.01"
+                                                      className="w-16 rounded border border-gray-200 px-2 py-0.5 text-right"
+                                                      value={includedQtyDraft[pid] ?? String(qtyBase)}
+                                                      onChange={(e) =>
+                                                        setIncludedQtyDraft((prev) => ({
+                                                          ...prev,
+                                                          [pid]: e.target.value,
+                                                        }))
+                                                      }
+                                                    />
+                                                  ) : (
+                                                    qtyBase
+                                                  )}
+                                                </td>
+                                                <td className="pr-2 py-1 text-right">
+                                                  {isEditingThis ? (
+                                                    <input
+                                                      type="number"
+                                                      step="0.01"
                                                       className="w-20 rounded border border-gray-200 px-2 py-0.5 text-right"
-                                                      value={includedRateDraft[String(p?.product_id || '')] ?? String(unitPrice || '')}
+                                                      value={includedRateDraft[String(p?.product_id || '')] ?? String(unitPriceBase || '')}
                                                       onChange={(e) =>
                                                         setIncludedRateDraft((prev) => ({
                                                           ...prev,
@@ -742,7 +1225,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                                       }
                                                     />
                                                   ) : (
-                                                    money(unitPrice)
+                                                    money(unitPriceBase)
                                                   )}
                                                 </td>
                                                 <td className="py-1 text-right font-medium">{money(amtI)}</td>
@@ -779,9 +1262,45 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                   </div>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-right">{qty}</td>
-                              <td className="px-4 py-3 text-right">{money(rate)}</td>
-                              <td className="px-4 py-3 text-right font-medium">{money(amt)}</td>
+                              <td className="px-4 py-3 text-right">
+                                {isOS && !isService ? (
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    className="w-20 rounded border border-gray-200 px-2 py-1 text-right"
+                                    value={lineItemDrafts[String(rowIndex)]?.qty ?? String(qtyBase)}
+                                    onChange={(e) =>
+                                      setLineItemDrafts((prev) => ({
+                                        ...prev,
+                                        [String(rowIndex)]: { ...prev[String(rowIndex)], qty: e.target.value },
+                                      }))
+                                    }
+                                    onBlur={saveLineItems}
+                                  />
+                                ) : (
+                                  qty
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                {isOS && !isService ? (
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    className="w-24 rounded border border-gray-200 px-2 py-1 text-right"
+                                    value={lineItemDrafts[String(rowIndex)]?.rate ?? String(rateBase || 0)}
+                                    onChange={(e) =>
+                                      setLineItemDrafts((prev) => ({
+                                        ...prev,
+                                        [String(rowIndex)]: { ...prev[String(rowIndex)], rate: e.target.value },
+                                      }))
+                                    }
+                                    onBlur={saveLineItems}
+                                  />
+                                ) : (
+                                  money(rate)
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-right font-medium">{money(isService ? servicePrice : amt)}</td>
                             </tr>
                           );
                         })}
@@ -819,11 +1338,19 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
               )}
             </table>
 
+            {isOS && hasLineItems && (
+              <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
+                <span className="text-[11px] text-gray-500">
+                  Service price is fixed except Custom service. Edit included items to match the service price. Other rows auto-save on blur.
+                </span>
+              </div>
+            )}
+
             {/* Totals */}
             <table className="w-full text-sm border-t border-gray-200">
               <tbody className="divide-y divide-gray-200">
                 <tr className="bg-gray-50">
-                  <td className="px-4 py-3 font-semibold">Sub-Total (without taxes)</td>
+                  <td className="px-4 py-3 font-semibold">Sub-Total</td>
                   <td className="px-4 py-3 text-right font-semibold">₹{((invoice.subtotal || invoice.sub_total) || 0).toFixed(2)}</td>
                 </tr>
                 {(invoice.discount_amount || 0) > 0 && (
@@ -833,9 +1360,17 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   </tr>
                 )}
                 <tr className="bg-gray-50">
-                  <td className="px-4 py-3 font-semibold">{showGst ? 'Net Taxable Value' : 'Sub-Total (No GST)'}</td>
-                  <td className="px-4 py-3 text-right font-semibold">₹{((invoice.subtotal || invoice.sub_total || 0) - (invoice.discount_amount || 0)).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-semibold">{showGst ? 'Taxable Value' : 'Sub-Total after Discount'}</td>
+                  <td className="px-4 py-3 text-right font-semibold">₹{taxableValue.toFixed(2)}</td>
                 </tr>
+                {hasServiceMismatch && (
+                  <tr>
+                    <td className="px-4 py-3 text-red-600 font-semibold">Service items mismatch (fix to proceed)</td>
+                    <td className="px-4 py-3 text-right text-red-600 font-semibold">
+                      -₹{serviceMismatchTotal.toFixed(2)}
+                    </td>
+                  </tr>
+                )}
                 {showGst && (invoice.cgst_amount || invoice.cgst || 0) > 0 && (
                   <tr>
                     <td className="px-4 py-3">CGST @ 9%</td>
@@ -868,7 +1403,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                 )}
                 <tr className="bg-brand-primary bg-opacity-10 font-bold text-lg">
                   <td className="px-4 py-3">
-                    {isOS ? 'Gross Total (No GST)' : isCI ? 'Total to Pay (No GST)' : 'Amount Payable (INR)'}
+                    {isOS ? 'Gross Total' : isCI ? 'Total to Pay' : 'Amount Payable (INR)'}
                   </td>
                   <td className="px-4 py-3 text-right">₹{((invoice.final_amount || invoice.total_amount) || 0).toFixed(2)}</td>
                 </tr>
@@ -884,12 +1419,12 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
           </div>
 
           {/* Payment Status */}
-          {invoice.paid_amount && invoice.paid_amount > 0 && (
+          {(invoice.paid_amount || 0) > 0 && (
             <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
               <div className="flex justify-between items-center">
                 <div>
                   <p className="text-sm text-green-700">Amount Paid</p>
-                  <p className="text-2xl font-bold text-green-800">₹{invoice.paid_amount.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-green-800">₹{(invoice.paid_amount || 0).toFixed(2)}</p>
                   {invoice.payment_mode && (
                     <p className="text-xs text-green-600 mt-1">Via: {invoice.payment_mode}</p>
                   )}
@@ -900,7 +1435,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                 <div className="text-right">
                   <p className="text-sm text-green-700">Balance Due</p>
                   <p className="text-2xl font-bold text-green-800">
-                    ₹{(((invoice.final_amount || invoice.total_amount) || 0) - invoice.paid_amount).toFixed(2)}
+                    ₹{(((invoice.final_amount || invoice.total_amount) || 0) - (invoice.paid_amount || 0)).toFixed(2)}
                   </p>
                 </div>
               </div>
@@ -974,7 +1509,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
             {isOS && (
               <button
                 onClick={() => finalizeBill()}
-                disabled={finalizing}
+                disabled={finalizing || hasServiceMismatch}
                 className="btn btn-secondary flex-1"
               >
                 <RefreshCw className={`w-4 h-4 ${finalizing ? 'animate-spin' : ''}`} />
@@ -984,7 +1519,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
             {isCI && (
               <button
                 onClick={() => finalizeBill()}
-                disabled={finalizing}
+                disabled={finalizing || hasServiceMismatch}
                 className="btn btn-secondary flex-1"
               >
                 <RefreshCw className={`w-4 h-4 ${finalizing ? 'animate-spin' : ''}`} />
@@ -1027,11 +1562,6 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {String(invoice.payment_status).toUpperCase() === 'PAID' && (
-                    <button onClick={ensureTaxInvoice} className="btn btn-primary">
-                      View Tax Invoice
-                    </button>
-                  )}
                   {!invoice.visible_to_customer && (
                     <button
                       onClick={activateCustomerInvoice}
@@ -1052,8 +1582,135 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                 </div>
               </div>
 
+              <div className="mt-3 rounded-md border border-gray-200 p-3 bg-gray-50">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                  <input
+                    type="checkbox"
+                    checked={gstEnabled}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setGstEnabled(checked);
+                      if (!checked) {
+                        setCustomerGstin('');
+                        setCustomerLegalName('');
+                        setCustomerBillingAddress('');
+                        setCustomerBillingStateCode('');
+                        saveCustomerGst({
+                          customer_gstin: null,
+                          customer_legal_name: null,
+                          customer_billing_address: null,
+                          customer_billing_state_code: null,
+                        });
+                      }
+                    }}
+                  />
+                  Customer is GST registered (optional)
+                </label>
+                {gstEnabled && (
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-600">Customer GSTIN</label>
+                      <input
+                        className="w-full border rounded-md p-2"
+                        value={customerGstin}
+                        onChange={(e) => setCustomerGstin(e.target.value)}
+                        onBlur={() => {
+                          const v = customerGstin.trim();
+                          saveCustomerGst({ customer_gstin: v === '' ? null : v });
+                        }}
+                        placeholder="e.g. 27ABCDE1234F1Z5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Legal Name</label>
+                      <input
+                        className="w-full border rounded-md p-2"
+                        value={customerLegalName}
+                        onChange={(e) => setCustomerLegalName(e.target.value)}
+                        onBlur={() => {
+                          const v = customerLegalName.trim();
+                          saveCustomerGst({ customer_legal_name: v === '' ? null : v });
+                        }}
+                        placeholder="Registered business name"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-xs text-gray-600">Billing Address</label>
+                      <input
+                        className="w-full border rounded-md p-2"
+                        value={customerBillingAddress}
+                        onChange={(e) => setCustomerBillingAddress(e.target.value)}
+                        onBlur={() => {
+                          const v = customerBillingAddress.trim();
+                          saveCustomerGst({ customer_billing_address: v === '' ? null : v });
+                        }}
+                        placeholder="Billing address for GST invoice"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">State Code</label>
+                      <input
+                        className="w-full border rounded-md p-2"
+                        value={customerBillingStateCode}
+                        onChange={(e) => setCustomerBillingStateCode(e.target.value)}
+                        onBlur={() => {
+                          const v = customerBillingStateCode.trim();
+                          saveCustomerGst({ customer_billing_state_code: v === '' ? null : v });
+                        }}
+                        placeholder="e.g. 27"
+                      />
+                    </div>
+                    {savingGst && (
+                      <div className="md:col-span-2 text-[11px] text-gray-500">Saving GST details…</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {showPaymentForm && (
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
+                    <div className="text-xs font-semibold text-gray-700 mb-1">Next Service Due</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-gray-600">Next Service KM</label>
+                        <input
+                          type="number"
+                          className="w-full border rounded-md p-2"
+                          value={nextServiceKm}
+                          onChange={(e) => setNextServiceKm(e.target.value)}
+                          onBlur={() => {
+                            const v = nextServiceKm.trim();
+                            saveNextService({ next_service_km: v === '' ? null : Number(v) });
+                          }}
+                          placeholder="auto: odometer + 10000"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">Next Service Date</label>
+                        <input
+                          type="date"
+                          className="w-full border rounded-md p-2"
+                          value={nextServiceDate}
+                          onChange={(e) => setNextServiceDate(e.target.value)}
+                          onBlur={() => {
+                            const v = nextServiceDate.trim();
+                            saveNextService({ next_service_date: v === '' ? null : v });
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-1 text-[11px] text-gray-500">
+                      {((lead as any)?.daily_running_km ?? null) != null
+                        ? (
+                          <>Daily Running: <span className="font-semibold">{String((lead as any)?.daily_running_km)}</span> km/day</>
+                        )
+                        : (
+                          <>Tip: set “Daily Running KM” to auto-calculate next service date.</>
+                        )}
+                      {savingNextService ? <span> • Saving…</span> : null}
+                    </div>
+                  </div>
                   <div>
                     <label className="text-xs text-gray-600">Payment Mode</label>
                     <select
@@ -1079,11 +1736,17 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   <div>
                     <label className="text-xs text-gray-600">Staff Name</label>
                     <input
+                      list="workshop-staff-list"
                       className="w-full border rounded-md p-2"
                       value={staffName}
                       onChange={(e) => setStaffName(e.target.value)}
                       placeholder="e.g. Rahul (Supervisor)"
                     />
+                    <datalist id="workshop-staff-list">
+                      {(workshopStaff || []).map((s) => (
+                        <option key={s.id} value={s.full_name} />
+                      ))}
+                    </datalist>
                   </div>
                   <div>
                     <label className="text-xs text-gray-600">Payment Remarks</label>

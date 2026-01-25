@@ -66,7 +66,7 @@ export default function PhotoUploadScreen({
   const initializePhotos = () => {
     const photoTypes: VehiclePhotoType[] = photoCategory === 'PICKUP'
       ? ['PICKUP_FRONT', 'PICKUP_LEFT', 'PICKUP_RIGHT', 'PICKUP_REAR', 'PICKUP_INTERIOR', 'PICKUP_ODOMETER', 'PICKUP_FUEL', 'PICKUP_DAMAGE']
-      : ['DROP_FRONT', 'DROP_LEFT', 'DROP_RIGHT', 'DROP_REAR', 'DROP_INTERIOR', 'DROP_ODOMETER', 'AFTER_WORK', 'DELIVERY_SIGNATURE'];
+      : ['DROP_FRONT', 'DROP_LEFT', 'DROP_RIGHT', 'DROP_REAR', 'DROP_INTERIOR', 'DROP_ODOMETER', 'DROP_HANDOVER', 'AFTER_WORK', 'DELIVERY_SIGNATURE'];
 
     setPhotos(
       photoTypes.map((type) => ({
@@ -80,11 +80,19 @@ export default function PhotoUploadScreen({
 
   const fetchExistingPhotos = async () => {
     try {
-      const { data, error } = await supabase
+      // NOTE: Delivery signature doesn't start with DROP_ so include it explicitly for DROP screens.
+      let query = supabase
         .from('vehicle_condition_photos')
         .select('photo_type, photo_url')
-        .eq('lead_id', leadId)
-        .like('photo_type', `${photoCategory}_%`);
+        .eq('lead_id', leadId);
+
+      if (photoCategory === 'DROP') {
+        query = query.or('photo_type.like.DROP_%,photo_type.eq.DELIVERY_SIGNATURE');
+      } else {
+        query = query.like('photo_type', 'PICKUP_%');
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         // Error handled silently
@@ -235,6 +243,7 @@ export default function PhotoUploadScreen({
       DROP_REAR: 'Rear View',
       DROP_INTERIOR: 'Interior',
       DROP_ODOMETER: 'Odometer',
+      DROP_HANDOVER: 'Receiver Photo (Handover Proof)',
       AFTER_WORK: 'After Service',
       DELIVERY_SIGNATURE: 'Customer Signature (Delivery)',
     };
@@ -245,7 +254,9 @@ export default function PhotoUploadScreen({
     if (photoCategory === 'PICKUP') {
       return ['PICKUP_FRONT', 'PICKUP_LEFT', 'PICKUP_RIGHT', 'PICKUP_INTERIOR'].includes(type);
     } else {
-      return ['DROP_FRONT', 'DROP_INTERIOR', 'AFTER_WORK', 'DELIVERY_SIGNATURE'].includes(type);
+      // Require receiver photo so we know who got the car.
+      // Keep signature optional (some deliveries may prefer photo over signature).
+      return ['DROP_FRONT', 'DROP_INTERIOR', 'AFTER_WORK', 'DROP_HANDOVER'].includes(type);
     }
   };
 

@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
-import { calculateTaxes, generateSeriesDocumentNumber, getPlaceOfSupply, numberToWords, roundOff } from '@/lib/utils/invoiceUtils';
+import { generateSeriesDocumentNumber, getPlaceOfSupply, numberToWords, roundOff } from '@/lib/utils/invoiceUtils';
 import { getEffectivePricingItemAmount, getEffectiveQty } from '@/lib/utils/pricing';
 
 export const dynamic = 'force-dynamic';
@@ -59,6 +59,8 @@ export async function POST(
     if (!allowedRoles.includes(roleCode)) {
       return NextResponse.json({ error: 'Forbidden: Billing access required', role: roleCode }, { status: 403 });
     }
+
+    const canOverrideCoupon = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode);
 
     const leadId = params.id;
 
@@ -418,9 +420,41 @@ export async function POST(
         (expectedAddonCount > 0 && osAddonsOnly.length === 0) ? fallbackAddonsOnly : osAddonsOnly
       );
 
+    // If OS exists but service amounts are zero, backfill from workshop pricing/fallback
+    const normalizeDesc = (s: string) =>
+      String(s || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const fallbackByTypeId = new Map<string, number>();
+    const fallbackByName = new Map<string, number>();
+    for (const row of fallbackServiceLines || []) {
+      const cat = normalizeCat(row?.category);
+      if (cat !== 'SERVICE') continue;
+      const sid = String((row as any)?.service_type_id || '').trim();
+      const nameKey = normalizeDesc(String(row?.description || ''));
+      const amt = Number((row as any)?.amount || 0) || 0;
+      if (sid && amt > 0) fallbackByTypeId.set(sid, amt);
+      if (nameKey && amt > 0) fallbackByName.set(nameKey, amt);
+    }
+    const mergedOsWithAddonsAdjusted = (mergedOsWithAddons || []).map((row: any) => {
+      const cat = normalizeCat(row?.category);
+      if (cat !== 'SERVICE') return row;
+      const amt = Number(row?.amount || 0) || 0;
+      if (amt > 0) return row;
+      const sid = String(row?.service_type_id || '').trim();
+      const nameKey = normalizeDesc(String(row?.description || ''));
+      const fallback = (sid && fallbackByTypeId.get(sid)) || fallbackByName.get(nameKey) || 0;
+      if (!fallback) return row;
+      const qty = Number(row?.qty || 1) || 1;
+      return { ...row, amount: fallback, rate: fallback / qty };
+    });
+
     const effectiveServiceLines =
-      (mergedOsWithAddons?.length || 0) > 0
-        ? mergedOsWithAddons
+      (mergedOsWithAddonsAdjusted?.length || 0) > 0
+        ? mergedOsWithAddonsAdjusted
         : (serviceLines?.length || 0) > 0
           ? serviceLines
           : fallbackServiceLines;
@@ -452,21 +486,58 @@ export async function POST(
             category: 'EXTRA',
           }));
 
-    const baseAmount = effectiveServiceLines.reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
+    // Coupon-aware service lines (FREE_SERVICE): show targeted service at ₹0,
+    // but compute discount on pre-discount subtotal so GST is applied after discount.
+    const leadCouponMeta = (lead as any)?.coupon_meta || null;
+    const freeLabel =
+      leadCouponMeta?.free_service?.matched_label != null
+        ? String(leadCouponMeta.free_service.matched_label).toLowerCase()
+        : null;
+
+    let freeServiceDiscount = 0;
+    const displayServiceLines = (effectiveServiceLines || []).map((l: any) => {
+      const desc = String(l?.description || '').toLowerCase();
+      if (freeLabel && desc.includes(freeLabel)) {
+        const original = Number(l?.amount || 0);
+        freeServiceDiscount += original;
+        const qty = Number(l?.qty || 1) || 1;
+        return {
+          ...l,
+          amount: 0,
+          rate: qty ? 0 / qty : 0,
+          free_service: true,
+          original_amount: original,
+        };
+      }
+      return l;
+    });
+
+    const baseAmountBeforeDiscount = (effectiveServiceLines || []).reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
     const partsCost = partLines.reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
     const extraChargesAmount = extraLines.reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
-    const subTotal = Math.max(0, baseAmount + partsCost + extraChargesAmount);
+    const subTotalBeforeDiscount = Math.max(0, baseAmountBeforeDiscount + partsCost + extraChargesAmount);
 
-    const discountAmount =
+    const existingDiscount = parseFloat((lead as any).discount_amount || '0') || 0;
+    const requestedDiscount =
       payload?.discount_amount !== undefined && payload?.discount_amount !== null
         ? Number(payload.discount_amount) || 0
-        : parseFloat((lead as any).discount_amount || '0') || 0;
+        : existingDiscount;
 
-    const netTaxable = Math.max(0, subTotal - discountAmount);
-    const taxes = calculateTaxes(netTaxable, place.useIGST);
-    const preRoundTotal = netTaxable + taxes.totalTax;
-    const roundedTotal = roundOff(preRoundTotal);
-    const roundOffAmount = parseFloat((roundedTotal - preRoundTotal).toFixed(2));
+    if (!canOverrideCoupon && (lead as any)?.coupon_code && requestedDiscount !== existingDiscount) {
+      return NextResponse.json(
+        { error: 'Coupon changes are restricted. Please contact a manager.' },
+        { status: 403 }
+      );
+    }
+
+    // For FREE_SERVICE coupons, if discount not available yet, derive from matched service line(s)
+    const derivedDiscount =
+      !requestedDiscount && freeServiceDiscount > 0 ? freeServiceDiscount : requestedDiscount;
+    const discountAmount = derivedDiscount;
+
+    const grossTotalIncl = Math.max(0, subTotalBeforeDiscount - discountAmount);
+    const roundedTotal = roundOff(grossTotalIncl);
+    const roundOffAmount = parseFloat((roundedTotal - grossTotalIncl).toFixed(2));
 
     const finalAmount = roundedTotal;
     const amountInWords = numberToWords(finalAmount);
@@ -493,19 +564,22 @@ export async function POST(
       invoice_number: ciNumber,
       lead_id: leadId,
       workshop_id: lead.workshop_id,
-      base_amount: baseAmount,
+      base_amount: baseAmountBeforeDiscount,
       parts_cost: partsCost,
       extra_charges: extraChargesAmount,
       labour_cost: 0,
-      sub_total: subTotal,
+      sub_total: subTotalBeforeDiscount,
       discount_amount: discountAmount,
-      cgst_percentage: place.useIGST ? 0 : 9,
-      cgst_amount: taxes.cgstAmount,
-      sgst_percentage: place.useIGST ? 0 : 9,
-      sgst_amount: taxes.sgstAmount,
-      igst_percentage: place.useIGST ? 18 : 0,
-      igst_amount: taxes.igstAmount,
-      total_tax: taxes.totalTax,
+      coupon_code: (lead as any).coupon_code || null,
+      coupon_meta: (lead as any).coupon_meta || null,
+      discount_percentage: subTotalBeforeDiscount > 0 ? (discountAmount / subTotalBeforeDiscount) * 100 : 0,
+      cgst_percentage: 0,
+      cgst_amount: 0,
+      sgst_percentage: 0,
+      sgst_amount: 0,
+      igst_percentage: 0,
+      igst_amount: 0,
+      total_tax: 0,
       round_off_amount: roundOffAmount,
       final_amount: finalAmount,
       amount_in_words: amountInWords,
@@ -520,7 +594,7 @@ export async function POST(
       series_seq: seriesSeq,
       visible_to_customer: false, // becomes true after customer confirms
       show_gst_breakup: false, // never show GST on customer invoice
-      line_items: [...effectiveServiceLines, ...partLines, ...extraLines],
+      line_items: [...displayServiceLines, ...partLines, ...extraLines],
     };
 
     let ciInvoice: any = null;
@@ -637,6 +711,21 @@ export async function POST(
       );
     }
 
+    // Best-effort: link coupon redemption rows to this Customer Invoice
+    try {
+      const couponId = (ciInvoice as any)?.coupon_meta?.coupon_id || (lead as any)?.coupon_meta?.coupon_id || null;
+      const client = supabaseAdmin || supabase;
+      let q = client
+        .from('coupon_redemptions')
+        .update({ invoice_id: ciInvoice.id })
+        .eq('service_lead_id', leadId)
+        .is('invoice_id', null);
+      if (couponId) q = q.eq('coupon_id', couponId);
+      await q;
+    } catch {
+      // ignore
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Bill finalized successfully',
@@ -645,12 +734,12 @@ export async function POST(
       snapshot: {
         place_of_supply: place,
         totals: {
-          base_amount: baseAmount,
+          base_amount: baseAmountBeforeDiscount,
           parts_cost: partsCost,
           extra_charges: extraChargesAmount,
-          sub_total: subTotal,
+          sub_total: subTotalBeforeDiscount,
           discount_amount: discountAmount,
-          taxes,
+          taxes: { cgstAmount: 0, sgstAmount: 0, igstAmount: 0, totalTax: 0 },
           round_off_amount: roundOffAmount,
           final_amount: finalAmount,
         },

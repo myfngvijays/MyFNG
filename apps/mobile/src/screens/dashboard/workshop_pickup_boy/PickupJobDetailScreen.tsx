@@ -38,6 +38,7 @@ export default function PickupJobDetailScreen(props: any) {
   const [tracking, setTracking] = useState<PickupTracking | null>(null);
   const [pickupPhotoCount, setPickupPhotoCount] = useState(0);
   const [dropPhotoCount, setDropPhotoCount] = useState(0);
+  const [dropHandoverPhotoCount, setDropHandoverPhotoCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [locationPermGranted, setLocationPermGranted] = useState<boolean>(false);
   const [observationText, setObservationText] = useState('');
@@ -208,6 +209,13 @@ export default function PickupJobDetailScreen(props: any) {
 
     setPickupPhotoCount(pickupCount || 0);
     setDropPhotoCount(dropCount || 0);
+
+    const { count: handoverCount } = await supabase
+      .from('vehicle_condition_photos')
+      .select('*', { count: 'exact', head: true })
+      .eq('lead_id', leadId)
+      .eq('photo_type', 'DROP_HANDOVER');
+    setDropHandoverPhotoCount(handoverCount || 0);
   };
 
   const onRefresh = async () => {
@@ -308,6 +316,22 @@ export default function PickupJobDetailScreen(props: any) {
 
   const handleCompleteDelivery = async () => {
     try {
+      // Guard: require receiver/handover proof photo before completing delivery.
+      if ((dropHandoverPhotoCount || 0) < 1) {
+        Alert.alert(
+          'Receiver photo required',
+          'Complete delivery se pehle receiver (handover) photo upload karo, taaki pata rahe vehicle kisko diya.',
+          [
+            { text: 'Cancel', style: 'cancel' as any },
+            {
+              text: 'Upload Photo',
+              onPress: () =>
+                (navigation as any).navigate?.('PickupPhotoUpload', { leadId, photoCategory: 'DROP' }),
+            },
+          ]
+        );
+        return;
+      }
       await postJson(`/api/pickup/${leadId}/drop/complete`, {});
       Alert.alert('Success', 'Delivery completed.');
       await fetchLeadDetails();
@@ -384,7 +408,9 @@ export default function PickupJobDetailScreen(props: any) {
                   (() => (navigation as any).navigate?.('PickupPhotoUpload', { leadId, photoCategory: 'DROP' }))
                 }
               >
-                <Text style={styles.actionButtonText}>📸 Upload Delivery Photos ({dropPhotoCount}/3 min)</Text>
+                <Text style={styles.actionButtonText}>
+                  📸 Upload Delivery Photos ({dropPhotoCount}/3+) • Receiver Photo ({dropHandoverPhotoCount}/1)
+                </Text>
               </TouchableOpacity>
               {minPhotosOk && (
                 <TouchableOpacity

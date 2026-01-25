@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from('manual_create_invoice')
-      .select('id, invoice_number, customer_name, customer_phone, total_amount, currency, status, created_at, payment_mode, payment_reference, paid_at')
+      .select('id, invoice_number, customer_name, customer_phone, total_amount, currency, status, created_at, payment_mode, payment_reference, paid_at, customer_gstin, car_number, car_model')
       .order('created_at', { ascending: false })
       .limit(200);
 

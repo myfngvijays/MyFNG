@@ -32,6 +32,7 @@ interface PickupDeliveryJob {
   delivery_invoice_ready: boolean | null;
   delivery_car_washed: boolean | null;
   delivery_paperwork_complete: boolean | null;
+  read_only?: boolean | null;
 }
 
 export default function PickupDeliveryCoordinationPage() {
@@ -50,6 +51,12 @@ export default function PickupDeliveryCoordinationPage() {
     delivery_paperwork_complete: boolean;
   }>>({});
   const [savingChecklist, setSavingChecklist] = useState<Record<string, boolean>>({});
+  const [deliveryTrackingByLead, setDeliveryTrackingByLead] = useState<Record<string, {
+    drop_status?: string | null;
+    drop_start_time?: string | null;
+    drop_completed_time?: string | null;
+    drop_otp_verified_at?: string | null;
+  }>>({});
   const [workshopId, setWorkshopId] = useState<string | null>(null);
   const refreshTimer = useRef<number | null>(null);
 
@@ -259,13 +266,44 @@ export default function PickupDeliveryCoordinationPage() {
             delivery_invoice_ready: job.delivery_invoice_ready,
             delivery_car_washed: job.delivery_car_washed,
             delivery_paperwork_complete: job.delivery_paperwork_complete,
+            read_only: (job as any)?.read_only ?? null,
           };
         })
       );
 
+      // Fetch delivery tracking for all loaded leads (used to lock reassignment if delivered)
+      const leadIds = (enhancedJobs || []).map((job) => job.id);
+      const nextTrackingMap: Record<string, {
+        drop_status?: string | null;
+        drop_start_time?: string | null;
+        drop_completed_time?: string | null;
+        drop_otp_verified_at?: string | null;
+      }> = {};
+      if (leadIds.length > 0) {
+        const { data: trackingRows, error: trackingError } = await supabase
+          .from('pickup_tracking')
+          .select('lead_id, drop_status, drop_start_time, drop_completed_time, drop_otp_verified_at')
+          .in('lead_id', leadIds);
+
+        if (trackingError) {
+          console.warn('Pickup tracking lookup failed (non-blocking):', trackingError);
+        } else {
+          (trackingRows || []).forEach((row: any) => {
+            if (!row?.lead_id) return;
+            nextTrackingMap[row.lead_id] = {
+              drop_status: row.drop_status,
+              drop_start_time: row.drop_start_time,
+              drop_completed_time: row.drop_completed_time,
+              drop_otp_verified_at: row.drop_otp_verified_at,
+            };
+          });
+        }
+      }
+
       // Keep both: all jobs for counts + filtered jobs for list rendering
       setAllJobs(enhancedJobs);
       setJobs(applyFilter(enhancedJobs));
+      setDeliveryTrackingByLead(nextTrackingMap);
 
       // Initialize checklist state from loaded jobs
       const initialChecklistState: Record<string, {
@@ -373,6 +411,52 @@ export default function PickupDeliveryCoordinationPage() {
       const selectElement = document.querySelector(`select[data-job-id="${jobId}"]`) as HTMLSelectElement;
       if (selectElement) {
         selectElement.value = '';
+      }
+    }
+  }
+
+  async function reassignDeliveryBoy(
+    jobId: string,
+    pickupBoyId: string,
+    prevPickupBoyId: string | null,
+    deliveryStarted: boolean
+  ) {
+    const pickupBoy = pickupBoys.find((boy) => boy.id === pickupBoyId);
+    const pickupBoyName = pickupBoy?.full_name || 'selected pickup boy';
+
+    const confirmMsg = deliveryStarted
+      ? `Delivery already started. Reassign delivery to: ${pickupBoyName}?`
+      : `Assign delivery to: ${pickupBoyName}?`;
+    const confirmed = confirm(confirmMsg);
+    if (!confirmed) {
+      const selectElement = document.querySelector(`select[data-job-id="${jobId}-delivery"]`) as HTMLSelectElement;
+      if (selectElement) {
+        selectElement.value = prevPickupBoyId || '';
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/workshop/leads/${jobId}/reassign-delivery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ pickup_boy_id: pickupBoyId }),
+      });
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.error || `Failed to reassign delivery (HTTP ${res.status})`);
+      }
+
+      alert('Delivery reassigned successfully');
+      fetchData({ silent: true });
+    } catch (error) {
+      console.error('Error reassigning delivery:', error);
+      alert('Failed to reassign delivery');
+      const selectElement = document.querySelector(`select[data-job-id="${jobId}-delivery"]`) as HTMLSelectElement;
+      if (selectElement) {
+        selectElement.value = prevPickupBoyId || '';
       }
     }
   }
@@ -648,17 +732,64 @@ export default function PickupDeliveryCoordinationPage() {
                 {/* Column 3: Assignment */}
                 <div className="space-y-2 sm:space-y-3">
                 <div>
-                  <p className="text-[10px] sm:text-xs text-gray-600 mb-1 sm:mb-2">Pickup Boy</p>
-                  {job.pickup_boy ? (
+                  {isReadyForDelivery(job) ? (
+                    <>
+                      <p className="text-[10px] sm:text-xs text-gray-600 mb-1 sm:mb-2">Delivery Pickup Boy</p>
+                      <select
+                        data-job-id={`${job.id}-delivery`}
+                        onChange={(e) =>
+                          e.target.value &&
+                          reassignDeliveryBoy(
+                            job.id,
+                            e.target.value,
+                            job.pickup_boy?.id || null,
+                            Boolean(deliveryTrackingByLead[job.id]?.drop_start_time) ||
+                              ['OUT_FOR_DELIVERY', 'IN_TRANSIT', 'ARRIVED_AT_CUSTOMER'].includes(
+                                String(deliveryTrackingByLead[job.id]?.drop_status || '').toUpperCase()
+                              )
+                          )
+                        }
+                        disabled={
+                          Boolean(job.read_only) ||
+                          Boolean(deliveryTrackingByLead[job.id]?.drop_completed_time) ||
+                          Boolean(deliveryTrackingByLead[job.id]?.drop_otp_verified_at) ||
+                          ['DELIVERED'].includes(
+                            String(deliveryTrackingByLead[job.id]?.drop_status || '').toUpperCase()
+                          )
+                        }
+                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent disabled:opacity-60 disabled:cursor-not-allowed"
+                        defaultValue={job.pickup_boy?.id || ''}
+                      >
+                        <option value="">Select pickup boy...</option>
+                        {pickupBoys.map((boy) => (
+                          <option key={boy.id} value={boy.id}>
+                            {boy.full_name} ({boy.activeTasks} tasks)
+                          </option>
+                        ))}
+                      </select>
+                      {Boolean(deliveryTrackingByLead[job.id]?.drop_completed_time) ||
+                      Boolean(deliveryTrackingByLead[job.id]?.drop_otp_verified_at) ||
+                      ['DELIVERED'].includes(String(deliveryTrackingByLead[job.id]?.drop_status || '').toUpperCase()) ? (
+                        <div className="text-[11px] sm:text-xs text-green-700 mt-1">Delivery completed</div>
+                      ) : (
+                        (Boolean(deliveryTrackingByLead[job.id]?.drop_start_time) ||
+                          ['OUT_FOR_DELIVERY', 'IN_TRANSIT', 'ARRIVED_AT_CUSTOMER'].includes(
+                            String(deliveryTrackingByLead[job.id]?.drop_status || '').toUpperCase()
+                          )) && (
+                          <div className="text-[11px] sm:text-xs text-orange-700 mt-1">Delivery in progress</div>
+                        )
+                      )}
+                    </>
+                  ) : job.pickup_boy ? (
                     <div className="flex items-center gap-1.5 sm:gap-2">
-                        <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-primary flex-shrink-0" />
+                      <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-primary flex-shrink-0" />
                       <span className="text-xs sm:text-sm font-semibold truncate">{job.pickup_boy.full_name}</span>
                     </div>
                   ) : (
                     <select
                       data-job-id={job.id}
                       onChange={(e) => e.target.value && assignPickupBoy(job.id, e.target.value)}
-                        className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                      className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                       defaultValue=""
                     >
                       <option value="">Assign...</option>

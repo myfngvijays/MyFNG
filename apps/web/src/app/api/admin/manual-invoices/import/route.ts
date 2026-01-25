@@ -77,6 +77,30 @@ function toNumber(value: string, fallback = 0) {
   return Number.isFinite(v) ? v : fallback;
 }
 
+function normalizeDateInput(value: string): string | null {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split('-');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split('/');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
+}
+
+function normalizeDateTimeInput(value: string): string | null {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const dateOnly = normalizeDateInput(raw);
+  if (dateOnly) return new Date(`${dateOnly}T00:00:00Z`).toISOString();
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 export async function POST(request: NextRequest) {
   try {
     const gate = await requireSuperAdmin(request);
@@ -128,6 +152,7 @@ export async function POST(request: NextRequest) {
       const item = {
         item_name: String(get('item_name') || '').trim(),
         item_description: String(get('item_description') || '').trim(),
+        hsn_sac_code: has('hsn_sac_code') ? String(get('hsn_sac_code') || '').trim() || null : null,
         qty: toNumber(get('qty'), 1),
         unit_price: toNumber(get('unit_price'), 0),
         tax_percent: toNumber(get('tax_percent'), 0),
@@ -137,8 +162,8 @@ export async function POST(request: NextRequest) {
       if (!groups.has(invoiceNumber)) {
         groups.set(invoiceNumber, {
           invoice_number: invoiceNumber,
-          invoice_date: get('invoice_date') || null,
-          due_date: get('due_date') || null,
+          invoice_date: normalizeDateInput(get('invoice_date')) || null,
+          due_date: normalizeDateInput(get('due_date')) || null,
           customer_name: String(get('customer_name') || '').trim(),
           customer_phone: String(get('customer_phone') || '').trim(),
           customer_email: String(get('customer_email') || '').trim() || null,
@@ -146,10 +171,15 @@ export async function POST(request: NextRequest) {
           customer_city: String(get('customer_city') || '').trim() || null,
           customer_state: String(get('customer_state') || '').trim() || null,
           customer_pincode: String(get('customer_pincode') || '').trim() || null,
+          customer_gstin: has('customer_gstin') ? String(get('customer_gstin') || '').trim() || null : null,
+          customer_tax_type: has('customer_tax_type') ? String(get('customer_tax_type') || '').trim() || null : null,
+          place_of_supply: has('place_of_supply') ? String(get('place_of_supply') || '').trim() || null : null,
+          car_number: has('car_number') ? String(get('car_number') || '').trim() || null : null,
+          car_model: has('car_model') ? String(get('car_model') || '').trim() || null : null,
           payment_mode: has('payment_mode') ? String(get('payment_mode') || '').trim() || null : null,
           payment_reference: has('payment_reference') ? String(get('payment_reference') || '').trim() || null : null,
           payment_notes: has('payment_notes') ? String(get('payment_notes') || '').trim() || null : null,
-          paid_at: has('paid_at') ? String(get('paid_at') || '').trim() || null : null,
+          paid_at: has('paid_at') ? normalizeDateTimeInput(get('paid_at')) : null,
           line_items: [],
         });
       }
@@ -178,6 +208,11 @@ export async function POST(request: NextRequest) {
         customer_city: inv.customer_city,
         customer_state: inv.customer_state,
         customer_pincode: inv.customer_pincode,
+        customer_gstin: inv.customer_gstin,
+        customer_tax_type: inv.customer_tax_type,
+        place_of_supply: inv.place_of_supply,
+        car_number: inv.car_number,
+        car_model: inv.car_model,
         line_items: items,
         base_amount: baseAmount,
         discount: discount,

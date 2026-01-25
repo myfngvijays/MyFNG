@@ -291,6 +291,7 @@ export enum VehiclePhotoType {
   DROP_INTERIOR = 'DROP_INTERIOR',         // Interior at delivery
   DROP_DASHBOARD = 'DROP_DASHBOARD',       // ✨ NEW: Dashboard at delivery
   DROP_ODOMETER = 'DROP_ODOMETER',         // Odometer at delivery
+  DROP_HANDOVER = 'DROP_HANDOVER',         // ✨ NEW: Receiver/handover photo at delivery
   // After work photos
   AFTER_WORK = 'AFTER_WORK',               // After service completion
   // Delivery signature (for home delivery)

@@ -97,6 +97,96 @@ export default function SupervisorJobDetailPage() {
   const [pickupFormTimeSlot, setPickupFormTimeSlot] = useState(''); // "10:00 AM - 12:00 PM"
   const reportPdfRef = useRef<HTMLDivElement | null>(null);
   const [pdfExporting, setPdfExporting] = useState<'view' | 'download' | null>(null);
+
+  // Advisor editable customer + vehicle details (locked: car number, model, mobile)
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsSaving, setDetailsSaving] = useState(false);
+  const [detailsDraft, setDetailsDraft] = useState<any>({
+    customer_name: '',
+    customer_email: '',
+    customer_alternate_phone: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    vehicle_year: '',
+    vehicle_variant: '',
+    vehicle_fuel_type: '',
+    vehicle_vin: '',
+    vehicle_odometer: '',
+    engine_no: '',
+    chassis_no: '',
+    daily_running_km: '',
+  });
+
+  function startEditDetails() {
+    if (!lead) return;
+    const resolvedAddress = String((lead as any)?.address || (lead as any)?.customer_address || '').trim();
+    setDetailsDraft({
+      customer_name: (lead as any)?.customer_name || '',
+      customer_email: (lead as any)?.customer_email || '',
+      customer_alternate_phone: (lead as any)?.customer_alternate_phone || '',
+      address: resolvedAddress,
+      city: (lead as any)?.city || '',
+      state: (lead as any)?.state || '',
+      pincode: (lead as any)?.pincode || '',
+      vehicle_year: (lead as any)?.vehicle_year ?? '',
+      vehicle_variant: (lead as any)?.vehicle_variant || '',
+      vehicle_fuel_type: (lead as any)?.vehicle_fuel_type || '',
+      vehicle_vin: (lead as any)?.vehicle_vin || '',
+      vehicle_odometer: (lead as any)?.vehicle_odometer ?? (lead as any)?.odometer_km ?? '',
+      engine_no: (lead as any)?.engine_no || '',
+      chassis_no: (lead as any)?.chassis_no || '',
+      daily_running_km: (lead as any)?.daily_running_km ?? '',
+    });
+    setEditingDetails(true);
+  }
+
+  function cancelEditDetails() {
+    setEditingDetails(false);
+  }
+
+  async function saveEditDetails() {
+    if (!lead) return;
+    if (detailsSaving) return;
+    setDetailsSaving(true);
+    try {
+      const payload: any = {
+        customer_name: detailsDraft.customer_name,
+        customer_email: detailsDraft.customer_email,
+        customer_alternate_phone: detailsDraft.customer_alternate_phone,
+        address: detailsDraft.address,
+        city: detailsDraft.city,
+        state: detailsDraft.state,
+        pincode: detailsDraft.pincode,
+        vehicle_year: detailsDraft.vehicle_year === '' ? null : Number(detailsDraft.vehicle_year),
+        vehicle_variant: detailsDraft.vehicle_variant,
+        vehicle_fuel_type: detailsDraft.vehicle_fuel_type,
+        vehicle_vin: detailsDraft.vehicle_vin,
+        vehicle_odometer: detailsDraft.vehicle_odometer === '' ? null : Number(detailsDraft.vehicle_odometer),
+        engine_no: detailsDraft.engine_no,
+        chassis_no: detailsDraft.chassis_no,
+        daily_running_km: detailsDraft.daily_running_km === '' ? null : Number(detailsDraft.daily_running_km),
+      };
+
+      const res = await fetch(`/api/workshop/leads/${jobId}/update-details`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        alert(String(data?.error || data?.details || 'Failed to update details'));
+        return;
+      }
+      setLead(data.lead);
+      setEditingDetails(false);
+    } catch (e: any) {
+      alert(e?.message || 'Failed to update details');
+    } finally {
+      setDetailsSaving(false);
+    }
+  }
   const PICKUP_TIME_SLOTS = useMemo(
     () => [
       '09:00 AM - 11:00 AM',
@@ -1689,10 +1779,6 @@ export default function SupervisorJobDetailPage() {
           <button type="button" className={tabBtn('service')} onClick={() => setActiveTab('service')}>
             Service
           </button>
-          {/* 3. Parts */}
-          <button type="button" className={tabBtn('parts')} onClick={() => setActiveTab('parts')}>
-            Parts {parts.length > 0 && <span className="ml-1">({parts.length})</span>}
-          </button>
           {/* 4. Photos */}
           <button type="button" className={tabBtn('photos')} onClick={() => setActiveTab('photos')}>
             Photos {mediaCount > 0 && <span className="ml-1">({mediaCount})</span>}
@@ -1772,6 +1858,25 @@ export default function SupervisorJobDetailPage() {
         </div>
 
         {/* Section 2: Customer & Vehicle */}
+        <div className="flex items-center justify-end mb-2">
+          {!editingDetails ? (
+            <button onClick={startEditDetails} className="btn-secondary flex items-center gap-2">
+              <Edit className="w-4 h-4" />
+              Edit Details
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button onClick={cancelEditDetails} disabled={detailsSaving} className="btn-secondary">
+                Cancel
+              </button>
+              <button onClick={saveEditDetails} disabled={detailsSaving} className="btn-primary flex items-center gap-2">
+                <Save className="w-4 h-4" />
+                {detailsSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
           <div className="card">
             <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
@@ -1779,11 +1884,95 @@ export default function SupervisorJobDetailPage() {
               Customer Details
             </h3>
             <div className="space-y-1.5 sm:space-y-2">
-              <p className="text-xs sm:text-sm"><span className="text-gray-600">Name:</span> <strong>{lead.customer_name}</strong></p>
-              <p className="text-xs sm:text-sm"><span className="text-gray-600">Phone:</span> <strong>{lead.customer_phone}</strong></p>
-              {lead.customer_email && (
-                <p className="text-xs sm:text-sm"><span className="text-gray-600">Email:</span> {lead.customer_email}</p>
-              )}
+              <div className="text-xs sm:text-sm">
+                <span className="text-gray-600">Name:</span>{' '}
+                {!editingDetails ? (
+                  <strong>{lead.customer_name}</strong>
+                ) : (
+                  <input
+                    value={detailsDraft.customer_name}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, customer_name: e.target.value }))}
+                    className="input w-full mt-1"
+                    placeholder="Customer name"
+                  />
+                )}
+              </div>
+
+              <p className="text-xs sm:text-sm">
+                <span className="text-gray-600">Phone:</span> <strong>{lead.customer_phone}</strong>
+              </p>
+              {editingDetails && <p className="text-[11px] text-gray-500">Mobile number is not editable.</p>}
+
+              <div className="text-xs sm:text-sm">
+                <span className="text-gray-600">Email:</span>{' '}
+                {!editingDetails ? (
+                  lead.customer_email ? (
+                    String(lead.customer_email)
+                  ) : (
+                    <span className="text-gray-500">—</span>
+                  )
+                ) : (
+                  <input
+                    value={detailsDraft.customer_email}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, customer_email: e.target.value }))}
+                    className="input w-full mt-1"
+                    placeholder="Email"
+                  />
+                )}
+              </div>
+
+              <div className="text-xs sm:text-sm">
+                <span className="text-gray-600">Alt Phone:</span>{' '}
+                {!editingDetails ? (
+                  <strong>{(lead as any)?.customer_alternate_phone || '—'}</strong>
+                ) : (
+                  <input
+                    value={detailsDraft.customer_alternate_phone}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, customer_alternate_phone: e.target.value }))}
+                    className="input w-full mt-1"
+                    placeholder="Alternate phone"
+                  />
+                )}
+              </div>
+
+              <div className="text-xs sm:text-sm">
+                <span className="text-gray-600">Address:</span>{' '}
+                {!editingDetails ? (
+                  <span className="break-words">
+                    {String((lead as any)?.customer_address || (lead as any)?.address || '—')}
+                  </span>
+                ) : (
+                  <div className="mt-1 space-y-2">
+                    <textarea
+                      value={detailsDraft.address}
+                      onChange={(e) => setDetailsDraft((p: any) => ({ ...p, address: e.target.value }))}
+                      className="input w-full"
+                      rows={3}
+                      placeholder="Address"
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <input
+                        value={detailsDraft.city}
+                        onChange={(e) => setDetailsDraft((p: any) => ({ ...p, city: e.target.value }))}
+                        className="input w-full"
+                        placeholder="City"
+                      />
+                      <input
+                        value={detailsDraft.state}
+                        onChange={(e) => setDetailsDraft((p: any) => ({ ...p, state: e.target.value }))}
+                        className="input w-full"
+                        placeholder="State"
+                      />
+                      <input
+                        value={detailsDraft.pincode}
+                        onChange={(e) => setDetailsDraft((p: any) => ({ ...p, pincode: e.target.value }))}
+                        className="input w-full"
+                        placeholder="Pincode"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1793,25 +1982,113 @@ export default function SupervisorJobDetailPage() {
               Vehicle Details
             </h3>
             <div className="space-y-1.5 sm:space-y-2">
-              <p className="text-xs sm:text-sm"><span className="text-gray-600">Number:</span> <strong>{lead.vehicle_number}</strong></p>
-              <p className="text-xs sm:text-sm"><span className="text-gray-600">Make/Model:</span> {lead.vehicle_make} {lead.vehicle_model}</p>
-              {lead.vehicle_year && (
-                <p className="text-xs sm:text-sm"><span className="text-gray-600">Year:</span> {lead.vehicle_year}</p>
-              )}
+              <p className="text-xs sm:text-sm">
+                <span className="text-gray-600">Number:</span> <strong>{lead.vehicle_number}</strong>
+              </p>
+              {editingDetails && <p className="text-[11px] text-gray-500">Car number is not editable.</p>}
+
+              <p className="text-xs sm:text-sm">
+                <span className="text-gray-600">Make/Model:</span> {lead.vehicle_make} {lead.vehicle_model}
+              </p>
+              {editingDetails && <p className="text-[11px] text-gray-500">Model is not editable.</p>}
+
+              <div className="text-xs sm:text-sm">
+                <span className="text-gray-600">Year:</span>{' '}
+                {!editingDetails ? (
+                  lead.vehicle_year ? String(lead.vehicle_year) : <span className="text-gray-500">—</span>
+                ) : (
+                  <input
+                    type="number"
+                    value={detailsDraft.vehicle_year}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, vehicle_year: e.target.value }))}
+                    className="input w-full mt-1"
+                    placeholder="Year"
+                  />
+                )}
+              </div>
+
+              <div className="text-xs sm:text-sm">
+                <span className="text-gray-600">Fuel:</span>{' '}
+                {!editingDetails ? (
+                  (lead as any)?.vehicle_fuel_type ? String((lead as any)?.vehicle_fuel_type) : <span className="text-gray-500">—</span>
+                ) : (
+                  <input
+                    value={detailsDraft.vehicle_fuel_type}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, vehicle_fuel_type: e.target.value }))}
+                    className="input w-full mt-1"
+                    placeholder="Fuel type"
+                  />
+                )}
+              </div>
+
               {(() => {
                 const odo =
                   // Vehicle Details should show the lead-creation odometer (not pickup dashboard reading)
                   (lead as any).odometer_km ??
                   (lead as any).vehicle_odometer ??
                   null;
-                if (!odo) return null;
                 return (
-                  <p className="text-xs sm:text-sm">
+                  <div className="text-xs sm:text-sm">
                     <span className="text-gray-600">Odometer:</span>{' '}
-                    <strong>{Number(odo).toLocaleString()} km</strong>
-                  </p>
+                    {!editingDetails ? (
+                      odo ? <strong>{Number(odo).toLocaleString()} km</strong> : <span className="text-gray-500">—</span>
+                    ) : (
+                      <input
+                        type="number"
+                        value={detailsDraft.vehicle_odometer}
+                        onChange={(e) => setDetailsDraft((p: any) => ({ ...p, vehicle_odometer: e.target.value }))}
+                        className="input w-full mt-1"
+                        placeholder="Odometer (km)"
+                      />
+                    )}
+                  </div>
                 );
               })()}
+
+              <div className="text-xs sm:text-sm">
+                <span className="text-gray-600">Daily Running (KM):</span>{' '}
+                {!editingDetails ? (
+                  (lead as any)?.daily_running_km
+                    ? <strong>{Number((lead as any).daily_running_km).toLocaleString()} km</strong>
+                    : <span className="text-gray-500">—</span>
+                ) : (
+                  <input
+                    type="number"
+                    value={detailsDraft.daily_running_km}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, daily_running_km: e.target.value }))}
+                    className="input w-full mt-1"
+                    placeholder="Daily running KM"
+                  />
+                )}
+              </div>
+
+              <div className="text-xs sm:text-sm">
+                <span className="text-gray-600">Engine No:</span>{' '}
+                {!editingDetails ? (
+                  <strong>{(lead as any)?.engine_no || '—'}</strong>
+                ) : (
+                  <input
+                    value={detailsDraft.engine_no}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, engine_no: e.target.value }))}
+                    className="input w-full mt-1"
+                    placeholder="Engine number"
+                  />
+                )}
+              </div>
+
+              <div className="text-xs sm:text-sm">
+                <span className="text-gray-600">Chassis No:</span>{' '}
+                {!editingDetails ? (
+                  <strong>{(lead as any)?.chassis_no || '—'}</strong>
+                ) : (
+                  <input
+                    value={detailsDraft.chassis_no}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, chassis_no: e.target.value }))}
+                    className="input w-full mt-1"
+                    placeholder="Chassis number"
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2472,32 +2749,85 @@ export default function SupervisorJobDetailPage() {
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Requested By</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Customer Remark</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Advisor Remark</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Work Done</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Work Remark</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Completed At</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {lead.extra_charges.map((charge: any) => (
+                      {lead.extra_charges.map((charge: any) => {
+                        const status = String(charge?.status || 'PENDING').toUpperCase();
+                        const byCustomer = Boolean(charge?.customer_approved_at);
+                        const customerApproved = Boolean(charge?.customer_approved);
+                        const isOverrideApproved = status === 'APPROVED' && byCustomer && !customerApproved;
+                        const workDone = Boolean(charge?.work_completed || charge?.work_completed_at);
+                        const workRemark = String(charge?.work_completion_remark || '').trim();
+
+                        const statusLabel =
+                          status === 'APPROVED'
+                            ? (customerApproved && byCustomer ? 'APPROVED • Customer' : isOverrideApproved ? 'APPROVED • Override' : 'APPROVED • Advisor')
+                            : status === 'REJECTED'
+                              ? (byCustomer ? 'REJECTED • Customer' : 'REJECTED • Advisor')
+                              : status;
+
+                        const statusClass =
+                          status === 'APPROVED'
+                            ? (isOverrideApproved ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800')
+                            : status === 'REJECTED'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-yellow-100 text-yellow-800';
+
+                        return (
                         <tr key={charge.id} className="hover:bg-gray-50">
                           <td className="px-4 py-2 text-sm font-medium text-gray-900">{charge.description}</td>
                           <td className="px-4 py-2 text-sm text-gray-700">{charge.reason || '—'}</td>
                           <td className="px-4 py-2 text-sm text-gray-700">
                             {(charge as any)?.requester?.full_name || 'Unknown'}
                           </td>
+                          <td className="px-4 py-2 text-sm text-gray-700 max-w-[320px]">
+                            {charge?.customer_approved_at && charge?.rejection_reason
+                              ? String(charge.rejection_reason)
+                              : '—'}
+                          </td>
+                          <td className="px-4 py-2 text-sm text-gray-700 max-w-[320px]">
+                            {String(charge?.supervisor_approval_notes || '').trim()
+                              ? String(charge.supervisor_approval_notes)
+                              : (!charge?.customer_approved_at && charge?.rejection_reason
+                                  ? String(charge.rejection_reason)
+                                  : '—')}
+                          </td>
+                          <td className="px-4 py-2 text-sm text-gray-700">
+                            {workDone ? (
+                              <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                YES
+                              </span>
+                            ) : (
+                              <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                                NO
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-sm text-gray-700 max-w-[320px]">
+                            {workRemark ? workRemark : '—'}
+                          </td>
+                          <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">
+                            {charge?.work_completed_at ? formatDateTime(charge.work_completed_at) : '—'}
+                          </td>
                           <td className="px-4 py-2 text-sm text-right font-semibold text-gray-900">
                             ₹{Number(charge.amount || 0).toLocaleString()}
                           </td>
                           <td className="px-4 py-2 text-sm">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                              charge.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                              charge.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                              'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {charge.status}
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusClass}`}>
+                              {statusLabel}
                             </span>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -2536,89 +2866,6 @@ export default function SupervisorJobDetailPage() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Section 7: Mechanic Parts Assignment */}
-        {activeTab === 'parts' && lead.mechanic && (
-          <div className="card">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
-              <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
-                <Package className="w-4 h-4 sm:w-5 sm:h-5" />
-                Mechanic Parts Assignment ({parts.length})
-              </h3>
-              <button
-                onClick={() => {
-                  setEditingPart(null);
-                  setPartForm({ part_name: '', part_code: '', quantity_issued: 1, part_notes: '' });
-                  setShowAddPartModal(true);
-                }}
-                className="btn btn-primary flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 self-start sm:self-auto"
-              >
-                <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                Add Part
-              </button>
-            </div>
-
-            {parts.length === 0 ? (
-              <div className="text-center py-6 sm:py-8 text-gray-500">
-                <Package className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-1.5 sm:mb-2 opacity-30" />
-                <p className="text-xs sm:text-sm">No parts assigned yet</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-semibold">Part</th>
-                      <th className="px-4 py-3 text-left font-semibold">Code</th>
-                      <th className="px-4 py-3 text-right font-semibold w-24">Qty</th>
-                      <th className="px-4 py-3 text-left font-semibold">Notes</th>
-                      <th className="px-4 py-3 text-right font-semibold w-36">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {parts.map((part) => (
-                      <tr key={part.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-gray-900">{part.part_name}</div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-700">{part.part_code || '—'}</td>
-                        <td className="px-4 py-3 text-right font-medium">{part.quantity || 0}</td>
-                        <td className="px-4 py-3 text-gray-700">
-                          <div className="max-w-[520px] whitespace-pre-wrap break-words">{part.notes || '—'}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingPart(part);
-                                setPartForm({
-                                  part_name: part.part_name,
-                                  part_code: part.part_code || '',
-                                  quantity_issued: part.quantity || 1,
-                                  part_notes: part.notes || ''
-                                });
-                                setShowAddPartModal(true);
-                              }}
-                              className="btn btn-outline text-xs sm:text-sm px-3 py-1.5"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => deletePart(part.id)}
-                              className="btn bg-red-500 hover:bg-red-600 text-white text-xs sm:text-sm px-3 py-1.5"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         )}
 
@@ -2932,9 +3179,31 @@ export default function SupervisorJobDetailPage() {
                                   Requested by: {String(c?.requester?.full_name || c?.requested_by)}
                                 </div>
                               )}
+                              {c?.customer_approved_at && c?.rejection_reason && (
+                                <div className="text-[11px] text-orange-700 mt-0.5 break-words">
+                                  Customer remark: <span className="font-semibold">{String(c.rejection_reason)}</span>
+                                </div>
+                              )}
+                              {String(c?.supervisor_approval_notes || '').trim() && (
+                                <div className="text-[11px] text-blue-700 mt-0.5 break-words">
+                                  Advisor remark:{' '}
+                                  <span className="font-semibold">{String(c.supervisor_approval_notes)}</span>
+                                </div>
+                              )}
+                              {Boolean(c?.work_completed || c?.work_completed_at) && (
+                                <div className="text-[11px] text-green-700 mt-0.5 break-words">
+                                  Work completed: <span className="font-semibold">YES</span>
+                                  {c?.work_completed_at ? ` • ${formatDateTime(c.work_completed_at)}` : ''}
+                                </div>
+                              )}
+                              {String(c?.work_completion_remark || '').trim() && (
+                                <div className="text-[11px] text-gray-700 mt-0.5 break-words">
+                                  Work remark:{' '}
+                                  <span className="font-semibold">{String(c.work_completion_remark)}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="text-right">
-                              <div className="font-bold text-gray-900">₹{Number(c?.amount || 0).toFixed(2)}</div>
                               {c?.customer_approved === true && (
                                 <div className="text-[11px] text-green-700 font-semibold">Customer Approved</div>
                               )}

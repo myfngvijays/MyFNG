@@ -28,6 +28,7 @@ interface ExtraWorkRequest {
   customer_approved?: boolean;
   customer_approved_at?: string | null;
   rejection_reason?: string | null;
+  supervisor_approval_notes?: string | null;
   master_oem_price?: number;
   master_oes_price?: number;
   master_labour_price?: number;
@@ -54,16 +55,20 @@ export default function ExtraWorkApprovalsPage() {
     requestId: string | null;
     choice: 'OEM' | 'OES';
   }>({ open: false, requestId: null, choice: 'OEM' });
+  const [approveModalNotes, setApproveModalNotes] = useState('');
 
   const [publicLinkBusyByLeadId, setPublicLinkBusyByLeadId] = useState<Record<string, boolean>>({});
 
   function getDecisionLabel(r: ExtraWorkRequest) {
     const status = String(r.status || 'PENDING').toUpperCase();
     const byCustomer = Boolean(r.customer_approved_at);
+    const customerApproved = Boolean(r.customer_approved);
     if (status === 'REJECTED') return byCustomer ? 'REJECTED • Customer' : 'REJECTED • Advisor';
     if (status === 'APPROVED') {
       const choice = String(r.part_price_type || 'OEM').toUpperCase();
-      return byCustomer ? `APPROVED • Customer (${choice})` : 'APPROVED • Advisor';
+      if (byCustomer && customerApproved) return `APPROVED • Customer (${choice})`;
+      if (byCustomer && !customerApproved) return `APPROVED • Advisor (Override)`;
+      return 'APPROVED • Advisor';
     }
     return 'PENDING';
   }
@@ -98,13 +103,13 @@ export default function ExtraWorkApprovalsPage() {
     }
   }
 
-  async function approveRequest(requestId: string, part_price_type: 'OEM' | 'OES') {
+  async function approveRequest(requestId: string, part_price_type: 'OEM' | 'OES', notes?: string) {
     try {
       setApprovingRequestIds((p) => ({ ...p, [requestId]: true }));
       const res = await fetch('/api/supervisor/extra-work/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: requestId, part_price_type }),
+        body: JSON.stringify({ id: requestId, part_price_type, notes }),
       });
       const data = await safeReadJson(res);
       if (!res.ok) {
@@ -131,6 +136,14 @@ export default function ExtraWorkApprovalsPage() {
     const p = getEffectivePricingForRequest(r);
     return { oem: p.total_oem, oes: p.total_oes };
   }, [approveModalRequest, editedPricing]);
+
+  const approveModalIsOverride = useMemo(() => {
+    const r = approveModalRequest;
+    if (!r) return false;
+    const status = String(r.status || 'PENDING').toUpperCase();
+    // Customer rejection sets status=REJECTED and customer_approved_at is set.
+    return status === 'REJECTED' && Boolean(r.customer_approved_at);
+  }, [approveModalRequest]);
 
   async function safeReadJson(res: Response): Promise<any | null> {
     try {
@@ -312,6 +325,7 @@ export default function ExtraWorkApprovalsPage() {
           customer_approved,
           customer_approved_at,
           rejection_reason,
+          supervisor_approval_notes,
           category,
           is_urgent,
           created_at,
@@ -456,6 +470,7 @@ export default function ExtraWorkApprovalsPage() {
           customer_approved: (req as any).customer_approved,
           customer_approved_at: (req as any).customer_approved_at,
           rejection_reason: (req as any).rejection_reason,
+          supervisor_approval_notes: (req as any).supervisor_approval_notes,
           master_oem_price: master.oem,
           master_oes_price: master.oes,
           master_labour_price: masterLabour,
@@ -886,13 +901,13 @@ export default function ExtraWorkApprovalsPage() {
     return groups;
   }, [requests]);
 
-  const getEditedPartNumber = (raw: string, fallback: number) => {
+  function getEditedPartNumber(raw: string, fallback: number) {
     const v = (raw ?? '').trim();
     const n = v === '' ? NaN : Number.parseFloat(v);
     return Number.isFinite(n) ? n : fallback;
-  };
+  }
 
-  const getEffectivePricingForRequest = (r: ExtraWorkRequest) => {
+  function getEffectivePricingForRequest(r: ExtraWorkRequest) {
     const p = editedPricing[r.id];
     const baseOem = r.oem_price && r.oem_price > 0 ? r.oem_price : (r.master_oem_price || 0);
     const baseOes = r.oes_price && r.oes_price > 0 ? r.oes_price : (r.master_oes_price || 0);
@@ -900,10 +915,12 @@ export default function ExtraWorkApprovalsPage() {
     const oem = p ? getEditedPartNumber(p.oem, baseOem) : baseOem;
     const oes = p ? getEditedPartNumber(p.oes, baseOes) : baseOes;
     const labour = p ? getEditedPartNumber(p.labour, baseLabour) : baseLabour;
-    const total_oem = oem + labour;
-    const total_oes = oes + labour;
+    // If OEM/OES part price is 0, do NOT add labour into that option's total.
+    // This prevents showing labour-only totals under OEM/OES columns.
+    const total_oem = oem > 0 ? oem + labour : 0;
+    const total_oes = oes > 0 ? oes + labour : 0;
     return { oem, oes, labour, total_oem, total_oes };
-  };
+  }
 
   const getComputedTotalForRequest = (r: ExtraWorkRequest) => {
     // For dashboard summary we default to OEM total (customer may later pick OES)
@@ -1226,6 +1243,26 @@ export default function ExtraWorkApprovalsPage() {
                                           {approvingRequestIds[request.id] ? 'Approving…' : 'Approve'}
                                         </button>
                                       )}
+                                      {!isPending &&
+                                        status === 'REJECTED' &&
+                                        Boolean(request.customer_approved_at) && (
+                                          <button
+                                            type="button"
+                                            className="ml-1 inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-semibold border border-orange-200 text-orange-800 hover:bg-orange-50"
+                                            disabled={Boolean(approvingRequestIds[request.id])}
+                                            onClick={() => {
+                                              setApproveModalNotes('');
+                                              setApproveModal({
+                                                open: true,
+                                                requestId: request.id,
+                                                choice: 'OEM',
+                                              });
+                                            }}
+                                            title="Override customer rejection and approve (remark required)"
+                                          >
+                                            Override approve
+                                          </button>
+                                        )}
                                       {isPending && (
                                         <button
                                           type="button"
@@ -1242,6 +1279,16 @@ export default function ExtraWorkApprovalsPage() {
                                     {status === 'REJECTED' && request.rejection_reason && (
                                       <div className="mt-1 text-[10px] sm:text-xs text-red-700">
                                         Reason: <span className="font-semibold">{request.rejection_reason}</span>
+                                      </div>
+                                    )}
+                                    {status === 'APPROVED' && request.rejection_reason && Boolean(request.customer_approved_at) && (
+                                      <div className="mt-1 text-[10px] sm:text-xs text-orange-700">
+                                        Customer remark: <span className="font-semibold">{request.rejection_reason}</span>
+                                      </div>
+                                    )}
+                                    {status === 'APPROVED' && request.supervisor_approval_notes && (
+                                      <div className="mt-1 text-[10px] sm:text-xs text-blue-700">
+                                        Advisor remark: <span className="font-semibold">{request.supervisor_approval_notes}</span>
                                       </div>
                                     )}
                                   </td>
@@ -1361,7 +1408,9 @@ export default function ExtraWorkApprovalsPage() {
           />
           <div className="relative w-full max-w-md rounded-xl bg-white shadow-xl border">
             <div className="p-4 border-b">
-              <div className="text-lg font-bold text-gray-900">Approve Additional Work</div>
+              <div className="text-lg font-bold text-gray-900">
+                {approveModalIsOverride ? 'Override customer decision' : 'Approve Additional Work'}
+              </div>
               <div className="text-sm text-gray-600 mt-1">{approveModalRequest.description}</div>
             </div>
 
@@ -1393,6 +1442,21 @@ export default function ExtraWorkApprovalsPage() {
                 </div>
               </div>
 
+              {approveModalIsOverride && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Mandatory remark (why approving after customer rejected)
+                  </label>
+                  <textarea
+                    className="input w-full min-h-[90px]"
+                    value={approveModalNotes}
+                    onChange={(e) => setApproveModalNotes(e.target.value)}
+                    placeholder="e.g. Customer rejected by mistake, job is mandatory for safety..."
+                  />
+                  <div className="mt-1 text-xs text-gray-500">This remark will be saved in the approval notes.</div>
+                </div>
+              )}
+
               {approveModalRequest.reason && (
                 <div className="text-xs text-gray-600 bg-gray-50 border rounded p-3 whitespace-pre-line">
                   {approveModalRequest.reason}
@@ -1414,13 +1478,23 @@ export default function ExtraWorkApprovalsPage() {
                 className="btn btn-primary"
                 disabled={Boolean(approvingRequestIds[approveModalRequest.id])}
                 onClick={async () => {
-                  await approveRequest(approveModalRequest.id, approveModal.choice);
+                  if (approveModalIsOverride && !approveModalNotes.trim()) {
+                    toast.error('Remark is required to override customer rejection');
+                    return;
+                  }
+                  await approveRequest(
+                    approveModalRequest.id,
+                    approveModal.choice,
+                    approveModalIsOverride ? approveModalNotes.trim() : undefined
+                  );
                   setApproveModal({ open: false, requestId: null, choice: 'OEM' });
                 }}
               >
                 {approvingRequestIds[approveModalRequest.id]
                   ? 'Approving…'
-                  : `Approve (${approveModal.choice})`}
+                  : approveModalIsOverride
+                    ? `Override & approve (${approveModal.choice})`
+                    : `Approve (${approveModal.choice})`}
               </button>
             </div>
           </div>

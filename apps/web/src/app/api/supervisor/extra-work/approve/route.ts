@@ -63,6 +63,8 @@ export async function POST(request: NextRequest) {
     const id = String(body?.id || '').trim();
     const partTypeRaw = String(body?.part_price_type || 'OEM').toUpperCase().trim();
     const part_price_type = partTypeRaw === 'OES' ? 'OES' : 'OEM';
+    const notesRaw = body?.notes;
+    const notes = typeof notesRaw === 'string' ? notesRaw.trim() : '';
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
     const updater = supabaseAdmin ?? supabase;
@@ -72,7 +74,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data, error: reqErr } = await updater
         .from('lead_extra_charges')
-        .select('id, lead_id, status, description, amount, oem_price, oes_price, labour_price')
+        .select('id, lead_id, status, description, amount, oem_price, oes_price, labour_price, customer_approved_at, rejection_reason')
         .eq('id', id)
         .maybeSingle();
       if (reqErr) throw reqErr;
@@ -91,8 +93,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (!reqRow) return NextResponse.json({ error: 'Request not found' }, { status: 404 });
-    if (String(reqRow.status || '').toUpperCase() !== 'PENDING') {
-      return NextResponse.json({ error: `Not pending (${reqRow.status})` }, { status: 400 });
+    const status = String(reqRow.status || '').toUpperCase();
+    const isCustomerRejected = status === 'REJECTED' && Boolean(reqRow.customer_approved_at);
+    if (status !== 'PENDING' && !isCustomerRejected) {
+      return NextResponse.json({ error: `Cannot approve from status ${reqRow.status}` }, { status: 400 });
+    }
+    if (isCustomerRejected && !notes) {
+      return NextResponse.json(
+        { error: 'Remark/notes is required to override customer rejection' },
+        { status: 400 }
+      );
     }
 
     const { data: lead, error: leadErr } = await updater
@@ -109,22 +119,41 @@ export async function POST(request: NextRequest) {
     const oes = Number(reqRow?.oes_price ?? 0);
     const labour = Number(reqRow?.labour_price ?? 0);
     const legacyAmount = Number(reqRow?.amount ?? 0);
-    const computedTotal =
-      Number.isFinite(oem) || Number.isFinite(oes) || Number.isFinite(labour)
-        ? (part_price_type === 'OES' ? (Number.isFinite(oes) ? oes : 0) : (Number.isFinite(oem) ? oem : 0)) +
-          (Number.isFinite(labour) ? labour : 0)
-        : (Number.isFinite(legacyAmount) ? legacyAmount : 0);
+    const computedTotal = (() => {
+      // If new price breakdown exists, compute based on selected part type.
+      // Rule: if selected part price is 0, do NOT add labour into that option total.
+      if (Number.isFinite(oem) || Number.isFinite(oes) || Number.isFinite(labour)) {
+        const parts =
+          part_price_type === 'OES' ? (Number.isFinite(oes) ? oes : 0) : (Number.isFinite(oem) ? oem : 0);
+        const lab = Number.isFinite(labour) ? labour : 0;
+        return parts > 0 ? parts + lab : 0;
+      }
+      // Legacy fallback: use stored amount.
+      return Number.isFinite(legacyAmount) ? legacyAmount : 0;
+    })();
+
+    if (!Number.isFinite(computedTotal) || computedTotal <= 0) {
+      return NextResponse.json(
+        { error: 'Invalid computed total for approval', computedTotal, part_price_type },
+        { status: 400 }
+      );
+    }
 
     const now = new Date().toISOString();
 
-    // Update request as approved by advisor (customer_approved_at stays NULL)
+    // Update request as approved by advisor.
+    // If this is an override after customer rejection, preserve customer's timestamp + remark
+    // so the supervisor can see both "Customer remark" and "Advisor remark" later.
     const payload: any = {
       status: 'APPROVED',
       part_price_type,
       amount: computedTotal,
       customer_approved: false,
-      customer_approved_at: null,
-      rejection_reason: null,
+      customer_approved_at: isCustomerRejected ? reqRow.customer_approved_at : null,
+      rejection_reason: isCustomerRejected ? (reqRow.rejection_reason ?? null) : null,
+      supervisor_approved_by: profile.id,
+      supervisor_approval_notes: notes || (isCustomerRejected ? 'Override approved by supervisor' : 'Approved by supervisor'),
+      approval_responded_at: now,
     };
 
     let updErr: any = null;
@@ -141,10 +170,14 @@ export async function POST(request: NextRequest) {
 
     // Best-effort event log
     try {
+      const priorRejection = isCustomerRejected ? String(reqRow?.rejection_reason || '').trim() : '';
+      const remark = notes ? ` Remark: ${notes}` : '';
       await updater.from('lead_events').insert({
         lead_id: reqRow.lead_id,
         event_type: 'ADVISOR_EXTRA_WORK_APPROVED',
-        event_description: `Advisor approved additional work (${part_price_type}): ${String(reqRow.description || '').trim() || 'Item'}`,
+        event_description: isCustomerRejected
+          ? `Advisor override approved after customer rejection (${part_price_type}): ${String(reqRow.description || '').trim() || 'Item'}${priorRejection ? ` • Customer reason: ${priorRejection}` : ''}${remark}`
+          : `Advisor approved additional work (${part_price_type}): ${String(reqRow.description || '').trim() || 'Item'}${remark}`,
         created_at: now,
       } as any);
     } catch {

@@ -45,6 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const items = itemsRaw
       .map((x: any) => {
         const product_id = String(x?.product_id || '').trim();
+        const name = String(x?.name || '').trim();
         const unit_price = Number(x?.unit_price ?? 0);
         const base_unit_price = Number(x?.base_unit_price ?? unit_price);
         const quantity = Number(x?.quantity ?? 1);
@@ -52,12 +53,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         if (!Number.isFinite(unit_price) || unit_price < 0) return null;
         return {
           product_id,
+          name: name || undefined,
           unit_price,
           base_unit_price: Number.isFinite(base_unit_price) ? base_unit_price : unit_price,
-          quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+          quantity: Number.isFinite(quantity) && quantity >= 0 ? quantity : 1,
         };
       })
-      .filter(Boolean) as Array<{ product_id: string; unit_price: number; base_unit_price: number; quantity: number }>;
+      .filter(Boolean) as Array<{ product_id: string; name?: string; unit_price: number; base_unit_price: number; quantity: number }>;
 
     // AuthZ: only privileged roles
     const { data: userProfile } = await supabase
@@ -116,7 +118,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const targetKey = normalizeName(serviceDescription);
     let updated = false;
     // Persisted overrides (used for display). Delta is computed from the baseline shown in UI.
-    const itemsForSave = (items || []).map((it) => ({ product_id: it.product_id, unit_price: it.unit_price }));
+    const itemsForSave = (items || []).map((it) => ({
+      product_id: it.product_id,
+      name: it.name,
+      unit_price: it.unit_price,
+      quantity: it.quantity,
+      amount: it.quantity * it.unit_price,
+      base_unit_price: it.base_unit_price,
+    }));
+
+    const isCustomService = targetKey === 'custom service';
+    const includedTotal = itemsForSave.reduce(
+      (sum, it) => sum + (Number(it?.amount || 0) || 0),
+      0
+    );
 
     step = 'match_and_patch_service_line';
     const nextLineItems = li.map((row: any) => {
@@ -134,13 +149,22 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       updated = true;
 
       // Best-effort: if service_type_id exists, recalc SERVICE amount from package items using overrides
+      const qty = Number(row?.qty ?? 1) || 1;
+      const serviceAmount = isCustomService ? includedTotal : Number(row?.amount ?? 0) || 0;
+      const serviceRate = isCustomService ? (qty ? serviceAmount / qty : serviceAmount) : row?.rate;
       return {
         ...row,
         category: cat || 'SERVICE',
         description: row?.description || serviceDescription,
         service_type_id: rowServiceTypeId || (serviceTypeIdInput || undefined),
         included_items: itemsForSave,
-        // amount/rate updated below (after async calc) when possible
+        os_edited: true,
+        ...(isCustomService
+          ? {
+              amount: serviceAmount,
+              rate: serviceRate,
+            }
+          : {}),
       };
     });
 
@@ -165,14 +189,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           }
           if (ids.length === 1 && ids[0] === serviceTypeIdInput) {
             const baseAmount = Number((invoice as any)?.base_amount || 0) || 0;
+            const seededAmount = isCustomService ? includedTotal : baseAmount;
             const seeded = {
               category: 'SERVICE',
               description: serviceDescription,
               service_type_id: serviceTypeIdInput,
               qty: 1,
-              rate: baseAmount,
-              amount: baseAmount,
+              rate: seededAmount,
+              amount: seededAmount,
               included_items: itemsForSave,
+              os_edited: true,
             };
             nextLineItems.push(seeded);
             updated = true;
@@ -196,7 +222,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     // IMPORTANT:
     // Included-items are informational for OS packages. Editing included item rates should NOT
-    // change the main SERVICE line price. So we only persist `included_items` overrides here.
+    // change the main SERVICE line price, except for "Custom service" where SERVICE price should
+    // match the included-items total.
 
     // Schema-tolerant update:
     // Some installs don't have all invoice columns (e.g. updated_at/subtotal).

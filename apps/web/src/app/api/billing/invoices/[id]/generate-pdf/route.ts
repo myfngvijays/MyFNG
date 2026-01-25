@@ -5,6 +5,7 @@ import { formatDateDMY, formatDateTime } from "@/lib/utils";
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveWorkshopServicePriceBestAvailable } from '@/lib/utils/workshopServicePricing';
 
@@ -14,6 +15,17 @@ export async function GET(
 ) {
   try {
     const supabase = await createClient();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const serviceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY ||
+      process.env.SUPABASE_ADMIN_KEY;
+    const supabaseAdmin =
+      supabaseUrl && serviceRoleKey
+        ? createSupabaseAdminClient(supabaseUrl, serviceRoleKey, {
+            auth: { persistSession: false, autoRefreshToken: false },
+          })
+        : null;
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -42,12 +54,13 @@ export async function GET(
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
 
-    // Fetch lead details separately - fetch ALL vehicle and customer fields
+    // Fetch lead details separately - schema-tolerant fetch
     let lead: any = null;
     if (invoice.lead_id) {
       const { data: leadData, error: leadError } = await supabase
         .from('service_leads')
-        .select('id, lead_number, customer_name, customer_email, customer_phone, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, vehicle_year, vehicle_fuel_type, model_id, city_id, vehicle_odometer, odometer_km, service_type, service_type_ids, subservice_ids, customer_address, city, state, pincode')
+        // NOTE: do NOT select non-existent columns like service_leads.workshop_name (varies by install)
+        .select('id, lead_number, workshop_id, customer_name, customer_email, customer_phone, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, vehicle_year, vehicle_fuel_type, model_id, city_id, vehicle_odometer, odometer_km, daily_running_km, next_service_km, next_service_date, service_type, service_type_ids, subservice_ids, customer_address, city, state, pincode')
         .eq('id', invoice.lead_id)
         .maybeSingle();
       
@@ -333,18 +346,57 @@ export async function GET(
       }
     }
 
-    // Fetch workshop details separately
+    // Fetch workshop details separately (invoice.workshop_id may be null in some OS/CI flows).
+    // Schema varies across installs; retry with smaller select lists if needed.
     let workshop: any = null;
-    if (invoice.workshop_id) {
-      const { data: workshopData, error: workshopError } = await supabase
-        .from('workshops')
-        .select('name, address, city, state, phone, email, gst_number, pan_number, bank_name, bank_account_name, bank_account_number, bank_ifsc, bank_branch')
-        .eq('id', invoice.workshop_id)
-        .maybeSingle();
-      
-      if (!workshopError) {
-        workshop = workshopData;
+    const workshopId = (invoice as any)?.workshop_id || (lead as any)?.workshop_id || null;
+    if (workshopId) {
+      const isMissingCol = (e: any) => {
+        const msg = String(e?.message || e || '');
+        const code = String(e?.code || '');
+        return code === '42703' || code === 'PGRST204' || /column .* does not exist/i.test(msg);
+      };
+      const tryFetchWorkshop = async (client: any, select: string) =>
+        client.from('workshops').select(select).eq('id', workshopId).maybeSingle();
+
+      const selects = [
+        // richest
+        'id, name, workshop_name, short_address, address, city, state, pincode, phone, email, gst_number, pan_number, bank_name, bank_account_name, bank_account_number, bank_ifsc, bank_branch',
+        // common
+        'id, name, address, city, state, pincode, phone, email, gst_number, pan_number, bank_name, bank_account_name, bank_account_number, bank_ifsc, bank_branch',
+        // minimal (old installs)
+        'id, name, address, city, state, phone, email, gst_number',
+      ];
+
+      let fetched: any = null;
+      let lastErr: any = null;
+
+      for (const sel of selects) {
+        const res = await tryFetchWorkshop(supabase, sel);
+        if (!res.error && res.data) {
+          fetched = res.data;
+          break;
+        }
+        lastErr = res.error;
+        if (!isMissingCol(res.error)) break; // stop retrying if not schema-related
       }
+
+      if (!fetched && supabaseAdmin) {
+        for (const sel of selects) {
+          const res = await tryFetchWorkshop(supabaseAdmin, sel);
+          if (!res.error && res.data) {
+            fetched = res.data;
+            break;
+          }
+          lastErr = res.error;
+          if (!isMissingCol(res.error)) break;
+        }
+      }
+
+      if (!fetched && lastErr) {
+        console.error('[Generate PDF API] Workshop fetch error:', lastErr);
+      }
+      workshop = fetched;
     }
 
     // Combine all data
@@ -403,6 +455,14 @@ function generateInvoiceHTML(invoice: any): string {
   const serviceTypeItems = invoice.serviceTypeItems || [];
   // vehicleClass is attached by the route (best-effort) for debugging/traceability
   
+  const invType = String(invoice?.invoice_type || '').toUpperCase();
+  const docLabel =
+    invType === 'ORDER_SUMMARY'
+      ? 'Order Summary (OS)'
+      : invType === 'CUSTOMER_INVOICE'
+        ? 'Customer Invoice (CI)'
+        : 'Tax Invoice (TI)';
+
   // Use invoice customer address if available, otherwise use lead
   const customerAddress = invoice.customer_address || lead.customer_address || lead.address || '';
   const customerCity = invoice.customer_city || lead.city || '';
@@ -415,6 +475,27 @@ function generateInvoiceHTML(invoice: any): string {
   const bankAccountNumber = invoice.bank_account_number || workshop.bank_account_number || '123456789012';
   const bankIFSC = invoice.bank_ifsc || workshop.bank_ifsc || 'HDFC0001234';
   const bankBranch = invoice.bank_branch || workshop.bank_branch || `${workshop.city || 'Kamothe'}, Navi Mumbai`;
+
+  const toYMD = (v: any) => {
+    const s = String(v || '').trim();
+    if (!s) return '';
+    // already YYYY-MM-DD or ISO
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const d = new Date(s);
+    return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : '';
+  };
+
+  const nextServiceKm =
+    lead?.next_service_km != null && lead?.next_service_km !== ''
+      ? Number(lead.next_service_km)
+      : null;
+  const nextServiceDate = toYMD(lead?.next_service_date);
+
+  const gstDetailsEnabled = invType === 'TAX_INVOICE';
+  const customerGstin = gstDetailsEnabled ? (invoice.customer_gstin || lead.customer_gstin || '') : '';
+  const customerLegalName = gstDetailsEnabled ? (invoice.customer_legal_name || lead.customer_legal_name || '') : '';
+  const customerBillingAddress = gstDetailsEnabled ? (invoice.customer_billing_address || lead.customer_billing_address || '') : '';
+  const customerBillingStateCode = gstDetailsEnabled ? (invoice.customer_billing_state_code || lead.customer_billing_state_code || '') : '';
   
   // Warranty info
   const warrantyInfo = invoice.warranty_info || {};
@@ -754,6 +835,92 @@ function generateInvoiceHTML(invoice: any): string {
       border-bottom: 3px solid #2563eb;
       padding-bottom: 20px;
     }
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #111827;
+    }
+    .brand-sub {
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .brand-meta {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #6b7280;
+      line-height: 1.5;
+    }
+    .brand-head {
+      font-weight: 600;
+      color: #374151;
+    }
+    .workshop-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 4px;
+    }
+    .workshop-name {
+      font-weight: 600;
+      color: #111827;
+    }
+    .workshop-block {
+      width: 320px;
+      font-size: 11px;
+      color: #4b5563;
+      line-height: 1.4;
+    }
+    .report-meta-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      font-size: 11px;
+      color: #4b5563;
+      margin-bottom: 16px;
+    }
+    .report-meta-row .meta-right {
+      text-align: right;
+    }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .detail-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+    .detail-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #111827;
+    }
+    .detail-row {
+      font-size: 11px;
+      color: #4b5563;
+      margin: 4px 0;
+    }
+    .detail-row span {
+      color: #6b7280;
+    }
     .logo-section {
       flex: 0 0 150px;
     }
@@ -996,105 +1163,67 @@ function generateInvoiceHTML(invoice: any): string {
 </head>
 <body>
   <div class="invoice-container">
-    <!-- Header with Logo -->
-    <div class="header-section">
-      <div class="logo-section">
-        <img src="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/logo.png" alt="MyFNG Logo" style="max-width: 120px; height: auto;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'120\' height=\'60\'%3E%3Crect fill=\'%232563eb\' width=\'120\' height=\'60\'/%3E%3Ctext fill=\'white\' font-family=\'Arial\' font-size=\'20\' font-weight=\'bold\' x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dominant-baseline=\'middle\'%3EMyFNG%3C/text%3E%3C/svg%3E';" />
+    <!-- Comprehensive-style Header -->
+    <div class="report-header">
+      <div class="brand-block">
+        <div class="brand-row">
+          <img src="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/logo.png" alt="MyFNG Logo" style="max-width: 48px; height: auto;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'48\\' height=\\'48\\'%3E%3Crect fill=\\'%232563eb\\' width=\\'48\\' height=\\'48\\'/%3E%3Ctext fill=\\'white\\' font-family=\\'Arial\\' font-size=\\'14\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3EMYFNG%3C/text%3E%3C/svg%3E';" />
+          <div>
+            <div class="brand-title">MY FNG</div>
+            <div class="brand-sub">${docLabel}</div>
+          </div>
+        </div>
+        <div class="brand-meta">
+          <div class="brand-head">Head Office</div>
+          <div>123, Start-up Hub, Tech Park, Bangalore, Karnataka - 560102</div>
+          <div class="brand-contact">
+            <span><strong>Email:</strong> support@myfng.in</span> |
+            <span><strong>Website:</strong> www.myfng.in</span> |
+            <span><strong>GSTIN:</strong> 29AAAAA0000A1Z5</span>
+          </div>
+        </div>
       </div>
-      <div class="title-section">
-        <h1>${docTitle}</h1>
-        <p>Invoice #${invoice.invoice_number}</p>
-      </div>
-    </div>
-
-    <!-- From (Supplier) and To (Customer) -->
-    <div class="from-to-section">
-      <div class="from-section">
-        <h3>From (Supplier):</h3>
-        <p><strong>${workshop.name || 'MyFNG Autocare Pvt. Ltd.'}</strong></p>
-        <p>Registered Office: ${workshop.address || 'Plot No. 21, Sector 12, Kamothe, Navi Mumbai – 410209'}, Maharashtra, India</p>
-        <p>Phone: ${workshop.phone || '+91-98765 43210'}</p>
-        <p>Email: ${workshop.email || 'support@myfng.com'}</p>
-        <p>Website: ${website}</p>
-        ${workshop.gst_number ? `<p><strong>GSTIN:</strong> ${workshop.gst_number}</p>` : '<p><strong>GSTIN:</strong> 27ABCDE1234F1Z5</p>'}
-        ${workshop.pan_number ? `<p><strong>PAN:</strong> ${workshop.pan_number}</p>` : '<p><strong>PAN:</strong> ABCDE1234F</p>'}
-        <p><strong>CIN:</strong> ${cin}</p>
-      </div>
-      <div class="to-section">
-        <h3>To (Customer):</h3>
-        <p><strong>Name:</strong> ${lead.customer_name ? `Mr./Ms. ${lead.customer_name}` : 'N/A'}</p>
-        <p><strong>Address:</strong> ${customerAddress || 'N/A'}</p>
-        ${customerCity || customerState || customerPincode ? `<p>${[customerCity, customerState, customerPincode].filter(Boolean).join(', ')}</p>` : ''}
-        <p><strong>Mobile:</strong> ${lead.customer_phone || 'N/A'}</p>
-        <p><strong>Email:</strong> ${lead.customer_email || 'N/A'}</p>
+      <div class="workshop-block">
+        <div class="workshop-title">Workshop</div>
+        <div class="workshop-name">${workshop.workshop_name || workshop.name || '—'}</div>
+        <div>${workshop.short_address || workshop.address || '—'}${workshop.city || workshop.state || workshop.pincode ? ` ${[workshop.city, workshop.state, workshop.pincode].filter(Boolean).join(', ')}` : ''}</div>
+        <div><strong>Phone:</strong> ${workshop.phone || '—'}</div>
+        <div><strong>Email:</strong> ${workshop.email || '—'}</div>
+        <div><strong>GSTIN:</strong> ${workshop.gst_number || '—'}</div>
       </div>
     </div>
 
-    <!-- Invoice Details Table -->
-    <table class="details-table">
-      <thead>
-        <tr>
-          <th colspan="2" style="text-align: center; background: #1e40af;">Invoice Details</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Invoice No.</strong></td>
-          <td>${invoice.invoice_number}</td>
-        </tr>
-        <tr>
-          <td><strong>Invoice Date</strong></td>
-          <td>${invoiceDate}</td>
-        </tr>
-        <tr>
-          <td><strong>Place of Supply</strong></td>
-          <td>${invoice.place_of_supply || customerState || 'Maharashtra'} (${invoice.place_of_supply_state_code || '27'})</td>
-        </tr>
-        <tr>
-          <td><strong>Lead / Jobcard ID</strong></td>
-          <td>${lead.lead_number || 'N/A'} / ${jobcard.jobcard_number || 'N/A'}</td>
-        </tr>
-        <tr>
-          <td><strong>Payment Terms</strong></td>
-          <td>${invoice.payment_terms || 'Due on Receipt'}</td>
-        </tr>
-        <tr>
-          <td><strong>Mode of Payment</strong></td>
-          <td>${invoice.payment_mode || 'UPI / Online'}</td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="report-meta-row">
+      <div><span class="text-gray-600">Lead #:</span> <strong>${lead.lead_number || '—'}</strong></div>
+      <div><span class="text-gray-600">Invoice #:</span> <strong>${invoice.invoice_number}</strong></div>
+      <div class="meta-right"><span class="text-gray-600">Generated:</span> <strong>${formatDateTime(invoice.created_at || new Date().toISOString())}</strong></div>
+    </div>
 
-    <!-- Vehicle Details Table -->
-    <table class="details-table">
-      <thead>
-        <tr>
-          <th colspan="2" style="text-align: center; background: #1e40af;">Vehicle Details</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Vehicle Reg. No.</strong></td>
-          <td>${lead && lead.vehicle_number ? lead.vehicle_number : 'N/A'}</td>
-        </tr>
-        <tr>
-          <td><strong>Make / Model</strong></td>
-          <td>${lead && lead.vehicle_make ? `${lead.vehicle_make}${lead.vehicle_model ? ` ${lead.vehicle_model}` : ''}${lead.vehicle_variant ? ` ${lead.vehicle_variant}` : ''}${lead.vehicle_year ? ` (${lead.vehicle_year})` : ''}` : 'N/A'}</td>
-        </tr>
-        <tr>
-          <td><strong>Fuel Type</strong></td>
-          <td>${lead && lead.vehicle_fuel_type ? lead.vehicle_fuel_type : 'N/A'}</td>
-        </tr>
-        <tr>
-          <td><strong>Odometer (In)</strong></td>
-          <td>${odometerReading ? `${parseInt(odometerReading.toString()).toLocaleString('en-IN')} km` : 'N/A'}</td>
-        </tr>
-        <tr>
-          <td><strong>Service Type</strong></td>
-          <td>${serviceTypeNames || (lead && lead.service_type ? lead.service_type : 'N/A')}</td>
-        </tr>
-      </tbody>
-    </table>
+    <!-- Customer + Vehicle Details -->
+    <div class="detail-grid">
+      <div class="detail-card">
+        <div class="detail-title">Customer Details</div>
+        <div class="detail-row"><span>Name:</span> <strong>${lead.customer_name || '—'}</strong></div>
+        <div class="detail-row"><span>Phone:</span> <strong>${lead.customer_phone || '—'}</strong></div>
+        ${lead.customer_email ? `<div class="detail-row"><span>Email:</span> ${lead.customer_email}</div>` : ''}
+        <div class="detail-row"><span>Address:</span> ${customerAddress || '—'}</div>
+        ${customerGstin ? `<div class="detail-row"><span>GSTIN:</span> <strong>${customerGstin}</strong></div>` : ''}
+        ${customerLegalName ? `<div class="detail-row"><span>Legal Name:</span> ${customerLegalName}</div>` : ''}
+        ${customerBillingAddress ? `<div class="detail-row"><span>Billing Address:</span> ${customerBillingAddress}</div>` : ''}
+        ${customerBillingStateCode ? `<div class="detail-row"><span>State Code:</span> ${customerBillingStateCode}</div>` : ''}
+      </div>
+      <div class="detail-card">
+        <div class="detail-title">Vehicle Details</div>
+        <div class="detail-row"><span>Number:</span> <strong>${lead.vehicle_number || '—'}</strong></div>
+        <div class="detail-row"><span>Make/Model:</span> ${lead.vehicle_make ? `${lead.vehicle_make}${lead.vehicle_model ? ` ${lead.vehicle_model}` : ''}` : '—'}</div>
+        ${lead.vehicle_variant ? `<div class="detail-row"><span>Variant:</span> ${lead.vehicle_variant}</div>` : ''}
+        ${lead.vehicle_year ? `<div class="detail-row"><span>Year:</span> ${lead.vehicle_year}</div>` : ''}
+        ${lead.vehicle_fuel_type ? `<div class="detail-row"><span>Fuel:</span> ${lead.vehicle_fuel_type}</div>` : ''}
+        <div class="detail-row"><span>Odometer:</span> ${odometerReading ? `${parseInt(odometerReading.toString()).toLocaleString('en-IN')} km` : '—'}</div>
+        ${nextServiceKm != null && Number.isFinite(nextServiceKm) ? `<div class="detail-row"><span>Next Service KM:</span> <strong>${Math.round(nextServiceKm).toLocaleString('en-IN')} km</strong></div>` : ''}
+        ${nextServiceDate ? `<div class="detail-row"><span>Next Service Date:</span> <strong>${formatDateDMY(nextServiceDate)}</strong></div>` : ''}
+      </div>
+    </div>
 
     <!-- Line Items Table -->
     <table class="line-items-table">

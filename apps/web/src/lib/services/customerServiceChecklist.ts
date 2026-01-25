@@ -21,7 +21,7 @@ function normalize(name: string) {
 // Primary source should be DB-driven via `service_type_checklist_templates`.
 // This file is a safe fallback for common “Points” packages.
 const PREMIUM_50_ITEMS: CustomerChecklistItem[] = [
-  { id: '1', name: 'Clean Air Filter', category: 'Engine Compartment' },
+  { id: '1', name: 'Replace Air Filter', category: 'Engine Compartment' },
   { id: '2', name: 'Spark Plugs Cleaning & Adjustment', category: 'Engine Compartment' },
   { id: '3', name: 'Top up Brake Oil', category: 'Engine Compartment' },
   { id: '4', name: 'Top up Gear Oil', category: 'Engine Compartment' },
@@ -40,7 +40,7 @@ const PREMIUM_50_ITEMS: CustomerChecklistItem[] = [
   { id: '17', name: 'Check and Adjust Clutch play (if required)', category: 'Engine Compartment' },
   { id: '18', name: 'Check All Glass Winder Operations', category: 'Cabin' },
   { id: '19', name: 'Window Glass Run Channel Lubrication', category: 'Cabin' },
-  { id: '20', name: 'Clean AC Filter', category: 'Cabin' },
+  { id: '20', name: 'Replace AC Filter', category: 'Cabin' },
   { id: '21', name: 'Check AC Cooling / Gas Leak Test', category: 'Cabin' },
   { id: '22', name: 'AC Disinfectant Spray in AC Vents', category: 'Cabin' },
   { id: '23', name: 'Inspect Front Lights, Rear Lights & Indicators', category: 'Cabin' },

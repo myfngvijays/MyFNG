@@ -67,6 +67,27 @@ export default function LeadDetailPage() {
   const [showQCDetailsModal, setShowQCDetailsModal] = useState(false);
   const [qcPerformedBy, setQcPerformedBy] = useState<any>(null);
 
+  // Advisor/Admin editable customer + vehicle details
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsSaving, setDetailsSaving] = useState(false);
+  const [detailsDraft, setDetailsDraft] = useState<any>({
+    customer_name: '',
+    customer_email: '',
+    customer_alternate_phone: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    vehicle_year: '',
+    vehicle_variant: '',
+    vehicle_fuel_type: '',
+    vehicle_vin: '',
+    vehicle_odometer: '',
+    engine_no: '',
+    chassis_no: '',
+    daily_running_km: '',
+  });
+
   useEffect(() => {
     if (leadId) {
       fetchLeadDetails();
@@ -171,6 +192,75 @@ export default function LeadDetailPage() {
       console.error('Error:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function startEditDetails() {
+    if (!lead) return;
+    const resolvedAddress = (lead.address || lead.customer_address || '').trim();
+    setDetailsDraft({
+      customer_name: lead.customer_name || '',
+      customer_email: lead.customer_email || '',
+      customer_alternate_phone: lead.customer_alternate_phone || '',
+      address: resolvedAddress,
+      city: lead.city || '',
+      state: lead.state || '',
+      pincode: lead.pincode || '',
+      vehicle_year: lead.vehicle_year ?? '',
+      vehicle_variant: lead.vehicle_variant || '',
+      vehicle_fuel_type: lead.vehicle_fuel_type || '',
+      vehicle_vin: lead.vehicle_vin || '',
+      vehicle_odometer: lead.vehicle_odometer ?? lead.odometer_km ?? '',
+      engine_no: lead.engine_no || '',
+      chassis_no: lead.chassis_no || '',
+      daily_running_km: lead.daily_running_km ?? '',
+    });
+    setEditingDetails(true);
+  }
+
+  function cancelEditDetails() {
+    setEditingDetails(false);
+  }
+
+  async function saveEditDetails() {
+    if (!lead) return;
+    if (detailsSaving) return;
+    setDetailsSaving(true);
+    try {
+      const payload: any = {
+        customer_name: detailsDraft.customer_name,
+        customer_email: detailsDraft.customer_email,
+        customer_alternate_phone: detailsDraft.customer_alternate_phone,
+        address: detailsDraft.address,
+        city: detailsDraft.city,
+        state: detailsDraft.state,
+        pincode: detailsDraft.pincode,
+        vehicle_year: detailsDraft.vehicle_year === '' ? null : Number(detailsDraft.vehicle_year),
+        vehicle_variant: detailsDraft.vehicle_variant,
+        vehicle_fuel_type: detailsDraft.vehicle_fuel_type,
+        vehicle_vin: detailsDraft.vehicle_vin,
+        vehicle_odometer: detailsDraft.vehicle_odometer === '' ? null : Number(detailsDraft.vehicle_odometer),
+        engine_no: detailsDraft.engine_no,
+        chassis_no: detailsDraft.chassis_no,
+        daily_running_km: detailsDraft.daily_running_km === '' ? null : Number(detailsDraft.daily_running_km),
+      };
+
+      const res = await fetch(`/api/workshop/leads/${leadId}/update-details`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        alert(String(data?.error || data?.details || 'Failed to update details'));
+        return;
+      }
+      setLead(data.lead);
+      setEditingDetails(false);
+    } catch (e: any) {
+      alert(e?.message || 'Failed to update details');
+    } finally {
+      setDetailsSaving(false);
     }
   }
 
@@ -345,15 +435,42 @@ export default function LeadDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* === SECTION 2: CUSTOMER DETAILS === */}
           <div className="card">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <User className="w-5 h-5 text-brand-primary" />
-              Customer Details
-            </h2>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <User className="w-5 h-5 text-brand-primary" />
+                Customer Details
+              </h2>
+              <div className="flex items-center gap-2">
+                {!editingDetails ? (
+                  <button onClick={startEditDetails} className="btn-secondary px-4 py-2">
+                    Edit
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={cancelEditDetails} disabled={detailsSaving} className="btn-secondary px-4 py-2">
+                      Cancel
+                    </button>
+                    <button onClick={saveEditDetails} disabled={detailsSaving} className="btn-primary px-4 py-2">
+                      {detailsSaving ? 'Saving...' : 'Save'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
             
             <div className="space-y-3">
               <div>
                 <label className="text-sm text-gray-600">Full Name</label>
-                <p className="text-lg font-semibold">{lead.customer_name}</p>
+                {!editingDetails ? (
+                  <p className="text-lg font-semibold">{lead.customer_name}</p>
+                ) : (
+                  <input
+                    value={detailsDraft.customer_name}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, customer_name: e.target.value }))}
+                    className="input w-full"
+                    placeholder="Customer name"
+                  />
+                )}
               </div>
 
               <div>
@@ -365,35 +482,95 @@ export default function LeadDetailPage() {
                   <Phone className="w-4 h-4" />
                   {lead.customer_phone}
                 </a>
+                {editingDetails && (
+                  <p className="text-xs text-gray-500 mt-1">Mobile number is not editable.</p>
+                )}
               </div>
 
-              {lead.customer_email && (
-                <div>
-                  <label className="text-sm text-gray-600">Email</label>
-                  <a 
-                    href={`mailto:${lead.customer_email}`}
-                    className="flex items-center gap-2 text-brand-primary hover:underline"
-                  >
-                    <Mail className="w-4 h-4" />
-                    {lead.customer_email}
-                  </a>
-                </div>
-              )}
+              <div>
+                <label className="text-sm text-gray-600">Email</label>
+                {!editingDetails ? (
+                  lead.customer_email ? (
+                    <a
+                      href={`mailto:${lead.customer_email}`}
+                      className="flex items-center gap-2 text-brand-primary hover:underline"
+                    >
+                      <Mail className="w-4 h-4" />
+                      {lead.customer_email}
+                    </a>
+                  ) : (
+                    <p className="text-gray-500">—</p>
+                  )
+                ) : (
+                  <input
+                    value={detailsDraft.customer_email}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, customer_email: e.target.value }))}
+                    className="input w-full"
+                    placeholder="Email"
+                  />
+                )}
+              </div>
 
-              {lead.address && (
-                <div>
-                  <label className="text-sm text-gray-600">Address</label>
-                  <div className="flex items-start gap-2">
-                    <MapPin className="w-4 h-4 text-gray-400 mt-1 flex-shrink-0" />
-                    <p className="text-gray-900">{lead.address}</p>
+              <div>
+                <label className="text-sm text-gray-600">Alternate Phone</label>
+                {!editingDetails ? (
+                  <p className="font-semibold">{lead.customer_alternate_phone || '—'}</p>
+                ) : (
+                  <input
+                    value={detailsDraft.customer_alternate_phone}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, customer_alternate_phone: e.target.value }))}
+                    className="input w-full"
+                    placeholder="Alternate phone"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-600">Address</label>
+                {!editingDetails ? (
+                  <>
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-4 h-4 text-gray-400 mt-1 flex-shrink-0" />
+                      <p className="text-gray-900">{lead.address || lead.customer_address || '—'}</p>
+                    </div>
+                    {(lead.city || lead.state || lead.pincode) && (
+                      <p className="text-sm text-gray-600 ml-6">
+                        {[lead.city, lead.state, lead.pincode].filter(Boolean).join(', ')}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <textarea
+                      value={detailsDraft.address}
+                      onChange={(e) => setDetailsDraft((p: any) => ({ ...p, address: e.target.value }))}
+                      className="input w-full"
+                      rows={3}
+                      placeholder="Address"
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <input
+                        value={detailsDraft.city}
+                        onChange={(e) => setDetailsDraft((p: any) => ({ ...p, city: e.target.value }))}
+                        className="input w-full"
+                        placeholder="City"
+                      />
+                      <input
+                        value={detailsDraft.state}
+                        onChange={(e) => setDetailsDraft((p: any) => ({ ...p, state: e.target.value }))}
+                        className="input w-full"
+                        placeholder="State"
+                      />
+                      <input
+                        value={detailsDraft.pincode}
+                        onChange={(e) => setDetailsDraft((p: any) => ({ ...p, pincode: e.target.value }))}
+                        className="input w-full"
+                        placeholder="Pincode"
+                      />
+                    </div>
                   </div>
-                  {(lead.city || lead.state || lead.pincode) && (
-                    <p className="text-sm text-gray-600 ml-6">
-                      {[lead.city, lead.state, lead.pincode].filter(Boolean).join(', ')}
-                    </p>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
 
               {lead.customer_special_notes && (
                 <div>
@@ -417,6 +594,9 @@ export default function LeadDetailPage() {
               <div>
                 <label className="text-sm text-gray-600">Registration Number</label>
                 <p className="text-lg font-bold text-gray-900">{lead.vehicle_number}</p>
+                {editingDetails && (
+                  <p className="text-xs text-gray-500 mt-1">Car number is not editable.</p>
+                )}
               </div>
 
               {(lead.vehicle_make || lead.vehicle_model) && (
@@ -425,36 +605,114 @@ export default function LeadDetailPage() {
                   <p className="text-lg font-semibold text-gray-900">
                     {[lead.vehicle_make, lead.vehicle_model, lead.vehicle_variant].filter(Boolean).join(' ')}
                   </p>
+                  {editingDetails && (
+                    <p className="text-xs text-gray-500 mt-1">Model is not editable.</p>
+                  )}
                 </div>
               )}
 
-              {lead.vehicle_year && (
-                <div>
-                  <label className="text-sm text-gray-600">Year</label>
-                  <p className="font-semibold">{lead.vehicle_year}</p>
-                </div>
-              )}
+              <div>
+                <label className="text-sm text-gray-600">Year</label>
+                {!editingDetails ? (
+                  <p className="font-semibold">{lead.vehicle_year || '—'}</p>
+                ) : (
+                  <input
+                    type="number"
+                    value={detailsDraft.vehicle_year}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, vehicle_year: e.target.value }))}
+                    className="input w-full"
+                    placeholder="Year"
+                  />
+                )}
+              </div>
 
-              {lead.vehicle_fuel_type && (
-                <div>
-                  <label className="text-sm text-gray-600">Fuel Type</label>
-                  <p className="font-semibold">{lead.vehicle_fuel_type}</p>
-                </div>
-              )}
+              <div>
+                <label className="text-sm text-gray-600">Fuel Type</label>
+                {!editingDetails ? (
+                  <p className="font-semibold">{lead.vehicle_fuel_type || '—'}</p>
+                ) : (
+                  <input
+                    value={detailsDraft.vehicle_fuel_type}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, vehicle_fuel_type: e.target.value }))}
+                    className="input w-full"
+                    placeholder="Fuel type"
+                  />
+                )}
+              </div>
 
-              {lead.vehicle_odometer && (
-                <div>
-                  <label className="text-sm text-gray-600">Odometer Reading</label>
-                  <p className="font-semibold">{lead.vehicle_odometer.toLocaleString()} km</p>
-                </div>
-              )}
+              <div>
+                <label className="text-sm text-gray-600">Odometer Reading</label>
+                {!editingDetails ? (
+                  <p className="font-semibold">
+                    {lead.vehicle_odometer || lead.odometer_km ? `${Number(lead.vehicle_odometer || lead.odometer_km).toLocaleString()} km` : '—'}
+                  </p>
+                ) : (
+                  <input
+                    type="number"
+                    value={detailsDraft.vehicle_odometer}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, vehicle_odometer: e.target.value }))}
+                    className="input w-full"
+                    placeholder="Odometer (km)"
+                  />
+                )}
+              </div>
 
-              {lead.vehicle_vin && (
-                <div>
-                  <label className="text-sm text-gray-600">VIN</label>
-                  <p className="font-mono text-sm">{lead.vehicle_vin}</p>
-                </div>
-              )}
+              <div>
+                <label className="text-sm text-gray-600">Daily Running (KM)</label>
+                {!editingDetails ? (
+                  <p className="font-semibold">{lead.daily_running_km ? `${Number(lead.daily_running_km).toLocaleString()} km` : '—'}</p>
+                ) : (
+                  <input
+                    type="number"
+                    value={detailsDraft.daily_running_km}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, daily_running_km: e.target.value }))}
+                    className="input w-full"
+                    placeholder="Daily running KM"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-600">VIN</label>
+                {!editingDetails ? (
+                  <p className="font-mono text-sm">{lead.vehicle_vin || '—'}</p>
+                ) : (
+                  <input
+                    value={detailsDraft.vehicle_vin}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, vehicle_vin: e.target.value }))}
+                    className="input w-full"
+                    placeholder="VIN"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-600">Engine No</label>
+                {!editingDetails ? (
+                  <p className="font-semibold">{lead.engine_no || '—'}</p>
+                ) : (
+                  <input
+                    value={detailsDraft.engine_no}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, engine_no: e.target.value }))}
+                    className="input w-full"
+                    placeholder="Engine number"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-600">Chassis No</label>
+                {!editingDetails ? (
+                  <p className="font-semibold">{lead.chassis_no || '—'}</p>
+                ) : (
+                  <input
+                    value={detailsDraft.chassis_no}
+                    onChange={(e) => setDetailsDraft((p: any) => ({ ...p, chassis_no: e.target.value }))}
+                    className="input w-full"
+                    placeholder="Chassis number"
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -204,14 +204,21 @@ export async function POST(
       // ignore; keep stored tax/roundOff
     }
 
-    // Derived totals (several possible sources depending on schema)
+    // Derived totals (fallbacks)
     const derivedPayableStored = Math.max(0, computedSubTotal - storedDiscountNum + storedTaxNum + storedRoundOffNum);
     const derivedPayableComputed = Math.max(0, lineItemsTotal - storedDiscountNum + computedTax + computedRoundOff);
 
-    // Pick the best (largest) positive value to match what the UI shows.
-    const invoiceAmount = Math.max(finalAmountNum, totalAmountNum, derivedPayableStored, derivedPayableComputed, 0);
+    // IMPORTANT:
+    // Customer-facing payable must follow stored invoice.final_amount when present.
+    // Using a "max" across sources can incorrectly mark a fully-paid invoice as PARTIAL,
+    // which prevents TI generation. Fallback only if stored totals are missing/zero.
+    const storedPayable = Math.max(finalAmountNum, totalAmountNum, 0);
+    const invoiceAmount =
+      storedPayable > 0
+        ? storedPayable
+        : Math.max(derivedPayableStored, derivedPayableComputed, 0);
     const currentPaidAmount = toNum((invoice as any).paid_amount);
-    const balanceDue = invoiceAmount - currentPaidAmount;
+    const balanceDue = Math.max(0, invoiceAmount - currentPaidAmount);
 
     if (paidAmount <= 0) {
       return NextResponse.json({ 
@@ -256,8 +263,8 @@ export async function POST(
     
     // Calculate new totals
     const newPaidAmount = currentPaidAmount + paidAmount;
-    const newBalanceDue = invoiceAmount - newPaidAmount;
-    const isFullPayment = newPaidAmount >= invoiceAmount;
+    const newBalanceDue = Math.max(0, invoiceAmount - newPaidAmount);
+    const isFullPayment = newPaidAmount + 0.01 >= invoiceAmount;
 
     // Create payment transaction record
     const { data: paymentTransaction, error: transactionError } = await supabaseAdmin
@@ -516,6 +523,38 @@ export async function POST(
             seq,
             invoice_number: (invoice as any).invoice_number,
           });
+        }
+      }
+
+      // Fallback: if TI insert failed due to schema/policy mismatch, use the dedicated ensure-tax-invoice API.
+      // This API contains GST-inclusive (back-calculation) logic and more robust error reporting.
+      if (isFullPayment && !is_cod && !taxInvoice?.id) {
+        try {
+          const cookie = request.headers.get('cookie') || '';
+          const authorization = request.headers.get('authorization') || '';
+          const ensureUrl = `${request.nextUrl.origin}/api/billing/leads/${invoice.lead_id}/ensure-tax-invoice`;
+          const ensureRes = await fetch(ensureUrl, {
+            method: 'POST',
+            headers: {
+              ...(cookie ? { cookie } : {}),
+              ...(authorization ? { authorization } : {}),
+            },
+            cache: 'no-store',
+          });
+          const ensured = await ensureRes.json().catch(() => ({}));
+          if (ensureRes.ok && ensured?.tax_invoice?.id) {
+            taxInvoice = ensured.tax_invoice;
+          } else {
+            console.warn('Non-blocking: ensure-tax-invoice failed after payment:', {
+              status: ensureRes.status,
+              error: ensured?.error,
+              details: ensured?.details,
+              code: ensured?.code,
+              hint: ensured?.hint,
+            });
+          }
+        } catch (e) {
+          console.warn('Non-blocking: ensure-tax-invoice call errored after payment:', e);
         }
       }
 

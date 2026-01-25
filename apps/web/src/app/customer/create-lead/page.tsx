@@ -160,39 +160,44 @@ export default function CreateLeadPage() {
     if (!validateStep3()) return;
 
     setLoading(true);
-    const supabase = createClient();
-
     try {
       // Generate lead number
       const leadNumber = `LN${Date.now().toString().slice(-6)}`;
 
-      // Create lead
-      const { data: lead, error: leadError } = await supabase
-        .from('service_leads')
-        .insert({
-          lead_number: leadNumber,
-          customer_name: customer.full_name,
-          customer_email: customer.email,
-          customer_phone: customer.phone,
-          vehicle_number: vehicleNumber.toUpperCase(),
-          vehicle_make: vehicleMake,
-          vehicle_model: vehicleModel,
-          vehicle_year: parseInt(vehicleYear),
-          fuel_type: fuelType,
-          odometer_reading: parseInt(odometer) || null,
-          service_type: serviceType,
-          problem_description: problemDescription,
-          pickup_required: pickupRequired,
-          pickup_address: pickupRequired ? pickupAddress : null,
-          preferred_service_slot: `${preferredDate} ${preferredTime}`,
-          workshop_id: workshopId,
-          status: 'NEW',
-          lead_type: 'NORMAL',
-        })
-        .select()
-        .single();
+      const response = await fetch('/api/public/bookings/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead: {
+            lead_number: leadNumber,
+            created_from: 'WEB',
+            status: 'NEW',
+            lead_type: 'CAR_SERVICE',
+            lead_source: 'Website',
+            customer_name: customer.full_name,
+            customer_email: customer.email,
+            customer_phone: customer.phone,
+            vehicle_number: vehicleNumber.toUpperCase(),
+            vehicle_make: vehicleMake,
+            vehicle_model: vehicleModel,
+            vehicle_year: parseInt(vehicleYear),
+            fuel_type: fuelType,
+            odometer_reading: parseInt(odometer) || null,
+            service_type: serviceType,
+            problem_description: problemDescription,
+            pickup_required: pickupRequired,
+            pickup_address: pickupRequired ? pickupAddress : null,
+            preferred_service_slot: `${preferredDate} ${preferredTime}`,
+            workshop_id: workshopId,
+            lead_priority: 'NORMAL',
+          },
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || 'Failed to create service request');
+      const lead = json?.lead;
 
-      if (leadError) throw leadError;
+      const supabase = createClient();
 
       // Upload photos if any
       if (photos.length > 0 && lead) {

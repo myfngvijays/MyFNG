@@ -103,6 +103,17 @@ export async function POST(request: Request) {
     return NextResponse.json(pkg);
   } catch (error: any) {
     console.error('Error creating package:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error?.message || 'Unknown error';
+    const code = error?.code;
+
+    // Postgres RLS / permission errors often surface as 42501
+    if (code === '42501' || /row-level security policy/i.test(message)) {
+      return NextResponse.json(
+        { error: 'Permission denied by database RLS policy (service_types). Apply the Super Admin INSERT policy fix.' },
+        { status: 403 }
+      );
+    }
+
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

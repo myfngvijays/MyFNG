@@ -92,6 +92,13 @@ export default function BookServicePage() {
   // Payment State
   const [razorpayLoaded, setRazorpayLoaded] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // Coupon State
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponMeta, setCouponMeta] = useState<any | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   
   // Workshop State (for self come option)
   const [workshops, setWorkshops] = useState<any[]>([]);
@@ -982,8 +989,53 @@ export default function BookServicePage() {
     }, 300);
   };
 
+  const applyCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code) {
+      setCouponError('Please enter a coupon code.');
+      return;
+    }
+    setIsValidatingCoupon(true);
+    setCouponError(null);
+    try {
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          lead_context: {
+            subtotal: totalPrice,
+            service_type_ids: formData.selectedServices,
+            service_items: serviceItemsForCoupon,
+            customer_phone: formData.customerPhone,
+          },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.valid) {
+        throw new Error(json?.error || 'Coupon validation failed.');
+      }
+      setCouponMeta(json.coupon_meta || null);
+      setCouponDiscount(Number(json.discount_amount || 0));
+      setCouponError(null);
+      toast.success('Coupon applied.');
+    } catch (error: any) {
+      setCouponMeta(null);
+      setCouponDiscount(0);
+      setCouponError(error?.message || 'Invalid coupon.');
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const clearCoupon = () => {
+    setCouponCode('');
+    setCouponMeta(null);
+    setCouponDiscount(0);
+    setCouponError(null);
+  };
+
   const createLead = async (paymentData?: any) => {
-    const supabase = createClient();
     const leadNumber = `L-${Date.now().toString().slice(-8)}`;
 
     // Combine address fields: pickupAddress (auto-detected) + flatNumber (optional) + landmark (mandatory)
@@ -994,12 +1046,13 @@ export default function BookServicePage() {
     addressParts.push(formData.landmark.trim()); // Landmark is mandatory
     const completeAddress = addressParts.filter(part => part.length > 0).join(', ');
 
-    const { data: lead, error: leadError } = await supabase
-      .from('service_leads')
-      .insert([{
+    const payload = {
+      lead: {
         lead_number: leadNumber,
         created_from: 'WEB',
         status: 'NEW',
+        lead_type: 'CAR_SERVICE',
+        lead_source: 'Website',
         customer_name: formData.customerName || null,
         customer_phone: formData.customerPhone,
         vehicle_number: formData.vehicleNumber || null,
@@ -1020,18 +1073,52 @@ export default function BookServicePage() {
           : null,
         estimated_amount: totalPrice > 0 ? totalPrice : null,
         lead_priority: 'NORMAL',
-        created_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
+        created_at: new Date().toISOString(),
+        payment_mode: formData.paymentMethod || null,
+        payment_status: formData.paymentStatus || null,
+      },
+      coupon: couponMeta
+        ? {
+            code: couponCode,
+            lead_context: {
+              subtotal: totalPrice,
+              service_type_ids: formData.selectedServices,
+              service_items: serviceItemsForCoupon,
+              customer_phone: formData.customerPhone,
+            },
+          }
+        : undefined,
+    };
 
-    if (leadError) throw leadError;
-    return lead;
+    const response = await fetch('/api/public/bookings/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await response.json();
+    if (!response.ok) {
+      throw new Error(json?.error || 'Failed to create booking');
+    }
+    return json?.lead;
   };
 
   const handlePayment = async () => {
     if (!razorpayLoaded) {
       toast.error('Payment gateway is loading. Please wait...');
+      return;
+    }
+
+    if (couponAdjustedTotal <= 0) {
+      try {
+        const lead = await createLead();
+        toast.success('🎉 Booking confirmed! We\'ll contact you shortly.');
+        router.push(`/booking-success?lead=${lead?.lead_number}`);
+      } catch (error: any) {
+        console.error('Error creating booking:', error);
+        toast.error('Failed to create booking. Please try again.');
+      } finally {
+        setIsProcessingPayment(false);
+      }
       return;
     }
 
@@ -1060,7 +1147,7 @@ export default function BookServicePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          amount: totalPrice,
+          amount: couponAdjustedTotal,
           customerName: customerName,
           customerPhone: formData.customerPhone.trim(),
           customerEmail: '', // Optional
@@ -1347,6 +1434,25 @@ export default function BookServicePage() {
   const totalPrice = formData.selectedServices.reduce((sum, serviceId) => {
     return sum + (servicePricing[serviceId] || 0);
   }, 0);
+
+  const serviceItemsForCoupon = formData.selectedServices.map((serviceId) => {
+    const service = serviceTypes.find((s: any) => s.id === serviceId);
+    return {
+      service_type_id: serviceId,
+      label: service?.name || null,
+      price: servicePricing[serviceId] || 0,
+    };
+  });
+
+  const couponAdjustedTotal = Math.max(totalPrice - (couponDiscount || 0), 0);
+
+  useEffect(() => {
+    if (couponMeta && formData.selectedServices.length > 0) {
+      setCouponMeta(null);
+      setCouponDiscount(0);
+      setCouponError('Coupon cleared. Please re-apply after changing services.');
+    }
+  }, [formData.selectedServices, couponMeta]);
 
   const activeCategoryId = selectedCategory || serviceCategories[0]?.id || null;
   const activeCategoryServices = activeCategoryId ? serviceTypes.filter((s: any) => s.category === activeCategoryId) : [];
@@ -2784,6 +2890,45 @@ export default function BookServicePage() {
                     </div>
                   </div>
 
+                  {/* Coupon */}
+                  <div className="mt-4 sm:mt-6 p-4 sm:p-5 bg-white border-2 border-gray-200 rounded-xl">
+                    <h4 className="font-bold text-sm sm:text-base text-gray-900 mb-3">Apply Coupon</h4>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                      <input
+                        type="text"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                        placeholder="Enter coupon code"
+                        className="flex-1 px-3 py-2 border rounded-lg text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={applyCoupon}
+                        disabled={isValidatingCoupon || !couponCode.trim()}
+                        className="px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-semibold disabled:opacity-60"
+                      >
+                        {isValidatingCoupon ? 'Applying...' : 'Apply'}
+                      </button>
+                      {couponMeta && (
+                        <button
+                          type="button"
+                          onClick={clearCoupon}
+                          className="px-3 py-2 rounded-lg border text-sm font-semibold"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {couponError && (
+                      <div className="text-xs text-red-600 mt-2">{couponError}</div>
+                    )}
+                    {couponMeta && (
+                      <div className="mt-2 text-xs text-green-700">
+                        Coupon applied: <strong>{couponMeta.code}</strong>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Final Summary */}
                   <div className="mt-4 sm:mt-6 p-4 sm:p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl">
                     <h4 className="font-bold text-sm sm:text-base text-gray-900 mb-3 sm:mb-4">Final Booking Summary</h4>
@@ -2791,9 +2936,29 @@ export default function BookServicePage() {
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                         <span className="text-gray-600">Total Amount:</span>
                         <span className="text-xl sm:text-2xl font-bold text-green-700">
-                          ₹{totalPrice.toLocaleString('en-IN')}
+                          ₹{couponAdjustedTotal.toLocaleString('en-IN')}
                         </span>
                       </div>
+                      {couponMeta && (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Coupon Applied:</span>
+                            <span className="font-semibold">{couponMeta.code}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Discount:</span>
+                            <span className="font-semibold text-green-700">
+                              -₹{Number(couponDiscount || 0).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                          {couponMeta?.free_service?.matched_label && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Free Service:</span>
+                              <span className="font-semibold">{couponMeta.free_service.matched_label}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
                       <div className="flex justify-between">
                         <span className="text-gray-600">Payment Method:</span>
                         <span className="font-semibold">

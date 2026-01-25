@@ -31,10 +31,18 @@ export default function EnquiryLeadDetailPage() {
   const [disposition, setDisposition] = useState('QUALIFIED');
   const [dispositionNote, setDispositionNote] = useState('');
   const [dispositionFollowUpAt, setDispositionFollowUpAt] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [couponSaving, setCouponSaving] = useState(false);
 
   useEffect(() => {
     if (leadId) fetchLead();
   }, [leadId]);
+
+  useEffect(() => {
+    if (lead?.meta?.coupon?.code) {
+      setCouponCode(lead.meta.coupon.code);
+    }
+  }, [lead]);
 
   async function fetchLead() {
     setLoading(true);
@@ -100,6 +108,43 @@ export default function EnquiryLeadDetailPage() {
     await fetchLead();
   }
 
+  async function saveCoupon() {
+    setCouponSaving(true);
+    try {
+      const res = await fetch(`/api/telecaller/enquiry-leads/${leadId}/coupon`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: couponCode.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to update coupon');
+      await fetchLead();
+    } catch (error) {
+      console.error('Failed to update coupon', error);
+    } finally {
+      setCouponSaving(false);
+    }
+  }
+
+  async function removeCoupon() {
+    setCouponSaving(true);
+    try {
+      const res = await fetch(`/api/telecaller/enquiry-leads/${leadId}/coupon`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: '' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to remove coupon');
+      setCouponCode('');
+      await fetchLead();
+    } catch (error) {
+      console.error('Failed to remove coupon', error);
+    } finally {
+      setCouponSaving(false);
+    }
+  }
+
   if (loading) {
     return (
       <DashboardLayout role="telecaller">
@@ -159,6 +204,32 @@ export default function EnquiryLeadDetailPage() {
             <div className="text-xs text-gray-500">{lead.problem_description || '—'}</div>
             <div className="text-xs text-gray-500">Next follow-up: {lead.next_follow_up_at ? new Date(lead.next_follow_up_at).toLocaleString() : '—'}</div>
           </div>
+        </div>
+
+        <div className="bg-white rounded-lg border p-4 space-y-3">
+          <div className="text-sm font-semibold">Coupon</div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              className="w-full border rounded-md px-2 py-2 text-sm"
+              placeholder="Enter coupon code"
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+            />
+            <button className="btn btn-primary text-sm" onClick={saveCoupon} disabled={couponSaving}>
+              {couponSaving ? 'Saving...' : 'Apply'}
+            </button>
+            {lead?.meta?.coupon?.code ? (
+              <button className="btn btn-secondary text-sm" onClick={removeCoupon} disabled={couponSaving}>
+                Remove
+              </button>
+            ) : null}
+          </div>
+          {lead?.meta?.coupon?.code && (
+            <div className="text-xs text-gray-600">
+              Applied: <strong>{lead.meta.coupon.code}</strong> • Discount: ₹{Number(lead.meta.coupon.discount_amount || 0).toFixed(0)}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

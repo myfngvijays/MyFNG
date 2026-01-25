@@ -69,7 +69,17 @@ export async function POST(
     console.log('Media upload request:', { leadId, media_category, media_type, file_size_kb });
 
     // Validate media category
-    const validCategories = ['BEFORE', 'PROGRESS', 'AFTER', 'EXTRA_WORK_PROOF', 'DAMAGE_FOUND', 'PARTS_USED'];
+    const validCategories = [
+      'BEFORE',
+      'PROGRESS',
+      'AFTER',
+      'EXTRA_WORK_PROOF',
+      'DAMAGE_FOUND',
+      'PARTS_USED',
+      // Car scanning
+      'CAR_SCANNING_BEFORE',
+      'CAR_SCANNING_AFTER',
+    ];
     if (!validCategories.includes(media_category)) {
       return NextResponse.json({ 
         error: 'Invalid media category',
@@ -217,7 +227,9 @@ export async function GET(
       AFTER: mediaFiles?.filter(m => m.media_category === 'AFTER').length || 0,
       EXTRA_WORK_PROOF: mediaFiles?.filter(m => m.media_category === 'EXTRA_WORK_PROOF').length || 0,
       DAMAGE_FOUND: mediaFiles?.filter(m => m.media_category === 'DAMAGE_FOUND').length || 0,
-      PARTS_USED: mediaFiles?.filter(m => m.media_category === 'PARTS_USED').length || 0
+      PARTS_USED: mediaFiles?.filter(m => m.media_category === 'PARTS_USED').length || 0,
+      CAR_SCANNING_BEFORE: mediaFiles?.filter(m => m.media_category === 'CAR_SCANNING_BEFORE').length || 0,
+      CAR_SCANNING_AFTER: mediaFiles?.filter(m => m.media_category === 'CAR_SCANNING_AFTER').length || 0,
     };
 
     return NextResponse.json({

@@ -110,42 +110,36 @@ function BookingDetailsContent() {
 
     setLoading(true);
     try {
-      const supabase = createClient();
-      
       // Generate lead number
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
 
-      // Create lead
-      const { data: lead, error: leadError } = await supabase
-        .from('service_leads')
-        .insert([{
-          lead_number: leadNumber,
-          created_from: 'WEB',
-          status: 'NEW',
-          
-          // Customer details (all optional)
-          customer_name: formData.customer_name || null,
-          customer_phone: formData.customer_phone || null,
-          
-          // Location
-          city: selectedCity.name,
-          city_id: selectedCity.id,
-          
-          // Vehicle details
-          vehicle_number: formData.vehicle_number || null,
-          vehicle_make: selectedCarModel.make,
-          model_id: selectedCarModel.id,
-          vehicle_model: selectedCarModel.model_name,
-          vehicle_variant: selectedCarModel.variant || null,
-          
-          // Default values
-          lead_priority: 'NORMAL',
-          created_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-
-      if (leadError) throw leadError;
+      const response = await fetch('/api/public/bookings/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead: {
+            lead_number: leadNumber,
+            created_from: 'WEB',
+            status: 'NEW',
+            lead_type: 'CAR_SERVICE',
+            lead_source: 'Website',
+            customer_name: formData.customer_name || null,
+            customer_phone: formData.customer_phone || null,
+            city: selectedCity.name,
+            city_id: selectedCity.id,
+            vehicle_number: formData.vehicle_number || null,
+            vehicle_make: selectedCarModel.make,
+            model_id: selectedCarModel.id,
+            vehicle_model: selectedCarModel.model_name,
+            vehicle_variant: selectedCarModel.variant || null,
+            lead_priority: 'NORMAL',
+            created_at: new Date().toISOString(),
+          },
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || 'Failed to create booking');
+      const lead = json?.lead;
 
       // Success!
       toast.success('🎉 Booking confirmed! We\'ll contact you shortly.');

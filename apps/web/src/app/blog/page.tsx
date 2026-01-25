@@ -31,11 +31,60 @@ export default function BlogPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
+  // We want to show *all* published blogs on the public listing.
+  // Public API caps limit at 100, so use that to minimize requests.
+  const [pagination, setPagination] = useState({ page: 1, limit: 100, total: 0, totalPages: 1 });
 
   useEffect(() => {
-    fetchBlogs({ page: 1, append: false });
+    fetchAllPublishedBlogs();
   }, []);
+
+  async function fetchAllPublishedBlogs() {
+    setLoading(true);
+    setLoadingMore(false);
+    try {
+      const limit = pagination.limit;
+      let page = 1;
+      let totalPages = 1;
+      let total = 0;
+      const map = new Map<string, Blog>();
+
+      do {
+        const params = new URLSearchParams();
+        params.append('page', String(page));
+        params.append('limit', String(limit));
+
+        // Use public API endpoint - no authentication required
+        const response = await fetch(`/api/blogs/public?${params.toString()}`);
+        if (!response.ok) {
+          console.error('Failed to fetch blogs');
+          break;
+        }
+
+        const data = await response.json();
+        const nextBlogs = (data.blogs || []) as Blog[];
+        for (const b of nextBlogs) map.set(b.id, b);
+
+        totalPages = Number(data?.pagination?.totalPages ?? totalPages);
+        total = Number(data?.pagination?.total ?? total);
+        page += 1;
+      } while (page <= totalPages);
+
+      const allBlogs = Array.from(map.values());
+      setBlogs(allBlogs);
+      setPagination((p) => ({
+        ...p,
+        page: totalPages || 1,
+        total: total || allBlogs.length,
+        totalPages: totalPages || 1,
+      }));
+    } catch (error) {
+      console.error('Error fetching blogs:', error);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     // Extract categories from blogs after blogs are loaded

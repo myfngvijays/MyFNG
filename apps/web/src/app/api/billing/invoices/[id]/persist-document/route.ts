@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
+// Keep this route portable (Node/Edge). Avoid Node-only APIs (e.g. Buffer).
 
 export async function POST(
   request: NextRequest,
@@ -69,13 +70,30 @@ export async function POST(
 
     // Generate HTML by calling existing generator endpoint (single source of truth)
     const htmlUrl = `${request.nextUrl.origin}/api/billing/invoices/${invoiceId}/generate-pdf`;
-    const htmlRes = await fetch(htmlUrl, { method: 'GET' });
+    // IMPORTANT: forward cookies so generate-pdf can auth as the same user.
+    // Without this, generate-pdf returns 401 and persist-document fails with 500.
+    const cookie = request.headers.get('cookie') || '';
+    const authorization = request.headers.get('authorization') || '';
+    const fallbackUrl = `/api/billing/invoices/${invoiceId}/generate-pdf`;
+
+    const htmlRes = await fetch(htmlUrl, {
+      method: 'GET',
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        ...(authorization ? { authorization } : {}),
+      },
+      cache: 'no-store',
+    });
     if (!htmlRes.ok) {
       const text = await htmlRes.text();
-      return NextResponse.json(
-        { error: 'Failed to generate invoice document', details: text.slice(0, 500) },
-        { status: 500 }
-      );
+      // Non-fatal: printing can still proceed using generator URL.
+      return NextResponse.json({
+        success: false,
+        reason: 'generate_failed',
+        status: htmlRes.status,
+        details: text.slice(0, 500),
+        fallback_url: fallbackUrl,
+      });
     }
 
     const htmlContent = await htmlRes.text();
@@ -90,32 +108,34 @@ export async function POST(
 
     const safeDocNo = (invoice.invoice_number || invoiceId).replace(/[^A-Za-z0-9_-]/g, '_');
     const filePath = `invoices/${year}/${monthName}/${docFolder}/${safeDocNo}_v${nextVersion}.html`;
+    const fileBytes = new TextEncoder().encode(htmlContent);
     const uploadRes = await supabase.storage
       .from('invoices')
-      .upload(filePath, Buffer.from(htmlContent, 'utf-8'), {
+      .upload(filePath, fileBytes, {
         contentType: 'text/html; charset=utf-8',
         upsert: true,
       });
 
     if (uploadRes.error) {
-      return NextResponse.json(
-        {
-          error: 'Failed to upload invoice document to storage',
-          details: uploadRes.error.message,
-          hint: 'Create a Supabase Storage bucket named "invoices" and allow server uploads',
-        },
-        { status: 500 }
-      );
+      // Non-fatal: allow printing via generator URL even if storage isn't configured.
+      return NextResponse.json({
+        success: false,
+        reason: 'storage_upload_failed',
+        details: uploadRes.error.message,
+        hint: 'Create a Supabase Storage bucket named "invoices" and allow uploads',
+        fallback_url: fallbackUrl,
+      });
     }
 
     const { data: publicUrlData } = supabase.storage.from('invoices').getPublicUrl(filePath);
     const publicUrl = publicUrlData?.publicUrl;
 
     if (!publicUrl) {
-      return NextResponse.json(
-        { error: 'Failed to generate public URL for invoice document' },
-        { status: 500 }
-      );
+      return NextResponse.json({
+        success: false,
+        reason: 'public_url_failed',
+        fallback_url: fallbackUrl,
+      });
     }
 
     await supabase

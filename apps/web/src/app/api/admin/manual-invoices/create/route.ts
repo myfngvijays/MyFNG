@@ -21,6 +21,21 @@ async function requireSuperAdmin(request: NextRequest) {
   return { ok: true as const, userId: user.id };
 }
 
+function normalizeDateInput(value: string): string | null {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split('-');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split('/');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const gate = await requireSuperAdmin(request);
@@ -42,6 +57,7 @@ export async function POST(request: NextRequest) {
     const items: Array<{
       item_name: string;
       item_description: string;
+      hsn_sac_code?: string | null;
       qty: number;
       unit_price: number;
       tax_percent: number;
@@ -49,6 +65,7 @@ export async function POST(request: NextRequest) {
     }> = lineItems.map((it: any) => ({
       item_name: String(it?.item_name || '').trim(),
       item_description: String(it?.item_description || '').trim(),
+      hsn_sac_code: String(it?.hsn_sac_code || '').trim() || null,
       qty: Number(it?.qty || 0),
       unit_price: Number(it?.unit_price || 0),
       tax_percent: Number(it?.tax_percent || 0),
@@ -66,8 +83,8 @@ export async function POST(request: NextRequest) {
       .from('manual_create_invoice')
       .insert({
         invoice_number: invoiceNumber,
-        invoice_date: body?.invoice_date || null,
-        due_date: body?.due_date || null,
+        invoice_date: normalizeDateInput(body?.invoice_date) || null,
+        due_date: normalizeDateInput(body?.due_date) || null,
         customer_name: customerName,
         customer_phone: customerPhone,
         customer_email: body?.customer_email || null,
@@ -75,6 +92,11 @@ export async function POST(request: NextRequest) {
         customer_city: body?.customer_city || null,
         customer_state: body?.customer_state || null,
         customer_pincode: body?.customer_pincode || null,
+        customer_gstin: body?.customer_gstin || null,
+        customer_tax_type: body?.customer_tax_type || null,
+        place_of_supply: body?.place_of_supply || null,
+        car_number: body?.car_number || null,
+        car_model: body?.car_model || null,
         line_items: items,
         base_amount: baseAmount,
         discount: discount,
