@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Alert, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
 import StatCard from '../../components/StatCard';
@@ -11,6 +12,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/them
 import { formatDateTime } from "@/lib/dateFormat";
 
 export default function WorkshopAdminDashboard() {
+  const navigation = useNavigation<any>();
   const [userProfile, setUserProfile] = React.useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [stats, setStats] = useState({
@@ -152,6 +154,12 @@ export default function WorkshopAdminDashboard() {
         <Text style={styles.subtitle}>
           {userProfile?.workshop?.name || 'Workshop Management'}
         </Text>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => navigation.navigate('WorkshopAdminAdditionalJobsMaster')}
+        >
+          <Text style={styles.actionButtonText}>Additional Jobs Master</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Stats Grid */}
@@ -262,6 +270,17 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: SPACING.lg,
+  },
+  actionButton: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.primary,
+    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    alignSelf: 'flex-start',
+  },
+  actionButtonText: {
+    color: COLORS.white,
+    fontWeight: '600',
   },
   title: {
     fontSize: FONT_SIZES.xxl,

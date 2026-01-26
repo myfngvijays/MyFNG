@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import DashboardHeader from '../../components/DashboardHeader';
@@ -9,6 +10,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { formatDateDMY } from "@/lib/dateFormat";
 
 export default function CustomerDashboard() {
+  const navigation = useNavigation<any>();
   const [userProfile, setUserProfile] = React.useState<any | null>(null);
 
   React.useEffect(() => {
@@ -92,6 +94,28 @@ export default function CustomerDashboard() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <View style={styles.actionsGrid}>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('BookService')}>
+            <Text style={styles.actionTitle}>Book Service</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('TrackBooking')}>
+            <Text style={styles.actionTitle}>Track Booking</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerVehicles')}>
+            <Text style={styles.actionTitle}>My Vehicles</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerSupport')}>
+            <Text style={styles.actionTitle}>Support</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerInvoices')}>
+            <Text style={styles.actionTitle}>Invoices</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerProfile')}>
+            <Text style={styles.actionTitle}>Profile</Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.sectionTitle}>My Services</Text>
         
         <StatCard
@@ -157,6 +181,23 @@ const styles = StyleSheet.create({
     color: COLORS.black,
     marginBottom: SPACING.md,
     marginTop: SPACING.md,
+  },
+  actionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  actionCard: {
+    width: '48%',
+    backgroundColor: COLORS.white,
+    borderRadius: 8,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  actionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textHeading,
   },
   emptyState: {
     padding: SPACING.xxl,

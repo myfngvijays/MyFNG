@@ -16,6 +16,22 @@ import WorkshopMechanicDashboard from '../screens/dashboard/WorkshopMechanicDash
 import WorkshopPickupBoyDashboard from '../screens/dashboard/WorkshopPickupBoyDashboard';
 import CustomerDashboard from '../screens/dashboard/CustomerDashboard';
 import DigitalMarketingDashboard from '../screens/dashboard/DigitalMarketingDashboard';
+import DigitalAuthorDashboardScreen from '../screens/dashboard/digital_author/DigitalAuthorDashboardScreen';
+import AdditionalJobsMasterScreen from '../screens/dashboard/additional_jobs/AdditionalJobsMasterScreen';
+import CouponsScreen from '../screens/dashboard/superadmin/CouponsScreen';
+import ManualInvoicesScreen from '../screens/dashboard/superadmin/ManualInvoicesScreen';
+import TelecallerDistributionScreen from '../screens/dashboard/superadmin/TelecallerDistributionScreen';
+import LeadHistoryScreen from '../screens/dashboard/superadmin/LeadHistoryScreen';
+import WebsiteImagesHubScreen from '../screens/dashboard/superadmin/WebsiteImagesHubScreen';
+import HomeCarouselScreen from '../screens/dashboard/superadmin/HomeCarouselScreen';
+import WorkshopPublicPagesScreen from '../screens/dashboard/superadmin/WorkshopPublicPagesScreen';
+import KbManagerScreen from '../screens/dashboard/superadmin/KbManagerScreen';
+import KbQuestionsScreen from '../screens/dashboard/superadmin/KbQuestionsScreen';
+import DigitalAuthorBlogsScreen from '../screens/dashboard/digital_author/DigitalAuthorBlogsScreen';
+import DigitalAuthorBlogEditorScreen from '../screens/dashboard/digital_author/DigitalAuthorBlogEditorScreen';
+import DigitalAuthorProfileScreen from '../screens/dashboard/digital_author/DigitalAuthorProfileScreen';
+import CustomerVehiclesScreen from '../screens/dashboard/customer/CustomerVehiclesScreen';
+import ProfileScreen from '../screens/dashboard/ProfileScreen';
 
 // Workshop Supervisor screens
 import TeamOverviewScreen from '../screens/dashboard/workshop_supervisor/TeamOverviewScreen';
@@ -164,6 +180,16 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="TelecallerLeads" 
           component={TelecallerLeadsScreen}
           options={{ title: 'My Leads' }}
+        />
+        <Stack.Screen
+          name="TelecallerEnquiryLeads"
+          component={require('../screens/dashboard/telecaller/TelecallerEnquiryLeadsScreen').default}
+          options={{ title: 'Enquiry Leads' }}
+        />
+        <Stack.Screen
+          name="TelecallerEnquiryLeadDetail"
+          component={require('../screens/dashboard/telecaller/TelecallerEnquiryLeadDetailScreen').default}
+          options={{ title: 'Enquiry Lead' }}
         />
         <Stack.Screen 
           name="TelecallerCreateLead" 
@@ -482,6 +508,12 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={WorkshopAdminSettingsScreen}
           options={{ title: 'Settings' }}
         />
+        <Stack.Screen
+          name="WorkshopAdminAdditionalJobsMaster"
+          options={{ title: 'Additional Jobs Master' }}
+        >
+          {(props) => <AdditionalJobsMasterScreen {...props} mode="WORKSHOP_ADMIN" />}
+        </Stack.Screen>
       </Stack.Navigator>
     );
   }
@@ -573,6 +605,12 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={SupervisorProfileScreen}
           options={{ title: 'My Profile' }}
         />
+        <Stack.Screen
+          name="SupervisorAdditionalJobsMaster"
+          options={{ title: 'Additional Jobs Master' }}
+        >
+          {(props) => <AdditionalJobsMasterScreen {...props} mode="WORKSHOP_SUPERVISOR" />}
+        </Stack.Screen>
         <Stack.Screen 
           name="JobDetail" 
           component={JobDetailScreen}
@@ -855,6 +893,57 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="WorkshopRates" 
           component={WorkshopRatesScreen}
           options={{ title: 'Workshop Rates' }}
+        />
+        <Stack.Screen
+          name="AdditionalJobsMaster"
+          options={{ title: 'Additional Jobs Master' }}
+        >
+          {(props) => <AdditionalJobsMasterScreen {...props} mode="SUPER_ADMIN" />}
+        </Stack.Screen>
+        <Stack.Screen
+          name="Coupons"
+          component={CouponsScreen}
+          options={{ title: 'Coupons' }}
+        />
+        <Stack.Screen
+          name="KBManager"
+          component={KbManagerScreen}
+          options={{ title: 'KB Manager' }}
+        />
+        <Stack.Screen
+          name="KBQuestions"
+          component={KbQuestionsScreen}
+          options={{ title: 'KB Questions' }}
+        />
+        <Stack.Screen
+          name="WebsiteImages"
+          component={WebsiteImagesHubScreen}
+          options={{ title: 'Website Images' }}
+        />
+        <Stack.Screen
+          name="HomeCarousel"
+          component={HomeCarouselScreen}
+          options={{ title: 'Home Carousel' }}
+        />
+        <Stack.Screen
+          name="ManualInvoices"
+          component={ManualInvoicesScreen}
+          options={{ title: 'Manual Invoices' }}
+        />
+        <Stack.Screen
+          name="TelecallerDistribution"
+          component={TelecallerDistributionScreen}
+          options={{ title: 'Telecaller Distribution' }}
+        />
+        <Stack.Screen
+          name="LeadHistory"
+          component={LeadHistoryScreen}
+          options={{ title: 'Lead History' }}
+        />
+        <Stack.Screen
+          name="WorkshopPublicPages"
+          component={WorkshopPublicPagesScreen}
+          options={{ title: 'Workshop Public Pages' }}
         />
         <Stack.Screen 
           name="SuperAdminLeads" 
@@ -1148,6 +1237,16 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={CustomerSupportScreen}
           options={{ title: 'Support' }}
         />
+        <Stack.Screen
+          name="CustomerVehicles"
+          component={CustomerVehiclesScreen}
+          options={{ title: 'My Vehicles' }}
+        />
+        <Stack.Screen
+          name="CustomerProfile"
+          component={ProfileScreen}
+          options={{ title: 'My Profile' }}
+        />
       </Stack.Navigator>
     );
   }
@@ -1190,6 +1289,34 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         <Stack.Screen 
           name="DMProfile" 
           component={DMProfileScreen}
+          options={{ title: 'My Profile' }}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  // Digital Author Navigation
+  if (roleCode === 'DIGITAL_AUTHOR') {
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen
+          name="DigitalAuthorDashboard"
+          component={DigitalAuthorDashboardScreen}
+          options={{ title: 'Digital Author Dashboard' }}
+        />
+        <Stack.Screen
+          name="DigitalAuthorBlogs"
+          component={DigitalAuthorBlogsScreen}
+          options={{ title: 'My Blogs' }}
+        />
+        <Stack.Screen
+          name="DigitalAuthorBlogEditor"
+          component={DigitalAuthorBlogEditorScreen}
+          options={{ title: 'Blog Editor' }}
+        />
+        <Stack.Screen
+          name="DigitalAuthorProfile"
+          component={DigitalAuthorProfileScreen}
           options={{ title: 'My Profile' }}
         />
       </Stack.Navigator>

@@ -23,6 +23,30 @@ function parseSeriesFromNumber(num: any) {
   return { year: parseInt(m[2], 10), month: parseInt(m[3], 10), seq: parseInt(m[4], 10) };
 }
 
+function normalizeDiscountMode(mode: any): 'AMOUNT' | 'PERCENT' | null {
+  const m = String(mode ?? '').trim().toUpperCase();
+  if (!m) return null;
+  if (m === 'AMOUNT' || m === 'FLAT' || m === 'FIXED' || m === 'VALUE') return 'AMOUNT';
+  if (m === 'PERCENT' || m === 'PERCENTAGE' || m === 'PCT') return 'PERCENT';
+  return null;
+}
+
+function parseDiscountFromDescription(desc: any): { mode: 'AMOUNT' | 'PERCENT' | null; value: number | null } {
+  const s = String(desc ?? '').trim();
+  if (!s) return { mode: null, value: null };
+  const percentMatch = s.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (percentMatch) {
+    const v = Number(percentMatch[1]);
+    return { mode: 'PERCENT', value: Number.isFinite(v) ? v : null };
+  }
+  const numMatch = s.match(/(\d+(?:\.\d+)?)/);
+  if (numMatch) {
+    const v = Number(numMatch[1]);
+    return { mode: 'AMOUNT', value: Number.isFinite(v) ? v : null };
+  }
+  return { mode: null, value: null };
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -93,8 +117,53 @@ export async function POST(
     };
 
     // Accept "paid" if either status says PAID OR paid_amount >= final_amount (tolerant of stale payment_status).
-    const payable = toNum((ci as any).final_amount) || toNum((ci as any).total_amount);
+    let payable = toNum((ci as any).final_amount) || toNum((ci as any).total_amount);
     const paidStored = toNum((ci as any).paid_amount);
+
+    // If payable looks like pre-discount subtotal (and coupon/discount exists), derive net payable.
+    const subTotalPreDiscount = toNum((ci as any).sub_total) || toNum((ci as any).subtotal);
+    let discount = toNum((ci as any).discount_amount);
+    const couponCode = String((ci as any).coupon_code || '').trim();
+
+    if (couponCode && discount <= 0 && subTotalPreDiscount > 0) {
+      try {
+        const { data: coupon } = await supabaseAdmin
+          .from('coupons')
+          .select('*')
+          .ilike('code', couponCode.toUpperCase())
+          .eq('is_active', true)
+          .maybeSingle();
+        if (coupon && String((coupon as any).coupon_kind || '').toUpperCase() === 'TOTAL_DISCOUNT') {
+          const derived = parseDiscountFromDescription((coupon as any).description);
+          const mode =
+            normalizeDiscountMode((coupon as any).discount_mode) ||
+            normalizeDiscountMode((coupon as any).mode) ||
+            normalizeDiscountMode((coupon as any).discount_type) ||
+            derived.mode;
+          const valueRaw =
+            (coupon as any).discount_value ??
+            (coupon as any).value ??
+            (coupon as any).amount ??
+            (coupon as any).discount ??
+            (coupon as any).amount_off ??
+            (coupon as any).percent_off ??
+            derived.value;
+          const value = Number(valueRaw);
+          const minOrder = Number((coupon as any).min_order_value || 0) || 0;
+          if (!(minOrder > 0 && subTotalPreDiscount < minOrder) && mode && Number.isFinite(value) && value > 0) {
+            discount = mode === 'AMOUNT' ? Math.min(value, subTotalPreDiscount) : (subTotalPreDiscount * value) / 100;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const payableLooksPreDiscount = payable > 0 && subTotalPreDiscount > 0 && Math.abs(payable - subTotalPreDiscount) < 0.5;
+    const derivedPayable = subTotalPreDiscount > 0 ? Math.max(0, subTotalPreDiscount - (discount || 0)) : 0;
+    if (payableLooksPreDiscount && derivedPayable > 0 && derivedPayable < payable) {
+      payable = derivedPayable;
+    }
 
     let paidByTxns = 0;
     try {
@@ -163,7 +232,8 @@ export async function POST(
 
     const now = new Date().toISOString();
     const tiNumber = generateSeriesDocumentNumber('TI', year, month, seq);
-    const invoiceAmount = parseFloat(String((ci as any).final_amount || '0')) || 0;
+    // Use derived payable (post-discount) if CI stored amount is pre-discount
+    const invoiceAmount = payable || parseFloat(String((ci as any).final_amount || '0')) || 0;
 
     let useIGST = false;
     try {
@@ -207,8 +277,8 @@ export async function POST(
       parts_cost: (ci as any).parts_cost || 0,
       extra_charges: (ci as any).extra_charges || 0,
       labour_cost: (ci as any).labour_cost || 0,
-      sub_total: (ci as any).sub_total || (ci as any).subtotal || 0,
-      discount_amount: (ci as any).discount_amount || 0,
+      sub_total: subTotalPreDiscount || (ci as any).sub_total || (ci as any).subtotal || 0,
+      discount_amount: discount || (ci as any).discount_amount || 0,
       discount_percentage: (ci as any).discount_percentage || 0,
       coupon_code: (ci as any).coupon_code || null,
       coupon_meta: (ci as any).coupon_meta || null,

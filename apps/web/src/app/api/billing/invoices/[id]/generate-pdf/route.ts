@@ -60,7 +60,7 @@ export async function GET(
       const { data: leadData, error: leadError } = await supabase
         .from('service_leads')
         // NOTE: do NOT select non-existent columns like service_leads.workshop_name (varies by install)
-        .select('id, lead_number, workshop_id, customer_name, customer_email, customer_phone, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, vehicle_year, vehicle_fuel_type, model_id, city_id, vehicle_odometer, odometer_km, daily_running_km, next_service_km, next_service_date, service_type, service_type_ids, subservice_ids, customer_address, city, state, pincode')
+        .select('id, lead_number, workshop_id, customer_name, customer_email, customer_phone, customer_gstin, customer_legal_name, customer_billing_address, customer_billing_state_code, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, vehicle_year, vehicle_fuel_type, model_id, city_id, vehicle_odometer, odometer_km, daily_running_km, next_service_km, next_service_date, service_type, service_type_ids, subservice_ids, customer_address, city, state, pincode')
         .eq('id', invoice.lead_id)
         .maybeSingle();
       
@@ -182,8 +182,10 @@ export async function GET(
             product:master_products(
               id,
               name,
+              type,
               part_number,
               hsn_sac_code,
+              tax_rate,
               default_price,
               unit
             )
@@ -203,8 +205,10 @@ export async function GET(
               product:master_products(
                 id,
                 name,
+                type,
                 part_number,
                 hsn_sac_code,
+                tax_rate,
                 default_price,
                 unit
               )
@@ -230,8 +234,10 @@ export async function GET(
               product:master_products(
                 id,
                 name,
+                type,
                 part_number,
                 hsn_sac_code,
+                tax_rate,
                 default_price,
                 unit
               )
@@ -320,13 +326,30 @@ export async function GET(
         jobcard = jobcardData;
         
         // Fetch job card parts
-        const { data: partsData } = await supabase
+        const { data: partsData, error: partsErr } = await supabase
           .from('job_card_parts')
-          .select('id, part_name, part_number, quantity, unit_price, total_price')
+          .select(
+            `
+              id,
+              product_id,
+              part_name,
+              part_number,
+              quantity,
+              unit_price,
+              total_price,
+              master_products ( name, unit, hsn_sac_code, tax_rate )
+            `
+          )
           .eq('job_card_id', invoice.jobcard_id);
-        
-        if (partsData) {
-          jobCardParts = partsData;
+
+        if (!partsErr) {
+          jobCardParts = (partsData || []) as any[];
+        } else {
+          const { data: partsDataFallback } = await supabase
+            .from('job_card_parts')
+            .select('id, part_name, part_number, quantity, unit_price, total_price')
+            .eq('job_card_id', invoice.jobcard_id);
+          jobCardParts = (partsDataFallback || []) as any[];
         }
       }
     }
@@ -344,6 +367,125 @@ export async function GET(
       if (pricingItemsData) {
         pricingItems = pricingItemsData;
       }
+    }
+
+    // Fetch approved extra work (Additional Work) with OEM/OES/Labour breakup (best-effort).
+    // NOTE: Rates are treated as GST-inclusive for Additional Work in PDF calculations (per business requirement).
+    let extraWorkItems: any[] = [];
+    try {
+      const leadId = String(invoice.lead_id || '').trim();
+      const workshopIdForExtras = String((invoice as any)?.workshop_id || (lead as any)?.workshop_id || '').trim();
+
+      if (leadId) {
+        const isApprovedExtra = (row: any) => {
+          const s = String(row?.status || '').trim().toUpperCase();
+          const customerApproved = row?.customer_approved === true;
+          return (
+            customerApproved ||
+            s === 'APPROVED' ||
+            s === 'CUSTOMER_APPROVED' ||
+            s === 'APPROVED_BY_CUSTOMER' ||
+            s === 'ACCEPTED'
+          );
+        };
+
+        const normalizeName = (s: string) =>
+          String(s || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        // Build a master map by name to resolve HSN/tax + fallback prices if not stored on extra row.
+        const masterByName = new Map<
+          string,
+          { oem: number; oes: number; labour: number; hsn_sac_code?: string | null; tax_rate?: number | null }
+        >();
+        try {
+          if (workshopIdForExtras) {
+            const { data: masterJobs } = await supabase
+              .from('additional_jobs_master')
+              .select('name, oem_price, oes_price, labour_price, hsn_sac_code, tax_rate, workshop_id, is_active, deleted_at')
+              .or(`workshop_id.eq.${workshopIdForExtras},workshop_id.is.null`)
+              .eq('is_active', true);
+            for (const it of masterJobs || []) {
+              if ((it as any)?.deleted_at) continue;
+              const key = normalizeName(String((it as any).name || ''));
+              if (!key) continue;
+              const row = {
+                oem: Number((it as any).oem_price) || 0,
+                oes: Number((it as any).oes_price) || 0,
+                labour: Number((it as any).labour_price) || 0,
+                hsn_sac_code: (it as any).hsn_sac_code ?? null,
+                tax_rate: (it as any).tax_rate != null ? Number((it as any).tax_rate) : null,
+              };
+              // Prefer workshop-specific over global
+              if ((it as any).workshop_id === workshopIdForExtras) {
+                masterByName.set(key, row);
+              } else if (!masterByName.has(key)) {
+                masterByName.set(key, row);
+              }
+            }
+          }
+        } catch {
+          // ignore if table/cols missing
+        }
+
+        // Fetch extra charges rows (schema tolerant)
+        let extraRows: any[] = [];
+        try {
+          const { data } = await supabase
+            .from('lead_extra_charges')
+            .select(
+              'id, lead_id, status, customer_approved, description, reason, part_price_type, amount, oem_price, oes_price, labour_price'
+            )
+            .eq('lead_id', leadId);
+          extraRows = data || [];
+        } catch (e: any) {
+          if (e?.code === '42703' || /does not exist/i.test(String(e?.message || ''))) {
+            const { data } = await supabase
+              .from('lead_extra_charges')
+              .select('id, lead_id, status, description, reason, amount')
+              .eq('lead_id', leadId);
+            extraRows = data || [];
+          }
+        }
+
+        const approved = (extraRows || []).filter(isApprovedExtra);
+        extraWorkItems = approved.map((r: any) => {
+          const name = String(r?.description || r?.reason || '').trim() || 'Additional Work';
+          const partType = String(r?.part_price_type || 'OEM').toUpperCase() === 'OES' ? 'OES' : 'OEM';
+
+          const oem = Number(r?.oem_price ?? 0) || 0;
+          const oes = Number(r?.oes_price ?? 0) || 0;
+          const labour = Number(r?.labour_price ?? 0) || 0;
+
+          const key = normalizeName(name);
+          const master = key ? masterByName.get(key) : null;
+          const oemEff = oem > 0 ? oem : Number(master?.oem || 0) || 0;
+          const oesEff = oes > 0 ? oes : Number(master?.oes || 0) || 0;
+          const labourEff = labour > 0 ? labour : Number(master?.labour || 0) || 0;
+          const hsn = String(master?.hsn_sac_code || '').trim() || null;
+          const taxRate = master?.tax_rate != null && Number.isFinite(Number(master.tax_rate)) ? Number(master.tax_rate) : null;
+
+          // For legacy rows that only have `amount`, still preserve it (as inclusive total).
+          const legacyAmount = Number(r?.amount ?? 0) || 0;
+          return {
+            id: r?.id,
+            name,
+            part_price_type: partType,
+            oem_price: oemEff,
+            oes_price: oesEff,
+            labour_price: labourEff,
+            legacy_amount: legacyAmount,
+            hsn_sac_code: hsn,
+            tax_rate: taxRate,
+          };
+        });
+      }
+    } catch {
+      extraWorkItems = [];
     }
 
     // Fetch workshop details separately (invoice.workshop_id may be null in some OS/CI flows).
@@ -411,6 +553,7 @@ export async function GET(
       pricingItems,
       workshopServicePricing,
       serviceTypeItems,
+      extraWorkItems,
     };
 
     // Generate HTML for PDF (will be converted to PDF)
@@ -453,6 +596,7 @@ function generateInvoiceHTML(invoice: any): string {
   const pricingItems = invoice.pricingItems || [];
   const workshopServicePricing = invoice.workshopServicePricing || [];
   const serviceTypeItems = invoice.serviceTypeItems || [];
+  const extraWorkItems = invoice.extraWorkItems || [];
   // vehicleClass is attached by the route (best-effort) for debugging/traceability
   
   const invType = String(invoice?.invoice_type || '').toUpperCase();
@@ -794,6 +938,412 @@ function generateInvoiceHTML(invoice: any): string {
   // Use invoice line_items if available, otherwise use built line items
   const finalLineItems = lineItems.length > 0 ? lineItems : allLineItems;
 
+  // Build a detailed table similar to GST invoice format:
+  // Part/Service + (Part/Labour) + HSN/SAC + GST% + Qty + Unit Price + Taxable + Total
+  const esc = (v: any) =>
+    String(v ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  const num = (v: any, fallback = 0) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const money = (v: any) => num(v, 0).toFixed(2);
+  const normCat = (v: any) => String(v ?? '').trim().toUpperCase();
+  const isCustomServiceName = (s: string) => /custom\s*service/i.test(s);
+  const normalizeTypeLabel = (t: any, cat: any) => {
+    const raw = String(t ?? '').trim().toUpperCase();
+    if (raw.includes('LAB') || raw === 'SERVICE') return 'Labour';
+    if (raw.includes('PART') || raw === 'PRODUCT') return 'Part';
+    const c = normCat(cat);
+    if (c === 'PART' || c === 'PARTS') return 'Part';
+    return c === 'SERVICE' || c === 'ADDON' || c === 'ADD_ON' || c === 'ADD-ON' || c === 'EXTRA' ? 'Labour' : 'Part';
+  };
+  const hsnFor = (row: any, typeLabel: 'Part' | 'Labour') => {
+    const direct =
+      row?.hsn_sac ??
+      row?.hsn_sac_code ??
+      row?.hsn_code ??
+      row?.hsn ??
+      row?.product?.hsn_sac_code ??
+      row?.product?.hsn_code ??
+      row?.master_products?.hsn_sac_code ??
+      row?.master_products?.hsn_code ??
+      '';
+    const s = String(direct || '').trim();
+    if (s) return s;
+    return typeLabel === 'Labour' ? '998714' : '271019';
+  };
+  const gstRateFor = (row: any) => {
+    const r =
+      row?.tax_rate ??
+      row?.gst_rate ??
+      row?.product?.tax_rate ??
+      row?.master_products?.tax_rate ??
+      null;
+    const n = Number(r);
+    return Number.isFinite(n) && n > 0 ? n : 18;
+  };
+
+  const serviceTypeItemsByServiceId = new Map<string, any[]>();
+  for (const it of Array.isArray(serviceTypeItems) ? serviceTypeItems : []) {
+    const sid = String((it as any)?.service_type_id || '').trim();
+    if (!sid) continue;
+    const arr = serviceTypeItemsByServiceId.get(sid) || [];
+    arr.push(it);
+    serviceTypeItemsByServiceId.set(sid, arr);
+  }
+
+  type DisplayRow =
+    | { kind: 'section'; title: string }
+    | {
+        kind: 'group';
+        titleHtml: string;
+        taxable: number;
+        total: number;
+      }
+    | {
+        kind: 'item';
+        sr: number;
+        nameHtml: string;
+        typeLabel: 'Part' | 'Labour';
+        hsn: string;
+        gstRate: number;
+        qty: number;
+        unitPrice: number;
+        taxable: number;
+        total: number;
+      };
+  const out: DisplayRow[] = [];
+  let srNo = 1;
+  const pushSection = (title: string) => out.push({ kind: 'section', title });
+  // Group rows are headings; they should NOT consume S.NO.
+  const pushGroup = (row: Omit<Extract<DisplayRow, { kind: 'group' }>, 'kind'>) =>
+    out.push({ kind: 'group', ...row });
+  const pushItem = (row: Omit<Extract<DisplayRow, { kind: 'item' }>, 'kind' | 'sr'>) =>
+    out.push({ kind: 'item', sr: srNo++, ...row });
+
+  const srcItems = Array.isArray(finalLineItems) ? finalLineItems : [];
+  const serviceRows = srcItems.filter((r: any) => {
+    const c = normCat(r?.category);
+    return c === 'SERVICE' || c === 'ADDON' || c === 'ADD_ON' || c === 'ADD-ON';
+  });
+  // Dedupe accidental duplicate Custom Service rows (same description + amount + qty)
+  const serviceRowsUnique = (() => {
+    const seen = new Set<string>();
+    return (serviceRows || []).filter((r: any) => {
+      const desc = String(r?.description ?? r?.item_name ?? '').trim();
+      if (!desc) return true;
+      if (!isCustomServiceName(desc)) return true;
+      const qty = Math.max(0, num(r?.qty ?? r?.quantity ?? 1, 1) || 1);
+      const totalInc =
+        r?.amount != null
+          ? num(r.amount, 0)
+          : Math.max(
+              0,
+              qty *
+                (r?.rate != null ? num(r.rate, 0) : r?.unit_price != null ? num(r.unit_price, 0) : 0)
+            );
+      const key = `${desc.toLowerCase()}|${qty.toFixed(3)}|${totalInc.toFixed(2)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  })();
+  const partRows = srcItems.filter((r: any) => {
+    const c = normCat(r?.category);
+    return c === 'PART' || c === 'PARTS';
+  });
+  const extraRows = srcItems.filter((r: any) => normCat(r?.category) === 'EXTRA');
+
+  const addMainRowWithIncluded = (row: any) => {
+    const description = String(row?.description ?? row?.item_name ?? 'Service').trim() || 'Service';
+    const qty = Math.max(0, num(row?.qty ?? row?.quantity ?? 1, 1) || 1);
+    const gstRate = gstRateFor(row);
+    // IMPORTANT: treat stored amounts/rates as GST-inclusive.
+    const totalInc =
+      row?.amount != null
+        ? num(row.amount, 0)
+        : Math.max(
+            0,
+            qty *
+              (row?.rate != null
+                ? num(row.rate, 0)
+                : row?.unit_price != null
+                  ? num(row.unit_price, 0)
+                  : 0)
+          );
+    const taxable = gstRate > 0 ? totalInc / (1 + gstRate / 100) : totalInc;
+    const unitPrice = qty ? totalInc / qty : totalInc;
+    const total = totalInc;
+    const typeLabel = normalizeTypeLabel(row?.type, row?.category) as 'Part' | 'Labour';
+
+    const isCustom = isCustomServiceName(description);
+    const remarkRaw = isCustom ? String(row?.custom_remark ?? row?.remark ?? row?.notes ?? '').trim() : '';
+    const remarkHtml = remarkRaw ? `<div class="muted"><strong>Remark:</strong> ${esc(remarkRaw)}</div>` : '';
+    const nameHtml = `<div>${esc(description)}${remarkHtml}</div>`;
+
+    const includedOverrides = Array.isArray(row?.included_items) ? row.included_items : [];
+    const sid = String(row?.service_type_id || '').trim();
+    const fallbackIncluded = sid ? serviceTypeItemsByServiceId.get(sid) || [] : [];
+    const included = includedOverrides.length > 0 ? includedOverrides : fallbackIncluded;
+    const isIncludedFromServiceDefinition = includedOverrides.length === 0; // fallback from service_type_items
+
+    // If a service has parts/included items, show the service as a "heading row"
+    // (hide the per-column details like Type/HSN/GST/Qty/Taxable etc), but still keep totals.
+    const shouldRenderAsHeading = included.length > 0;
+
+    if (shouldRenderAsHeading) {
+      // If included items are explicitly provided on the row (invoice override),
+      // they usually carry the billable amounts. Don't double-count totals on the heading.
+      const headingTotal = includedOverrides.length > 0 ? 0 : total;
+      const headingTaxable = includedOverrides.length > 0 ? 0 : taxable;
+      pushGroup({
+        titleHtml: `<div><strong>${esc(description)}</strong>${remarkHtml}</div>`,
+        taxable: headingTaxable,
+        total: headingTotal,
+      });
+    } else {
+      pushItem({
+        nameHtml,
+        typeLabel,
+        hsn: hsnFor(row, typeLabel),
+        gstRate,
+        qty,
+        unitPrice,
+        taxable,
+        total,
+      });
+    }
+
+    for (const inc of included) {
+      const incName =
+        String((inc as any)?.name ?? (inc as any)?.description ?? (inc as any)?.item_name ?? (inc as any)?.product?.name ?? '').trim() ||
+        '';
+      if (!incName) continue;
+      const incQty = Math.max(0, num((inc as any)?.quantity ?? (inc as any)?.qty ?? (inc as any)?.product_quantity ?? 1, 1) || 1);
+      const incGstRate = gstRateFor(inc);
+      // IMPORTANT:
+      // - When we are showing "included items" coming from service definition (`service_type_items`),
+      //   we should NOT add their default price to invoice totals (it double-counts).
+      // - Still show item + qty + HSN/GST for transparency.
+      const incRefUnitPrice =
+        (inc as any)?.unit_price != null
+          ? num((inc as any).unit_price, 0)
+          : (inc as any)?.rate != null
+            ? num((inc as any).rate, 0)
+            : (inc as any)?.product?.default_price != null
+              ? num((inc as any).product.default_price, 0)
+              : (inc as any)?.default_price != null
+                ? num((inc as any).default_price, 0)
+                : 0;
+      const incTotalInc =
+        isIncludedFromServiceDefinition
+          ? 0
+          : (inc as any)?.amount != null
+            ? num((inc as any).amount, 0)
+            : Math.max(0, incQty * incRefUnitPrice);
+      const incTaxable = incTotalInc > 0 ? (incGstRate > 0 ? incTotalInc / (1 + incGstRate / 100) : incTotalInc) : 0;
+      const incUnitPrice = incQty ? (isIncludedFromServiceDefinition ? incRefUnitPrice : incTotalInc / incQty) : incTotalInc;
+      const incTotal = incTotalInc;
+      const incTypeLabel = normalizeTypeLabel((inc as any)?.type ?? (inc as any)?.product?.type, 'PART') as 'Part' | 'Labour';
+      const incHsn = hsnFor(inc, incTypeLabel);
+      const pn = (inc as any)?.part_number ?? (inc as any)?.product?.part_number ?? null;
+      const suffix = pn ? ` (${String(pn)})` : '';
+      const includedSuffix = isIncludedFromServiceDefinition ? ' <span class="muted">(Included)</span>' : '';
+      pushItem({
+        nameHtml: `<div class="sub-item">- ${esc(incName)}${esc(suffix)}${includedSuffix}</div>`,
+        typeLabel: incTypeLabel,
+        hsn: incHsn,
+        gstRate: incGstRate,
+        qty: incQty,
+        unitPrice: incUnitPrice,
+        taxable: incTaxable,
+        total: incTotal,
+      });
+    }
+  };
+
+  if (serviceRows.length > 0) {
+    pushSection('Service');
+    for (const r of serviceRowsUnique) addMainRowWithIncluded(r);
+  }
+
+  // Parts: prefer PART lines in invoice, else use job card parts list
+  const effectiveParts =
+    partRows.length > 0
+      ? partRows
+      : (Array.isArray(jobCardParts) ? jobCardParts : []).map((p: any) => ({
+          category: 'PART',
+          description: `${p?.part_name || p?.master_products?.name || 'Part'}${p?.part_number ? ` (${p.part_number})` : ''}`,
+          qty: p?.quantity ?? 1,
+          rate: p?.unit_price ?? 0,
+          amount: p?.total_price ?? 0,
+          hsn_sac_code: p?.master_products?.hsn_sac_code ?? null,
+          tax_rate: p?.master_products?.tax_rate ?? null,
+          type: 'PART',
+        }));
+  if (effectiveParts.length > 0) {
+    pushSection('Parts');
+    for (const row of effectiveParts) {
+      const description = String(row?.description ?? row?.item_name ?? 'Part').trim() || 'Part';
+      const qty = Math.max(0, num(row?.qty ?? row?.quantity ?? 1, 1) || 1);
+      const gstRate = gstRateFor(row);
+      const totalInc =
+        row?.amount != null
+          ? num(row.amount, 0)
+          : Math.max(
+              0,
+              qty *
+                (row?.rate != null
+                  ? num(row.rate, 0)
+                  : row?.unit_price != null
+                    ? num(row.unit_price, 0)
+                    : 0)
+            );
+      const taxable = gstRate > 0 ? totalInc / (1 + gstRate / 100) : totalInc;
+      const unitPrice = qty ? totalInc / qty : totalInc;
+      const total = totalInc;
+      const typeLabel = 'Part' as const;
+      pushItem({
+        nameHtml: `<div>${esc(description)}</div>`,
+        typeLabel,
+        hsn: hsnFor(row, typeLabel),
+        gstRate,
+        qty,
+        unitPrice,
+        taxable,
+        total,
+      });
+    }
+  }
+
+  // Additional Work (EXTRA): show OEM/OES parts + Labour separately.
+  // IMPORTANT: Additional Work rates are treated as GST-inclusive; taxable is derived by removing GST.
+  const extraResolved = Array.isArray(extraWorkItems) ? extraWorkItems : [];
+  if (extraResolved.length > 0 || extraRows.length > 0) {
+    pushSection('Additional Work');
+
+    if (extraResolved.length > 0) {
+      for (const ew of extraResolved) {
+        const name = String(ew?.name || 'Additional Work').trim() || 'Additional Work';
+        const partType = String(ew?.part_price_type || 'OEM').toUpperCase() === 'OES' ? 'OES' : 'OEM';
+        const gstRate = Number.isFinite(Number(ew?.tax_rate)) && Number(ew?.tax_rate) > 0 ? Number(ew?.tax_rate) : 18;
+        const hsn = String(ew?.hsn_sac_code || '').trim() || '998714';
+
+        const partsInc =
+          partType === 'OES' ? num(ew?.oes_price, 0) : num(ew?.oem_price, 0);
+        const labourInc = num(ew?.labour_price, 0);
+        const legacyInc = num(ew?.legacy_amount, 0);
+
+        const pushInclusiveRow = (label: string, typeLabel: 'Part' | 'Labour', totalInc: number) => {
+          const qty = 1;
+          const unitPriceInc = totalInc;
+          const taxable = gstRate > 0 ? totalInc / (1 + gstRate / 100) : totalInc;
+          const total = totalInc; // GST-inclusive
+          pushItem({
+            nameHtml: `<div>${esc(label)}</div>`,
+            typeLabel,
+            hsn,
+            gstRate,
+            qty,
+            unitPrice: unitPriceInc,
+            taxable,
+            total,
+          });
+        };
+
+        const anyBreakup = partsInc > 0 || labourInc > 0;
+        if (anyBreakup) {
+          if (partsInc > 0) pushInclusiveRow(`${name} - Parts (${partType})`, 'Part', partsInc);
+          if (labourInc > 0) pushInclusiveRow(`${name} - Labour`, 'Labour', labourInc);
+        } else if (legacyInc > 0) {
+          // Legacy fallback: show a single GST-inclusive line.
+          pushInclusiveRow(`${name}`, 'Labour', legacyInc);
+        }
+      }
+    } else {
+      // Fallback: if invoice only has EXTRA lines (no resolved breakup), keep existing behavior
+      for (const row of extraRows) {
+        const description = String(row?.description ?? row?.item_name ?? 'Additional Work').trim() || 'Additional Work';
+        const qty = Math.max(0, num(row?.qty ?? row?.quantity ?? 1, 1) || 1);
+        const totalInc =
+          row?.amount != null
+            ? num(row.amount, 0)
+            : Math.max(
+                0,
+                qty *
+                  (row?.rate != null ? num(row.rate, 0) : row?.unit_price != null ? num(row.unit_price, 0) : 0)
+              );
+        const gstRate = gstRateFor(row);
+        const taxable = gstRate > 0 ? totalInc / (1 + gstRate / 100) : totalInc;
+        const typeLabel = 'Labour' as const;
+        pushItem({
+          nameHtml: `<div>${esc(description)}</div>`,
+          typeLabel,
+          hsn: hsnFor(row, typeLabel),
+          gstRate,
+          qty,
+          unitPrice: qty ? totalInc / qty : totalInc,
+          taxable,
+          total: totalInc,
+        });
+      }
+    }
+  }
+
+  // Derived totals from displayed rows (GST-inclusive).
+  // NOTE: This is useful for breakdown, but final totals should align with invoice stored totals.
+  const rowsTotalInc = out
+    .filter((r: any) => r?.kind === 'item' || r?.kind === 'group')
+    .reduce((s: number, r: any) => s + (Number(r?.total) || 0), 0);
+  const rowsTaxable = out
+    .filter((r: any) => r?.kind === 'item' || r?.kind === 'group')
+    .reduce((s: number, r: any) => s + (Number(r?.taxable) || 0), 0);
+
+  // Totals source of truth:
+  // - prefer invoice.final_amount/total_amount for payable
+  // - prefer invoice.sub_total for pre-discount subtotal (newer installs store pre-discount)
+  // - fallback to rows totals if invoice fields are missing
+  const discountInc = Number(invoice?.discount_amount || 0) || 0;
+  const payableFromInvoice = num(invoice?.final_amount ?? invoice?.total_amount ?? 0, 0);
+  let subTotalFromInvoice = num(invoice?.sub_total ?? 0, 0);
+  if (subTotalFromInvoice <= 0 && payableFromInvoice > 0) subTotalFromInvoice = payableFromInvoice + discountInc;
+  // If sub_total appears to already be after-discount, normalize it to pre-discount.
+  if (subTotalFromInvoice > 0 && payableFromInvoice > 0 && discountInc > 0) {
+    const almostEqual = (a: number, b: number) => Math.abs(a - b) < 0.5;
+    if (almostEqual(subTotalFromInvoice, payableFromInvoice) || subTotalFromInvoice < payableFromInvoice) {
+      subTotalFromInvoice = payableFromInvoice + discountInc;
+    }
+  }
+  const computedTotalInc = subTotalFromInvoice > 0 ? subTotalFromInvoice : rowsTotalInc;
+  const computedTotalAfterDiscount =
+    payableFromInvoice > 0 ? payableFromInvoice : Math.max(0, computedTotalInc - discountInc);
+
+  // GST breakup should sum to payable; scale the row-derived taxable proportionally.
+  const rowsTotalAfterDiscount = Math.max(0, rowsTotalInc - discountInc);
+  const rowsTaxableAfterDiscount = Math.max(0, rowsTaxable - (discountInc > 0 ? discountInc / 1.18 : 0));
+  const scale = rowsTotalAfterDiscount > 0 ? computedTotalAfterDiscount / rowsTotalAfterDiscount : 1;
+  const computedTaxableAfterDiscount = Math.max(0, rowsTaxableAfterDiscount * scale);
+  const computedGstIncluded = Math.max(0, computedTotalAfterDiscount - computedTaxableAfterDiscount);
+
+  // Decide IGST vs CGST/SGST from GSTIN state codes (fallback: intra-state)
+  const workshopGstin = String((workshop as any)?.gst_number || (workshop as any)?.gstin || '').trim();
+  const workshopStateCode = workshopGstin && workshopGstin.length >= 2 ? workshopGstin.slice(0, 2) : '';
+  const customerStateCodeEff =
+    String(customerBillingStateCode || '').trim() ||
+    (customerGstin && String(customerGstin).length >= 2 ? String(customerGstin).slice(0, 2) : '');
+  const useIGST = workshopStateCode && customerStateCodeEff ? workshopStateCode !== customerStateCodeEff : false;
+
+  const cgstIncluded = useIGST ? 0 : computedGstIncluded / 2;
+  const sgstIncluded = useIGST ? 0 : computedGstIncluded / 2;
+  const igstIncluded = useIGST ? computedGstIncluded : 0;
+  const effectiveGstRate =
+    computedTaxableAfterDiscount > 0 ? (computedGstIncluded / computedTaxableAfterDiscount) * 100 : 0;
+
   const invoiceType = (invoice as any).invoice_type || 'TAX_INVOICE';
   const showGstBreakup = (invoice as any).show_gst_breakup !== false && invoiceType === 'TAX_INVOICE';
   const docTitle =
@@ -811,6 +1361,7 @@ function generateInvoiceHTML(invoice: any): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${docTitle} ${invoice.invoice_number}</title>
   <style>
+    @page { size: A4; margin: 12mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Arial', 'Helvetica', sans-serif;
@@ -994,6 +1545,7 @@ function generateInvoiceHTML(invoice: any): string {
       border-collapse: collapse;
       margin: 20px 0;
       font-size: 11px;
+      page-break-inside: auto;
     }
     .line-items-table th {
       background: #2563eb;
@@ -1017,6 +1569,39 @@ function generateInvoiceHTML(invoice: any): string {
     .line-items-table tr:nth-child(even) td {
       background: #f8f9fa;
     }
+    .line-items-table .muted { margin-top: 2px; color: #6b7280; font-size: 11px; }
+    .line-items-table .sub-item { padding-left: 10px; color: #374151; }
+    .line-items-table .section-row td {
+      background: #e0f2fe !important;
+      font-weight: 700;
+      color: #0284c7;
+      font-size: 13px;
+      padding: 12px 10px;
+      border: 1px solid #bae6fd;
+    }
+    .line-items-table .group-row td {
+      background: #f1f5f9 !important;
+      font-weight: 700;
+      color: #0f172a;
+      padding: 10px 10px;
+      border: 1px solid #e2e8f0;
+    }
+    /* Print-safe pagination for long invoices */
+    .report-header,
+    .report-meta-row,
+    .detail-grid,
+    .detail-card { break-inside: avoid; page-break-inside: avoid; }
+    .line-items-table thead { display: table-header-group; }
+    .line-items-table tfoot { display: table-footer-group; }
+    .line-items-table tr { break-inside: avoid; page-break-inside: avoid; }
+    .line-items-table td { vertical-align: top; }
+    .section-row { break-after: avoid; page-break-after: avoid; }
+    .payment-info,
+    .bank-details,
+    .notes-section,
+    .gst-table,
+    .total-table,
+    .declaration { break-inside: avoid; page-break-inside: avoid; }
     .gst-table {
       width: 100%;
       border-collapse: collapse;
@@ -1154,10 +1739,10 @@ function generateInvoiceHTML(invoice: any): string {
     }
     @media print {
       body { padding: 0; }
-      .invoice-container { border: none; padding: 20px; }
-      .header-section { page-break-inside: avoid; }
-      .from-to-section { page-break-inside: avoid; }
-      .line-items-table { page-break-inside: avoid; }
+      .invoice-container { border: none; padding: 0; max-width: none; }
+      /* Ensure tables can flow to next pages */
+      .line-items-table { page-break-inside: auto; }
+      .line-items-table thead { display: table-header-group; }
     }
   </style>
 </head>
@@ -1229,100 +1814,63 @@ function generateInvoiceHTML(invoice: any): string {
     <table class="line-items-table">
       <thead>
         <tr>
-          <th>Sr</th>
-          <th>Description</th>
-          <th>HSN/SAC</th>
-          <th>Qty</th>
-          <th class="text-right">Rate (₹)</th>
-          <th class="text-right">Amount (₹)</th>
+          <th style="width: 60px;">S.NO.</th>
+          <th>Part / Service</th>
+          <th style="width: 90px;">Type</th>
+          <th style="width: 90px;">HSN / SAC</th>
+          <th style="width: 70px;" class="text-right">GST %</th>
+          <th style="width: 70px;" class="text-right">Qty</th>
+          <th style="width: 110px;" class="text-right">Unit Price (₹)</th>
+          <th style="width: 110px;" class="text-right">Taxable (₹)</th>
+          <th style="width: 110px;" class="text-right">Total (₹)</th>
         </tr>
       </thead>
       <tbody>
-        ${finalLineItems.length > 0 ? finalLineItems.map((item: any, idx: number) => {
-          const sr = item.sr || item.sr_no || (idx + 1);
-          const description = item.description || item.item_name || 'Service';
-          const hsnSac = item.hsn_sac || item.hsn_sac_code || '998729';
-          const qty = item.qty || item.quantity || 1;
-          const rate = item.rate || item.unit_price || item.final_price || 0;
-          const amount = item.amount || item.total_price || item.final_price || rate;
-          
-          // Handle section headings
-          if (item.isSectionHeading) {
-            return `
-          <tr style="background: #e0f2fe; font-weight: bold;">
-            <td colspan="6" style="padding: 12px; font-size: 13px; color: #0284c7;">${description}</td>
+        ${out.length > 0
+          ? out
+              .map((r: any) => {
+                if (r.kind === 'section') {
+                  return `
+          <tr class="section-row">
+            <td colspan="9">${esc(r.title)}</td>
           </tr>
         `;
-          }
-          
-          // Handle service heading (bold)
-          if (item.isServiceHeading) {
-            return `
-          <tr style="background: #f0f9ff; font-weight: bold;">
-            <td>${sr}</td>
-            <td><strong>${description}</strong></td>
-            <td>${hsnSac}</td>
-            <td>${qty}</td>
-            <td class="text-right"><strong>${parseFloat(rate.toString()).toFixed(2)}</strong></td>
-            <td class="text-right"><strong>${parseFloat(amount.toString()).toFixed(2)}</strong></td>
+                }
+                if (r.kind === 'group') {
+                  return `
+          <tr class="group-row">
+            <td></td>
+            <td colspan="8">${r.titleHtml}</td>
           </tr>
         `;
-          }
-          
-          // Handle parts (sub-numbered, indented)
-          if (item.isPart) {
-            return `
+                }
+                return `
           <tr>
-            <td style="padding-left: 30px;">${sr}</td>
-            <td style="padding-left: 10px;">${description}</td>
-            <td>${hsnSac}</td>
-            <td>${qty}</td>
-            <td class="text-right">${parseFloat(rate.toString()).toFixed(2)}</td>
-            <td class="text-right">${parseFloat(amount.toString()).toFixed(2)}</td>
+            <td>${r.sr}</td>
+            <td>${r.nameHtml}</td>
+            <td>${r.typeLabel}</td>
+            <td>${esc(r.hsn)}</td>
+            <td class="text-right">${money(r.gstRate)}</td>
+            <td class="text-right">${money(r.qty)}</td>
+            <td class="text-right">${money(r.unitPrice)}</td>
+            <td class="text-right">${money(r.taxable)}</td>
+            <td class="text-right">${money(r.total)}</td>
           </tr>
         `;
-          }
-          
-          // Regular items
-          return `
-          <tr>
-            <td>${sr}</td>
-            <td>${description}</td>
-            <td>${hsnSac}</td>
-            <td>${qty}</td>
-            <td class="text-right">${parseFloat(rate.toString()).toFixed(2)}</td>
-            <td class="text-right">${parseFloat(amount.toString()).toFixed(2)}</td>
-          </tr>
-        `;
-        }).join('') : `
+              })
+              .join('')
+          : `
           <tr>
             <td>1</td>
             <td>Service Charges (Labour)</td>
-            <td>998729</td>
-            <td>1</td>
+            <td>Labour</td>
+            <td>998714</td>
+            <td class="text-right">18.00</td>
+            <td class="text-right">1.00</td>
             <td class="text-right">${(invoice.base_amount || 0).toFixed(2)}</td>
+            <td class="text-right">${((invoice.base_amount || 0) / 1.18).toFixed(2)}</td>
             <td class="text-right">${(invoice.base_amount || 0).toFixed(2)}</td>
           </tr>
-          ${(invoice.parts_cost || 0) > 0 ? `
-          <tr>
-            <td>2</td>
-            <td>Parts & Materials</td>
-            <td>271019</td>
-            <td>1</td>
-            <td class="text-right">${invoice.parts_cost.toFixed(2)}</td>
-            <td class="text-right">${invoice.parts_cost.toFixed(2)}</td>
-          </tr>
-          ` : ''}
-          ${(invoice.extra_charges || 0) > 0 ? `
-          <tr>
-            <td>${(invoice.parts_cost || 0) > 0 ? '3' : '2'}</td>
-            <td>Additional Charges</td>
-            <td>998729</td>
-            <td>1</td>
-            <td class="text-right">${invoice.extra_charges.toFixed(2)}</td>
-            <td class="text-right">${invoice.extra_charges.toFixed(2)}</td>
-          </tr>
-          ` : ''}
         `}
       </tbody>
     </table>
@@ -1360,33 +1908,30 @@ function generateInvoiceHTML(invoice: any): string {
         </tr>
       </thead>
       <tbody>
-        ${invoice.cgst_amount > 0 ? `
+        ${useIGST ? `
         <tr>
-          <td>CGST</td>
-          <td class="text-right">${netTaxableValue.toFixed(2)}</td>
-          <td class="text-right">9%</td>
-          <td class="text-right">${invoice.cgst_amount.toFixed(2)}</td>
+          <td>IGST (Included)</td>
+          <td class="text-right">${computedTaxableAfterDiscount.toFixed(2)}</td>
+          <td class="text-right">${effectiveGstRate ? `${effectiveGstRate.toFixed(2)}%` : '—'}</td>
+          <td class="text-right">${igstIncluded.toFixed(2)}</td>
         </tr>
-        ` : ''}
-        ${invoice.sgst_amount > 0 ? `
+        ` : `
         <tr>
-          <td>SGST / UTGST</td>
-          <td class="text-right">${netTaxableValue.toFixed(2)}</td>
-          <td class="text-right">9%</td>
-          <td class="text-right">${invoice.sgst_amount.toFixed(2)}</td>
+          <td>CGST (Included)</td>
+          <td class="text-right">${computedTaxableAfterDiscount.toFixed(2)}</td>
+          <td class="text-right">${effectiveGstRate ? `${(effectiveGstRate / 2).toFixed(2)}%` : '—'}</td>
+          <td class="text-right">${cgstIncluded.toFixed(2)}</td>
         </tr>
-        ` : ''}
-        ${invoice.igst_amount > 0 ? `
         <tr>
-          <td>IGST</td>
-          <td class="text-right">${netTaxableValue.toFixed(2)}</td>
-          <td class="text-right">18%</td>
-          <td class="text-right">${invoice.igst_amount.toFixed(2)}</td>
+          <td>SGST / UTGST (Included)</td>
+          <td class="text-right">${computedTaxableAfterDiscount.toFixed(2)}</td>
+          <td class="text-right">${effectiveGstRate ? `${(effectiveGstRate / 2).toFixed(2)}%` : '—'}</td>
+          <td class="text-right">${sgstIncluded.toFixed(2)}</td>
         </tr>
-        ` : ''}
+        `}
         <tr style="background: #dbeafe; font-weight: bold;">
           <td colspan="3"><strong>Total GST:</strong></td>
-          <td class="text-right"><strong>₹${(invoice.total_tax || (invoice.cgst_amount || 0) + (invoice.sgst_amount || 0) + (invoice.igst_amount || 0)).toFixed(2)}</strong></td>
+          <td class="text-right"><strong>₹${computedGstIncluded.toFixed(2)}</strong></td>
         </tr>
       </tbody>
     </table>
@@ -1402,7 +1947,7 @@ function generateInvoiceHTML(invoice: any): string {
       <tbody>
         <tr>
           <td>Sub-Total</td>
-          <td>₹${subtotal.toFixed(2)}</td>
+          <td>₹${computedTotalInc.toFixed(2)}</td>
         </tr>
         ${invoice.discount_amount > 0 ? `
         <tr>
@@ -1413,20 +1958,20 @@ function generateInvoiceHTML(invoice: any): string {
         ${showGstBreakup ? `
         <tr>
           <td>Net Taxable Value</td>
-          <td>₹${netTaxableValue.toFixed(2)}</td>
+          <td>₹${computedTaxableAfterDiscount.toFixed(2)}</td>
         </tr>
         <tr>
-          <td>Add: Total GST</td>
-          <td>₹${(invoice.total_tax || (invoice.cgst_amount || 0) + (invoice.sgst_amount || 0) + (invoice.igst_amount || 0)).toFixed(2)}</td>
+          <td>GST (Included)</td>
+          <td>₹${computedGstIncluded.toFixed(2)}</td>
         </tr>
         <tr>
           <td>Grand Total</td>
-          <td>₹${(netTaxableValue + (invoice.total_tax || (invoice.cgst_amount || 0) + (invoice.sgst_amount || 0) + (invoice.igst_amount || 0))).toFixed(2)}</td>
+          <td>₹${computedTotalAfterDiscount.toFixed(2)}</td>
         </tr>
         ` : `
         <tr>
           <td>Total</td>
-          <td>₹${netTaxableValue.toFixed(2)}</td>
+          <td>₹${computedTotalAfterDiscount.toFixed(2)}</td>
         </tr>
         `}
         ${roundOffAmount !== 0 ? `
@@ -1437,7 +1982,7 @@ function generateInvoiceHTML(invoice: any): string {
         ` : ''}
         <tr class="grand-total-row">
           <td>${showGstBreakup ? 'Amount Payable (INR)' : 'Amount to Pay (INR)'}</td>
-          <td>₹${finalAmount.toFixed(2)}</td>
+          <td>₹${(finalAmount > 0 ? finalAmount : computedTotalAfterDiscount).toFixed(2)}</td>
         </tr>
       </tbody>
     </table>

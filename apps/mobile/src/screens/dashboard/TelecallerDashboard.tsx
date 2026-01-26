@@ -229,6 +229,11 @@ export default function TelecallerDashboard() {
     return <TelecallerScriptsScreen navigation={navigation} />;
   }
 
+  if (currentScreen === 'enquiryLeads') {
+    const Screen = require('./telecaller/TelecallerEnquiryLeadsScreen').default;
+    return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
   // Main Dashboard Screen
   if (loading) {
     return (
@@ -317,6 +322,14 @@ export default function TelecallerDashboard() {
             >
               <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📞</Text>
               <Text style={styles.actionButtonText}>View Queue</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: COLORS.indigo }]}
+              onPress={() => setCurrentScreen('enquiryLeads')}
+            >
+              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>🧾</Text>
+              <Text style={styles.actionButtonText}>Enquiry Leads</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

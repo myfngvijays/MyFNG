@@ -65,6 +65,10 @@ export default function CreateLeadPage() {
   const [serviceTypes, setServiceTypes] = useState<any[]>([]);
   const [serviceAddons, setServiceAddons] = useState<any[]>([]);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
+  const [couponsLoading, setCouponsLoading] = useState(false);
+  const [couponsError, setCouponsError] = useState<string>('');
+  const [couponMode, setCouponMode] = useState<'dropdown' | 'manual'>('dropdown');
   
   // Sort service types: basic, general, premium, platinum first, then others
   const sortedServiceTypes = useMemo(() => {
@@ -97,6 +101,11 @@ export default function CreateLeadPage() {
   useEffect(() => {
     fetchOptionsData();
   }, []);
+
+  // Fetch coupons (admin-created) once; we’ll refilter server-side when city/services change.
+  useEffect(() => {
+    fetchAvailableCoupons();
+  }, [formData.city_id, formData.service_types.join(',')]);
   
   // Fetch models when make changes
   useEffect(() => {
@@ -215,6 +224,28 @@ export default function CreateLeadPage() {
       
     } catch (error) {
       console.error('Error fetching options:', error);
+    }
+  }
+
+  async function fetchAvailableCoupons() {
+    setCouponsLoading(true);
+    setCouponsError('');
+    try {
+      const params = new URLSearchParams();
+      if (formData.city_id) params.set('city_id', formData.city_id);
+      if (formData.service_types.length > 0) params.set('service_type_ids', formData.service_types.join(','));
+
+      const res = await fetch(`/api/telecaller/coupons?${params.toString()}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to load coupons');
+      setAvailableCoupons(json?.coupons || []);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to load coupons';
+      console.error('Failed to load coupons:', e);
+      setCouponsError(msg);
+      setAvailableCoupons([]);
+    } finally {
+      setCouponsLoading(false);
     }
   }
   
@@ -920,18 +951,77 @@ export default function CreateLeadPage() {
                 </div>
 
                 <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Coupon Code
-                </label>
-                <input
-                  type="text"
-                  name="coupon_code"
-                  value={formData.coupon_code}
-                  onChange={handleChange}
-                  className="input text-sm"
-                  placeholder="Enter coupon code (if any)"
-                />
-              </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
+                      Coupon
+                    </label>
+                    <button
+                      type="button"
+                      className="text-xs text-brand-primary hover:underline"
+                      onClick={() => setCouponMode(prev => (prev === 'dropdown' ? 'manual' : 'dropdown'))}
+                    >
+                      {couponMode === 'dropdown' ? 'Type manually' : 'Pick from list'}
+                    </button>
+                  </div>
+
+                  {couponMode === 'dropdown' ? (
+                    <>
+                      <select
+                        name="coupon_code"
+                        value={formData.coupon_code}
+                        onChange={handleChange}
+                        className="input text-sm"
+                      >
+                        <option value="">
+                          {couponsLoading ? 'Loading coupons...' : 'Select coupon (optional)'}
+                        </option>
+                      {availableCoupons.map((c) => {
+                        const label =
+                          c.coupon_kind === 'TOTAL_DISCOUNT'
+                            ? `${c.code} — ${c.discount_mode === 'PERCENT' ? `${c.discount_value}% off` : `₹${c.discount_value} off`}${c.min_order_value ? ` (min ₹${c.min_order_value})` : ''}`
+                            : `${c.code} — Free Service${c.target_custom_label ? ` (${c.target_custom_label})` : ''}`;
+                        return (
+                          <option key={c.id} value={String(c.code || '').toUpperCase()}>
+                            {label}
+                          </option>
+                        );
+                      })}
+                      </select>
+
+                      {couponsError ? (
+                        <p className="mt-1 text-[10px] sm:text-xs text-red-600">
+                          Unable to load coupons: {couponsError}
+                        </p>
+                      ) : (!couponsLoading && availableCoupons.length === 0) ? (
+                        <p className="mt-1 text-[10px] sm:text-xs text-gray-500">
+                          No active coupons available. Ensure the coupon is <b>Active</b> in Super Admin → Coupons.
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <input
+                      type="text"
+                      name="coupon_code"
+                      value={formData.coupon_code}
+                      onChange={(e) => {
+                        const upper = (e.target.value || '').toUpperCase();
+                        setFormData(prev => ({ ...prev, coupon_code: upper }));
+                      }}
+                      className="input text-sm"
+                      placeholder="Enter coupon code (if any)"
+                    />
+                  )}
+
+                  {!!formData.coupon_code && (
+                    <button
+                      type="button"
+                      className="mt-2 text-xs text-gray-600 hover:underline"
+                      onClick={() => setFormData(prev => ({ ...prev, coupon_code: '' }))}
+                    >
+                      Clear coupon
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:gap-5 md:gap-6">

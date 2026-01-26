@@ -452,6 +452,35 @@ export default function LeadDetailPage() {
                     <p className="text-gray-700 font-semibold">{lead.payment_mode}</p>
                   </div>
                 )}
+
+                {/* Coupon (if applied during lead creation) */}
+                {(() => {
+                  const code = String(
+                    lead?.coupon_code ?? lead?.coupon ?? lead?.applied_coupon_code ?? ''
+                  ).trim();
+                  const discountAmount =
+                    Number(lead?.discount_amount ?? lead?.coupon_discount_amount ?? lead?.coupon_discount ?? 0) || 0;
+                  if (!code) return null;
+                  return (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-amber-800">Coupon Applied</p>
+                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                          {code}
+                        </span>
+                      </div>
+                      {discountAmount > 0 ? (
+                        <p className="mt-1 text-xs text-gray-700">
+                          Discount: <span className="font-semibold">₹{discountAmount.toFixed(2)}</span>
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-gray-600">
+                          Note: Discount will reflect in invoice at billing time.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
                 {lead.pickup_required && (
                   <div className="bg-blue-50 p-3 rounded-lg">
                     <p className="text-sm font-semibold text-blue-700">Pickup Required</p>

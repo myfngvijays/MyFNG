@@ -103,13 +103,18 @@ export default function ExtraWorkApprovalsPage() {
     }
   }
 
-  async function approveRequest(requestId: string, part_price_type: 'OEM' | 'OES', notes?: string) {
+  async function approveRequest(
+    requestId: string,
+    part_price_type: 'OEM' | 'OES',
+    notes?: string,
+    pricing?: { oem_price?: number; oes_price?: number; labour_price?: number }
+  ) {
     try {
       setApprovingRequestIds((p) => ({ ...p, [requestId]: true }));
       const res = await fetch('/api/supervisor/extra-work/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: requestId, part_price_type, notes }),
+        body: JSON.stringify({ id: requestId, part_price_type, notes, ...pricing }),
       });
       const data = await safeReadJson(res);
       if (!res.ok) {
@@ -135,6 +140,20 @@ export default function ExtraWorkApprovalsPage() {
     if (!r) return { oem: 0, oes: 0 };
     const p = getEffectivePricingForRequest(r);
     return { oem: p.total_oem, oes: p.total_oes };
+  }, [approveModalRequest, editedPricing]);
+
+  const approveModalPricing = useMemo(() => {
+    const r = approveModalRequest;
+    if (!r) return null;
+    const p = editedPricing[r.id];
+    const baseOem = r.oem_price && r.oem_price > 0 ? r.oem_price : (r.master_oem_price || 0);
+    const baseOes = r.oes_price && r.oes_price > 0 ? r.oes_price : (r.master_oes_price || 0);
+    const baseLabour = r.labour_price && r.labour_price > 0 ? r.labour_price : (r.master_labour_price || 0);
+    return {
+      oem: p ? p.oem : String(baseOem),
+      oes: p ? p.oes : String(baseOes),
+      labour: p ? p.labour : String(baseLabour),
+    };
   }, [approveModalRequest, editedPricing]);
 
   const approveModalIsOverride = useMemo(() => {
@@ -1442,6 +1461,74 @@ export default function ExtraWorkApprovalsPage() {
                 </div>
               </div>
 
+              {/* Allow price change even during override */}
+              {approveModalPricing && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Override pricing (optional)
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <div className="text-xs font-semibold text-gray-600 mb-1">OEM</div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="input w-full"
+                        value={approveModalPricing.oem}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const id = approveModalRequest.id;
+                          setEditedPricing((prev) => ({
+                            ...prev,
+                            [id]: { ...(prev[id] || approveModalPricing), oem: v },
+                          }));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-gray-600 mb-1">OES</div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="input w-full"
+                        value={approveModalPricing.oes}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const id = approveModalRequest.id;
+                          setEditedPricing((prev) => ({
+                            ...prev,
+                            [id]: { ...(prev[id] || approveModalPricing), oes: v },
+                          }));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-gray-600 mb-1">Labour</div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="input w-full"
+                        value={approveModalPricing.labour}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const id = approveModalRequest.id;
+                          setEditedPricing((prev) => ({
+                            ...prev,
+                            [id]: { ...(prev[id] || approveModalPricing), labour: v },
+                          }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[11px] text-gray-500">
+                    Note: If the selected part price is 0, total becomes 0 (labour won’t be applied).
+                  </div>
+                </div>
+              )}
+
               {approveModalIsOverride && (
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -1482,10 +1569,16 @@ export default function ExtraWorkApprovalsPage() {
                     toast.error('Remark is required to override customer rejection');
                     return;
                   }
+                  const effective = getEffectivePricingForRequest(approveModalRequest);
                   await approveRequest(
                     approveModalRequest.id,
                     approveModal.choice,
-                    approveModalIsOverride ? approveModalNotes.trim() : undefined
+                    approveModalIsOverride ? approveModalNotes.trim() : undefined,
+                    {
+                      oem_price: effective.oem,
+                      oes_price: effective.oes,
+                      labour_price: effective.labour,
+                    }
                   );
                   setApproveModal({ open: false, requestId: null, choice: 'OEM' });
                 }}

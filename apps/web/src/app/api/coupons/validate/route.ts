@@ -32,6 +32,30 @@ function getNowIso() {
   return new Date().toISOString();
 }
 
+function normalizeDiscountMode(mode: any): 'AMOUNT' | 'PERCENT' | null {
+  const m = String(mode ?? '').trim().toUpperCase();
+  if (!m) return null;
+  if (m === 'AMOUNT' || m === 'FLAT' || m === 'FIXED' || m === 'VALUE') return 'AMOUNT';
+  if (m === 'PERCENT' || m === 'PERCENTAGE' || m === 'PCT') return 'PERCENT';
+  return null;
+}
+
+function parseDiscountFromDescription(desc: any): { mode: 'AMOUNT' | 'PERCENT' | null; value: number | null } {
+  const s = String(desc ?? '').trim();
+  if (!s) return { mode: null, value: null };
+  const percentMatch = s.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (percentMatch) {
+    const v = Number(percentMatch[1]);
+    return { mode: 'PERCENT', value: Number.isFinite(v) ? v : null };
+  }
+  const numMatch = s.match(/(\d+(?:\.\d+)?)/);
+  if (numMatch) {
+    const v = Number(numMatch[1]);
+    return { mode: 'AMOUNT', value: Number.isFinite(v) ? v : null };
+  }
+  return { mode: null, value: null };
+}
+
 function findFreeServicePrice(
   coupon: any,
   context: ValidatePayload['lead_context']
@@ -156,13 +180,29 @@ export async function POST(request: NextRequest) {
     let freeServiceMeta: any = null;
 
     if (coupon.coupon_kind === 'TOTAL_DISCOUNT') {
-      if (!coupon.discount_mode || !coupon.discount_value || subtotal <= 0) {
+      const derivedFromDesc = parseDiscountFromDescription(coupon.description);
+      const discountMode =
+        normalizeDiscountMode(coupon.discount_mode) ||
+        normalizeDiscountMode((coupon as any).mode) ||
+        normalizeDiscountMode((coupon as any).discount_type) ||
+        derivedFromDesc.mode;
+      const discountValueRaw =
+        coupon.discount_value ??
+        (coupon as any).value ??
+        (coupon as any).amount ??
+        (coupon as any).discount ??
+        (coupon as any).amount_off ??
+        (coupon as any).percent_off ??
+        derivedFromDesc.value;
+      const discountValue = Number(discountValueRaw);
+
+      if (!discountMode || !Number.isFinite(discountValue) || discountValue <= 0 || subtotal <= 0) {
         return NextResponse.json({ valid: false, error: 'Invalid discount configuration.' }, { status: 400 });
       }
-      if (coupon.discount_mode === 'AMOUNT') {
-        discountAmount = Math.min(Number(coupon.discount_value || 0), subtotal);
-      } else if (coupon.discount_mode === 'PERCENT') {
-        discountAmount = (subtotal * Number(coupon.discount_value || 0)) / 100;
+      if (discountMode === 'AMOUNT') {
+        discountAmount = Math.min(discountValue, subtotal);
+      } else if (discountMode === 'PERCENT') {
+        discountAmount = (subtotal * discountValue) / 100;
       }
     } else if (coupon.coupon_kind === 'FREE_SERVICE') {
       const freeService = findFreeServicePrice(coupon, body?.lead_context);
@@ -186,8 +226,8 @@ export async function POST(request: NextRequest) {
       coupon_id: coupon.id,
       code: coupon.code,
       coupon_kind: coupon.coupon_kind,
-      discount_mode: coupon.discount_mode,
-      discount_value: coupon.discount_value,
+      discount_mode: coupon.discount_mode ?? null,
+      discount_value: coupon.discount_value ?? null,
       min_order_value: coupon.min_order_value,
       discount_amount: Number(discountAmount || 0),
       computed_on_subtotal: subtotal,

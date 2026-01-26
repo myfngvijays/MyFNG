@@ -531,7 +531,205 @@ export async function POST(
         : parseFloat(lead.discount_amount || '0');
 
     const couponCode = overrideCouponCode || lead.coupon_code || null;
-    const couponMeta = (lead as any)?.coupon_meta || null;
+    // If telecaller stored coupon_code but discount_amount wasn't computed yet,
+    // compute discount at billing time using current billable subtotal.
+    const nowIso = new Date().toISOString();
+    const normalizeCode = (code: string) => code.trim().toUpperCase();
+    const normalizePhone = (phone: any) => {
+      const digits = String(phone || '').replace(/\D/g, '').slice(-10);
+      return digits || null;
+    };
+    const billableSubtotalBeforeDiscount = Math.max(0, finalBaseAmount + extraChargesTotal + partsTotal);
+
+    const computeCouponDiscount = async (codeRaw: string) => {
+      const out = {
+        discount_amount: 0,
+        coupon_meta: null as any,
+      };
+      if (!supabaseAdmin) return out;
+      const code = normalizeCode(codeRaw);
+      const { data: coupon, error: cErr } = await supabaseAdmin
+        .from('coupons')
+        .select('*')
+        .ilike('code', code)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (cErr || !coupon) {
+        out.coupon_meta = { valid: false, error: 'Invalid or inactive coupon', code, validated_at: nowIso };
+        return out;
+      }
+      if (coupon.start_at && String(coupon.start_at) > nowIso) {
+        out.coupon_meta = { valid: false, error: 'Coupon is not active yet', code: coupon.code, validated_at: nowIso };
+        return out;
+      }
+      if (coupon.end_at && String(coupon.end_at) < nowIso) {
+        out.coupon_meta = { valid: false, error: 'Coupon has expired', code: coupon.code, validated_at: nowIso };
+        return out;
+      }
+      if (coupon.min_order_value && billableSubtotalBeforeDiscount < Number(coupon.min_order_value || 0)) {
+        out.coupon_meta = {
+          valid: false,
+          error: `Minimum order value is ₹${coupon.min_order_value}.`,
+          code: coupon.code,
+          validated_at: nowIso,
+          computed_on_subtotal: billableSubtotalBeforeDiscount,
+        };
+        return out;
+      }
+
+      // Build context from current billable items
+      const serviceTypeIds = (() => {
+        try {
+          const raw = (lead as any)?.service_type_ids;
+          if (Array.isArray(raw)) return raw.map(String);
+          if (typeof raw === 'string') {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) return parsed.map(String);
+            } catch {
+              // ignore
+            }
+            return raw.split(',').map((s) => s.trim()).filter(Boolean);
+          }
+        } catch {
+          // ignore
+        }
+        return [] as string[];
+      })();
+      const subserviceIds = (() => {
+        try {
+          const raw = (lead as any)?.subservice_ids;
+          if (Array.isArray(raw)) return raw.map(String);
+          if (typeof raw === 'string') {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) return parsed.map(String);
+            } catch {
+              // ignore
+            }
+            return raw.split(',').map((s) => s.trim()).filter(Boolean);
+          }
+        } catch {
+          // ignore
+        }
+        return [] as string[];
+      })();
+      const serviceItems = (pricingItems || []).map((it: any) => ({
+        service_type_id: it?.service_type_id ?? null,
+        subservice_id: it?.subservice_id ?? null,
+        label: it?.item_name ?? null,
+        price: getEffectivePricingItemAmount(it),
+      }));
+      const customLabels = (pricingItems || []).map((it: any) => String(it?.item_name || '').trim()).filter(Boolean);
+      const customerPhone = normalizePhone((lead as any)?.customer_phone || (lead as any)?.customer?.phone || null);
+
+      let discountAmount = 0;
+      let freeServiceMeta: any = null;
+
+      if (coupon.coupon_kind === 'TOTAL_DISCOUNT') {
+        if (!coupon.discount_mode || !coupon.discount_value || billableSubtotalBeforeDiscount <= 0) {
+          out.coupon_meta = { valid: false, error: 'Invalid discount configuration', code: coupon.code, validated_at: nowIso };
+          return out;
+        }
+        if (coupon.discount_mode === 'AMOUNT') {
+          discountAmount = Math.min(Number(coupon.discount_value || 0), billableSubtotalBeforeDiscount);
+        } else if (coupon.discount_mode === 'PERCENT') {
+          discountAmount = (billableSubtotalBeforeDiscount * Number(coupon.discount_value || 0)) / 100;
+        }
+      } else if (coupon.coupon_kind === 'FREE_SERVICE') {
+        const targetServiceTypeId = coupon?.target_service_type_id || null;
+        const targetSubserviceId = coupon?.target_subservice_id || null;
+        const targetCustomLabel = coupon?.target_custom_label || null;
+        const stSet = new Set(serviceTypeIds);
+        const ssSet = new Set(subserviceIds);
+        const clSet = new Set(customLabels.map((l) => l.toLowerCase()));
+
+        let matched = false;
+        let matchLabel: string | null = null;
+        if (targetServiceTypeId && stSet.has(targetServiceTypeId)) matched = true;
+        if (targetSubserviceId && ssSet.has(targetSubserviceId)) matched = true;
+        if (targetCustomLabel && clSet.has(String(targetCustomLabel).toLowerCase())) {
+          matched = true;
+          matchLabel = targetCustomLabel;
+        }
+
+        if (!matched) {
+          out.coupon_meta = { valid: false, error: 'Coupon is not applicable to selected services.', code: coupon.code, validated_at: nowIso };
+          return out;
+        }
+
+        let price = 0;
+        for (const item of serviceItems) {
+          if (targetServiceTypeId && item.service_type_id === targetServiceTypeId) {
+            price = Number(item.price || 0);
+            matchLabel = item.label || matchLabel;
+            break;
+          }
+          if (targetSubserviceId && item.subservice_id === targetSubserviceId) {
+            price = Number(item.price || 0);
+            matchLabel = item.label || matchLabel;
+            break;
+          }
+          if (targetCustomLabel && item.label && String(item.label).toLowerCase() === String(targetCustomLabel).toLowerCase()) {
+            price = Number(item.price || 0);
+            matchLabel = item.label || matchLabel;
+            break;
+          }
+        }
+        // IMPORTANT: In this invoice flow, FREE_SERVICE is represented by setting the matched line item amount to 0.
+        // To avoid double-deduction (line item becomes 0 AND discount gets subtracted), we keep discountAmount = 0 here.
+        // We still store the original_price in meta for display/audit.
+        discountAmount = 0;
+        freeServiceMeta = {
+          target_service_type_id: targetServiceTypeId,
+          target_subservice_id: targetSubserviceId,
+          target_custom_label: targetCustomLabel,
+          matched_label: matchLabel,
+          original_price: price,
+        };
+      }
+
+      out.discount_amount = Number(discountAmount || 0);
+      out.coupon_meta = {
+        valid: true,
+        coupon_id: coupon.id,
+        code: coupon.code,
+        coupon_kind: coupon.coupon_kind,
+        discount_mode: coupon.discount_mode,
+        discount_value: coupon.discount_value,
+        min_order_value: coupon.min_order_value,
+        discount_amount: Number(discountAmount || 0),
+        computed_on_subtotal: billableSubtotalBeforeDiscount,
+        free_service: freeServiceMeta,
+        customer_phone: customerPhone,
+        validated_at: nowIso,
+      };
+      return out;
+    };
+
+    let couponMeta: any = (lead as any)?.coupon_meta || null;
+    if (couponCode && !(typeof overrideDiscountAmount === 'number') && (!discount || discount <= 0)) {
+      const computed = await computeCouponDiscount(String(couponCode));
+      if (computed.discount_amount > 0) {
+        discount = computed.discount_amount;
+      }
+      if (computed.coupon_meta) {
+        couponMeta = computed.coupon_meta;
+        // Best-effort: persist computed discount/meta on lead so all downstream views are consistent
+        try {
+          await supabase
+            .from('service_leads')
+            .update({
+              discount_amount: discount,
+              coupon_meta: couponMeta,
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq('id', leadId);
+        } catch {
+          // ignore if schema differs / RLS blocks
+        }
+      }
+    }
     const freeServiceLabel = couponMeta?.free_service?.matched_label
       ? String(couponMeta.free_service.matched_label).toLowerCase()
       : null;
@@ -549,6 +747,7 @@ export async function POST(
     }
 
     // Calculate subtotal (base amount + parts + extra charges - discount)
+    // Net payable (GST-inclusive flow): discount reduces payable from billable subtotal.
     const subtotal = finalBaseAmount + extraChargesTotal + partsTotal - discount;
     
     console.log('[Generate Invoice API] Subtotal calculation:', {
@@ -706,11 +905,14 @@ export async function POST(
         extra_charges: extraChargesTotal,
         parts_cost: partsTotal,
         labour_cost: finalBaseAmount, // Base service is labour (or labor_charges from job_card)
-        sub_total: subtotal,
+        // Store pre-discount subtotal for UI (UI shows "Sub-Total" then subtracts discount_amount)
+        sub_total: billableSubtotalBeforeDiscount,
         
         // Discounts
         coupon_code: couponCode,
-        discount_percentage: discount > 0 ? (discount / subtotal) * 100 : 0,
+        // Percent computed against billable subtotal before discount (avoid inflating %)
+        discount_percentage:
+          discount > 0 && billableSubtotalBeforeDiscount > 0 ? (discount / billableSubtotalBeforeDiscount) * 100 : 0,
         discount_amount: discount,
         coupon_meta: couponMeta,
         

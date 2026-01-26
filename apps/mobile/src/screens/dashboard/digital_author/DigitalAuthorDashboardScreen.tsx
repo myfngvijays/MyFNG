@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { COLORS, SPACING } from '../../../constants/theme';
 
 export default function DigitalAuthorDashboardScreen() {
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,8 +30,15 @@ export default function DigitalAuthorDashboardScreen() {
 
       <View style={styles.content}>
         <Text style={styles.sectionTitle}>My Blogs</Text>
-        <Text style={styles.info}>Blog management is available on the web dashboard.</Text>
-        <Text style={styles.info}>Please access /dashboard/digital_author on the web app.</Text>
+        <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('DigitalAuthorBlogs')}>
+          <Text style={styles.actionText}>Open Blog List</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('DigitalAuthorBlogEditor')}>
+          <Text style={styles.actionText}>Create New Blog</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('DigitalAuthorProfile')}>
+          <Text style={styles.actionText}>My Profile</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -37,7 +47,7 @@ export default function DigitalAuthorDashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: COLORS.background,
   },
   center: {
     flex: 1,
@@ -49,18 +59,18 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   header: {
-    backgroundColor: '#007AFF',
+    backgroundColor: COLORS.primary,
     padding: 20,
     paddingTop: 60,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: COLORS.white,
   },
   subtitle: {
     fontSize: 14,
-    color: '#fff',
+    color: COLORS.white,
     marginTop: 5,
     opacity: 0.9,
   },
@@ -71,12 +81,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 10,
-    color: '#333',
+    color: COLORS.textHeading,
   },
-  info: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 10,
-    lineHeight: 20,
+  actionButton: {
+    backgroundColor: COLORS.white,
+    padding: SPACING.md,
+    borderRadius: 8,
+    marginBottom: SPACING.sm,
+  },
+  actionText: {
+    color: COLORS.textHeading,
+    fontWeight: '600',
   },
 });

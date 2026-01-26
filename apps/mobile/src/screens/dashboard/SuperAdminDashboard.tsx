@@ -24,12 +24,23 @@ import SystemSettingsScreen from './superadmin/SystemSettingsScreen';
 import FinancePayoutScreen from './superadmin/FinancePayoutScreen';
 import FraudDetectionScreen from './superadmin/FraudDetectionScreen';
 import AuditLogsScreen from './superadmin/AuditLogsScreen';
+import BrandsScreen from './superadmin/BrandsScreen';
 import InventoryProductsScreen from './superadmin/InventoryProductsScreen';
 import InventoryPackagesScreen from './superadmin/InventoryPackagesScreen';
 import InventoryPackageDetailScreen from './superadmin/InventoryPackageDetailScreen';
 import InventoryZonesScreen from './superadmin/InventoryZonesScreen';
 import InventoryPricingScreen from './superadmin/InventoryPricingScreen';
 import InventoryServicePricingScreen from './superadmin/InventoryServicePricingScreen';
+import AdditionalJobsMasterScreen from './additional_jobs/AdditionalJobsMasterScreen';
+import CouponsScreen from './superadmin/CouponsScreen';
+import ManualInvoicesScreen from './superadmin/ManualInvoicesScreen';
+import TelecallerDistributionScreen from './superadmin/TelecallerDistributionScreen';
+import LeadHistoryScreen from './superadmin/LeadHistoryScreen';
+import WebsiteImagesHubScreen from './superadmin/WebsiteImagesHubScreen';
+import HomeCarouselScreen from './superadmin/HomeCarouselScreen';
+import WorkshopPublicPagesScreen from './superadmin/WorkshopPublicPagesScreen';
+import KbManagerScreen from './superadmin/KbManagerScreen';
+import KbQuestionsScreen from './superadmin/KbQuestionsScreen';
 
 export default function SuperAdminDashboard() {
   const navigation = useNavigation();
@@ -390,12 +401,23 @@ export default function SuperAdminDashboard() {
       'leads': 'LeadsManagement',
       'fraud': 'FraudDetection',
       'audit': 'AuditLogs',
+      'brands': 'Brands',
       'inventory-products': 'InventoryProducts',
       'inventory-packages': 'InventoryPackages',
       'inventory-package-detail': 'InventoryPackageDetail',
       'inventory-zones': 'InventoryZones',
       'inventory-pricing': 'InventoryPricing',
       'inventory-service-pricing': 'InventoryServicePricing',
+      'additional-jobs-master': 'AdditionalJobsMaster',
+      'coupons': 'Coupons',
+      'manual-invoices': 'ManualInvoices',
+      'telecaller-distribution': 'TelecallerDistribution',
+      'lead-history': 'LeadHistory',
+      'website-images': 'WebsiteImages',
+      'home-carousel': 'HomeCarousel',
+      'workshop-public-pages': 'WorkshopPublicPages',
+      'kb-manager': 'KBManager',
+      'kb-questions': 'KBQuestions',
     };
     
     const screenName = screenMap[screen];
@@ -456,6 +478,51 @@ export default function SuperAdminDashboard() {
   if (currentScreen === 'AuditLogs') {
     const Screen: any = AuditLogsScreen;
     return <Screen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'Brands') {
+    const Screen: any = BrandsScreen;
+    return <Screen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'AdditionalJobsMaster') {
+    return <AdditionalJobsMasterScreen navigation={navigationObj} mode="SUPER_ADMIN" />;
+  }
+
+  if (currentScreen === 'Coupons') {
+    return <CouponsScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'ManualInvoices') {
+    return <ManualInvoicesScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'TelecallerDistribution') {
+    return <TelecallerDistributionScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'LeadHistory') {
+    return <LeadHistoryScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'WebsiteImages') {
+    return <WebsiteImagesHubScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'HomeCarousel') {
+    return <HomeCarouselScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'WorkshopPublicPages') {
+    return <WorkshopPublicPagesScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'KBManager') {
+    return <KbManagerScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'KBQuestions') {
+    return <KbQuestionsScreen navigation={navigationObj} route={{ params: {} }} />;
   }
 
   if (currentScreen === 'InventoryProducts') {
@@ -833,6 +900,45 @@ export default function SuperAdminDashboard() {
             >
               <Text style={styles.quickActionIcon}>💰</Text>
               <Text style={styles.quickActionLabel}>Finance</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Quick Actions - Admin Tools */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🛠️ Admin Tools</Text>
+          <View style={styles.quickActionsGrid}>
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('additional-jobs-master')}>
+              <Text style={styles.quickActionIcon}>🧰</Text>
+              <Text style={styles.quickActionLabel}>Additional Jobs</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('coupons')}>
+              <Text style={styles.quickActionIcon}>🏷️</Text>
+              <Text style={styles.quickActionLabel}>Coupons</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('manual-invoices')}>
+              <Text style={styles.quickActionIcon}>🧾</Text>
+              <Text style={styles.quickActionLabel}>Manual Invoices</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('telecaller-distribution')}>
+              <Text style={styles.quickActionIcon}>📞</Text>
+              <Text style={styles.quickActionLabel}>Telecaller Dist.</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('lead-history')}>
+              <Text style={styles.quickActionIcon}>📜</Text>
+              <Text style={styles.quickActionLabel}>Lead History</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('website-images')}>
+              <Text style={styles.quickActionIcon}>🖼️</Text>
+              <Text style={styles.quickActionLabel}>Website Images</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('workshop-public-pages')}>
+              <Text style={styles.quickActionIcon}>🌐</Text>
+              <Text style={styles.quickActionLabel}>Public Pages</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('kb-questions')}>
+              <Text style={styles.quickActionIcon}>📚</Text>
+              <Text style={styles.quickActionLabel}>KB Questions</Text>
             </TouchableOpacity>
           </View>
         </View>

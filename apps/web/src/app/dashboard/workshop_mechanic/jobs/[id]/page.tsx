@@ -143,6 +143,13 @@ export default function MechanicJobDetailPage() {
   // Prevent "stuck loading" on first navigation by timing out long awaits
   const fetchSeqRef = useRef(0);
 
+  const hasCustomService = useMemo(() => {
+    const fromNames = (serviceTypeNames || []).map((s) => String(s || '').toLowerCase());
+    const fromJob = (job?.service_types || []).map((s) => String(s || '').toLowerCase());
+    const all = fromNames.length ? fromNames : fromJob;
+    return all.some((s) => s.includes('custom'));
+  }, [serviceTypeNames, job?.service_types]);
+
   const withTimeout = async <T,>(p: Promise<T>, ms: number, label: string): Promise<T> => {
     return await new Promise<T>((resolve, reject) => {
       const t = setTimeout(() => reject(new Error(`Timeout: ${label}`)), ms);
@@ -2351,6 +2358,7 @@ export default function MechanicJobDetailPage() {
                       <option value="PROGRESS">Work in Progress</option>
                       <option value="CAR_SCANNING_BEFORE">Car Scanning (Before)</option>
                       <option value="CAR_SCANNING_AFTER">Car Scanning (After)</option>
+                      {hasCustomService && <option value="CUSTOM_SERVICE">Custom Service</option>}
                       <option value="AFTER">After Service</option>
                       <option value="PARTS_USED">Parts Used</option>
                     </select>
@@ -2415,6 +2423,33 @@ export default function MechanicJobDetailPage() {
                       <label className="btn btn-primary cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
                         <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
                         {uploadingMedia ? 'Uploading...' : 'Upload Scanning Photos (After)'}
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,video/*"
+                          onChange={handleMediaUpload}
+                          disabled={uploadingMedia}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* CUSTOM SERVICE Category (multiple uploads) */}
+                {selectedCategory === 'CUSTOM_SERVICE' && hasCustomService && (
+                  <div className="card border-2 border-fuchsia-300 p-3 sm:p-4 md:p-5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
+                      <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-fuchsia-700 flex-shrink-0" />
+                      Custom Service Photos
+                    </h2>
+                    <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
+                      Upload multiple photos/videos for the custom service work performed.
+                    </p>
+                    <div>
+                      <label className="btn btn-primary cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+                        <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
+                        {uploadingMedia ? 'Uploading...' : 'Upload Custom Service Photos'}
                         <input
                           type="file"
                           multiple

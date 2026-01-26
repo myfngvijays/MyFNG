@@ -79,6 +79,8 @@ export async function POST(
       // Car scanning
       'CAR_SCANNING_BEFORE',
       'CAR_SCANNING_AFTER',
+      // Custom service proof (multiple uploads)
+      'CUSTOM_SERVICE',
     ];
     if (!validCategories.includes(media_category)) {
       return NextResponse.json({ 
@@ -230,6 +232,7 @@ export async function GET(
       PARTS_USED: mediaFiles?.filter(m => m.media_category === 'PARTS_USED').length || 0,
       CAR_SCANNING_BEFORE: mediaFiles?.filter(m => m.media_category === 'CAR_SCANNING_BEFORE').length || 0,
       CAR_SCANNING_AFTER: mediaFiles?.filter(m => m.media_category === 'CAR_SCANNING_AFTER').length || 0,
+      CUSTOM_SERVICE: mediaFiles?.filter(m => m.media_category === 'CUSTOM_SERVICE').length || 0,
     };
 
     return NextResponse.json({

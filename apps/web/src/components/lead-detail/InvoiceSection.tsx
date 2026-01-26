@@ -89,9 +89,10 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const [includedRateDraft, setIncludedRateDraft] = useState<Record<string, string>>({});
   const [includedQtyDraft, setIncludedQtyDraft] = useState<Record<string, string>>({});
   const [includedNameDraft, setIncludedNameDraft] = useState<Record<string, string>>({});
-  const [lineItemDrafts, setLineItemDrafts] = useState<Record<string, { qty?: string; rate?: string }>>({});
+  const [lineItemDrafts, setLineItemDrafts] = useState<Record<string, { qty?: string; rate?: string; remark?: string }>>({});
   const [savingLineItems, setSavingLineItems] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [ensuringTI, setEnsuringTI] = useState(false);
   const [activating, setActivating] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentMode, setPaymentMode] = useState<'CASH' | 'POS' | 'UPI' | 'CARD'>('CASH');
@@ -112,6 +113,13 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const [customerBillingStateCode, setCustomerBillingStateCode] = useState('');
   const [savingGst, setSavingGst] = useState(false);
   const autoTiAttemptedRef = useRef<Record<string, boolean>>({});
+
+  const [couponPreview, setCouponPreview] = useState<{
+    loading: boolean;
+    discount_amount: number;
+    coupon_kind: string | null;
+    error: string | null;
+  }>({ loading: false, discount_amount: 0, coupon_kind: null, error: null });
 
   useEffect(() => {
     fetchInvoice();
@@ -262,7 +270,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       if (!res.ok || !data?.success) {
         throw new Error(String(data?.error || data?.details || 'Failed to save GST details'));
       }
-      onUpdate?.();
+      // Avoid page-level refresh/re-fetch loops for simple field edits.
+      // These inputs are already controlled locally.
     } catch (e: any) {
       alert(e?.message || 'Failed to save GST details');
     } finally {
@@ -279,6 +288,12 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       .trim();
 
   const isCustomServiceName = (s: string) => normalizeName(s) === 'custom service';
+
+  const deriveStateCodeFromGstin = (gstinRaw: string) => {
+    const gstin = String(gstinRaw || '').trim().toUpperCase().replace(/\s+/g, '');
+    const code = gstin.slice(0, 2);
+    return /^[0-9]{2}$/.test(code) ? code : '';
+  };
 
   async function fetchInvoice() {
     setLoading(true);
@@ -302,8 +317,11 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
           if (sid) byId[sid] = items;
           if (sname) byName[normalizeName(sname)] = items;
           const sp = Number(s?.service_price);
-          if (sid && Number.isFinite(sp) && sp > 0) priceById[sid] = sp;
-          if (sname && Number.isFinite(sp) && sp > 0) priceByName[normalizeName(sname)] = sp;
+          // IMPORTANT: "Custom Service" amount is editable from OS line-items,
+          // so do not lock/override it with included_service_items pricing.
+          const isCustom = isCustomServiceName(sname);
+          if (!isCustom && sid && Number.isFinite(sp) && sp > 0) priceById[sid] = sp;
+          if (!isCustom && sname && Number.isFinite(sp) && sp > 0) priceByName[normalizeName(sname)] = sp;
         }
         setIncludedByServiceTypeId(byId);
         setIncludedByServiceNameKey(byName);
@@ -424,7 +442,24 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
           Number.isFinite(Number(row?.amount)) && qty ? Number(row.amount) / qty : 0;
         const rate = getDraftValue(idx, 'rate', Number(row?.rate ?? rateFallback) || 0);
         const amount = qty * rate;
-        return { ...row, qty, rate, amount };
+        const isCustom = isCustomServiceName(String(row?.description || ''));
+        const draftRemark = lineItemDrafts[String(idx)]?.remark;
+        const existingRemark =
+          row?.custom_remark != null
+            ? String(row.custom_remark)
+            : row?.remark != null
+              ? String(row.remark)
+              : row?.notes != null
+                ? String(row.notes)
+                : '';
+        const remark = typeof draftRemark === 'string' ? draftRemark : existingRemark;
+        return {
+          ...row,
+          qty,
+          rate,
+          amount,
+          ...(isCustom ? { custom_remark: remark } : {}),
+        };
       });
 
       const res = await fetch(`/api/billing/invoices/${invoice.id}/update-line-items`, {
@@ -536,7 +571,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
 
   async function recordOfflinePayment() {
     if (!invoice) return;
-    const remaining = ((invoice.final_amount || invoice.total_amount) || 0) - (invoice.paid_amount || 0);
+    const remaining = (effectivePayable || 0) - (invoice.paid_amount || 0);
     if (remaining <= 0) {
       alert('No balance due');
       return;
@@ -612,6 +647,41 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }
   }
 
+  async function handleRecalculateBillOrGenerateTI() {
+    // If CI is already paid and TI is missing, treat "Recalculate Bill" as "Generate TI now".
+    const norm = (t: any) => String(t || '').toUpperCase();
+    const ciInv =
+      norm((invoice as any)?.invoice_type) === 'CUSTOMER_INVOICE'
+        ? invoice
+        : invoiceList.find((x: any) => norm(x?.invoice_type) === 'CUSTOMER_INVOICE') || invoice;
+    const tiExists = invoiceList.some((x: any) => norm(x?.invoice_type) === 'TAX_INVOICE');
+    const ciPaid = isInvoicePaid(ciInv);
+    const hasAnyPayment =
+      (Number((ciInv as any)?.paid_amount ?? 0) || 0) > 0 ||
+      Boolean(String((ciInv as any)?.payment_txn_id || '').trim());
+
+    if (tiExists) {
+      // Nothing to do; already generated.
+      alert('Tax Invoice already generated.');
+      return;
+    }
+
+    // If payment exists (even if CI totals are stale and status shows PARTIAL),
+    // try generating TI first. Backend will validate payable vs paid.
+    if (ciPaid || hasAnyPayment) {
+      setEnsuringTI(true);
+      try {
+        await ensureTaxInvoice();
+      } finally {
+        setEnsuringTI(false);
+      }
+      return;
+    }
+
+    // Not paid yet: allow recalculation/finalization flow.
+    await finalizeBill();
+  }
+
   const isInvoicePaid = (invAny: any) => {
     if (!invAny) return false;
     const ps = String(invAny?.payment_status || '').toUpperCase();
@@ -625,33 +695,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     return false;
   };
 
-  // Auto-generate TI once when CI is PAID but TI is missing (silent).
-  useEffect(() => {
-    const leadId = String(lead?.id || '').trim();
-    if (!leadId) return;
-    if (autoTiAttemptedRef.current[leadId]) return;
-
-    const ci = (invoiceList || []).find((i: any) => String(i?.invoice_type || '').toUpperCase() === 'CUSTOMER_INVOICE');
-    const ti = (invoiceList || []).find((i: any) => String(i?.invoice_type || '').toUpperCase() === 'TAX_INVOICE');
-    const ciPaid = isInvoicePaid(ci);
-
-    if (ciPaid && !ti) {
-      autoTiAttemptedRef.current[leadId] = true;
-      (async () => {
-        try {
-          const res = await fetch(`/api/billing/leads/${leadId}/ensure-tax-invoice`, { method: 'POST' });
-          if (res.ok) {
-            await fetchInvoice();
-          } else {
-            const data = await res.json().catch(() => ({}));
-            console.warn('Auto ensure-tax-invoice failed:', data);
-          }
-        } catch (e) {
-          console.warn('Auto ensure-tax-invoice errored:', e);
-        }
-      })();
-    }
-  }, [lead?.id, invoiceList]); // eslint-disable-line react-hooks/exhaustive-deps
+  // NOTE: Do not auto-call ensure-tax-invoice.
+  // It can fail when CI isn't paid and creates noisy console errors.
 
   async function printInvoice() {
     if (!invoice) {
@@ -800,11 +845,138 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const lineItems = (Array.isArray((invoice as any)?.line_items) ? ((invoice as any).line_items as any[]) : []) as any[];
   const lineItemsWithIndex = lineItems.map((it: any, idx: number) => ({ ...it, _idx: idx }));
   const hasLineItems = lineItems.length > 0;
+  const couponCodeForDisplay = String(
+    (invoice as any)?.coupon_code ?? (lead as any)?.coupon_code ?? ''
+  ).trim();
+  const discountAmount = Number((invoice as any)?.discount_amount ?? 0) || 0;
+  const subTotalBeforeDiscount = Number((invoice as any)?.subtotal ?? (invoice as any)?.sub_total ?? 0) || 0;
+  // Backward-compatible: some older invoices stored sub_total as AFTER discount. If so, don't subtract again.
+  const storedFinal = Number((invoice as any)?.final_amount ?? (invoice as any)?.total_amount ?? 0) || 0;
+  const candidateAfterDiscount = subTotalBeforeDiscount - discountAmount;
   const grossAfterDiscount =
-    ((invoice?.subtotal ?? invoice?.sub_total ?? 0) - (invoice?.discount_amount ?? 0));
+    discountAmount > 0 &&
+    storedFinal > 0 &&
+    Math.abs(storedFinal - subTotalBeforeDiscount) < 0.5
+      ? subTotalBeforeDiscount
+      : candidateAfterDiscount;
   const taxableValue = showGst
     ? Math.max(0, (((invoice?.final_amount ?? invoice?.total_amount ?? 0) - (invoice?.total_tax ?? 0))))
     : grossAfterDiscount;
+
+  // Effective payable for display (handles coupon preview + legacy invoices)
+  const previewDiscountForTotals =
+    discountAmount > 0
+      ? discountAmount
+      : couponPreview.coupon_kind === 'TOTAL_DISCOUNT'
+        ? couponPreview.discount_amount
+        : 0;
+  const computedAfterDiscount = Math.max(0, subTotalBeforeDiscount - previewDiscountForTotals);
+  const storedPayable = Number((invoice as any)?.final_amount ?? (invoice as any)?.total_amount ?? 0) || 0;
+  const storedLooksPreDiscount =
+    previewDiscountForTotals > 0 &&
+    storedPayable > 0 &&
+    Math.abs(storedPayable - subTotalBeforeDiscount) < 0.5;
+  const effectivePayable =
+    isOS
+      ? computedAfterDiscount
+      : (isCI || isTI) && storedLooksPreDiscount
+        ? computedAfterDiscount
+        : storedPayable;
+
+  // If coupon exists but invoice has no discount_amount yet, compute preview discount for display.
+  // This is especially useful for OS before CI finalization.
+  useEffect(() => {
+    let cancelled = false;
+    const code = couponCodeForDisplay;
+    const inv = invoice as any;
+    if (!inv || !code) {
+      setCouponPreview({ loading: false, discount_amount: 0, coupon_kind: null, error: null });
+      return;
+    }
+    if (discountAmount > 0) {
+      // Already applied on invoice
+      setCouponPreview({ loading: false, discount_amount: 0, coupon_kind: null, error: null });
+      return;
+    }
+
+    (async () => {
+      try {
+        setCouponPreview((p) => ({ ...p, loading: true, error: null }));
+        const serviceItems = (Array.isArray(inv?.line_items) ? inv.line_items : [])
+          .filter((it: any) => {
+            const c = String(it?.category || '').toUpperCase();
+            return c === 'SERVICE' || c === 'ADDON' || c === 'ADD-ON' || c === 'ADD_ON';
+          })
+          .map((it: any) => ({
+            service_type_id: it?.service_type_id ?? null,
+            subservice_id: it?.subservice_id ?? null,
+            label: it?.description ?? null,
+            price: Number(it?.amount ?? 0) || 0,
+          }));
+
+        const res = await fetch('/api/coupons/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code,
+            lead_context: {
+              subtotal: subTotalBeforeDiscount,
+              service_type_ids: Array.isArray((lead as any)?.service_type_ids)
+                ? (lead as any).service_type_ids
+                : (() => {
+                    try {
+                      const raw = (lead as any)?.service_type_ids;
+                      if (typeof raw === 'string') return JSON.parse(raw);
+                    } catch {}
+                    return [];
+                  })(),
+              subservice_ids: Array.isArray((lead as any)?.subservice_ids)
+                ? (lead as any).subservice_ids
+                : (() => {
+                    try {
+                      const raw = (lead as any)?.subservice_ids;
+                      if (typeof raw === 'string') return JSON.parse(raw);
+                    } catch {}
+                    return [];
+                  })(),
+              custom_labels: serviceItems.map((x: any) => String(x?.label || '')).filter(Boolean),
+              service_items: serviceItems,
+              customer_phone: (lead as any)?.customer_phone ?? null,
+            },
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok || !json?.valid) {
+          setCouponPreview({
+            loading: false,
+            discount_amount: 0,
+            coupon_kind: null,
+            error: String(json?.error || 'Coupon not applicable'),
+          });
+          return;
+        }
+        setCouponPreview({
+          loading: false,
+          discount_amount: Number(json?.discount_amount ?? 0) || 0,
+          coupon_kind: String(json?.coupon?.coupon_kind || '').trim() || null,
+          error: null,
+        });
+      } catch (e: any) {
+        if (cancelled) return;
+        setCouponPreview({
+          loading: false,
+          discount_amount: 0,
+          coupon_kind: null,
+          error: e?.message || 'Failed to compute coupon discount',
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [couponCodeForDisplay, discountAmount, subTotalBeforeDiscount, (invoice as any)?.id, lead?.id]);
 
   const money = (n: any) => {
     const v = typeof n === 'number' ? n : parseFloat(String(n || '0'));
@@ -851,6 +1023,14 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   };
 
   const getServicePrice = (it: any) => {
+    // Custom Service is editable (do not override from master service pricing maps)
+    if (isCustomServiceName(String(it?.description || ''))) {
+      const qty = Number(it?.qty ?? 1) || 1;
+      const rate = Number(it?.rate ?? 0) || 0;
+      const amount = Number(it?.amount ?? 0) || 0;
+      const fromLine = amount > 0 ? amount : qty * rate;
+      return Number.isFinite(fromLine) ? fromLine : 0;
+    }
     const byType = it?.service_type_id ? servicePriceByTypeId[String(it.service_type_id)] : undefined;
     const byName = servicePriceByNameKey[normalizeName(String(it?.description || ''))];
     const fromLine =
@@ -1031,14 +1211,15 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   </button>
                 );
               })}
-              {(canGenerateTI || tiInv) && (
+              {/* Hide "View Tax Invoice" button (TI tab already exists). Keep only Generate action. */}
+              {canGenerateTI && (
                 <button
                   type="button"
                   onClick={ensureTaxInvoice}
                   className="btn btn-primary text-xs sm:text-sm px-3 py-2"
-                  title={canGenerateTI ? 'Generate Tax Invoice' : 'View Tax Invoice'}
+                  title="Generate Tax Invoice"
                 >
-                  {canGenerateTI ? 'Generate Tax Invoice' : 'View Tax Invoice'}
+                  Generate Tax Invoice
                 </button>
               )}
             </div>
@@ -1073,16 +1254,17 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                             it?.rate != null ? Number(it.rate) : qtyBase ? Number(it?.amount || 0) / qtyBase : Number(it?.amount || 0);
                           const cat = String(it?.category || '').toUpperCase();
                           const isService = cat === 'SERVICE';
-                          const qty = isOS && !isService ? getDraftValue(rowIndex, 'qty', qtyBase) : qtyBase;
-                          const rate = isOS && !isService ? getDraftValue(rowIndex, 'rate', rateBase || 0) : rateBase;
-                          const amt = isOS && !isService ? qty * rate : Number(it?.amount ?? 0) || 0;
+                          const isCustomService = isCustomServiceName(String(it?.description || ''));
+                          const canEditLineItem = isOS && (!isService || isCustomService);
+                          const qty = canEditLineItem ? getDraftValue(rowIndex, 'qty', qtyBase) : qtyBase;
+                          const rate = canEditLineItem ? getDraftValue(rowIndex, 'rate', rateBase || 0) : rateBase;
+                          const amt = canEditLineItem ? qty * rate : Number(it?.amount ?? 0) || 0;
                           const sr = idx + 1;
                           const includedItems = getIncludedItems(it);
                           const canEditIncluded = isOS && cat === 'SERVICE' && Array.isArray(includedItems) && includedItems.length > 0;
-                          const isCustomService = isCustomServiceName(String(it?.description || ''));
                           const isEditingThis = canEditIncluded && editingIncludedFor === String(it?.description || '');
                           const includedTotal = computeIncludedTotal(it, includedItems, isEditingThis);
-                          const servicePrice = isService ? getServicePrice(it) : amt;
+                          const servicePrice = isService ? (isCustomService && canEditLineItem ? amt : getServicePrice(it)) : amt;
                           const diffSigned = includedTotal - servicePrice;
                           const mismatch =
                             cat === 'SERVICE' &&
@@ -1102,6 +1284,37 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                     </span>
                                   )}
                                 </div>
+                                {isCustomService && (
+                                  <div className="mt-1">
+                                    {isOS ? (
+                                      <input
+                                        type="text"
+                                        className="w-full max-w-md rounded border border-gray-200 px-2 py-1 text-[11px]"
+                                        placeholder="Remark (optional)"
+                                        value={
+                                          lineItemDrafts[String(rowIndex)]?.remark ??
+                                          String(it?.custom_remark ?? it?.remark ?? it?.notes ?? '')
+                                        }
+                                        onChange={(e) =>
+                                          setLineItemDrafts((prev) => ({
+                                            ...prev,
+                                            [String(rowIndex)]: { ...prev[String(rowIndex)], remark: e.target.value },
+                                          }))
+                                        }
+                                        onBlur={saveLineItems}
+                                      />
+                                    ) : (
+                                      (() => {
+                                        const r = String(it?.custom_remark ?? it?.remark ?? it?.notes ?? '').trim();
+                                        return r ? (
+                                          <div className="text-[11px] text-gray-600">
+                                            <span className="font-semibold">Remark:</span> {r}
+                                          </div>
+                                        ) : null;
+                                      })()
+                                    )}
+                                  </div>
+                                )}
                                 {isOS && mismatch && (
                                   <div className="mt-1 text-[11px] text-red-600">
                                     Included total {money(includedTotal)} does not match service price {money(servicePrice)} (diff {diffSigned >= 0 ? '+' : '-'}{money(Math.abs(diffSigned))})
@@ -1263,7 +1476,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                 )}
                               </td>
                               <td className="px-4 py-3 text-right">
-                                {isOS && !isService ? (
+                                {canEditLineItem ? (
                                   <input
                                     type="number"
                                     step="0.01"
@@ -1282,7 +1495,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                 )}
                               </td>
                               <td className="px-4 py-3 text-right">
-                                {isOS && !isService ? (
+                                {canEditLineItem ? (
                                   <input
                                     type="number"
                                     step="0.01"
@@ -1353,16 +1566,93 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   <td className="px-4 py-3 font-semibold">Sub-Total</td>
                   <td className="px-4 py-3 text-right font-semibold">₹{((invoice.subtotal || invoice.sub_total) || 0).toFixed(2)}</td>
                 </tr>
-                {(invoice.discount_amount || 0) > 0 && (
-                <tr>
-                    <td className="px-4 py-3">Discount / Coupon</td>
-                    <td className="px-4 py-3 text-right text-red-600">-₹{(invoice.discount_amount || 0).toFixed(2)}</td>
+                {couponCodeForDisplay && (
+                  <tr>
+                    <td className="px-4 py-3">Coupon Code</td>
+                    <td className="px-4 py-3 text-right font-semibold">{couponCodeForDisplay}</td>
                   </tr>
                 )}
-                <tr className="bg-gray-50">
-                  <td className="px-4 py-3 font-semibold">{showGst ? 'Taxable Value' : 'Sub-Total after Discount'}</td>
-                  <td className="px-4 py-3 text-right font-semibold">₹{taxableValue.toFixed(2)}</td>
-                </tr>
+                {couponCodeForDisplay && (
+                  <>
+                    {(() => {
+                      const previewDiscount = couponPreview.coupon_kind === 'TOTAL_DISCOUNT' ? couponPreview.discount_amount : 0;
+                      const benefit = couponPreview.coupon_kind === 'FREE_SERVICE' ? couponPreview.discount_amount : 0;
+                      const showPreview = discountAmount <= 0 && (previewDiscount > 0 || benefit > 0 || !!couponPreview.error);
+
+                      if (discountAmount > 0) {
+                        return (
+                          <tr>
+                            <td className="px-4 py-3">Discount / Coupon</td>
+                            <td className="px-4 py-3 text-right text-red-600">-₹{discountAmount.toFixed(2)}</td>
+                          </tr>
+                        );
+                      }
+
+                      if (!showPreview) return null;
+
+                      if (couponPreview.loading) {
+                        return (
+                          <tr>
+                            <td className="px-4 py-3">Discount / Coupon</td>
+                            <td className="px-4 py-3 text-right text-gray-500">Calculating…</td>
+                          </tr>
+                        );
+                      }
+
+                      if (couponPreview.error) {
+                        return (
+                          <tr>
+                            <td className="px-4 py-3">Discount / Coupon</td>
+                            <td className="px-4 py-3 text-right text-red-600">₹0.00</td>
+                          </tr>
+                        );
+                      }
+
+                      if (previewDiscount > 0) {
+                        return (
+                          <tr>
+                            <td className="px-4 py-3">Discount / Coupon</td>
+                            <td className="px-4 py-3 text-right text-red-600">-₹{previewDiscount.toFixed(2)}</td>
+                          </tr>
+                        );
+                      }
+
+                      if (benefit > 0) {
+                        return (
+                          <tr>
+                            <td className="px-4 py-3">Coupon Benefit</td>
+                            <td className="px-4 py-3 text-right text-green-700">₹{benefit.toFixed(2)}</td>
+                          </tr>
+                        );
+                      }
+
+                      return null;
+                    })()}
+                    {couponPreview.error && !couponPreview.loading && (
+                      <tr>
+                        <td colSpan={2} className="px-4 py-2 text-xs text-red-600 bg-red-50">
+                          Coupon not applied: {couponPreview.error}
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                )}
+                {(() => {
+                  const previewDiscount =
+                    discountAmount > 0
+                      ? discountAmount
+                      : couponPreview.coupon_kind === 'TOTAL_DISCOUNT'
+                        ? couponPreview.discount_amount
+                        : 0;
+                  const computedAfter = Math.max(0, subTotalBeforeDiscount - previewDiscount);
+                  const effectiveValue = showGst ? taxableValue : computedAfter;
+                  return (
+                    <tr className="bg-gray-50">
+                      <td className="px-4 py-3 font-semibold">{showGst ? 'Taxable Value' : 'Sub-Total after Discount'}</td>
+                      <td className="px-4 py-3 text-right font-semibold">₹{effectiveValue.toFixed(2)}</td>
+                    </tr>
+                  );
+                })()}
                 {hasServiceMismatch && (
                   <tr>
                     <td className="px-4 py-3 text-red-600 font-semibold">Service items mismatch (fix to proceed)</td>
@@ -1405,7 +1695,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                   <td className="px-4 py-3">
                     {isOS ? 'Gross Total' : isCI ? 'Total to Pay' : 'Amount Payable (INR)'}
                   </td>
-                  <td className="px-4 py-3 text-right">₹{((invoice.final_amount || invoice.total_amount) || 0).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right">₹{(effectivePayable || 0).toFixed(2)}</td>
                 </tr>
                 {invoice.amount_in_words && (
                   <tr>
@@ -1435,7 +1725,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                 <div className="text-right">
                   <p className="text-sm text-green-700">Balance Due</p>
                   <p className="text-2xl font-bold text-green-800">
-                    ₹{(((invoice.final_amount || invoice.total_amount) || 0) - (invoice.paid_amount || 0)).toFixed(2)}
+                    ₹{(((effectivePayable || 0) - (invoice.paid_amount || 0))).toFixed(2)}
                   </p>
                 </div>
               </div>
@@ -1518,12 +1808,12 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
             )}
             {isCI && (
               <button
-                onClick={() => finalizeBill()}
-                disabled={finalizing || hasServiceMismatch}
+                onClick={handleRecalculateBillOrGenerateTI}
+                disabled={finalizing || ensuringTI || hasServiceMismatch}
                 className="btn btn-secondary flex-1"
               >
-                <RefreshCw className={`w-4 h-4 ${finalizing ? 'animate-spin' : ''}`} />
-                {finalizing ? 'Recalculating...' : 'Recalculate Bill'}
+                <RefreshCw className={`w-4 h-4 ${(finalizing || ensuringTI) ? 'animate-spin' : ''}`} />
+                {ensuringTI ? 'Generating TI...' : finalizing ? 'Recalculating...' : 'Recalculate Bill'}
               </button>
             )}
             <button
@@ -1613,13 +1903,26 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                       <input
                         className="w-full border rounded-md p-2"
                         value={customerGstin}
-                        onChange={(e) => setCustomerGstin(e.target.value)}
+                        onChange={(e) => {
+                          const v = String(e.target.value || '').toUpperCase().replace(/\s+/g, '');
+                          setCustomerGstin(v);
+                          setCustomerBillingStateCode(deriveStateCodeFromGstin(v));
+                        }}
                         onBlur={() => {
-                          const v = customerGstin.trim();
-                          saveCustomerGst({ customer_gstin: v === '' ? null : v });
+                          const v = customerGstin.trim().toUpperCase().replace(/\s+/g, '');
+                          const stateCode = deriveStateCodeFromGstin(v);
+                          saveCustomerGst({
+                            customer_gstin: v === '' ? null : v,
+                            customer_billing_state_code: stateCode ? stateCode : null,
+                          });
                         }}
                         placeholder="e.g. 27ABCDE1234F1Z5"
                       />
+                      {!!deriveStateCodeFromGstin(customerGstin) && (
+                        <div className="mt-1 text-[11px] text-gray-500">
+                          State code: <span className="font-semibold">{deriveStateCodeFromGstin(customerGstin)}</span> (from GSTIN)
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="text-xs text-gray-600">Legal Name</label>
@@ -1645,19 +1948,6 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                           saveCustomerGst({ customer_billing_address: v === '' ? null : v });
                         }}
                         placeholder="Billing address for GST invoice"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">State Code</label>
-                      <input
-                        className="w-full border rounded-md p-2"
-                        value={customerBillingStateCode}
-                        onChange={(e) => setCustomerBillingStateCode(e.target.value)}
-                        onBlur={() => {
-                          const v = customerBillingStateCode.trim();
-                          saveCustomerGst({ customer_billing_state_code: v === '' ? null : v });
-                        }}
-                        placeholder="e.g. 27"
                       />
                     </div>
                     {savingGst && (

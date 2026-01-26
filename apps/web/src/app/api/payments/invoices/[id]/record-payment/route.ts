@@ -11,6 +11,30 @@ import { createNotification, notifyCSETeam, notifyTelecallerTeamlead, notifyWork
 import { calculateTaxes, generateSeriesDocumentNumber, getPlaceOfSupply, roundOff } from '@/lib/utils/invoiceUtils';
 import type { Database } from '@/types/database';
 
+function normalizeDiscountMode(mode: any): 'AMOUNT' | 'PERCENT' | null {
+  const m = String(mode ?? '').trim().toUpperCase();
+  if (!m) return null;
+  if (m === 'AMOUNT' || m === 'FLAT' || m === 'FIXED' || m === 'VALUE') return 'AMOUNT';
+  if (m === 'PERCENT' || m === 'PERCENTAGE' || m === 'PCT') return 'PERCENT';
+  return null;
+}
+
+function parseDiscountFromDescription(desc: any): { mode: 'AMOUNT' | 'PERCENT' | null; value: number | null } {
+  const s = String(desc ?? '').trim();
+  if (!s) return { mode: null, value: null };
+  const percentMatch = s.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (percentMatch) {
+    const v = Number(percentMatch[1]);
+    return { mode: 'PERCENT', value: Number.isFinite(v) ? v : null };
+  }
+  const numMatch = s.match(/(\d+(?:\.\d+)?)/);
+  if (numMatch) {
+    const v = Number(numMatch[1]);
+    return { mode: 'AMOUNT', value: Number.isFinite(v) ? v : null };
+  }
+  return { mode: null, value: null };
+}
+
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -149,10 +173,10 @@ export async function POST(
     };
 
     const paidAmount = toNum(paid_amount);
-    const finalAmountNum = toNum((invoice as any).final_amount);
-    const totalAmountNum = toNum((invoice as any).total_amount);
-    const storedSubTotalNum = toNum((invoice as any).sub_total ?? (invoice as any).subtotal);
-    const storedDiscountNum = toNum((invoice as any).discount_amount);
+    let finalAmountNum = toNum((invoice as any).final_amount);
+    let totalAmountNum = toNum((invoice as any).total_amount);
+    let storedSubTotalNum = toNum((invoice as any).sub_total ?? (invoice as any).subtotal);
+    let storedDiscountNum = toNum((invoice as any).discount_amount);
     const storedRoundOffNum = toNum((invoice as any).round_off_amount);
     const storedTaxNum =
       toNum((invoice as any).total_tax) ||
@@ -167,6 +191,89 @@ export async function POST(
       const rate = toNum(x?.rate);
       return s + (rate * qty);
     }, 0);
+
+    // If coupon is present but invoice discount wasn't persisted yet, compute + persist it here
+    // so that payable comparisons (and TI generation) use the correct discounted payable.
+    const couponCode = String((invoice as any).coupon_code || (invoice as any).lead?.coupon_code || '').trim();
+    const subTotalPreDiscount = storedSubTotalNum || lineItemsTotal;
+    try {
+      if (couponCode && storedDiscountNum <= 0 && subTotalPreDiscount > 0) {
+        const { data: coupon } = await supabaseAdmin
+          .from('coupons')
+          .select('*')
+          .ilike('code', couponCode.toUpperCase())
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (coupon && String((coupon as any).coupon_kind || '').toUpperCase() === 'TOTAL_DISCOUNT') {
+          const derived = parseDiscountFromDescription((coupon as any).description);
+          const mode =
+            normalizeDiscountMode((coupon as any).discount_mode) ||
+            normalizeDiscountMode((coupon as any).mode) ||
+            normalizeDiscountMode((coupon as any).discount_type) ||
+            derived.mode;
+          const valueRaw =
+            (coupon as any).discount_value ??
+            (coupon as any).value ??
+            (coupon as any).amount ??
+            (coupon as any).discount ??
+            (coupon as any).amount_off ??
+            (coupon as any).percent_off ??
+            derived.value;
+          const value = Number(valueRaw);
+          const minOrder = Number((coupon as any).min_order_value || 0) || 0;
+          if (minOrder > 0 && subTotalPreDiscount < minOrder) {
+            // not applicable; skip
+          } else if (mode && Number.isFinite(value) && value > 0) {
+            const computedDiscount = mode === 'AMOUNT' ? Math.min(value, subTotalPreDiscount) : (subTotalPreDiscount * value) / 100;
+            if (computedDiscount > 0) {
+              const storedPayable0 = Math.max(finalAmountNum, totalAmountNum, 0);
+              const looksPreDiscount = storedPayable0 > 0 && Math.abs(storedPayable0 - subTotalPreDiscount) < 0.5;
+              if (looksPreDiscount) {
+                const netRaw = Math.max(0, subTotalPreDiscount - computedDiscount);
+                const netRounded = roundOff(netRaw);
+                const roundOffAdj = parseFloat((netRounded - netRaw).toFixed(2));
+                const discountPct = subTotalPreDiscount > 0 ? (computedDiscount / subTotalPreDiscount) * 100 : 0;
+                const couponMeta = {
+                  coupon_id: (coupon as any).id,
+                  code: (coupon as any).code,
+                  coupon_kind: (coupon as any).coupon_kind,
+                  discount_mode: (coupon as any).discount_mode,
+                  discount_value: (coupon as any).discount_value,
+                  min_order_value: (coupon as any).min_order_value,
+                  discount_amount: Number(computedDiscount || 0),
+                  computed_on_subtotal: subTotalPreDiscount,
+                  validated_at: new Date().toISOString(),
+                };
+
+                await supabaseAdmin
+                  .from('invoices')
+                  .update({
+                    sub_total: subTotalPreDiscount,
+                    subtotal: subTotalPreDiscount,
+                    discount_amount: computedDiscount,
+                    discount_percentage: discountPct,
+                    coupon_meta: couponMeta,
+                    round_off_amount: roundOffAdj,
+                    final_amount: netRounded,
+                    total_amount: netRounded,
+                    updated_at: new Date().toISOString(),
+                  } as any)
+                  .eq('id', invoiceId);
+
+                // Update local variables used for payable calculation
+                storedSubTotalNum = subTotalPreDiscount;
+                storedDiscountNum = computedDiscount;
+                finalAmountNum = netRounded;
+                totalAmountNum = netRounded;
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // non-blocking: keep old values
+    }
 
     // Best-effort recompute taxes if stored taxes are missing/incorrect
     let computedTax = storedTaxNum;

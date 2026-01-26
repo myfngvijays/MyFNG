@@ -227,6 +227,12 @@ export default function WorkshopSupervisorDashboard({ navigation }: any) {
       <View style={styles.header}>
         <Text style={styles.title}>Supervisor Dashboard</Text>
         <Text style={styles.subtitle}>Manage job assignments and team performance</Text>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => navigation.navigate('SupervisorAdditionalJobsMaster')}
+        >
+          <Text style={styles.actionButtonText}>Additional Jobs Master</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Stats Grid */}
@@ -362,6 +368,17 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: SPACING.lg,
+  },
+  actionButton: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.primary,
+    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    alignSelf: 'flex-start',
+  },
+  actionButtonText: {
+    color: COLORS.white,
+    fontWeight: '600',
   },
   title: {
     fontSize: FONT_SIZES.xxl,

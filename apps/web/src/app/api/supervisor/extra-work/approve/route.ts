@@ -67,6 +67,32 @@ export async function POST(request: NextRequest) {
     const notes = typeof notesRaw === 'string' ? notesRaw.trim() : '';
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
+    const oem_price_in = body?.oem_price;
+    const oes_price_in = body?.oes_price;
+    const labour_price_in = body?.labour_price;
+
+    const parsedPricing = {
+      oem_price:
+        oem_price_in === undefined || oem_price_in === null || oem_price_in === ''
+          ? null
+          : Number(oem_price_in),
+      oes_price:
+        oes_price_in === undefined || oes_price_in === null || oes_price_in === ''
+          ? null
+          : Number(oes_price_in),
+      labour_price:
+        labour_price_in === undefined || labour_price_in === null || labour_price_in === ''
+          ? null
+          : Number(labour_price_in),
+    };
+
+    for (const [k, v] of Object.entries(parsedPricing)) {
+      if (v === null) continue;
+      if (!Number.isFinite(v) || v < 0) {
+        return NextResponse.json({ error: `Invalid ${k}` }, { status: 400 });
+      }
+    }
+
     const updater = supabaseAdmin ?? supabase;
 
     // Load request + lead ownership; schema tolerant (oem/oes/labour may not exist)
@@ -115,9 +141,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden (different workshop)' }, { status: 403 });
     }
 
-    const oem = Number(reqRow?.oem_price ?? 0);
-    const oes = Number(reqRow?.oes_price ?? 0);
-    const labour = Number(reqRow?.labour_price ?? 0);
+    const oem = parsedPricing.oem_price !== null ? parsedPricing.oem_price : Number(reqRow?.oem_price ?? 0);
+    const oes = parsedPricing.oes_price !== null ? parsedPricing.oes_price : Number(reqRow?.oes_price ?? 0);
+    const labour = parsedPricing.labour_price !== null ? parsedPricing.labour_price : Number(reqRow?.labour_price ?? 0);
     const legacyAmount = Number(reqRow?.amount ?? 0);
     const computedTotal = (() => {
       // If new price breakdown exists, compute based on selected part type.
@@ -148,6 +174,10 @@ export async function POST(request: NextRequest) {
       status: 'APPROVED',
       part_price_type,
       amount: computedTotal,
+      // Persist pricing override (if provided). If schema doesn't have these columns, we fallback below.
+      oem_price: Number.isFinite(oem) ? oem : undefined,
+      oes_price: Number.isFinite(oes) ? oes : undefined,
+      labour_price: Number.isFinite(labour) ? labour : undefined,
       customer_approved: false,
       customer_approved_at: isCustomerRejected ? reqRow.customer_approved_at : null,
       rejection_reason: isCustomerRejected ? (reqRow.rejection_reason ?? null) : null,
@@ -155,6 +185,7 @@ export async function POST(request: NextRequest) {
       supervisor_approval_notes: notes || (isCustomerRejected ? 'Override approved by supervisor' : 'Approved by supervisor'),
       approval_responded_at: now,
     };
+    Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
     let updErr: any = null;
     const upd1 = await updater.from('lead_extra_charges').update(payload).eq('id', id);

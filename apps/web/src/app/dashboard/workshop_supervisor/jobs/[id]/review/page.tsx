@@ -48,7 +48,7 @@ export default function QCReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'photos' | 'qc'>('details');
-  const [activePhotoTab, setActivePhotoTab] = useState<'pickup' | 'during' | 'scanning' | 'after'>('pickup');
+  const [activePhotoTab, setActivePhotoTab] = useState<'pickup' | 'during' | 'scanning' | 'after' | 'custom'>('pickup');
   
   // QC Form state
   const [qualityScore, setQualityScore] = useState(5);
@@ -75,10 +75,12 @@ export default function QCReviewPage() {
   const [afterPhotos, setAfterPhotos] = useState<any[]>([]);
   const [duringPhotos, setDuringPhotos] = useState<any[]>([]);
   const [carScanningPhotos, setCarScanningPhotos] = useState<any[]>([]);
+  const [customServicePhotos, setCustomServicePhotos] = useState<any[]>([]);
   const [showAllBeforePhotos, setShowAllBeforePhotos] = useState(false);
   const [showAllDuringPhotos, setShowAllDuringPhotos] = useState(false);
   const [showAllAfterPhotos, setShowAllAfterPhotos] = useState(false);
   const [showAllCarScanningPhotos, setShowAllCarScanningPhotos] = useState(false);
+  const [showAllCustomServicePhotos, setShowAllCustomServicePhotos] = useState(false);
   const [partsUsed, setPartsUsed] = useState<any[]>([]);
   const [checklist, setChecklist] = useState<any[]>([]);
   const [mechanic, setMechanic] = useState<any>(null);
@@ -234,6 +236,7 @@ export default function QCReviewPage() {
       const afterCollected: any[] = [];
       const duringCollected: any[] = [];
       const scanningCollected: any[] = [];
+      const customCollected: any[] = [];
 
       // Fetch photos from mechanic_job_photos table (primary source)
       // IMPORTANT: In this codebase mechanic_job_photos is keyed by job_id (see mechanic manage page),
@@ -319,6 +322,22 @@ export default function QCReviewPage() {
             photo_url: p.file_url,
             photo_type: inferSlotKey(p) || p.photo_type || p.category || 'CAR_SCANNING',
           }));
+        const customFromLeadMedia = photosData
+          .filter((p: any) => {
+            const slot = inferSlotKey(p);
+            const cat = String(p?.category || '').toUpperCase();
+            const type = String(p?.photo_type || p?.media_category || '').toUpperCase();
+            return (
+              cat === 'CUSTOM_SERVICE' ||
+              type === 'CUSTOM_SERVICE' ||
+              slot.startsWith('CUSTOM_SERVICE')
+            );
+          })
+          .map((p: any) => ({
+            ...p,
+            photo_url: p.file_url,
+            photo_type: inferSlotKey(p) || p.photo_type || p.category || 'CUSTOM_SERVICE',
+          }));
         const afterFromLeadMedia = photosData
           .filter(p => p.category === 'AFTER')
           .map(p => ({ ...p, photo_url: p.file_url }));
@@ -330,6 +349,7 @@ export default function QCReviewPage() {
         afterCollected.push(...afterFromLeadMedia);
         duringCollected.push(...duringFromLeadMedia);
         scanningCollected.push(...scanningFromLeadMedia);
+        customCollected.push(...customFromLeadMedia);
       }
 
       // Also try fetching from mechanic_media table as additional fallback
@@ -364,11 +384,19 @@ export default function QCReviewPage() {
         const duringFromMechanic = mechanicMediaData
           .filter(p => p.media_category === 'PROGRESS' || p.media_category === 'DURING')
           .map(p => ({ ...p, photo_url: p.media_url }));
+        const customFromMechanic = mechanicMediaData
+          .filter((p: any) => String(p?.media_category || '').toUpperCase() === 'CUSTOM_SERVICE')
+          .map((p: any) => ({
+            ...p,
+            photo_url: p.media_url,
+            photo_type: p.media_category || inferSlotKey(p) || 'CUSTOM_SERVICE',
+          }));
         
         beforeCollected.push(...beforeFromMechanic);
         afterCollected.push(...afterFromMechanic);
         duringCollected.push(...duringFromMechanic);
         scanningCollected.push(...scanningFromMechanic);
+        customCollected.push(...customFromMechanic);
       }
 
       // Pickup boy mobile uploads are stored in vehicle_condition_photos (PICKUP_* / DROP_* / AFTER_WORK / DELIVERY_SIGNATURE)
@@ -415,6 +443,7 @@ export default function QCReviewPage() {
       setAfterPhotos(dedupePhotos(afterCollected));
       setDuringPhotos(dedupePhotos(duringCollected));
       setCarScanningPhotos(dedupePhotos(scanningCollected));
+      setCustomServicePhotos(dedupePhotos(customCollected));
 
       // Fetch parts used
       const { data: partsData, error: partsError } = await supabase
@@ -603,7 +632,12 @@ export default function QCReviewPage() {
     );
   }
 
-  const photosTotal = beforePhotos.length + duringPhotos.length + carScanningPhotos.length + afterPhotos.length;
+  const photosTotal =
+    beforePhotos.length +
+    duringPhotos.length +
+    carScanningPhotos.length +
+    afterPhotos.length +
+    customServicePhotos.length;
   const advisorAnsweredAll = ADVISOR_QC_ITEMS.every(i => advisorAnswers[i.serial] === 'YES' || advisorAnswers[i.serial] === 'NO');
   const advisorProofsOk = proofRequiredSerials.every(s => {
     if (advisorAnswers[s] !== 'YES') return true;
@@ -955,6 +989,17 @@ export default function QCReviewPage() {
                   >
                     After <span className="ml-1 text-[11px] text-gray-500">({afterPhotos.length})</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePhotoTab('custom')}
+                    className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition ${
+                      activePhotoTab === 'custom'
+                        ? 'bg-white shadow text-fuchsia-700'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    Custom Service <span className="ml-1 text-[11px] text-gray-500">({customServicePhotos.length})</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1200,6 +1245,68 @@ export default function QCReviewPage() {
                 )}
               </div>
             )}
+
+            {/* Custom Service Photos */}
+            {activePhotoTab === 'custom' && (
+              <div className="card">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Camera className="w-4 h-4 text-fuchsia-700" />
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">Custom Service Photos</h3>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200">
+                      {customServicePhotos.length}
+                    </span>
+                  </div>
+                  {customServicePhotos.length > 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllCustomServicePhotos((v) => !v)}
+                      className="text-xs font-semibold text-fuchsia-700 hover:underline whitespace-nowrap"
+                    >
+                      {showAllCustomServicePhotos ? 'Show less' : 'Show all'}
+                    </button>
+                  )}
+                </div>
+                {customServicePhotos.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {(showAllCustomServicePhotos ? customServicePhotos : customServicePhotos.slice(0, 8)).map(
+                      (photo: any, idx: number) => {
+                        const url = photoUrlFor(photo);
+                        const label = String(photo.photo_type || '').trim();
+                        return (
+                          <button
+                            key={photo?.id || url || idx}
+                            type="button"
+                            onClick={() => url && setLightbox({ url, label })}
+                            className="text-left group"
+                          >
+                            <div className="relative rounded-lg overflow-hidden border bg-gray-50">
+                              <img
+                                src={url}
+                                alt={label || 'Custom Service'}
+                                className="w-full h-28 sm:h-32 object-cover group-hover:opacity-95 transition"
+                              />
+                              {label && (
+                                <div className="absolute bottom-1 left-1 right-1">
+                                  <span className="inline-flex max-w-full truncate text-[10px] px-2 py-1 rounded bg-black/60 text-white">
+                                    {label}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
+                    <p className="text-sm">No custom service photos</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1252,13 +1359,13 @@ export default function QCReviewPage() {
         <div className="card bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200">
           <h3 className="text-xl font-bold mb-4 text-green-800">Quality Check Review</h3>
 
-          {/* Advisor Checklist Review Gate */}
+          {/* PDI Checklist Review Gate */}
           <div className="mb-5 p-4 bg-white border border-gray-200 rounded-lg">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
                 <ImageIcon className="w-6 h-6 text-brand-primary mt-0.5" />
                 <div>
-                  <p className="font-semibold text-gray-900">Advisor Checklist Review</p>
+                  <p className="font-semibold text-gray-900">PDI Checklist</p>
                   <p className="text-sm text-gray-600">
                     Complete YES/NO review + upload proof for <strong>3 randomly selected</strong> points.
                   </p>
@@ -1286,7 +1393,7 @@ export default function QCReviewPage() {
                 className="btn btn-outline whitespace-nowrap"
               >
                 <Camera className="w-4 h-4" />
-                Review Checklist
+                PDI Checklist
               </button>
             </div>
           </div>
@@ -1445,13 +1552,13 @@ export default function QCReviewPage() {
           </div>
         )}
 
-        {/* Advisor Review Modal */}
+        {/* PDI Checklist Modal */}
         {showAdvisorReviewModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto">
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
-                  <h3 className="text-xl font-bold text-text-heading">Advisor Checklist Review</h3>
+                  <h3 className="text-xl font-bold text-text-heading">PDI Checklist</h3>
                   <p className="text-sm text-gray-600 mt-1">
                     Answer all items (YES/NO). Proof is required for <strong>3</strong> random points.
                   </p>
