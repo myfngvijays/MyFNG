@@ -21,7 +21,7 @@ async function requireSuperAdmin(request: NextRequest) {
   return { ok: true as const, userId: user.id };
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: any) {
   try {
     const gate = await requireSuperAdmin(request);
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });

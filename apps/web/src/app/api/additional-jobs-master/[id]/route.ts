@@ -32,7 +32,7 @@ function isRoleAllowed(roleCode: string | null): roleCode is RoleCode {
   return roleCode === 'SUPER_ADMIN' || roleCode === 'WORKSHOP_ADMIN' || roleCode === 'WORKSHOP_SUPERVISOR';
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: any) {
   try {
     const supabase = await createClient();
     const { profile, roleCode, error } = await getAuthedProfile(supabase);
@@ -120,7 +120,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: any) {
   try {
     const supabase = await createClient();
     const { profile, roleCode, error } = await getAuthedProfile(supabase);

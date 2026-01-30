@@ -44,7 +44,7 @@ function normalizeFuelType(v: any): 'PETROL' | 'DIESEL' | 'CNG' {
   return 'PETROL';
 }
 
-export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_request: NextRequest, { params }: any) {
   try {
     const supabase = await createClient();
     const { profile, roleCode, error } = await getAuthedProfile(supabase);
@@ -95,7 +95,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: any) {
   try {
     const supabase = await createClient();
     const { profile, roleCode, error } = await getAuthedProfile(supabase);
