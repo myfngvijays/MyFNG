@@ -13,11 +13,18 @@ import {
   TextInput,
   BackHandler
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
+import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
+
+const CALL_STATUSES = ['ANSWERED', 'NO_ANSWER', 'BUSY', 'SWITCHED_OFF', 'WRONG_NUMBER'];
+const CALL_OUTCOMES = ['INFO_COLLECTED', 'FOLLOW_UP_SCHEDULED', 'NOT_INTERESTED', 'LEAD_CREATED', 'OTHER'];
+const FOLLOW_UP_TYPES = ['CALLBACK', 'REMINDER', 'FOLLOW_UP'];
+const FOLLOW_UP_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
 
 export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
   const { user } = useAuth();
@@ -30,6 +37,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [showCallLogForm, setShowCallLogForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
+  const [showFollowUpPicker, setShowFollowUpPicker] = useState(false);
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
 
@@ -119,14 +127,14 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
         }
       }
 
-      // Fetch call logs
-      const { data: callsData } = await supabase
-        .from('telecaller_call_logs')
-        .select('*, telecaller:telecaller_id(full_name)')
-        .eq('lead_id', leadId)
-        .order('created_at', { ascending: false });
-
-      setCallLogs(callsData || []);
+      // Fetch call logs via API (matches web behavior)
+      try {
+        const callData = await apiFetch<{ call_logs: any[] }>(`/api/telecaller/calls/${leadId}`);
+        setCallLogs(callData.call_logs || []);
+      } catch (err) {
+        console.error('Error fetching call logs:', err);
+        setCallLogs([]);
+      }
 
       // Fetch follow-ups
       const { data: followUpsData } = await supabase
@@ -150,46 +158,48 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
     fetchLeadDetails();
   };
 
+  const handleFollowUpDateChange = (_event: any, selectedDate?: Date) => {
+    setShowFollowUpPicker(false);
+    if (!selectedDate) return;
+    setFollowUpData(prev => ({
+      ...prev,
+      scheduled_time: selectedDate.toISOString(),
+    }));
+  };
+
   const handleAddCallLog = async () => {
     try {
-      const { data: profile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user?.email)
-        .single();
-
-      const { error } = await supabase
-        .from('telecaller_call_logs')
-        .insert([{
+      await apiFetch('/api/telecaller/calls/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           lead_id: leadId,
-          telecaller_id: profile?.id,
           call_type: 'OUTBOUND',
           call_status: callLogData.call_status,
           call_duration: callLogData.call_duration ? parseInt(callLogData.call_duration) : null,
           outcome: callLogData.outcome,
           notes: callLogData.notes,
-          phone_number: lead?.customer_phone
-        }]);
+          phone_number: lead?.customer_phone,
+        }),
+      });
 
-      if (!error) {
-        await supabase
-          .from('service_leads')
-          .update({
-            last_call_at: new Date().toISOString(),
-            total_calls: (lead?.total_calls || 0) + 1
-          })
-          .eq('id', leadId);
+      await supabase
+        .from('service_leads')
+        .update({
+          last_call_at: new Date().toISOString(),
+          total_calls: (lead?.total_calls || 0) + 1,
+        })
+        .eq('id', leadId);
 
-        setCallLogData({
-          call_status: 'ANSWERED',
-          call_duration: '',
-          outcome: 'INFO_COLLECTED',
-          notes: ''
-        });
-        setShowCallLogForm(false);
-        fetchLeadDetails();
-        Alert.alert('Success', 'Call log added successfully!');
-      }
+      setCallLogData({
+        call_status: 'ANSWERED',
+        call_duration: '',
+        outcome: 'INFO_COLLECTED',
+        notes: '',
+      });
+      setShowCallLogForm(false);
+      fetchLeadDetails();
+      Alert.alert('Success', 'Call log added successfully!');
     } catch (error) {
       console.error('Error adding call log:', error);
       Alert.alert('Error', 'Failed to add call log');
@@ -198,6 +208,10 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
 
   const handleAddFollowUp = async () => {
     try {
+      if (!followUpData.scheduled_time) {
+        Alert.alert('Missing time', 'Please select a follow-up time.');
+        return;
+      }
       const { data: profile } = await supabase
         .from('users_login')
         .select('id')
@@ -309,6 +323,14 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
         >
           <Icon name="whatsapp" size={20} color={COLORS.green} />
           <Text style={styles.actionButtonTextSecondary}>WhatsApp</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, styles.actionButtonSecondary]}
+          onPress={() => navigation.navigate('TelecallerEditLead', { leadId })}
+        >
+          <Icon name="pencil" size={20} color={COLORS.primary} />
+          <Text style={styles.actionButtonTextSecondary}>Edit</Text>
         </TouchableOpacity>
       </View>
 
@@ -423,6 +445,27 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
               <Text style={[styles.infoValue, { fontWeight: '600' }]}>{lead.payment_mode}</Text>
             </View>
           )}
+          {(() => {
+            const code = String(
+              lead?.coupon_code ?? lead?.coupon ?? lead?.applied_coupon_code ?? ''
+            ).trim();
+            const discountAmount =
+              Number(lead?.discount_amount ?? lead?.coupon_discount_amount ?? lead?.coupon_discount ?? 0) || 0;
+            if (!code) return null;
+            return (
+              <View style={styles.couponBanner}>
+                <View style={styles.couponHeader}>
+                  <Text style={styles.couponTitle}>Coupon Applied</Text>
+                  <Text style={styles.couponCode}>{code}</Text>
+                </View>
+                <Text style={styles.couponText}>
+                  {discountAmount > 0
+                    ? `Discount: ₹${discountAmount.toFixed(2)}`
+                    : 'Note: Discount will reflect at billing time.'}
+                </Text>
+              </View>
+            );
+          })()}
           {lead.pickup_required && (
             <View style={styles.pickupBadge}>
               <Icon name="car-pickup" size={16} color={COLORS.blue} />
@@ -456,6 +499,51 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
         {showCallLogForm && (
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>Add Call Log</Text>
+            <Text style={styles.formLabel}>Call Status</Text>
+            <View style={styles.chipRow}>
+              {CALL_STATUSES.map((status) => (
+                <TouchableOpacity
+                  key={status}
+                  style={[
+                    styles.chip,
+                    callLogData.call_status === status && styles.chipActive,
+                  ]}
+                  onPress={() => setCallLogData({ ...callLogData, call_status: status })}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      callLogData.call_status === status && styles.chipTextActive,
+                    ]}
+                  >
+                    {status.replace('_', ' ')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.formLabel}>Outcome</Text>
+            <View style={styles.chipRow}>
+              {CALL_OUTCOMES.map((outcome) => (
+                <TouchableOpacity
+                  key={outcome}
+                  style={[
+                    styles.chip,
+                    callLogData.outcome === outcome && styles.chipActive,
+                  ]}
+                  onPress={() => setCallLogData({ ...callLogData, outcome })}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      callLogData.outcome === outcome && styles.chipTextActive,
+                    ]}
+                  >
+                    {outcome.replace('_', ' ')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <TextInput
               style={styles.input}
               placeholder="Call duration (seconds)"
@@ -528,6 +616,64 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
         {showFollowUpForm && (
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>Schedule Follow-up</Text>
+            <Text style={styles.formLabel}>Follow-up Type</Text>
+            <View style={styles.chipRow}>
+              {FOLLOW_UP_TYPES.map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.chip,
+                    followUpData.follow_up_type === type && styles.chipActive,
+                  ]}
+                  onPress={() => setFollowUpData({ ...followUpData, follow_up_type: type })}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      followUpData.follow_up_type === type && styles.chipTextActive,
+                    ]}
+                  >
+                    {type.replace('_', ' ')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.formLabel}>Priority</Text>
+            <View style={styles.chipRow}>
+              {FOLLOW_UP_PRIORITIES.map((priority) => (
+                <TouchableOpacity
+                  key={priority}
+                  style={[
+                    styles.chip,
+                    followUpData.priority === priority && styles.chipActive,
+                  ]}
+                  onPress={() => setFollowUpData({ ...followUpData, priority })}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      followUpData.priority === priority && styles.chipTextActive,
+                    ]}
+                  >
+                    {priority}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.formLabel}>Scheduled Time</Text>
+            <TouchableOpacity
+              style={styles.datetimeButton}
+              onPress={() => setShowFollowUpPicker(true)}
+            >
+              <Text style={styles.datetimeButtonText}>
+                {followUpData.scheduled_time
+                  ? formatDateTime(followUpData.scheduled_time)
+                  : 'Select date & time'}
+              </Text>
+            </TouchableOpacity>
+
             <TextInput
               style={styles.input}
               placeholder="Reason..."
@@ -574,6 +720,15 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
         </View>
       </View>
     </ScrollView>
+
+    {showFollowUpPicker && (
+      <DateTimePicker
+        value={followUpData.scheduled_time ? new Date(followUpData.scheduled_time) : new Date()}
+        mode="datetime"
+        display="default"
+        onChange={handleFollowUpDateChange}
+      />
+    )}
     </View>
   );
 }
@@ -807,6 +962,36 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginTop: 2,
   },
+  couponBanner: {
+    backgroundColor: COLORS.yellow + '20',
+    borderRadius: 10,
+    padding: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  couponHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  couponTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.orange,
+  },
+  couponCode: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.orange,
+    backgroundColor: COLORS.yellow + '40',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  couponText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
   italic: {
     fontStyle: 'italic',
   },
@@ -835,6 +1020,51 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.textPrimary,
     marginBottom: SPACING.sm,
+  },
+  formLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+    marginBottom: 6,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: 16,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    backgroundColor: COLORS.white,
+  },
+  chipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  chipText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  chipTextActive: {
+    color: COLORS.white,
+  },
+  datetimeButton: {
+    borderWidth: 1,
+    borderColor: COLORS.gray[500] + '40',
+    borderRadius: 8,
+    padding: SPACING.sm,
+    backgroundColor: COLORS.white,
+    marginBottom: SPACING.sm,
+  },
+  datetimeButtonText: {
+    color: COLORS.textPrimary,
+    fontSize: 13,
   },
   input: {
     backgroundColor: '#fff',

@@ -94,6 +94,8 @@ import WorkshopAdminJobAssignmentScreen from '../screens/dashboard/workshop_admi
 import WorkshopAdminPickupTrackingScreen from '../screens/dashboard/workshop_admin/PickupTrackingScreen';
 import WorkshopAdminReportsScreen from '../screens/dashboard/workshop_admin/ReportsScreen';
 import WorkshopAdminSettingsScreen from '../screens/dashboard/workshop_admin/SettingsScreen';
+import WorkshopAdminMenuScreen from '../screens/dashboard/workshop_admin/WorkshopAdminMenuScreen';
+import WorkshopAdminPublicPageScreen from '../screens/dashboard/workshop_admin/WorkshopPublicPageScreen';
 
 // Lead Manager screens  
 import LeadManagerLeadsScreen from '../screens/dashboard/leadmanager/LeadManagerLeadsScreen';
@@ -215,6 +217,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="TelecallerScripts" 
           component={TelecallerScriptsScreen}
           options={{ title: 'Call Scripts' }}
+        />
+        <Stack.Screen
+          name="TelecallerProfile"
+          component={TelecallerProfileScreen}
+          options={{ title: 'My Profile' }}
         />
         <Stack.Screen 
           name="TeamManagerView" 
@@ -509,6 +516,16 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           options={{ title: 'Settings' }}
         />
         <Stack.Screen
+          name="WorkshopAdminMenu"
+          component={WorkshopAdminMenuScreen}
+          options={{ title: 'Admin Menu' }}
+        />
+        <Stack.Screen
+          name="WorkshopAdminPublicPage"
+          component={WorkshopAdminPublicPageScreen}
+          options={{ title: 'Public Page' }}
+        />
+        <Stack.Screen
           name="WorkshopAdminAdditionalJobsMaster"
           options={{ title: 'Additional Jobs Master' }}
         >
@@ -632,6 +649,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     const MechanicLeadDetailScreen = require('../screens/dashboard/workshop_mechanic/MechanicLeadDetailScreen').default;
     const MechanicJobDetailScreen = require('../screens/dashboard/workshop_mechanic/MechanicJobDetailScreen').default;
     const BeforeInspectionScreen = require('../screens/dashboard/workshop_mechanic/BeforeInspectionScreen').default;
+    const MechanicExtraWorkRequestScreen = require('../screens/dashboard/workshop_mechanic/MechanicExtraWorkRequestScreen').default;
     const PerformanceScreen = require('../screens/dashboard/workshop_mechanic/PerformanceScreen').default;
     
     return (
@@ -660,6 +678,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="AfterServicePhotos" 
           component={require('../screens/dashboard/workshop_mechanic/AfterServicePhotoScreen').default}
           options={{ title: 'After Service Photos' }}
+        />
+        <Stack.Screen
+          name="MechanicExtraWorkRequest"
+          component={MechanicExtraWorkRequestScreen}
+          options={{ title: 'Additional Job Request' }}
         />
         <Stack.Screen 
           name="JobHistory" 

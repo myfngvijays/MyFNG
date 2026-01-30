@@ -8,6 +8,7 @@ import {
   LogOut, 
   Menu, 
   X,
+  ChevronRight,
   Home,
   Users,
   User,
@@ -38,6 +39,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
 import NotificationBell from '@/components/NotificationBell';
 
+const SIDEBAR_COLLAPSED_KEY = 'myfng:dashboardSidebarCollapsed';
+
 interface DashboardLayoutProps {
   children: React.ReactNode;
   role: string;
@@ -47,12 +50,36 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   const router = useRouter();
   const pathname = usePathname();
   const { user, userProfile, setUser, setUserProfile, setRole, logout } = useAuthStore();
-  const [sidebarOpen, setSidebarOpen] = useState(true); // Start visible by default
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    // Mobile: open/close. Default closed on small screens, open on lg+.
+    try {
+      return window.innerWidth >= 1024;
+    } catch {
+      return true;
+    }
+  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    // Desktop: collapse/expand. Persisted across navigations.
+    try {
+      const raw = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      return raw === '1';
+    } catch {
+      return false;
+    }
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }, [sidebarCollapsed]);
 
   const withTimeout = async <T,>(p: PromiseLike<T>, ms: number, label: string): Promise<T> => {
     const promise = Promise.resolve(p as any) as Promise<T>;
@@ -347,6 +374,17 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             >
               {sidebarOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
+
+            <button
+              onClick={() => setSidebarCollapsed((v) => !v)}
+              className="hidden lg:inline-flex p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              <ChevronRight
+                className={`w-5 h-5 transition-transform ${sidebarCollapsed ? '' : 'rotate-180'}`}
+              />
+            </button>
             
             <Link href="/" className="flex items-center gap-1.5 sm:gap-2 min-w-0">
               <Wrench className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-brand-fng flex-shrink-0" />
@@ -381,7 +419,9 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-14 sm:top-16 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-transform duration-300 ease-in-out lg:translate-x-0 w-56 sm:w-64 z-30 ${
+        className={`fixed left-0 top-14 sm:top-16 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-all duration-300 ease-in-out lg:translate-x-0 w-56 sm:w-64 ${
+          sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'
+        } z-30 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -393,6 +433,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
                 href={item.href} 
                 icon={item.icon}
                 active={pathname === item.href}
+                collapsed={sidebarCollapsed}
+                label={item.label}
               >
                 {item.label}
               </NavLink>
@@ -401,17 +443,19 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           <div className="p-2 sm:p-3 md:p-4 border-t border-blue-500/30">
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base text-white hover:bg-red-500/30 font-medium"
+              className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base text-white hover:bg-red-500/30 font-medium ${
+                sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
+              }`}
             >
               <LogOut className="w-5 h-5 flex-shrink-0" />
-              <span className="truncate">Logout</span>
+              <span className={`${sidebarCollapsed ? 'lg:hidden' : ''} truncate`}>Logout</span>
             </button>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="lg:ml-64 pt-14 sm:pt-16 min-h-screen">
+      <main className={`${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} pt-14 sm:pt-16 min-h-screen`}>
         <div className="p-3 sm:p-4 md:p-6">
           {children}
         </div>
@@ -428,18 +472,20 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   );
 }
 
-function NavLink({ href, icon, children, active }: { href: string; icon: React.ReactNode; children: React.ReactNode; active?: boolean }) {
+function NavLink({ href, icon, children, active, collapsed, label }: { href: string; icon: React.ReactNode; children: React.ReactNode; active?: boolean; collapsed?: boolean; label?: string }) {
   return (
     <Link
       href={href}
+      title={collapsed ? (label || (typeof children === 'string' ? children : '')) : undefined}
+      aria-label={collapsed ? (label || (typeof children === 'string' ? children : undefined)) : undefined}
       className={`flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base ${
         active 
           ? 'bg-white text-blue-700 shadow-lg font-semibold' 
           : 'text-white hover:bg-blue-500/30 font-medium'
-      }`}
+      } ${collapsed ? 'lg:justify-center lg:px-0' : ''}`}
     >
       <span className="flex-shrink-0">{icon}</span>
-      <span className="truncate">{children}</span>
+      <span className={`${collapsed ? 'lg:hidden' : ''} truncate`}>{children}</span>
     </Link>
   );
 }

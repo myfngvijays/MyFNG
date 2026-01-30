@@ -13,7 +13,10 @@ import {
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
+import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
+
+const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH', 'URGENT', 'CRITICAL'] as const;
 
 export default function LeadManagerAssignWorkshopScreen({ navigation, route }: any) {
   const { leadId, mode = 'assign' } = route.params;
@@ -26,6 +29,7 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWorkshop, setSelectedWorkshop] = useState<any>(null);
   const [assignmentNote, setAssignmentNote] = useState('');
+  const [priority, setPriority] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT' | 'CRITICAL'>('MEDIUM');
 
   useEffect(() => {
     fetchData();
@@ -45,17 +49,11 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
   }, [navigation]);
 
   useEffect(() => {
-    if (searchTerm) {
-      setFilteredWorkshops(
-        workshops.filter(w =>
-          w.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          w.city.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      );
-    } else {
-      setFilteredWorkshops(workshops);
-    }
-  }, [searchTerm, workshops]);
+    const timer = setTimeout(() => {
+      fetchWorkshops(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const fetchData = async () => {
     try {
@@ -69,31 +67,35 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
       if (leadError) throw leadError;
       setLead(leadData);
 
-      // Fetch eligible workshops (can be filtered by city, model, service capability)
-      const { data: workshopsData, error: workshopsError } = await supabase
-        .from('workshops')
-        .select('*')
-        .eq('is_active', true)
-        .order('name');
-
-      if (workshopsError) throw workshopsError;
-
-      // Filter by city if available
-      let eligible = workshopsData || [];
-      if (leadData.city) {
-        eligible = eligible.filter(w => 
-          w.city.toLowerCase() === leadData.city.toLowerCase()
-        );
-      }
-
-      setWorkshops(eligible);
-      setFilteredWorkshops(eligible);
+      await fetchWorkshops('', leadData);
 
     } catch (error) {
       console.error('Error fetching data:', error);
       Alert.alert('Error', 'Failed to load workshops');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchWorkshops = async (searchValue = '', leadOverride?: any) => {
+    try {
+      const leadSource = leadOverride || lead;
+      const city = leadSource?.city_info?.name || leadSource?.city || '';
+      const params: string[] = [];
+      if (searchValue.trim()) {
+        params.push(`search=${encodeURIComponent(searchValue.trim())}`);
+      } else if (city) {
+        params.push(`city=${encodeURIComponent(city)}`);
+      }
+      const query = params.length ? `?${params.join('&')}` : '';
+      const data = await apiFetch<{ success: boolean; workshops: any[] }>(
+        `/api/lead-manager/available-workshops${query}`
+      );
+      const list = data?.workshops || [];
+      setWorkshops(list);
+      setFilteredWorkshops(list);
+    } catch (error) {
+      console.error('Error fetching workshops:', error);
     }
   };
 
@@ -114,42 +116,16 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
             try {
               setAssigning(true);
 
-              const { data: { user } } = await supabase.auth.getUser();
-              const { data: profile } = await supabase
-                .from('users_login')
-                .select('id')
-                .eq('id', user?.id)
-                .single();
-
-              const updateData = {
-                assigned_workshop_id: selectedWorkshop.id,
-                assigned_by: profile?.id,
-                assigned_at: new Date().toISOString(),
-                status: 'ASSIGNED',
-                updated_at: new Date().toISOString()
-              };
-
-              const { error } = await supabase
-                .from('service_leads')
-                .update(updateData)
-                .eq('id', leadId);
-
-              if (error) throw error;
-
-              // Add event
-              await supabase
-                .from('lead_events')
-                .insert([{
+              await apiFetch('/api/lead-manager/assign-workshop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
                   lead_id: leadId,
-                  event_type: mode === 'reassign' ? 'WORKSHOP_REASSIGNED' : 'WORKSHOP_ASSIGNED',
-                  event_data: {
-                    workshop_id: selectedWorkshop.id,
-                    workshop_name: selectedWorkshop.name,
-                    note: assignmentNote
-                  },
-                  description: `Workshop ${mode === 'reassign' ? 'reassigned' : 'assigned'} to ${selectedWorkshop.name}`,
-                  created_at: new Date().toISOString()
-                }]);
+                  workshop_id: selectedWorkshop.id,
+                  assignment_notes: assignmentNote,
+                  priority
+                })
+              });
 
               Alert.alert('Success', 'Workshop assigned successfully');
               navigation.goBack();
@@ -195,6 +171,30 @@ export default function LeadManagerAssignWorkshopScreen({ navigation, route }: a
           {lead?.vehicle_model} • {lead?.city_info?.name || lead?.city}
         </Text>
         <Text style={styles.leadService}>Service: {lead?.service_type}</Text>
+      </View>
+
+      {/* Priority */}
+      <View style={styles.prioritySection}>
+        <Text style={styles.noteLabel}>Priority</Text>
+        <View style={styles.priorityRow}>
+          {PRIORITY_OPTIONS.map((option) => (
+            <TouchableOpacity
+              key={option}
+              style={[
+                styles.priorityChip,
+                priority === option && styles.priorityChipActive
+              ]}
+              onPress={() => setPriority(option)}
+            >
+              <Text style={[
+                styles.priorityChipText,
+                priority === option && styles.priorityChipTextActive
+              ]}>
+                {option}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       {/* Search */}
@@ -421,6 +421,39 @@ const styles = StyleSheet.create({
     padding: SPACING.sm,
     fontSize: 14,
     color: COLORS.textPrimary,
+  },
+  prioritySection: {
+    backgroundColor: '#fff',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray + '20',
+  },
+  priorityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  priorityChip: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.gray + '30',
+  },
+  priorityChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  priorityChipText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  priorityChipTextActive: {
+    color: '#fff',
   },
   footer: {
     backgroundColor: '#fff',

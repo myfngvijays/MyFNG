@@ -11,9 +11,11 @@ import {
   ScrollView,
   Alert,
   BackHandler,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { apiFetch } from '../../../lib/api';
 
 interface Lead {
   id: string;
@@ -26,6 +28,7 @@ interface Lead {
   priority: string;
   status: string;
   created_at: string;
+  pickup_required?: boolean;
 }
 
 interface Staff {
@@ -42,11 +45,16 @@ export default function JobAssignmentScreen({ navigation }: any) {
   const [unassignedLeads, setUnassignedLeads] = useState<Lead[]>([]);
   const [mechanics, setMechanics] = useState<Staff[]>([]);
   const [supervisors, setSupervisors] = useState<Staff[]>([]);
+  const [pickupBoys, setPickupBoys] = useState<Staff[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
-  const [assignType, setAssignType] = useState<'MECHANIC' | 'SUPERVISOR'>('MECHANIC');
+  const [selectedMechanicId, setSelectedMechanicId] = useState<string>('');
+  const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>('');
+  const [selectedPickupBoyId, setSelectedPickupBoyId] = useState<string>('');
+  const [assignmentNotes, setAssignmentNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -110,6 +118,10 @@ export default function JobAssignmentScreen({ navigation }: any) {
 
       setMechanics(filteredMechanics);
       setSupervisors(filteredSupervisors);
+      const filteredPickupBoys = mechanicsData?.filter(
+        (u) => u.role?.role_code === 'WORKSHOP_PICKUP_BOY'
+      ) || [];
+      setPickupBoys(filteredPickupBoys);
       setLoading(false);
       setRefreshing(false);
     } catch (error) {
@@ -119,58 +131,57 @@ export default function JobAssignmentScreen({ navigation }: any) {
     }
   }
 
-  async function assignJob(staffId: string, staffName: string) {
+  async function submitAssignment() {
     if (!selectedLead) return;
+    if (!selectedMechanicId) {
+      Alert.alert('Required', 'Please select a mechanic');
+      return;
+    }
+    if (selectedLead.pickup_required && !selectedPickupBoyId) {
+      Alert.alert('Required', 'Pickup boy is required for this lead');
+      return;
+    }
 
     try {
-      const { error } = await supabase
-        .from('service_leads')
-        .update({
-          assigned_to_id: staffId,
-          status: 'IN_PROGRESS',
-          accepted_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedLead.id);
+      setSaving(true);
+      await apiFetch(`/api/workshop/leads/${selectedLead.id}/assign-team`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mechanic_id: selectedMechanicId,
+          supervisor_id: selectedSupervisorId || null,
+          pickup_boy_id: selectedPickupBoyId || null,
+          notes: assignmentNotes || null,
+        }),
+      });
 
-      if (error) throw error;
-
-      // Create mechanic_jobs entry if assigning to mechanic
-      if (assignType === 'MECHANIC') {
-        await supabase
-          .from('mechanic_jobs')
-          .insert({
-            lead_id: selectedLead.id,
-            mechanic_id: staffId,
-            assigned_by: (await supabase.auth.getUser()).data.user?.id,
-            mechanic_status: 'ASSIGNED',
-            job_priority: selectedLead.priority || 'NORMAL',
-          });
-      }
-
-      Alert.alert(
-        'Success',
-        `Job assigned to ${staffName} successfully!`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              setShowAssignModal(false);
-              setSelectedLead(null);
-              fetchData();
-            },
+      Alert.alert('Success', 'Team assigned successfully', [
+        {
+          text: 'OK',
+          onPress: () => {
+            setShowAssignModal(false);
+            setSelectedLead(null);
+            setSelectedMechanicId('');
+            setSelectedSupervisorId('');
+            setSelectedPickupBoyId('');
+            setAssignmentNotes('');
+            fetchData();
           },
-        ]
-      );
-    } catch (error) {
-      console.error('Error assigning job:', error);
-      Alert.alert('Error', 'Failed to assign job. Please try again.');
+        },
+      ]);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to assign team');
+    } finally {
+      setSaving(false);
     }
   }
 
-  function openAssignModal(lead: Lead, type: 'MECHANIC' | 'SUPERVISOR') {
+  function openAssignModal(lead: Lead) {
     setSelectedLead(lead);
-    setAssignType(type);
+    setSelectedMechanicId('');
+    setSelectedSupervisorId('');
+    setSelectedPickupBoyId('');
+    setAssignmentNotes('');
     setShowAssignModal(true);
   }
 
@@ -228,66 +239,32 @@ export default function JobAssignmentScreen({ navigation }: any) {
               {formatDateTime(item.created_at)}
             </Text>
           </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Pickup:</Text>
+            <Text style={styles.detailValue}>
+              {item.pickup_required ? 'Required' : 'Not required'}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.actions}>
           <TouchableOpacity
-            style={[styles.actionButton, styles.mechanicButton]}
-            onPress={() => openAssignModal(item, 'MECHANIC')}
+            style={[styles.actionButton, styles.assignButton]}
+            onPress={() => openAssignModal(item)}
           >
-            <Text style={styles.actionButtonText}>🔧 Assign to Mechanic</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.supervisorButton]}
-            onPress={() => openAssignModal(item, 'SUPERVISOR')}
-          >
-            <Text style={styles.actionButtonText}>👨‍💼 Assign to Supervisor</Text>
+            <Text style={styles.actionButtonText}>Assign Team</Text>
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity
           style={styles.viewDetailsButton}
-          onPress={() => navigation.navigate('LeadDetail', { leadId: item.id })}
+          onPress={() => navigation.navigate('WorkshopAdminLeadDetail', { leadId: item.id })}
         >
           <Text style={styles.viewDetailsText}>View Full Details →</Text>
         </TouchableOpacity>
       </View>
     );
   }
-
-  function renderStaffMember({ item }: { item: Staff }) {
-    return (
-      <TouchableOpacity
-        style={styles.staffCard}
-        onPress={() => {
-          Alert.alert(
-            'Confirm Assignment',
-            `Assign this job to ${item.full_name}?`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Assign',
-                onPress: () => assignJob(item.id, item.full_name),
-              },
-            ]
-          );
-        }}
-      >
-        <View style={styles.staffAvatar}>
-          <Text style={styles.staffAvatarText}>
-            {item.full_name.charAt(0).toUpperCase()}
-          </Text>
-        </View>
-        <View style={styles.staffInfo}>
-          <Text style={styles.staffName}>{item.full_name}</Text>
-          <Text style={styles.staffRole}>{item.role?.role_name}</Text>
-        </View>
-        <View style={styles.statusIndicator} />
-      </TouchableOpacity>
-    );
-  }
-
-  const staffList = assignType === 'MECHANIC' ? mechanics : supervisors;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -309,6 +286,10 @@ export default function JobAssignmentScreen({ navigation }: any) {
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{supervisors.length}</Text>
           <Text style={styles.statLabel}>Supervisors</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{pickupBoys.length}</Text>
+          <Text style={styles.statLabel}>Pickup Boys</Text>
         </View>
       </View>
 
@@ -337,9 +318,7 @@ export default function JobAssignmentScreen({ navigation }: any) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Assign to {assignType === 'MECHANIC' ? 'Mechanic' : 'Supervisor'}
-            </Text>
+            <Text style={styles.modalTitle}>Assign Team</Text>
 
             {selectedLead && (
               <View style={styles.selectedLeadInfo}>
@@ -349,33 +328,120 @@ export default function JobAssignmentScreen({ navigation }: any) {
                 <Text style={styles.selectedLeadCustomer}>
                   {selectedLead.customer_name}
                 </Text>
+                {selectedLead.pickup_required && (
+                  <Text style={styles.selectedLeadBadge}>Pickup Required</Text>
+                )}
               </View>
             )}
 
             <ScrollView style={styles.staffList}>
-              {staffList.length > 0 ? (
-                <FlatList
-                  data={staffList}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderStaffMember}
-                  scrollEnabled={false}
-                />
-              ) : (
-                <Text style={styles.noStaffText}>
-                  No {assignType === 'MECHANIC' ? 'mechanics' : 'supervisors'} available
-                </Text>
-              )}
+              <Text style={styles.sectionLabel}>Select Mechanic *</Text>
+              <View style={styles.optionRow}>
+                {mechanics.map((staff) => (
+                  <TouchableOpacity
+                    key={staff.id}
+                    style={[
+                      styles.optionChip,
+                      selectedMechanicId === staff.id && styles.optionChipActive,
+                    ]}
+                    onPress={() => setSelectedMechanicId(staff.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.optionText,
+                        selectedMechanicId === staff.id && styles.optionTextActive,
+                      ]}
+                    >
+                      {staff.full_name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.sectionLabel}>Supervisor (optional)</Text>
+              <View style={styles.optionRow}>
+                {supervisors.map((staff) => (
+                  <TouchableOpacity
+                    key={staff.id}
+                    style={[
+                      styles.optionChip,
+                      selectedSupervisorId === staff.id && styles.optionChipActive,
+                    ]}
+                    onPress={() =>
+                      setSelectedSupervisorId(
+                        selectedSupervisorId === staff.id ? '' : staff.id
+                      )
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.optionText,
+                        selectedSupervisorId === staff.id && styles.optionTextActive,
+                      ]}
+                    >
+                      {staff.full_name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.sectionLabel}>Pickup Boy</Text>
+              <View style={styles.optionRow}>
+                {pickupBoys.map((staff) => (
+                  <TouchableOpacity
+                    key={staff.id}
+                    style={[
+                      styles.optionChip,
+                      selectedPickupBoyId === staff.id && styles.optionChipActive,
+                    ]}
+                    onPress={() =>
+                      setSelectedPickupBoyId(
+                        selectedPickupBoyId === staff.id ? '' : staff.id
+                      )
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.optionText,
+                        selectedPickupBoyId === staff.id && styles.optionTextActive,
+                      ]}
+                    >
+                      {staff.full_name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.sectionLabel}>Assignment Notes</Text>
+              <TextInput
+                style={styles.notesInput}
+                value={assignmentNotes}
+                onChangeText={setAssignmentNotes}
+                placeholder="Notes for team"
+                multiline
+              />
             </ScrollView>
 
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => {
-                setShowAssignModal(false);
-                setSelectedLead(null);
-              }}
-            >
-              <Text style={styles.modalCloseText}>Cancel</Text>
-            </TouchableOpacity>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setShowAssignModal(false);
+                  setSelectedLead(null);
+                }}
+              >
+                <Text style={styles.modalCloseText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={submitAssignment}
+                disabled={saving}
+              >
+                <Text style={styles.saveButtonText}>
+                  {saving ? 'Assigning...' : 'Assign'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -408,9 +474,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 16,
     gap: 12,
+    flexWrap: 'wrap',
   },
   statCard: {
     flex: 1,
+    minWidth: 120,
     backgroundColor: '#fff',
     padding: 16,
     borderRadius: 12,
@@ -500,11 +568,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  mechanicButton: {
+  assignButton: {
     backgroundColor: '#2563eb',
-  },
-  supervisorButton: {
-    backgroundColor: '#8b5cf6',
   },
   actionButtonText: {
     color: '#fff',
@@ -564,54 +629,65 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 4,
   },
+  selectedLeadBadge: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#fef3c7',
+    color: '#92400e',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    fontSize: 12,
+    fontWeight: '600',
+  },
   staffList: {
     maxHeight: 400,
   },
-  staffCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  staffAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#2563eb',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  staffAvatarText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  staffInfo: {
-    flex: 1,
-  },
-  staffName: {
-    fontSize: 16,
+  sectionLabel: {
+    fontSize: 13,
     fontWeight: '600',
     color: '#111827',
+    marginBottom: 8,
   },
-  staffRole: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginTop: 2,
+  optionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
   },
-  statusIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#10b981',
+  optionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
   },
-  noStaffText: {
-    textAlign: 'center',
-    color: '#6b7280',
-    paddingVertical: 32,
+  optionChipActive: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
+  optionText: {
+    fontSize: 12,
+    color: '#111827',
+    fontWeight: '600',
+  },
+  optionTextActive: {
+    color: '#fff',
+  },
+  notesInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: 8,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   modalCloseButton: {
     marginTop: 16,
@@ -619,11 +695,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#6b7280',
     borderRadius: 8,
     alignItems: 'center',
+    flex: 1,
   },
   modalCloseText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  saveButton: {
+    marginTop: 16,
+    paddingVertical: 14,
+    backgroundColor: '#2563eb',
+    borderRadius: 8,
+    alignItems: 'center',
+    flex: 1,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 

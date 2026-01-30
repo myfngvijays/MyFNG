@@ -824,6 +824,7 @@ export async function POST(
         rate: qty ? adjustedAmount / qty : adjustedAmount,
         amount: adjustedAmount,
         is_addon: item.is_addon || false,
+        category: item.is_addon ? 'ADDON' : 'SERVICE',
         free_service: isFreeService || undefined,
         original_amount: isFreeService ? amt : undefined,
       });
@@ -842,6 +843,7 @@ export async function POST(
         rate: parseFloat(part.unit_price || '0'),
         amount: parseFloat(part.total_price || '0'),
         is_part: true,
+        category: 'PART',
       });
       if (!hsnSacCodes.includes(hsnCode)) {
         hsnSacCodes.push(hsnCode);
@@ -857,6 +859,7 @@ export async function POST(
         rate: parseFloat(charge.amount || '0'),
         amount: parseFloat(charge.amount || '0'),
         is_extra: true,
+        category: 'EXTRA',
       });
     });
 

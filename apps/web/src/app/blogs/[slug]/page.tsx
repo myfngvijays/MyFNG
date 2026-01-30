@@ -5,10 +5,11 @@ import type { Metadata, Viewport } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
-import { ArrowLeft, Calendar, Clock, Eye, Facebook, Linkedin, MessageCircle, Tag } from 'lucide-react';
+import { Calendar, Clock, Eye, Facebook, Instagram, Linkedin, MessageCircle, Tag, Youtube } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
 import ViewCounter from '@/components/blog/ViewCounter';
 import CopyLinkButton from '@/components/blog/CopyLinkButton';
+import BlogComments from '@/components/blog/BlogComments';
 import { isPuneOrPcmcCity, resolveLocalAreas, PUNE_PCMC_AREAS, normalizeCity } from '@/lib/blog/localSeo';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,16 @@ type Blog = {
   author?: { id: string; full_name: string | null; email: string | null } | null;
   tags?: BlogTag[];
   faqs?: Array<{ question: string; answer: string }>;
+};
+
+type BlogComment = {
+  id: string;
+  blog_id: string;
+  user_name: string | null;
+  comment: string;
+  parent_comment_id: string | null;
+  status: number | null;
+  created_at: string;
 };
 
 function formatDate(dateString?: string | null) {
@@ -301,16 +312,67 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     faqs: (faqs || []).map((f: any) => ({ question: f.question, answer: f.answer })),
   };
 
+  const { data: recentPosts } = await supabase
+    .from('blogs')
+    .select('id, slug, title, featured_image, published_at, created_at')
+    .ilike('status', 'published')
+    .neq('id', transformed.id)
+    .order('published_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
+    .limit(3);
+
+  const { data: categories } = await supabase
+    .from('blog_categories')
+    .select('id, name, slug, status')
+    .or('status.eq.1,status.is.null')
+    .order('name', { ascending: true })
+    .limit(10);
+
+  const { data: comments } = await supabase
+    .from('blog_comments')
+    .select('id, blog_id, user_name, comment, parent_comment_id, status, created_at')
+    .eq('blog_id', transformed.id)
+    .order('created_at', { ascending: true });
+
   const dateText = formatDateTime(transformed.published_at || transformed.created_at);
   const readTimeText = transformed.read_time ? `${transformed.read_time} min read` : '';
   const views = Number(transformed.views || 0);
   const schema = buildSchemas(transformed);
 
+  const seo: any = (transformed.seo_data || {}) as any;
+  const breadcrumbCategory =
+    (transformed.categories || []).filter(Boolean)[0] ||
+    transformed.category ||
+    null;
+
+  const highlightQuote =
+    String(seo?.highlight_quote || seo?.highlighted_quote || '').trim() || '';
+
+  const relatedArticlesRaw = seo?.related_articles ?? seo?.relatedArticles ?? seo?.related_urls ?? null;
+  const relatedArticles: Array<{ title?: string; url: string }> = Array.isArray(relatedArticlesRaw)
+    ? relatedArticlesRaw
+        .map((x: any) => {
+          if (!x) return null;
+          if (typeof x === 'string') return { url: String(x).trim() };
+          const url = String(x?.url || x?.href || '').trim();
+          const title = String(x?.title || x?.name || '').trim() || undefined;
+          if (!url) return null;
+          return { url, title };
+        })
+        .filter(Boolean)
+        .slice(0, 6) as any
+    : [];
+
   const shareUrl = `https://myfng.in/blogs/${encodeURIComponent(transformed.slug)}`;
-  const shareText = encodeURIComponent(transformed.title);
   const waHref = `https://wa.me/?text=${encodeURIComponent(`${transformed.title}\n${shareUrl}`)}`;
   const fbHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
   const liHref = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`;
+
+  const followFacebook = process.env.NEXT_PUBLIC_SOCIAL_FACEBOOK_URL || '';
+  const followInstagram = process.env.NEXT_PUBLIC_SOCIAL_INSTAGRAM_URL || '';
+  const followYoutube = process.env.NEXT_PUBLIC_SOCIAL_YOUTUBE_URL || '';
+  const followLinkedin = process.env.NEXT_PUBLIC_SOCIAL_LINKEDIN_URL || '';
+  const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || '';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -324,60 +386,60 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         />
       ) : null}
 
-      {/* Header */}
-      <section className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 py-12 sm:py-16 md:py-20 mt-16 sm:mt-18 md:mt-20">
+      <section className="mt-16 sm:mt-18 md:mt-20 py-6 sm:py-8">
         <div className="container mx-auto px-3 sm:px-4">
-          <div className="max-w-4xl mx-auto">
-            <Link
-              href="/blogs"
-              className="inline-flex items-center gap-1.5 sm:gap-2 text-gray-200 hover:text-white mb-4 sm:mb-5 md:mb-6 transition text-sm sm:text-base"
-            >
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-              Back to Blogs
-            </Link>
+          <div className="max-w-6xl mx-auto">
+            {/* Breadcrumbs */}
+            <nav className="text-xs sm:text-sm text-gray-600 mb-3">
+              <ol className="flex flex-wrap items-center gap-1">
+                <li>
+                  <Link href="/" className="hover:underline">
+                    Home
+                  </Link>
+                </li>
+                <li className="text-gray-400">›</li>
+                <li>
+                  <Link href="/blogs" className="hover:underline">
+                    Blogs
+                  </Link>
+                </li>
+                {breadcrumbCategory?.name ? (
+                  <>
+                    <li className="text-gray-400">›</li>
+                    <li>
+                      <Link href={`/blogs?category=${encodeURIComponent(breadcrumbCategory.id)}`} className="hover:underline">
+                        {breadcrumbCategory.name}
+                      </Link>
+                    </li>
+                  </>
+                ) : null}
+                <li className="text-gray-400">›</li>
+                <li className="text-gray-900 font-medium line-clamp-1">{transformed.title}</li>
+              </ol>
+            </nav>
 
-            {transformed.categories && transformed.categories.length ? (
-              <div className="mb-3 sm:mb-4 flex flex-wrap gap-2">
-                {transformed.categories
-                  .filter(Boolean)
-                  .slice(0, 6)
-                  .map((c) => (
-                    <span
-                      key={(c as any).id || (c as any).slug || (c as any).name}
-                      className="bg-brand-primary text-white px-3 sm:px-4 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold"
-                    >
-                      {(c as any).name}
-                    </span>
-                  ))}
-              </div>
-            ) : transformed.category?.name ? (
-              <div className="mb-3 sm:mb-4">
-                <span className="bg-brand-primary text-white px-3 sm:px-4 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-semibold">
-                  {transformed.category.name}
-                </span>
-              </div>
-            ) : null}
-
-            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-5 md:mb-6 text-white">
+            {/* Title */}
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 leading-tight line-clamp-3">
               {transformed.title}
             </h1>
 
-            <div className="flex flex-wrap items-center gap-3 sm:gap-4 md:gap-6 text-gray-200 text-xs sm:text-sm">
+            {/* Meta */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm text-gray-600">
               {dateText ? (
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4" />
                   {dateText}
                 </div>
               ) : null}
+              {transformed.author?.full_name ? <div>By {transformed.author.full_name}</div> : null}
               {readTimeText ? (
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-4 h-4" />
                   {readTimeText}
                 </div>
               ) : null}
-              {transformed.author?.full_name ? <div>By {transformed.author.full_name}</div> : null}
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <div className="flex items-center gap-1.5">
+                <Eye className="w-4 h-4" />
                 <ViewCounter slug={transformed.slug} initialViews={views} /> views
               </div>
             </div>
@@ -387,10 +449,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
       {/* Featured Image */}
       {transformed.featured_image ? (
-        <section className="py-6 sm:py-7 md:py-8">
+        <section className="pb-6 sm:pb-7 md:pb-8">
           <div className="container mx-auto px-3 sm:px-4">
-            <div className="max-w-4xl mx-auto">
-              <div className="relative h-48 sm:h-64 md:h-80 lg:h-96 rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl bg-gray-200">
+            <div className="max-w-6xl mx-auto">
+              <div className="relative aspect-[16/9] rounded-xl sm:rounded-2xl overflow-hidden shadow-xl bg-gray-200">
                 <Image src={transformed.featured_image} alt={transformed.title} fill className="object-cover" priority />
               </div>
             </div>
@@ -398,92 +460,234 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         </section>
       ) : null}
 
-      {/* Content */}
-      <section className="py-6 sm:py-7 md:py-8">
+      {/* Follow / Quote / Layout */}
+      <section className="pb-10 sm:pb-12 md:pb-14">
         <div className="container mx-auto px-3 sm:px-4">
-          <div className="max-w-4xl mx-auto">
-            <article className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 lg:p-12">
-              {/* Tags */}
-              {transformed.tags && transformed.tags.length > 0 ? (
-                <div className="flex flex-wrap gap-2 mb-6 sm:mb-7 md:mb-8">
-                  {transformed.tags.map((tag) =>
-                    tag ? (
-                      <span
-                        key={tag.slug || tag.name}
-                        className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm"
-                      >
-                        <Tag className="w-3 h-3" />
-                        {tag.name}
-                      </span>
-                    ) : null
-                  )}
+          <div className="max-w-6xl mx-auto">
+            {/* Follow us strip */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-6">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700">
+                <div className="font-semibold text-gray-900">Follow Us</div>
+                <a
+                  href={followFacebook || '#'}
+                  target={followFacebook ? '_blank' : undefined}
+                  rel={followFacebook ? 'noopener noreferrer' : undefined}
+                  aria-disabled={!followFacebook}
+                  className={`inline-flex items-center gap-2 ${followFacebook ? 'hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
+                >
+                  <Facebook className="w-4 h-4" /> Facebook
+                </a>
+                <a
+                  href={followInstagram || '#'}
+                  target={followInstagram ? '_blank' : undefined}
+                  rel={followInstagram ? 'noopener noreferrer' : undefined}
+                  aria-disabled={!followInstagram}
+                  className={`inline-flex items-center gap-2 ${followInstagram ? 'hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
+                >
+                  <Instagram className="w-4 h-4" /> Instagram
+                </a>
+                <a
+                  href={followYoutube || '#'}
+                  target={followYoutube ? '_blank' : undefined}
+                  rel={followYoutube ? 'noopener noreferrer' : undefined}
+                  aria-disabled={!followYoutube}
+                  className={`inline-flex items-center gap-2 ${followYoutube ? 'hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
+                >
+                  <Youtube className="w-4 h-4" /> YouTube
+                </a>
+                <a
+                  href={followLinkedin || '#'}
+                  target={followLinkedin ? '_blank' : undefined}
+                  rel={followLinkedin ? 'noopener noreferrer' : undefined}
+                  aria-disabled={!followLinkedin}
+                  className={`inline-flex items-center gap-2 ${followLinkedin ? 'hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
+                >
+                  <Linkedin className="w-4 h-4" /> LinkedIn
+                </a>
+              </div>
+            </div>
+
+            {highlightQuote ? (
+              <div className="bg-gray-900 text-white rounded-xl p-5 sm:p-6 mb-6">
+                <div className="text-sm sm:text-base leading-relaxed italic">
+                  “{highlightQuote}”
                 </div>
-              ) : null}
+              </div>
+            ) : null}
 
-              {transformed.excerpt ? (
-                <p className="text-gray-700 text-sm sm:text-base leading-relaxed mb-6 sm:mb-7 md:mb-8">
-                  {transformed.excerpt}
-                </p>
-              ) : null}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+              {/* Main content */}
+              <div className="lg:col-span-8">
+                <article className="bg-white rounded-xl shadow-lg p-4 sm:p-6 md:p-8">
+                  {/* Tags + Share */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+                    <div className="flex flex-wrap gap-2">
+                      {transformed.tags && transformed.tags.length > 0
+                        ? transformed.tags.map((tag) =>
+                            tag ? (
+                              <span
+                                key={tag.slug || tag.name}
+                                className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm"
+                              >
+                                <Tag className="w-3 h-3" />
+                                {tag.name}
+                              </span>
+                            ) : null
+                          )
+                        : null}
+                    </div>
 
-              {/* Content (HTML supported as per dashboard editor helper text) */}
-              <div
-                className="prose prose-sm sm:prose-base md:prose-lg max-w-none"
-                dangerouslySetInnerHTML={{ __html: transformed.content }}
-              />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        href={fbHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg transition text-blue-800 text-xs sm:text-sm font-semibold"
+                        title="Share on Facebook"
+                      >
+                        <Facebook className="w-4 h-4" />
+                        Facebook
+                      </a>
+                      <a
+                        href={waHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-green-50 hover:bg-green-100 rounded-lg transition text-green-800 text-xs sm:text-sm font-semibold"
+                        title="Share on WhatsApp"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        WhatsApp
+                      </a>
+                      <a
+                        href={liHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-sky-50 hover:bg-sky-100 rounded-lg transition text-sky-800 text-xs sm:text-sm font-semibold"
+                        title="Share on LinkedIn"
+                      >
+                        <Linkedin className="w-4 h-4" />
+                        LinkedIn
+                      </a>
+                      <CopyLinkButton url={shareUrl} />
+                    </div>
+                  </div>
 
-              {/* FAQs (editable + schema source) */}
-              {transformed.faqs && transformed.faqs.length ? (
-                <div className="mt-10 sm:mt-12">
-                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">FAQs</h2>
-                  <div className="space-y-4">
-                    {transformed.faqs.slice(0, 8).map((f, idx) => (
-                      <div key={`${idx}-${f.question}`} className="border border-gray-200 rounded-xl p-4">
-                        <div className="font-semibold text-gray-900">{f.question}</div>
-                        <div className="text-gray-700 mt-1">{f.answer}</div>
+                  {transformed.excerpt ? (
+                    <p className="text-gray-700 text-sm sm:text-base leading-relaxed mb-6">
+                      {transformed.excerpt}
+                    </p>
+                  ) : null}
+
+                  {/* Content (HTML supported as per dashboard editor helper text) */}
+                  <div
+                    className="prose prose-sm sm:prose-base md:prose-lg max-w-none"
+                    dangerouslySetInnerHTML={{ __html: transformed.content }}
+                  />
+
+                  {/* FAQs (editable + schema source) */}
+                  {transformed.faqs && transformed.faqs.length ? (
+                    <div className="mt-10 sm:mt-12">
+                      <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">FAQs</h2>
+                      <div className="space-y-4">
+                        {transformed.faqs.slice(0, 8).map((f, idx) => (
+                          <div key={`${idx}-${f.question}`} className="border border-gray-200 rounded-xl p-4">
+                            <div className="font-semibold text-gray-900">{f.question}</div>
+                            <div className="text-gray-700 mt-1">{f.answer}</div>
+                          </div>
+                        ))}
                       </div>
+                    </div>
+                  ) : null}
+
+                  <BlogComments blogId={transformed.id} initialComments={(comments || []) as BlogComment[]} />
+                </article>
+              </div>
+
+              {/* Sidebar */}
+              <aside className="lg:col-span-4 space-y-5">
+                {/* Search */}
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="font-semibold text-gray-900 mb-3">Search</div>
+                  <form action="/blogs" method="GET" className="flex gap-2">
+                    <input
+                      name="q"
+                      placeholder="Search blogs by keyword"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                    />
+                    <button type="submit" className="btn btn-primary text-sm px-4 py-2">
+                      Search
+                    </button>
+                  </form>
+                </div>
+
+                {/* Download app */}
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="font-semibold text-gray-900 mb-3">Download Our App</div>
+                  <a
+                    href={playStoreUrl || '#'}
+                    target={playStoreUrl ? '_blank' : undefined}
+                    rel={playStoreUrl ? 'noopener noreferrer' : undefined}
+                    aria-disabled={!playStoreUrl}
+                    className={`btn btn-primary w-full justify-center ${!playStoreUrl ? 'opacity-60 pointer-events-none' : ''}`}
+                  >
+                    Play Store
+                  </a>
+                </div>
+
+                {/* Recent posts */}
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="font-semibold text-gray-900 mb-3">Recent Posts</div>
+                  <div className="space-y-3">
+                    {(recentPosts || []).map((p: any) => (
+                      <Link key={p.id} href={`/blogs/${p.slug}`} className="flex gap-3 hover:bg-gray-50 rounded-lg p-2 transition">
+                        <div className="relative w-16 h-12 rounded-md overflow-hidden bg-gray-200 flex-shrink-0">
+                          {p.featured_image ? (
+                            <Image src={p.featured_image} alt={p.title} fill className="object-cover" />
+                          ) : null}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-gray-900 line-clamp-2">{p.title}</div>
+                          <div className="text-xs text-gray-500">{formatDate(p.published_at || p.created_at)}</div>
+                        </div>
+                      </Link>
+                    ))}
+                    {(recentPosts || []).length === 0 ? <div className="text-sm text-gray-600">No recent posts.</div> : null}
+                  </div>
+                </div>
+
+                {/* Related articles (from SEO config; blank if not set) */}
+                {relatedArticles.length ? (
+                  <div className="bg-white rounded-xl border border-gray-200 p-4">
+                    <div className="font-semibold text-gray-900 mb-3">Related Articles</div>
+                    <ul className="space-y-2 text-sm">
+                      {relatedArticles.slice(0, 6).map((a) => (
+                        <li key={a.url}>
+                          <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline">
+                            {a.title || a.url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {/* Categories */}
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="font-semibold text-gray-900 mb-3">Categories</div>
+                  <div className="flex flex-wrap gap-2">
+                    {(categories || []).map((c: any) => (
+                      <Link
+                        key={c.id}
+                        href={`/blogs?category=${encodeURIComponent(c.id)}`}
+                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-xs font-semibold text-gray-800 transition"
+                      >
+                        {c.name}
+                      </Link>
                     ))}
                   </div>
                 </div>
-              ) : null}
-
-              {/* Social Sharing */}
-              <div className="mt-8 sm:mt-10 md:mt-12 pt-6 sm:pt-7 md:pt-8 border-t border-gray-200">
-                <div className="flex flex-wrap gap-2">
-                  <a
-                    href={waHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 hover:bg-green-100 rounded-full transition text-green-800 text-xs sm:text-sm font-semibold"
-                    title="Share on WhatsApp"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    WhatsApp
-                  </a>
-                  <a
-                    href={fbHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 rounded-full transition text-blue-800 text-xs sm:text-sm font-semibold"
-                    title="Share on Facebook"
-                  >
-                    <Facebook className="w-4 h-4" />
-                    Facebook
-                  </a>
-                  <a
-                    href={liHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-sky-50 hover:bg-sky-100 rounded-full transition text-sky-800 text-xs sm:text-sm font-semibold"
-                    title="Share on LinkedIn"
-                  >
-                    <Linkedin className="w-4 h-4" />
-                    LinkedIn
-                  </a>
-                  <CopyLinkButton url={shareUrl} />
-                </div>
-              </div>
-            </article>
+              </aside>
+            </div>
           </div>
         </div>
       </section>

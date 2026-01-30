@@ -51,6 +51,11 @@ export default function DashboardHeader({
           {onNotificationPress && (
             <NotificationBell onPress={onNotificationPress} size={22} color={COLORS.white} />
           )}
+          {onLogout && (
+            <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
+              <Text style={styles.logoutText}>Logout</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );

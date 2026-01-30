@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const { width } = Dimensions.get('window');
 
@@ -50,6 +51,8 @@ export default function LeadManagerReportsScreen() {
     start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0],
   });
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
   const [stats, setStats] = useState<Stats>({
     total_leads: 0,
     validated_leads: 0,
@@ -68,6 +71,8 @@ export default function LeadManagerReportsScreen() {
   const [dailyTrends, setDailyTrends] = useState<DailyTrend[]>([]);
   const [statusDistribution, setStatusDistribution] = useState<any[]>([]);
   const [priorityDistribution, setPriorityDistribution] = useState<any[]>([]);
+  const [workshopPerformance, setWorkshopPerformance] = useState<any[]>([]);
+  const [cityDistribution, setCityDistribution] = useState<any[]>([]);
 
   useEffect(() => {
     fetchAllReports();
@@ -81,6 +86,8 @@ export default function LeadManagerReportsScreen() {
         fetchDailyTrends(),
         fetchStatusDistribution(),
         fetchPriorityDistribution(),
+        fetchWorkshopPerformance(),
+        fetchCityDistribution(),
       ]);
     } catch (error) {
       console.error('Error fetching reports:', error);
@@ -114,7 +121,7 @@ export default function LeadManagerReportsScreen() {
     const { count: assignedLeads } = await supabase
       .from('service_leads')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'ASSIGNED_TO_WORKSHOP')
+      .in('status', ['ASSIGNED_TO_WORKSHOP', 'ACCEPTED', 'IN_PROGRESS'])
       .gte('created_at', dateRange.start)
       .lte('created_at', dateRange.end);
 
@@ -192,7 +199,7 @@ export default function LeadManagerReportsScreen() {
         const { count: assigned } = await supabase
           .from('service_leads')
           .select('*', { count: 'exact', head: true })
-          .eq('status', 'ASSIGNED_TO_WORKSHOP')
+          .in('status', ['ASSIGNED_TO_WORKSHOP', 'ACCEPTED', 'IN_PROGRESS'])
           .gte('created_at', date)
           .lt('created_at', nextDateStr);
 
@@ -260,9 +267,101 @@ export default function LeadManagerReportsScreen() {
     setPriorityDistribution(distribution);
   };
 
+  const fetchWorkshopPerformance = async () => {
+    const { data, error } = await supabase
+      .from('service_leads')
+      .select(`
+        workshop_id,
+        status,
+        workshops(name, city)
+      `)
+      .not('workshop_id', 'is', null)
+      .gte('created_at', dateRange.start)
+      .lte('created_at', dateRange.end);
+
+    if (error || !data) return;
+
+    const workshopStats: Record<string, any> = {};
+    data.forEach((lead: any) => {
+      const workshopId = lead.workshop_id;
+      if (!workshopStats[workshopId]) {
+        workshopStats[workshopId] = {
+          workshop_name: lead.workshops?.name || 'Unknown',
+          city: lead.workshops?.city || 'N/A',
+          total: 0,
+          accepted: 0,
+          completed: 0,
+          rejected: 0,
+        };
+      }
+      workshopStats[workshopId].total += 1;
+      if (lead.status === 'ACCEPTED') workshopStats[workshopId].accepted += 1;
+      if (lead.status === 'COMPLETED') workshopStats[workshopId].completed += 1;
+      if (lead.status === 'REJECTED') workshopStats[workshopId].rejected += 1;
+    });
+
+    const performance = Object.entries(workshopStats)
+      .map(([id, stats]) => ({
+        workshop_id: id,
+        workshop_name: stats.workshop_name,
+        city: stats.city,
+        total: stats.total,
+        accepted: stats.accepted,
+        completed: stats.completed,
+        rejected: stats.rejected,
+        acceptance_rate: stats.total > 0 ? ((stats.accepted / stats.total) * 100).toFixed(1) : '0',
+        completion_rate: stats.total > 0 ? ((stats.completed / stats.total) * 100).toFixed(1) : '0',
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+
+    setWorkshopPerformance(performance);
+  };
+
+  const fetchCityDistribution = async () => {
+    const { data, error } = await supabase
+      .from('service_leads')
+      .select('city')
+      .gte('created_at', dateRange.start)
+      .lte('created_at', dateRange.end);
+
+    if (error || !data) return;
+
+    const cityCounts: Record<string, number> = {};
+    data.forEach(lead => {
+      const city = lead.city || 'Unknown';
+      cityCounts[city] = (cityCounts[city] || 0) + 1;
+    });
+
+    const distribution = Object.entries(cityCounts)
+      .map(([city, count]) => ({
+        city,
+        count,
+        percentage: ((count / data.length) * 100).toFixed(1),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    setCityDistribution(distribution);
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchAllReports();
+  };
+
+  const handleStartChange = (_: any, date?: Date) => {
+    setShowStartPicker(false);
+    if (date) {
+      setDateRange(prev => ({ ...prev, start: date.toISOString().split('T')[0] }));
+    }
+  };
+
+  const handleEndChange = (_: any, date?: Date) => {
+    setShowEndPicker(false);
+    if (date) {
+      setDateRange(prev => ({ ...prev, end: date.toISOString().split('T')[0] }));
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -309,7 +408,39 @@ export default function LeadManagerReportsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>📊 Reports & Analytics</Text>
-        <Text style={styles.headerSubtitle}>Last 30 days</Text>
+        <Text style={styles.headerSubtitle}>Select date range</Text>
+      </View>
+
+      {/* Date Range */}
+      <View style={styles.dateRangeCard}>
+        <Text style={styles.dateRangeLabel}>Date Range</Text>
+        <View style={styles.dateRow}>
+          <TouchableOpacity style={styles.dateButton} onPress={() => setShowStartPicker(true)}>
+            <Ionicons name="calendar" size={16} color="#FF6B00" />
+            <Text style={styles.dateText}>{dateRange.start}</Text>
+          </TouchableOpacity>
+          <Text style={styles.dateSeparator}>to</Text>
+          <TouchableOpacity style={styles.dateButton} onPress={() => setShowEndPicker(true)}>
+            <Ionicons name="calendar" size={16} color="#FF6B00" />
+            <Text style={styles.dateText}>{dateRange.end}</Text>
+          </TouchableOpacity>
+        </View>
+        {showStartPicker && (
+          <DateTimePicker
+            value={new Date(dateRange.start)}
+            mode="date"
+            display="default"
+            onChange={handleStartChange}
+          />
+        )}
+        {showEndPicker && (
+          <DateTimePicker
+            value={new Date(dateRange.end)}
+            mode="date"
+            display="default"
+            onChange={handleEndChange}
+          />
+        )}
       </View>
 
       {/* Summary Cards */}
@@ -462,6 +593,49 @@ export default function LeadManagerReportsScreen() {
           </View>
         ))}
       </View>
+
+      {/* Workshop Performance */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🏭 Workshop Performance</Text>
+        {workshopPerformance.length === 0 ? (
+          <Text style={styles.noData}>No workshop data available</Text>
+        ) : (
+          workshopPerformance.map((item, index) => (
+            <View key={item.workshop_id || index} style={styles.workshopCard}>
+              <View style={styles.workshopHeader}>
+                <Text style={styles.workshopName}>{item.workshop_name}</Text>
+                <Text style={styles.workshopCity}>{item.city}</Text>
+              </View>
+              <View style={styles.workshopStatsRow}>
+                <Text style={styles.workshopStat}>Total: {item.total}</Text>
+                <Text style={styles.workshopStat}>Accepted: {item.accepted}</Text>
+                <Text style={styles.workshopStat}>Completed: {item.completed}</Text>
+                <Text style={styles.workshopStat}>Rejected: {item.rejected}</Text>
+              </View>
+              <View style={styles.workshopRates}>
+                <Text style={styles.workshopRate}>Acceptance: {item.acceptance_rate}%</Text>
+                <Text style={styles.workshopRate}>Completion: {item.completion_rate}%</Text>
+              </View>
+            </View>
+          ))
+        )}
+      </View>
+
+      {/* City Distribution */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🏙️ City Distribution</Text>
+        {cityDistribution.length === 0 ? (
+          <Text style={styles.noData}>No city data available</Text>
+        ) : (
+          cityDistribution.map((item, index) => (
+            <View key={`${item.city}-${index}`} style={styles.cityRow}>
+              <Text style={styles.cityName}>{item.city}</Text>
+              <Text style={styles.cityCount}>{item.count}</Text>
+              <Text style={styles.cityPercentage}>{item.percentage}%</Text>
+            </View>
+          ))
+        )}
+      </View>
     </ScrollView>
   );
 }
@@ -496,6 +670,43 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#FFF',
     marginTop: 5,
+  },
+  dateRangeCard: {
+    backgroundColor: '#FFF',
+    margin: 10,
+    padding: 15,
+    borderRadius: 12,
+  },
+  dateRangeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  dateText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  dateSeparator: {
+    fontSize: 12,
+    color: '#9CA3AF',
   },
   summaryGrid: {
     flexDirection: 'row',
@@ -691,6 +902,71 @@ const styles = StyleSheet.create({
   distributionFill: {
     height: '100%',
     borderRadius: 2,
+  },
+  workshopCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  workshopHeader: {
+    marginBottom: 6,
+  },
+  workshopName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  workshopCity: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  workshopStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+  workshopStat: {
+    fontSize: 11,
+    color: '#374151',
+  },
+  workshopRates: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 6,
+  },
+  workshopRate: {
+    fontSize: 11,
+    color: '#6B7280',
+  },
+  cityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  cityName: {
+    fontSize: 12,
+    color: '#111827',
+    flex: 1,
+  },
+  cityCount: {
+    fontSize: 12,
+    color: '#6B7280',
+    width: 40,
+    textAlign: 'right',
+  },
+  cityPercentage: {
+    fontSize: 12,
+    color: '#6B7280',
+    width: 50,
+    textAlign: 'right',
   },
 });
 

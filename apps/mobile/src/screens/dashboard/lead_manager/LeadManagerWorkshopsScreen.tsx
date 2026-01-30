@@ -13,10 +13,13 @@ import {
   TextInput,
   RefreshControl,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+
+const { width } = Dimensions.get('window');
 
 interface Workshop {
   id: string;
@@ -39,6 +42,13 @@ export default function LeadManagerWorkshopsScreen() {
   const [filteredWorkshops, setFilteredWorkshops] = useState<Workshop[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'ALL' | 'VERIFIED' | 'UNVERIFIED'>('ALL');
+  const [cityFilter, setCityFilter] = useState('ALL');
+  const [stats, setStats] = useState({
+    total: 0,
+    verified: 0,
+    unverified: 0,
+    active_jobs: 0,
+  });
 
   useEffect(() => {
     fetchWorkshops();
@@ -46,7 +56,7 @@ export default function LeadManagerWorkshopsScreen() {
 
   useEffect(() => {
     applyFilters();
-  }, [search, filter, workshops]);
+  }, [search, filter, cityFilter, workshops]);
 
   const fetchWorkshops = async () => {
     try {
@@ -80,6 +90,33 @@ export default function LeadManagerWorkshopsScreen() {
       );
 
       setWorkshops(workshopsWithStats);
+
+      const { count: totalCount } = await supabase
+        .from('workshops')
+        .select('*', { count: 'exact', head: true });
+
+      const { count: verifiedCount } = await supabase
+        .from('workshops')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_verified', true);
+
+      const { count: unverifiedCount } = await supabase
+        .from('workshops')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_verified', false);
+
+      const { count: activeJobsCount } = await supabase
+        .from('service_leads')
+        .select('*', { count: 'exact', head: true })
+        .filter('workshop_id', 'not.is', null)
+        .in('status', ['ACCEPTED', 'IN_PROGRESS', 'TEAM_ASSIGNED']);
+
+      setStats({
+        total: totalCount || 0,
+        verified: verifiedCount || 0,
+        unverified: unverifiedCount || 0,
+        active_jobs: activeJobsCount || 0,
+      });
     } catch (error) {
       console.error('Error fetching workshops:', error);
     } finally {
@@ -98,6 +135,10 @@ export default function LeadManagerWorkshopsScreen() {
       filtered = filtered.filter(w => !w.is_verified);
     }
 
+    if (cityFilter !== 'ALL') {
+      filtered = filtered.filter(w => w.city === cityFilter);
+    }
+
     // Apply search filter
     if (search.trim()) {
       const searchLower = search.toLowerCase();
@@ -105,7 +146,8 @@ export default function LeadManagerWorkshopsScreen() {
         w =>
           w.name.toLowerCase().includes(searchLower) ||
           w.city.toLowerCase().includes(searchLower) ||
-          w.contact_person.toLowerCase().includes(searchLower)
+          w.contact_person.toLowerCase().includes(searchLower) ||
+          w.phone?.includes(searchLower)
       );
     }
 
@@ -135,7 +177,31 @@ export default function LeadManagerWorkshopsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🏢 Workshops</Text>
-        <Text style={styles.headerSubtitle}>{workshops.length} total workshops</Text>
+        <Text style={styles.headerSubtitle}>{stats.total} total workshops</Text>
+      </View>
+
+      {/* Stats Cards */}
+      <View style={styles.statsSummaryRow}>
+        <View style={styles.statSummaryCard}>
+          <Ionicons name="business" size={20} color="#3B82F6" />
+          <Text style={styles.statSummaryValue}>{stats.total}</Text>
+          <Text style={styles.statSummaryLabel}>Total</Text>
+        </View>
+        <View style={styles.statSummaryCard}>
+          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+          <Text style={styles.statSummaryValue}>{stats.verified}</Text>
+          <Text style={styles.statSummaryLabel}>Verified</Text>
+        </View>
+        <View style={styles.statSummaryCard}>
+          <Ionicons name="alert-circle" size={20} color="#F59E0B" />
+          <Text style={styles.statSummaryValue}>{stats.unverified}</Text>
+          <Text style={styles.statSummaryLabel}>Unverified</Text>
+        </View>
+        <View style={styles.statSummaryCard}>
+          <Ionicons name="time" size={20} color="#8B5CF6" />
+          <Text style={styles.statSummaryValue}>{stats.active_jobs}</Text>
+          <Text style={styles.statSummaryLabel}>Active</Text>
+        </View>
       </View>
 
       {/* Search Bar */}
@@ -161,7 +227,7 @@ export default function LeadManagerWorkshopsScreen() {
           onPress={() => setFilter('ALL')}
         >
           <Text style={[styles.filterText, filter === 'ALL' && styles.filterTextActive]}>
-            All ({workshops.length})
+            All ({stats.total})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -169,7 +235,7 @@ export default function LeadManagerWorkshopsScreen() {
           onPress={() => setFilter('VERIFIED')}
         >
           <Text style={[styles.filterText, filter === 'VERIFIED' && styles.filterTextActive]}>
-            Verified ({workshops.filter(w => w.is_verified).length})
+            Verified ({stats.verified})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -177,10 +243,32 @@ export default function LeadManagerWorkshopsScreen() {
           onPress={() => setFilter('UNVERIFIED')}
         >
           <Text style={[styles.filterText, filter === 'UNVERIFIED' && styles.filterTextActive]}>
-            Unverified ({workshops.filter(w => !w.is_verified).length})
+            Unverified ({stats.unverified})
           </Text>
         </TouchableOpacity>
       </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cityFilterRow}>
+        <TouchableOpacity
+          style={[styles.cityChip, cityFilter === 'ALL' && styles.cityChipActive]}
+          onPress={() => setCityFilter('ALL')}
+        >
+          <Text style={[styles.cityChipText, cityFilter === 'ALL' && styles.cityChipTextActive]}>
+            All Cities
+          </Text>
+        </TouchableOpacity>
+        {Array.from(new Set(workshops.map(w => w.city).filter(Boolean))).map((city) => (
+          <TouchableOpacity
+            key={city}
+            style={[styles.cityChip, cityFilter === city && styles.cityChipActive]}
+            onPress={() => setCityFilter(city)}
+          >
+            <Text style={[styles.cityChipText, cityFilter === city && styles.cityChipTextActive]}>
+              {city}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
       {/* Workshops List */}
       <ScrollView
@@ -256,7 +344,7 @@ export default function LeadManagerWorkshopsScreen() {
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}>
-                  <TouchableOpacity style={styles.viewButton}>
+                  <TouchableOpacity style={styles.viewButton} onPress={() => handleWorkshopPress(workshop)}>
                     <Text style={styles.viewButtonText}>View Details</Text>
                     <Ionicons name="arrow-forward" size={16} color="#FF6B00" />
                   </TouchableOpacity>
@@ -301,6 +389,33 @@ const styles = StyleSheet.create({
     color: '#FFF',
     marginTop: 5,
   },
+  statsSummaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  statSummaryCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    width: (width - 40) / 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  statSummaryValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginTop: 6,
+  },
+  statSummaryLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -323,6 +438,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     marginBottom: 15,
     gap: 10,
+  },
+  cityFilterRow: {
+    paddingHorizontal: 15,
+    marginBottom: 10,
+  },
+  cityChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginRight: 8,
+  },
+  cityChipActive: {
+    backgroundColor: '#FF6B00',
+    borderColor: '#FF6B00',
+  },
+  cityChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  cityChipTextActive: {
+    color: '#FFF',
   },
   filterTab: {
     flex: 1,

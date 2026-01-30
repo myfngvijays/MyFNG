@@ -8,10 +8,13 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  TextInput,
   Alert,
   Platform,
+  Linking,
   BackHandler
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
@@ -24,11 +27,17 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'missed'>('pending');
+  const [filter, setFilter] = useState<'pending' | 'today' | 'overdue' | 'completed'>('pending');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [rescheduleTarget, setRescheduleTarget] = useState<any | null>(null);
+  const [showReschedulePicker, setShowReschedulePicker] = useState(false);
+  const [completionTarget, setCompletionTarget] = useState<any | null>(null);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [showCompletion, setShowCompletion] = useState(false);
 
   useEffect(() => {
     fetchFollowUps();
-  }, [filter]);
+  }, [filter, searchTerm]);
 
   // Handle hardware back button
   useEffect(() => {
@@ -67,14 +76,42 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
         .eq('telecaller_id', profile?.id)
         .order('scheduled_time', { ascending: true });
 
-      if (filter !== 'all') {
-        query = query.eq('status', filter.toUpperCase());
+      if (filter === 'completed') {
+        query = query.eq('status', 'COMPLETED');
+      } else {
+        query = query.eq('status', 'PENDING');
       }
 
       const { data, error } = await query;
 
       if (error) throw error;
-      setFollowUps(data || []);
+
+      let list = data || [];
+      const now = new Date();
+      if (filter === 'today') {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        list = list.filter((fu: any) => {
+          const t = new Date(fu.scheduled_time);
+          return t >= start && t <= end;
+        });
+      }
+      if (filter === 'overdue') {
+        list = list.filter((fu: any) => new Date(fu.scheduled_time) < now);
+      }
+      if (searchTerm) {
+        const search = searchTerm.toLowerCase();
+        list = list.filter((fu: any) =>
+          fu.lead?.customer_name?.toLowerCase().includes(search) ||
+          fu.lead?.customer_phone?.includes(search) ||
+          fu.lead?.lead_number?.toLowerCase().includes(search) ||
+          fu.reason?.toLowerCase().includes(search)
+        );
+      }
+
+      setFollowUps(list);
 
     } catch (error) {
       console.error('Error fetching follow-ups:', error);
@@ -89,7 +126,15 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
     fetchFollowUps();
   };
 
-  const handleMarkCompleted = async (followUpId: string) => {
+  const handleMarkCompleted = (followUpId: string) => {
+    const target = followUps.find((f) => f.id === followUpId);
+    setCompletionTarget(target || null);
+    setCompletionNotes('');
+    setShowCompletion(true);
+  };
+
+  const submitCompletion = async () => {
+    if (!completionTarget) return;
     Alert.alert(
       'Mark as Completed',
       'Mark this follow-up as completed?',
@@ -103,9 +148,10 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
                 .from('telecaller_follow_ups')
                 .update({
                   status: 'COMPLETED',
-                  completed_at: new Date().toISOString()
+                  completed_at: new Date().toISOString(),
+                  completion_notes: completionNotes || null,
                 })
-                .eq('id', followUpId);
+                .eq('id', completionTarget.id);
 
               if (!error) {
                 fetchFollowUps();
@@ -114,6 +160,9 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
             } catch (error) {
               console.error('Error updating follow-up:', error);
               Alert.alert('Error', 'Failed to update follow-up');
+            } finally {
+              setShowCompletion(false);
+              setCompletionTarget(null);
             }
           }
         }
@@ -123,8 +172,8 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
 
   const handleMarkMissed = async (followUpId: string) => {
     Alert.alert(
-      'Mark as Missed',
-      'Mark this follow-up as missed?',
+      'Cancel Follow-up',
+      'Cancel this follow-up?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -133,16 +182,16 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
             try {
               const { error } = await supabase
                 .from('telecaller_follow_ups')
-                .update({ status: 'MISSED' })
+                .update({ status: 'CANCELLED' })
                 .eq('id', followUpId);
 
               if (!error) {
                 fetchFollowUps();
-                Alert.alert('Marked as Missed');
+                Alert.alert('Follow-up cancelled');
               }
             } catch (error) {
               console.error('Error updating follow-up:', error);
-              Alert.alert('Error', 'Failed to update follow-up');
+              Alert.alert('Error', 'Failed to cancel follow-up');
             }
           }
         }
@@ -150,8 +199,29 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
     );
   };
 
-  const handleReschedule = async (followUpId: string) => {
-    Alert.alert('Reschedule', 'Feature coming soon!');
+  const handleReschedule = (followUpId: string) => {
+    const target = followUps.find((f) => f.id === followUpId);
+    setRescheduleTarget(target || null);
+    setShowReschedulePicker(true);
+  };
+
+  const handleRescheduleChange = async (_event: any, selectedDate?: Date) => {
+    setShowReschedulePicker(false);
+    if (!selectedDate || !rescheduleTarget) return;
+    try {
+      const { error } = await supabase
+        .from('telecaller_follow_ups')
+        .update({ scheduled_time: selectedDate.toISOString() })
+        .eq('id', rescheduleTarget.id);
+      if (!error) {
+        fetchFollowUps();
+      }
+    } catch (error) {
+      console.error('Error rescheduling follow-up:', error);
+      Alert.alert('Error', 'Failed to reschedule follow-up');
+    } finally {
+      setRescheduleTarget(null);
+    }
   };
 
   const handleViewLead = (leadId: string) => {
@@ -227,6 +297,13 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
           <View style={styles.actionsContainer}>
             <TouchableOpacity
               style={[styles.actionButton, styles.viewButton]}
+              onPress={() => Linking.openURL(`tel:${item.lead?.customer_phone}`)}
+            >
+              <Icon name="phone" size={18} color={COLORS.primary} />
+              <Text style={styles.actionButtonText}>Call Now</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.viewButton]}
               onPress={() => handleViewLead(item.lead_id)}
             >
               <Icon name="eye" size={18} color={COLORS.primary} />
@@ -246,7 +323,15 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
               onPress={() => handleMarkMissed(item.id)}
             >
               <Icon name="close-circle" size={18} color={COLORS.red} />
-              <Text style={styles.actionButtonText}>Missed</Text>
+              <Text style={styles.actionButtonText}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, styles.viewButton]}
+              onPress={() => handleReschedule(item.id)}
+            >
+              <Icon name="calendar-clock" size={18} color={COLORS.primary} />
+              <Text style={styles.actionButtonText}>Reschedule</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -257,6 +342,9 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
             <Text style={styles.completedText}>
               Completed on {formatDateTime(item.completed_at)}
             </Text>
+            {item.completion_notes ? (
+              <Text style={styles.completedNotes}>{item.completion_notes}</Text>
+            ) : null}
           </View>
         )}
       </View>
@@ -286,6 +374,17 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
         <View style={{ width: 40 }} />
       </View>
 
+      <View style={styles.searchContainer}>
+        <Icon name="magnify" size={20} color={COLORS.textSecondary} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search follow-ups..."
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+          placeholderTextColor={COLORS.textSecondary}
+        />
+      </View>
+
       {/* Filter Tabs */}
       <View style={styles.filterContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -299,11 +398,20 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.filterTab, filter === 'all' && styles.filterTabActive]}
-            onPress={() => setFilter('all')}
+            style={[styles.filterTab, filter === 'today' && styles.filterTabActive]}
+            onPress={() => setFilter('today')}
           >
-            <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>
-              All
+            <Text style={[styles.filterText, filter === 'today' && styles.filterTextActive]}>
+              Today
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterTab, filter === 'overdue' && styles.filterTabActive]}
+            onPress={() => setFilter('overdue')}
+          >
+            <Text style={[styles.filterText, filter === 'overdue' && styles.filterTextActive]}>
+              Overdue
             </Text>
           </TouchableOpacity>
 
@@ -313,15 +421,6 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
           >
             <Text style={[styles.filterText, filter === 'completed' && styles.filterTextActive]}>
               Completed
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterTab, filter === 'missed' && styles.filterTabActive]}
-            onPress={() => setFilter('missed')}
-          >
-            <Text style={[styles.filterText, filter === 'missed' && styles.filterTextActive]}>
-              Missed
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -375,6 +474,39 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
           followUps.map(renderFollowUp)
         )}
       </ScrollView>
+
+      {showCompletion && (
+        <View style={styles.completionCard}>
+          <Text style={styles.completionTitle}>Completion Notes</Text>
+          <TextInput
+            style={styles.completionInput}
+            placeholder="Optional notes..."
+            value={completionNotes}
+            onChangeText={setCompletionNotes}
+            multiline
+          />
+          <View style={styles.completionActions}>
+            <TouchableOpacity style={styles.completionButton} onPress={submitCompletion}>
+              <Text style={styles.completionButtonText}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.completionButton, styles.completionButtonSecondary]}
+              onPress={() => setShowCompletion(false)}
+            >
+              <Text style={styles.completionButtonTextSecondary}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {showReschedulePicker && (
+        <DateTimePicker
+          value={rescheduleTarget?.scheduled_time ? new Date(rescheduleTarget.scheduled_time) : new Date()}
+          mode="datetime"
+          display="default"
+          onChange={handleRescheduleChange}
+        />
+      )}
     </View>
   );
 }
@@ -383,7 +515,7 @@ function getStatusColor(status: string): string {
   switch (status) {
     case 'PENDING': return COLORS.orange + '30';
     case 'COMPLETED': return COLORS.green + '30';
-    case 'MISSED': return COLORS.red + '30';
+    case 'CANCELLED': return COLORS.red + '30';
     default: return COLORS.gray[500] + '30';
   }
 }
@@ -423,6 +555,21 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    margin: SPACING.md,
+    borderRadius: 10,
+    paddingHorizontal: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  searchInput: {
+    flex: 1,
+    padding: SPACING.sm,
+    color: COLORS.text,
   },
   loadingContainer: {
     flex: 1,
@@ -606,6 +753,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.green,
   },
+  completedNotes: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+  },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -622,6 +774,51 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: SPACING.sm,
     textAlign: 'center',
+  },
+  completionCard: {
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[200],
+    padding: SPACING.md,
+  },
+  completionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textHeading,
+    marginBottom: SPACING.sm,
+  },
+  completionInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    padding: SPACING.sm,
+    minHeight: 70,
+    textAlignVertical: 'top',
+    backgroundColor: COLORS.white,
+    color: COLORS.text,
+  },
+  completionActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  completionButton: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  completionButtonSecondary: {
+    backgroundColor: COLORS.gray[200],
+  },
+  completionButtonText: {
+    color: COLORS.white,
+    fontWeight: '600',
+  },
+  completionButtonTextSecondary: {
+    color: COLORS.textPrimary,
+    fontWeight: '600',
   },
 });
 

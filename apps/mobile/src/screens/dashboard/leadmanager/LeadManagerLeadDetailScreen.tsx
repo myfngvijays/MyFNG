@@ -15,6 +15,7 @@ import {
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
+import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
 
 export default function LeadManagerLeadDetailScreen({ navigation, route }: any) {
@@ -62,9 +63,56 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
   const [internalNotes, setInternalNotes] = useState('');
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [leadEvents, setLeadEvents] = useState<any[]>([]);
+  const [statusHistory, setStatusHistory] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
+  const [validationNotes, setValidationNotes] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const formatDate = (value: any) => {
+    if (!value) return null;
+    try {
+      return formatDateDMY(value);
+    } catch {
+      return null;
+    }
+  };
+
+  const formatTime = (value: any) => {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  };
+
+  const getPickupDateText = (l: any) =>
+    formatDate(l?.pickup_tracking?.pickup_time_window_start) ||
+    formatDate(l?.scheduled_pickup_date) ||
+    formatDate(l?.preferred_date) ||
+    formatDate(l?.preferred_slot_start);
+
+  const getPickupTimeText = (l: any) =>
+    l?.pickup_tracking?.pickup_time_slot ||
+    l?.scheduled_pickup_time ||
+    l?.preferred_time_slot ||
+    (formatTime(l?.preferred_slot_start) && formatTime(l?.preferred_slot_end)
+      ? `${formatTime(l?.preferred_slot_start)} - ${formatTime(l?.preferred_slot_end)}`
+      : null) ||
+    'Not scheduled';
+
+  const getDropDateText = (l: any) =>
+    formatDate(l?.pickup_tracking?.drop_assigned_at) ||
+    formatDate(l?.pickup_tracking?.drop_start_time) ||
+    formatDate(l?.scheduled_delivery_date);
+
+  const getDropTimeText = (l: any) =>
+    l?.pickup_tracking?.drop_time_slot ||
+    l?.scheduled_delivery_time ||
+    'Not scheduled';
 
   useEffect(() => {
     fetchLeadDetails();
+    fetchLeadHistory();
   }, []);
 
   // Handle hardware back button
@@ -89,8 +137,22 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
           *,
           workshop:workshops(name, phone, city, address),
           assigned_telecaller:assigned_telecaller_id(full_name, phone),
-          assigned_by_user:assigned_by(full_name),
-          city_info:city_id(name)
+          assigned_by_user:lead_manager_assigned_id(full_name),
+          city_info:city_id(name),
+          pickup_tracking:pickup_tracking!pickup_tracking_lead_id_fkey(
+            pickup_status,
+            pickup_time_slot,
+            pickup_time_window_start,
+            pickup_time_window_end,
+            pickup_address,
+            drop_status,
+            drop_time_slot,
+            drop_assigned_at,
+            drop_start_time,
+            drop_address
+          ),
+          created_by:users_login!created_by_id(id, full_name, email, phone),
+          validated_by:users_login!validated_by_id(id, full_name)
         `)
         .eq('id', leadId)
         .single();
@@ -150,9 +212,23 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
     }
   };
 
+  const fetchLeadHistory = async () => {
+    try {
+      setHistoryLoading(true);
+      const data = await apiFetch<{ status_history: any[] }>(`/api/audit/lead-history/${leadId}`);
+      setStatusHistory(Array.isArray(data?.status_history) ? data.status_history : []);
+    } catch (error) {
+      console.error('Error fetching lead history:', error);
+      setStatusHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchLeadDetails();
+    fetchLeadHistory();
   };
 
   const handleSave = async () => {
@@ -226,33 +302,46 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
     }
   };
 
+  const handleValidate = async (isValid: boolean) => {
+    if (!isValid && !validationNotes.trim()) {
+      Alert.alert('Missing Notes', 'Please provide validation notes when marking as incomplete.');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await apiFetch('/api/lead-manager/validate-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_id: leadId,
+          is_valid: isValid,
+          validation_notes: validationNotes.trim()
+        })
+      });
+      Alert.alert('Success', isValid ? 'Lead validated successfully' : 'Lead marked as incomplete');
+      setShowValidation(false);
+      setValidationNotes('');
+      fetchLeadDetails();
+      fetchLeadHistory();
+    } catch (error) {
+      console.error('Validation error:', error);
+      Alert.alert('Error', 'Failed to validate lead');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleMarkComplete = async () => {
     if (!editedData.customer_name || !editedData.customer_phone || !editedData.vehicle_model || !editedData.service_type) {
       Alert.alert('Incomplete', 'Please fill all required fields: Customer Name, Phone, Vehicle Model, Service Type');
       return;
     }
-
-    try {
-      const { error } = await supabase
-        .from('service_leads')
-        .update({
-          is_incomplete: false,
-          status: 'VALIDATED',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', leadId);
-
-      if (!error) {
-        Alert.alert('Success', 'Lead marked as complete and validated');
-        fetchLeadDetails();
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to mark complete');
-    }
+    handleValidate(true);
   };
 
   const handleAssignWorkshop = () => {
-    navigation.navigate('assignWorkshop', { leadId: lead.id });
+    const mode = lead?.workshop_id ? 'reassign' : 'assign';
+    navigation.navigate('LeadManagerAssignWorkshop', { leadId: lead.id, mode });
   };
 
   const handleSendToTelecaller = async () => {
@@ -339,6 +428,11 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
     );
   }
 
+  const canValidate = ['NEW', 'INCOMPLETE'].includes(lead.status);
+  const canAssignWorkshop =
+    lead.status === 'VALIDATED' ||
+    (lead.workshop_id && !['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].includes(lead.status));
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -384,6 +478,11 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
             </View>
           )}
         </View>
+        {lead.validated_at && (
+          <Text style={styles.validationInfo}>
+            Validated by {lead.validated_by?.full_name || 'Lead Manager'} on {formatDateTime(lead.validated_at)}
+          </Text>
+        )}
 
         {/* SLA Alert */}
         {(lead.sla_state === 'BREACHED' || lead.sla_state === 'AT_RISK') && (
@@ -399,15 +498,66 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
           </View>
         )}
 
+        {canValidate && (
+          <View style={styles.validationCard}>
+            <Text style={styles.validationTitle}>Validation Actions</Text>
+            <View style={styles.validationActions}>
+              <TouchableOpacity
+                style={[styles.validationButton, styles.validationSecondary]}
+                onPress={() => setShowValidation((prev) => !prev)}
+                disabled={actionLoading}
+              >
+                <Icon name="close-circle" size={18} color={COLORS.orange} />
+                <Text style={[styles.validationButtonText, { color: COLORS.orange }]}>Mark Incomplete</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.validationButton, styles.validationPrimary]}
+                onPress={() => handleValidate(true)}
+                disabled={actionLoading}
+              >
+                <Icon name="check-circle" size={18} color="#fff" />
+                <Text style={[styles.validationButtonText, { color: '#fff' }]}>
+                  {actionLoading ? 'Validating...' : 'Validate Lead'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {showValidation && (
+              <View style={styles.validationNotes}>
+                <Text style={styles.fieldLabel}>Validation Notes *</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={validationNotes}
+                  onChangeText={setValidationNotes}
+                  placeholder="Why is this lead incomplete?"
+                  placeholderTextColor={COLORS.textSecondary}
+                  multiline
+                  numberOfLines={3}
+                />
+                <TouchableOpacity
+                  style={styles.validationConfirm}
+                  onPress={() => handleValidate(false)}
+                  disabled={actionLoading || !validationNotes.trim()}
+                >
+                  <Text style={styles.validationConfirmText}>
+                    {actionLoading ? 'Submitting...' : 'Confirm Incomplete'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Quick Actions */}
         <View style={styles.quickActionsBar}>
-          {!lead.assigned_workshop_id && (
+          {canAssignWorkshop && (
             <TouchableOpacity style={styles.quickAction} onPress={handleAssignWorkshop}>
               <Icon name="account-arrow-right" size={20} color={COLORS.green} />
-              <Text style={styles.quickActionText}>Assign Workshop</Text>
+              <Text style={styles.quickActionText}>
+                {lead.workshop_id ? 'Change Workshop' : 'Assign Workshop'}
+              </Text>
             </TouchableOpacity>
           )}
-          
+
           {lead.is_incomplete && (
             <TouchableOpacity style={styles.quickAction} onPress={handleMarkComplete}>
               <Icon name="check-circle" size={20} color={COLORS.blue} />
@@ -686,6 +836,20 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
           </View>
         </View>
 
+        {/* Pickup/Drop Schedule */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Icon name="calendar" size={24} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Pickup & Delivery Schedule</Text>
+          </View>
+          <View style={styles.sectionContent}>
+            <InfoRow icon="calendar" label="Pickup Date" value={getPickupDateText(lead) || 'Not scheduled'} />
+            <InfoRow icon="clock" label="Pickup Time" value={getPickupTimeText(lead) || 'Not scheduled'} />
+            <InfoRow icon="calendar" label="Drop Date" value={getDropDateText(lead) || 'Not scheduled'} />
+            <InfoRow icon="clock" label="Drop Time" value={getDropTimeText(lead)} />
+          </View>
+        </View>
+
         {/* Workshop Section */}
         {lead.workshop && (
           <View style={styles.section}>
@@ -703,6 +867,34 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
             </View>
           </View>
         )}
+
+        {/* Status History */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Icon name="history" size={24} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Status Timeline</Text>
+          </View>
+          <View style={styles.sectionContent}>
+            {historyLoading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : statusHistory.length === 0 ? (
+              <Text style={styles.emptyTimeline}>No status history available</Text>
+            ) : (
+              statusHistory.map((item: any) => (
+                <View key={item.id || `${item.new_status}-${item.changed_at}`} style={styles.timelineItem}>
+                  <View style={styles.timelineHeader}>
+                    <Text style={styles.timelineStatus}>{item.new_status}</Text>
+                    <Text style={styles.timelineTime}>
+                      {item.changed_at ? formatDateTime(item.changed_at) : '—'}
+                    </Text>
+                  </View>
+                  {item.reason && <Text style={styles.timelineMeta}>Reason: {item.reason}</Text>}
+                  {item.notes && <Text style={styles.timelineMeta}>Notes: {item.notes}</Text>}
+                </View>
+              ))
+            )}
+          </View>
+        </View>
 
         {/* Call Logs Section */}
         {callLogs.length > 0 && (
@@ -739,6 +931,16 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
             <Text style={styles.sectionTitle}>Internal Notes (Lead Manager Only)</Text>
           </View>
           <View style={styles.sectionContent}>
+            {(lead.validation_notes || lead.internal_notes) && (
+              <View style={styles.notesBanner}>
+                {lead.validation_notes && (
+                  <Text style={styles.notesText}>Validation Notes: {lead.validation_notes}</Text>
+                )}
+                {lead.internal_notes && (
+                  <Text style={styles.notesText}>Internal Notes: {lead.internal_notes}</Text>
+                )}
+              </View>
+            )}
             <TextInput
               style={[styles.input, styles.textArea]}
               value={internalNotes}
@@ -815,7 +1017,9 @@ function InfoRow({ icon, label, value }: InfoRowProps) {
 function getStatusColor(status: string): string {
   switch (status) {
     case 'NEW': return COLORS.blue;
-    case 'ASSIGNED': return COLORS.indigo;
+    case 'VALIDATED': return COLORS.green;
+    case 'INCOMPLETE': return COLORS.orange;
+    case 'ASSIGNED_TO_WORKSHOP': return COLORS.indigo;
     case 'ACCEPTED': return COLORS.green;
     case 'REJECTED': return COLORS.red;
     case 'IN_PROGRESS': return COLORS.orange;
@@ -825,9 +1029,12 @@ function getStatusColor(status: string): string {
 
 function getPriorityColor(priority: string): string {
   switch (priority) {
+    case 'CRITICAL': return COLORS.red;
     case 'URGENT': return COLORS.red;
     case 'HIGH': return COLORS.orange;
+    case 'MEDIUM':
     case 'NORMAL': return COLORS.blue;
+    case 'LOW': return COLORS.gray[500];
     default: return COLORS.gray[500];
   }
 }
@@ -1129,6 +1336,106 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontSize: 16,
     fontWeight: '600',
+  },
+  validationInfo: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  validationCard: {
+    backgroundColor: '#fff',
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+    borderRadius: 12,
+    padding: SPACING.md,
+    elevation: 2,
+  },
+  validationTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.sm,
+  },
+  validationActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  validationButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    borderRadius: 10,
+    gap: SPACING.xs,
+  },
+  validationPrimary: {
+    backgroundColor: COLORS.primary,
+  },
+  validationSecondary: {
+    backgroundColor: COLORS.orange + '15',
+  },
+  validationButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  validationNotes: {
+    marginTop: SPACING.md,
+  },
+  validationConfirm: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.orange,
+    borderRadius: 10,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+  },
+  validationConfirmText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  notesBanner: {
+    backgroundColor: COLORS.orange + '10',
+    borderRadius: 10,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  notesText: {
+    fontSize: 12,
+    color: COLORS.orange,
+    marginBottom: 4,
+  },
+  timelineItem: {
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  timelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  timelineStatus: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  timelineTime: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+  },
+  timelineMeta: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  emptyTimeline: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingVertical: SPACING.sm,
   },
 });
 

@@ -428,7 +428,7 @@ export default function MechanicJobDetailScreen() {
 
         <TouchableOpacity
           style={[styles.button, styles.extraWorkButton]}
-          onPress={() => navigation.navigate('MechanicExtraWorkRequest', { jobId: job.lead_id })}
+          onPress={() => navigation.navigate('MechanicExtraWorkRequest', { leadId: job.lead_id })}
         >
           <Text style={styles.buttonText}>⚠️ Request Additional Job</Text>
         </TouchableOpacity>

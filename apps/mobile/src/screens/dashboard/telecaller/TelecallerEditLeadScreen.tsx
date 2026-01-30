@@ -47,6 +47,7 @@ export default function TelecallerEditLeadScreen() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [formData, setFormData] = useState<FormData>({
     customer_name: '',
     customer_phone: '',
@@ -105,6 +106,11 @@ export default function TelecallerEditLeadScreen() {
       .single();
 
     if (error) throw error;
+
+    if (!['NEW', 'CONTACTED', 'INCOMPLETE'].includes(String(data.status || ''))) {
+      setErrorMessage(`Cannot edit lead with status: ${data.status}`);
+      return;
+    }
 
     // Parse service_type_ids and subservice_ids from JSONB strings
     let serviceTypeIds: string[] = [];
@@ -205,8 +211,8 @@ export default function TelecallerEditLeadScreen() {
 
   const fetchServiceAddons = async () => {
     const { data, error } = await supabase
-      .from('subservices')
-      .select('*')
+      .from('service_addons')
+      .select('id, name, price')
       .eq('is_active', true)
       .order('name');
 
@@ -352,6 +358,17 @@ export default function TelecallerEditLeadScreen() {
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#FF6B00" />
         <Text style={styles.loadingText}>Loading lead...</Text>
+      </View>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.errorText}>{errorMessage}</Text>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.primaryButtonText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -656,6 +673,17 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     color: '#6B7280',
+  },
+  primaryButton: {
+    marginTop: 16,
+    backgroundColor: '#FF6B00',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',

@@ -1459,7 +1459,7 @@ export default function MechanicJobDetailPage() {
                 <button 
                   onClick={() => {
                     if (!job.checklist_completed) {
-                      alert('Please complete all PDI checklist items before marking job as complete.');
+                      alert('Please complete all checklist items before marking job as complete.');
                       setActiveTab('checklist');
                     } else if (job.after_images_count < job.min_after_images) {
                       alert(`Please upload all required after service photos (${job.min_after_images} required, ${job.after_images_count} uploaded). Go to Manage tab to upload photos.`);
@@ -1480,7 +1480,7 @@ export default function MechanicJobDetailPage() {
                   <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span className="hidden sm:inline">
                     {!job.checklist_completed 
-                      ? 'Complete PDI Checklist First'
+                      ? 'Complete Checklist First'
                       : job.after_images_count < job.min_after_images
                       ? `Complete (${job.after_images_count}/${job.min_after_images} photos)`
                       : 'Mark Completed'}
@@ -1524,7 +1524,7 @@ export default function MechanicJobDetailPage() {
           <div className="flex gap-2 sm:gap-3 md:gap-4 min-w-max">
             {([
               { key: 'overview', label: 'Overview' },
-              { key: 'checklist', label: 'PDI Checklist' },
+              { key: 'checklist', label: 'Checklist' },
               { key: 'media', label: 'Media' },
               { key: 'parts', label: 'Parts' },
               { key: 'notes', label: 'Notes' },
@@ -1685,7 +1685,7 @@ export default function MechanicJobDetailPage() {
                     : 'bg-purple-50 border-purple-300'
                 }`}>
                   <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 mx-auto mb-1.5 sm:mb-2 text-purple-600" />
-                  <p className="text-xs sm:text-sm text-gray-600">PDI Checklist</p>
+                  <p className="text-xs sm:text-sm text-gray-600">Checklist</p>
                   <p className={`text-xl sm:text-2xl font-bold ${
                     job.checklist_completed ? 'text-green-700' : 'text-red-700'
                   }`}>
@@ -1776,9 +1776,9 @@ export default function MechanicJobDetailPage() {
                             <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-xs sm:text-sm flex-shrink-0 mt-0.5">1</span>
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-800 text-xs sm:text-sm">Complete PDI Checklist</p>
+                            <p className="font-semibold text-gray-800 text-xs sm:text-sm">Complete Checklist</p>
                             <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
-                              All PDI checklist items must be marked as completed
+                              All checklist items must be marked as completed
                             </p>
                           </div>
                         </div>
@@ -1787,7 +1787,7 @@ export default function MechanicJobDetailPage() {
                             onClick={() => setActiveTab('checklist')}
                             className="btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 cursor-pointer w-full sm:w-auto"
                           >
-                            View PDI Checklist
+                            View Checklist
                           </button>
                         )}
                       </div>
@@ -1838,13 +1838,13 @@ export default function MechanicJobDetailPage() {
         {activeTab === 'checklist' && (
           <div className="card p-3 sm:p-4 md:p-5">
             <div className="flex items-center justify-between mb-3 sm:mb-4">
-              <h2 className="text-lg sm:text-xl font-bold">PDI Checklist</h2>
+              <h2 className="text-lg sm:text-xl font-bold">Checklist</h2>
             </div>
             
             {checklist.length === 0 ? (
               <div className="text-center py-6 sm:py-8 text-gray-500">
-                <p className="mb-2 sm:mb-4 text-xs sm:text-sm">No PDI checklist available for this job.</p>
-                <p className="text-xs sm:text-sm">PDI Checklist will be automatically generated when a mechanic is assigned.</p>
+                <p className="mb-2 sm:mb-4 text-xs sm:text-sm">No checklist available for this job.</p>
+                <p className="text-xs sm:text-sm">Checklist will be automatically generated when a mechanic is assigned.</p>
               </div>
             ) : (
               /* Group by category if categories exist */

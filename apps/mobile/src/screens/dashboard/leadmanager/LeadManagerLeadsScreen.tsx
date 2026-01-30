@@ -71,7 +71,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
       // Apply filters
       switch (activeFilter) {
         case 'NEW':
-          query = query.eq('status', 'NEW').is('assigned_workshop_id', null);
+          query = query.eq('status', 'NEW').is('workshop_id', null);
           break;
         case 'INCOMPLETE':
           query = query.eq('is_incomplete', true);
@@ -79,7 +79,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
         case 'NEED_ASSIGNMENT':
           query = query
             .in('status', ['NEW', 'VALIDATED'])
-            .is('assigned_workshop_id', null)
+            .is('workshop_id', null)
             .eq('is_incomplete', false);
           break;
         case 'WORKSHOP_REJECTED':
@@ -154,7 +154,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
         navigation.navigate('LeadManagerLeadDetail', { leadId: lead.id });
         break;
       case 'ASSIGN':
-        navigation.navigate('assignWorkshop', { leadId: lead.id });
+        navigation.navigate('LeadManagerAssignWorkshop', { leadId: lead.id });
         break;
       case 'COMPLETE':
         handleCompleteInformation(lead);
@@ -211,7 +211,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
   };
 
   const handleReassign = async (lead: any) => {
-    navigation.navigate('assignWorkshop', { leadId: lead.id, mode: 'reassign' });
+    navigation.navigate('LeadManagerAssignWorkshop', { leadId: lead.id, mode: 'reassign' });
   };
 
   const handleEscalate = async (lead: any) => {
@@ -309,6 +309,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
     const slaColor = getSLAColor(item);
     const priorityColor = getPriorityColor(item.lead_priority || 'NORMAL');
     const statusColor = getStatusColor(item.status);
+    const canAssign = item.status === 'VALIDATED' || item.status === 'ASSIGNED_TO_WORKSHOP';
 
     return (
       <TouchableOpacity
@@ -398,7 +399,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
             <Text style={styles.quickActionText}>View</Text>
           </TouchableOpacity>
 
-          {!item.assigned_workshop_id && (
+          {!item.workshop_id && canAssign && (
             <TouchableOpacity
               style={styles.quickActionBtn}
               onPress={() => handleLeadAction(item, 'ASSIGN')}
@@ -578,7 +579,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
               <Text style={styles.modalActionText}>Send to Telecaller</Text>
             </TouchableOpacity>
 
-            {selectedLead?.assigned_workshop_id && (
+            {selectedLead?.workshop_id && (
               <TouchableOpacity
                 style={styles.modalAction}
                 onPress={() => handleLeadAction(selectedLead, 'REASSIGN')}

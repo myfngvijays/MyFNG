@@ -114,7 +114,7 @@ export default function LeadManagerEscalationsScreen({ navigation }: any) {
   const getEscalationReason = (lead: any) => {
     if (lead.sla_state === 'BREACHED') return 'SLA Breached';
     if (lead.status === 'REJECTED') return 'Workshop Rejected';
-    if (!lead.assigned_workshop_id && lead.reopen_count > 0) return 'Reopened Lead';
+    if (!lead.workshop_id && lead.reopen_count > 0) return 'Reopened Lead';
     if (lead.lead_priority === 'URGENT') return 'Urgent Priority';
     return 'Customer Complaint';
   };

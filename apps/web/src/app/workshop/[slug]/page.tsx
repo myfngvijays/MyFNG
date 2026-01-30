@@ -3,24 +3,92 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { ArrowRight, Clock, MapPin, Phone, Star } from 'lucide-react';
+import { ArrowRight, Clock, MapPin, MessageCircle, Phone, Star } from 'lucide-react';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
-import type { ContactLink } from '@/components/workshop/types';
+import WorkshopBrandsRow from '@/components/workshop/WorkshopBrandsRow';
+import WorkshopFaqs from '@/components/workshop/WorkshopFaqs';
+import WorkshopPackages from '@/components/workshop/WorkshopPackages';
+import type {
+  ContactLink,
+  Workshop,
+  WorkshopPublicPage,
+} from '@/components/workshop/types';
 
 export default function WorkshopPublicPage() {
   const params = useParams();
   const slug = params?.slug as string;
-  const [page, setPage] = useState<any>(null);
-  const [workshop, setWorkshop] = useState<any>(null);
+  const [page, setPage] = useState<WorkshopPublicPage | null>(null);
+  const [workshop, setWorkshop] = useState<Workshop | null>(null);
   const [loading, setLoading] = useState(true);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [qrValue, setQrValue] = useState('');
+  const [fallbackBrands, setFallbackBrands] = useState<{ name: string; logo_url: string }[]>([]);
+
+  const defaultFaqs = [
+    {
+      question: 'How does AI-powered booking work?',
+      answer:
+        'Simply chat with our AI assistant, provide your vehicle details, and get instant transparent pricing. Book your service directly without any employee interaction.',
+    },
+    {
+      question: 'Is the pricing really transparent?',
+      answer:
+        'Yes! Our AI shows you exactly what you will pay upfront. No hidden charges, no surprises. You see the complete breakdown before booking.',
+    },
+    {
+      question: 'How long does a typical service take?',
+      answer:
+        'Service duration varies by type. Basic service takes 2-3 hours, premium service takes 4-5 hours, and comprehensive service takes 6-8 hours.',
+    },
+    {
+      question: 'Do you provide warranty on services?',
+      answer:
+        'Yes, all our services come with warranty. Labour warranty is typically 1 month or 1,000 km, and parts warranty varies by component.',
+    },
+    {
+      question: 'Can I track my service in real-time?',
+      answer: 'You will receive service updates, including photos and videos, after the car service is completed.',
+    },
+    {
+      question: 'What car brands do you service?',
+      answer:
+        'We service all major car brands including Maruti Suzuki, Hyundai, Tata, Mahindra, Honda, Toyota, Ford, Volkswagen, BMW, Mercedes-Benz, Audi, and many more.',
+    },
+  ];
 
   useEffect(() => {
     if (slug) {
       fetchWorkshopPage();
     }
   }, [slug]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setQrValue(window.location.href);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!page || (Array.isArray(page.brands) && page.brands.length > 0)) return;
+
+    async function fetchFallbackBrands() {
+      try {
+        const response = await fetch('/api/super_admin/car-brands?active_only=true');
+        if (!response.ok) return;
+        const result = await response.json();
+        const brands = (result.data || []).map((brand: any) => ({
+          name: brand.name,
+          logo_url: brand.logo_url,
+        }));
+        setFallbackBrands(brands);
+      } catch {
+        setFallbackBrands([]);
+      }
+    }
+
+    fetchFallbackBrands();
+  }, [page]);
 
   const fetchWorkshopPage = async () => {
     try {
@@ -39,8 +107,8 @@ export default function WorkshopPublicPage() {
       if (error) throw error;
 
       if (data) {
-        setPage(data);
-        setWorkshop(data.workshop);
+        setPage(data as WorkshopPublicPage);
+        setWorkshop(data.workshop as Workshop);
 
         // Update view count
         await supabase
@@ -85,10 +153,21 @@ export default function WorkshopPublicPage() {
   const services: string[] = Array.isArray(page.services_offered) ? page.services_offered : [];
   const galleryImages = Array.isArray(page.gallery_images) ? page.gallery_images : [];
   const businessHours = page.business_hours || {};
+  const brands = Array.isArray(page.brands) && page.brands.length ? page.brands : fallbackBrands;
+  const packages = Array.isArray(page.packages) ? page.packages : [];
+  const faqs = Array.isArray(page.faqs) && page.faqs.length ? page.faqs : defaultFaqs;
+
+  const sanitizePhone = (value?: string | null) => (value || '').replace(/[^\d+]/g, '');
+  const whatsappNumber = page.whatsapp_number ? sanitizePhone(page.whatsapp_number) : '';
+  const callNumber = page.alternate_phone ? sanitizePhone(page.alternate_phone) : whatsappNumber;
 
   const contactLinks: ContactLink[] = [
-    { href: 'tel:+919167779696', label: '+91 9167779696', icon: Phone, className: 'text-blue-700' },
-    { href: 'tel:+919152307030', label: '+91 9152307030', icon: Phone, className: 'text-blue-700' },
+    ...(callNumber
+      ? [{ href: `tel:${callNumber}`, label: callNumber, icon: Phone, className: 'text-blue-700' }]
+      : []),
+    ...(whatsappNumber
+      ? [{ href: `https://wa.me/${whatsappNumber}`, label: whatsappNumber, icon: MessageCircle, className: 'text-green-600' }]
+      : []),
   ];
 
   const serviceTags: string[] = services;
@@ -96,9 +175,12 @@ export default function WorkshopPublicPage() {
   const hoursEntries = Object.entries(businessHours || {}).filter(([, value]) => Boolean(value));
   const primaryHours = hoursEntries.length ? `${hoursEntries[0][0]}: ${hoursEntries[0][1]}` : null;
 
+  const auditScore = typeof workshop.audit_score === 'number' ? workshop.audit_score : null;
+  const roundedAuditScore = auditScore ? Math.round(auditScore) : 0;
+
   const stats = [
     { label: 'Page Views', value: page.views_count ?? 0 },
-    { label: 'Audit Score', value: workshop.audit_score ? `${workshop.audit_score}/5` : '—' },
+    { label: 'Audit Score', value: auditScore ? `${auditScore}/5` : '—' },
     { label: 'Services', value: services.length },
     { label: 'Gallery Images', value: galleryImages.length },
   ];
@@ -142,41 +224,42 @@ export default function WorkshopPublicPage() {
             <span className="font-semibold text-gray-700">{workshop.name}</span>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-8">
-              <div className="relative overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
-                <img
-                  src={page.cover_image || 'https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&fit=crop&q=80&w=1600'}
-                  alt={workshop.name || 'Workshop cover'}
-                  className="h-[320px] sm:h-[380px] lg:h-[420px] w-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
-                <div className="absolute inset-0 p-6 sm:p-8 lg:p-10 text-white">
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight">
-                    {workshop.name} <br />
-                    Car Service in <br />
-                    {workshop.city || 'Mumbai'}
-                  </h1>
-                  <div className="mt-3 flex items-center gap-2 text-sm">
-                    {workshop.audit_score ? (
-                      <span className="px-2 py-1 rounded-full bg-yellow-400 text-black font-semibold">
-                        {workshop.audit_score}★ Rated
-                      </span>
-                    ) : null}
-                    {page.views_count ? <span className="text-white/90">| {page.views_count} Page Views</span> : null}
-                  </div>
-                  {page.short_description ? (
-                    <p className="mt-3 text-sm sm:text-base text-white/90">{page.short_description}</p>
+          <div className="relative">
+            <div className="relative overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
+              <img
+                src={page.cover_image || 'https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&fit=crop&q=80&w=1600'}
+                alt={workshop.name || 'Workshop cover'}
+                className="h-[320px] sm:h-[380px] lg:h-[420px] w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
+              <div className="absolute inset-0 p-6 sm:p-8 lg:p-10 text-white">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight">
+                  Get Honest <br />
+                  Car Service in <br />
+                  {workshop.city || workshop.state || 'Your City'}
+                </h1>
+                <p className="mt-3 text-base sm:text-lg font-semibold text-white/90">
+                  {workshop.name || 'MyFNG Workshop'}
+                </p>
+                <div className="mt-3 flex items-center gap-2 text-sm">
+                  {workshop.audit_score ? (
+                    <span className="px-2 py-1 rounded-full bg-yellow-400 text-black font-semibold">
+                      {workshop.audit_score}★ Rated
+                    </span>
                   ) : null}
-                  <button className="mt-5 inline-flex items-center gap-2 rounded-full bg-yellow-400 px-5 py-2 text-sm font-semibold text-black">
-                    Book Now
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
+                  {page.views_count ? <span className="text-white/90">| {page.views_count} Page Views</span> : null}
                 </div>
+                {page.short_description ? (
+                  <p className="mt-3 text-sm sm:text-base text-white/90">{page.short_description}</p>
+                ) : null}
+                <button className="mt-5 inline-flex items-center gap-2 rounded-full bg-yellow-400 px-5 py-2 text-sm font-semibold text-black">
+                  Book Now
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               </div>
             </div>
 
-            <div className="lg:col-span-4">
+            <div className="lg:absolute lg:top-6 lg:right-6 lg:w-[360px] mt-4 lg:mt-0">
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 sm:p-6">
                 <h3 className="text-base font-semibold text-gray-900 mb-4">Book Appointment</h3>
                 <div className="space-y-3">
@@ -206,10 +289,10 @@ export default function WorkshopPublicPage() {
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-900">{workshop.name}</h2>
                 {workshop.audit_score ? (
                   <div className="flex items-center gap-1 text-yellow-500">
-                    {Array.from({ length: Math.round(workshop.audit_score) }).map((_, idx) => (
+                    {Array.from({ length: roundedAuditScore }).map((_, idx) => (
                       <Star key={idx} className="w-4 h-4 fill-yellow-500" />
                     ))}
-                    <span className="text-sm text-gray-500">{workshop.audit_score}/5</span>
+                    <span className="text-sm text-gray-500">{auditScore}/5</span>
                   </div>
                 ) : null}
                 {primaryHours ? <span className="text-xs font-semibold text-green-600">Open Now</span> : null}
@@ -227,9 +310,19 @@ export default function WorkshopPublicPage() {
                 <a className="rounded-lg bg-blue-700 text-white text-sm px-4 py-2" href={page.google_maps_url || '#'}>
                   Directions
                 </a>
-                <a className="rounded-lg border border-blue-700 text-blue-700 text-sm px-4 py-2" href={contactLinks[0]?.href}>
+                {whatsappNumber ? (
+                  <a
+                    className="rounded-lg border border-green-600 text-green-700 text-sm px-4 py-2"
+                    href={`https://wa.me/${whatsappNumber}`}
+                  >
+                    WhatsApp
+                  </a>
+                ) : null}
+                {callNumber ? (
+                  <a className="rounded-lg border border-blue-700 text-blue-700 text-sm px-4 py-2" href={`tel:${callNumber}`}>
                   Call Store
-                </a>
+                  </a>
+                ) : null}
                 <a className="rounded-lg border border-gray-300 text-gray-700 text-sm px-4 py-2" href="/book-service">
                   Book Now
                 </a>
@@ -242,6 +335,23 @@ export default function WorkshopPublicPage() {
               <div className="flex gap-3">
                 <button className="rounded-lg bg-black text-white px-4 py-2 text-xs">App Store</button>
                 <button className="rounded-lg bg-black text-white px-4 py-2 text-xs">Google Play</button>
+              </div>
+              <div className="mt-4 flex items-center gap-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                {qrValue ? (
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrValue)}`}
+                    alt="Scan to open this workshop page"
+                    className="h-20 w-20 rounded-lg bg-white p-2"
+                  />
+                ) : (
+                  <div className="h-20 w-20 rounded-lg border border-dashed border-gray-300 bg-white text-[10px] text-gray-400 flex items-center justify-center">
+                    QR
+                  </div>
+                )}
+                <div className="text-xs text-gray-600">
+                  <p className="font-semibold text-gray-900">Scan & Download</p>
+                  <p>Get the MyFNG app instantly.</p>
+                </div>
               </div>
             </div>
           </div>
@@ -264,7 +374,7 @@ export default function WorkshopPublicPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Phone className="w-4 h-4 text-gray-500" />
-                  <span>{contactLinks[0]?.label}</span>
+                  <span>{callNumber || '—'}</span>
                 </div>
                 {primaryHours ? (
                   <div className="flex items-center gap-3">
@@ -299,11 +409,11 @@ export default function WorkshopPublicPage() {
               </div>
             </div>
 
-            {workshop.audit_score ? (
+            {auditScore ? (
               <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-5 sm:p-6">
                 <h3 className="text-base font-semibold text-gray-900 mb-4">Ratings</h3>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="text-3xl font-bold">{workshop.audit_score}</div>
+                  <div className="text-3xl font-bold">{auditScore}</div>
                   <div className="text-sm text-gray-500">Audit Score</div>
                 </div>
                 <div className="space-y-2">
@@ -313,7 +423,7 @@ export default function WorkshopPublicPage() {
                       <div className="h-2 flex-1 bg-gray-100 rounded-full">
                         <div
                           className={`h-2 rounded-full ${
-                            star <= Math.round(workshop.audit_score) ? 'w-3/5 bg-yellow-400' : 'w-1/5 bg-gray-300'
+                            star <= roundedAuditScore ? 'w-3/5 bg-yellow-400' : 'w-1/5 bg-gray-300'
                           }`}
                         />
                       </div>
@@ -354,6 +464,10 @@ export default function WorkshopPublicPage() {
             </div>
           </div>
 
+          <WorkshopBrandsRow brands={brands} />
+
+          <WorkshopPackages packages={packages} />
+
           {services.length ? (
             <div className="mt-8 bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Our Services</h3>
@@ -367,6 +481,8 @@ export default function WorkshopPublicPage() {
               </div>
             </div>
           ) : null}
+
+          <WorkshopFaqs faqs={faqs} />
         </div>
       </section>
 

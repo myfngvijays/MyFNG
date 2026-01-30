@@ -41,6 +41,7 @@ export default function TelecallerProfileScreen({ navigation }: any) {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [department, setDepartment] = useState('');
+  const [profileImage, setProfileImage] = useState('');
 
   useEffect(() => {
     fetchProfile();
@@ -86,6 +87,7 @@ export default function TelecallerProfileScreen({ navigation }: any) {
         setFullName(profileData.full_name || '');
         setPhone(profileData.phone || '');
         setDepartment(profileData.department || '');
+        setProfileImage(profileData.profile_image || '');
       }
     } catch (error) {
       console.error('Error:', error);
@@ -111,6 +113,7 @@ export default function TelecallerProfileScreen({ navigation }: any) {
           full_name: fullName,
           phone: phone,
           department: department,
+          profile_image: profileImage || null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
@@ -136,6 +139,7 @@ export default function TelecallerProfileScreen({ navigation }: any) {
       setFullName(profile.full_name || '');
       setPhone(profile.phone || '');
       setDepartment(profile.department || '');
+      setProfileImage(profile.profile_image || '');
     }
     setIsEditing(false);
   };
@@ -246,6 +250,22 @@ export default function TelecallerProfileScreen({ navigation }: any) {
             />
           ) : (
             <Text style={styles.fieldValue}>{profile.full_name}</Text>
+          )}
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>Profile Image URL</Text>
+          {isEditing ? (
+            <TextInput
+              style={styles.input}
+              value={profileImage}
+              onChangeText={setProfileImage}
+              placeholder="https://example.com/avatar.jpg"
+              placeholderTextColor={COLORS.textSecondary}
+              autoCapitalize="none"
+            />
+          ) : (
+            <Text style={styles.fieldValue}>{profile.profile_image || 'Not set'}</Text>
           )}
         </View>
 

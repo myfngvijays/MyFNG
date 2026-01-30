@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,49 +7,44 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Dimensions
+  TextInput,
+  Dimensions,
 } from 'react-native';
-// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../components/Icon';
 import { supabase } from '../../lib/supabase';
+import { apiFetch } from '../../lib/api';
 import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';
-import LeadManagerLeadsScreen from './leadmanager/LeadManagerLeadsScreen';
-import LeadManagerLeadDetailScreen from './leadmanager/LeadManagerLeadDetailScreen';
-import LeadManagerAssignWorkshopScreen from './leadmanager/LeadManagerAssignWorkshopScreen';
-import LeadManagerEscalationsScreen from './leadmanager/LeadManagerEscalationsScreen';
 import { COLORS, SPACING } from '../../constants/theme';
+import { formatDateDMY } from '@/lib/dateFormat';
 
 const { width } = Dimensions.get('window');
 
-export default function LeadManagerDashboard() {
+const SUMMARY_DEFAULT = {
+  total_pending: 0,
+  new_leads: 0,
+  incomplete_leads: 0,
+  validated_leads: 0,
+};
+
+type DashboardFilter = 'all' | 'new' | 'validated';
+
+export default function LeadManagerDashboard({ navigation }: any) {
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [currentScreen, setCurrentScreen] = useState('dashboard');
-  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
-  const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
-  const [stats, setStats] = useState({
-    newLeads: 0,
-    incompleteLeads: 0,
-    pendingAssignment: 0,
-    awaitingAcceptance: 0,
-    slaAtRisk: 0,
-    slaBreached: 0,
-    workshopRejected: 0,
-    reopenedLeads: 0,
-    telecallerPending: 0,
-    pickupPending: 0,
-    totalLeads: 0,
-    assignmentAccuracy: 0,
-    avgAssignmentTime: 0
-  });
+  const [filter, setFilter] = useState<DashboardFilter>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [summary, setSummary] = useState(SUMMARY_DEFAULT);
+  const [leads, setLeads] = useState<any[]>([]);
 
   useEffect(() => {
     fetchUserProfile();
-    fetchDashboardData();
   }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [filter]);
 
   const fetchUserProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -65,118 +60,13 @@ export default function LeadManagerDashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const now = new Date().toISOString();
-      const today = new Date().toISOString().split('T')[0];
-
-      // Fetch all stats in parallel
-      const [
-        newLeadsResult,
-        incompleteResult,
-        pendingAssignmentResult,
-        awaitingAcceptanceResult,
-        slaAtRiskResult,
-        slaBreachedResult,
-        rejectedResult,
-        reopenedResult,
-        telecallerPendingResult,
-        pickupPendingResult,
-        totalLeadsResult
-      ] = await Promise.all([
-        // New unassigned leads
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'NEW')
-          .is('assigned_workshop_id', null),
-
-        // Incomplete leads
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_incomplete', true),
-
-        // Pending assignment (validated but not assigned)
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .in('status', ['NEW', 'VALIDATED'])
-          .is('assigned_workshop_id', null)
-          .eq('is_incomplete', false),
-
-        // Awaiting workshop acceptance
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'ASSIGNED')
-          .not('assigned_workshop_id', 'is', null),
-
-        // SLA at risk (approaching deadline)
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('sla_state', 'AT_RISK')
-          .not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)'),
-
-        // SLA breached
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('sla_state', 'BREACHED')
-          .not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)'),
-
-        // Workshop rejected
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'REJECTED'),
-
-        // Reopened leads
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .gt('reopen_count', 0)
-          .not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)'),
-
-        // Telecaller pending follow-up
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('follow_up_required', true)
-          .not('assigned_telecaller_id', 'is', null),
-
-        // Pickup pending
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('pickup_required', true)
-          .eq('pickup_status', 'PENDING'),
-
-        // Total active leads
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)')
-      ]);
-
-      setStats({
-        newLeads: newLeadsResult.count || 0,
-        incompleteLeads: incompleteResult.count || 0,
-        pendingAssignment: pendingAssignmentResult.count || 0,
-        awaitingAcceptance: awaitingAcceptanceResult.count || 0,
-        slaAtRisk: slaAtRiskResult.count || 0,
-        slaBreached: slaBreachedResult.count || 0,
-        workshopRejected: rejectedResult.count || 0,
-        reopenedLeads: reopenedResult.count || 0,
-        telecallerPending: telecallerPendingResult.count || 0,
-        pickupPending: pickupPendingResult.count || 0,
-        totalLeads: totalLeadsResult.count || 0,
-        assignmentAccuracy: 94, // Calculate from historical data
-        avgAssignmentTime: 12 // Calculate average in minutes
-      });
-
+      const data = await apiFetch<{ success: boolean; leads: any[]; summary: typeof SUMMARY_DEFAULT }>(
+        `/api/lead-manager/pending-leads?status=${filter}&limit=50`
+      );
+      if (data?.success) {
+        setLeads(data.leads || []);
+        setSummary({ ...SUMMARY_DEFAULT, ...(data.summary || {}) });
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -194,46 +84,75 @@ export default function LeadManagerDashboard() {
     await supabase.auth.signOut();
   };
 
-  const handleFilterClick = (filter: string) => {
-    setSelectedFilter(filter);
-    setCurrentScreen('leads');
-  };
+  const filteredLeads = useMemo(() => {
+    if (!searchTerm.trim()) return leads;
+    const term = searchTerm.toLowerCase();
+    return leads.filter((lead) =>
+      lead.customer_name?.toLowerCase().includes(term) ||
+      lead.customer_phone?.includes(term) ||
+      lead.vehicle_number?.toLowerCase().includes(term) ||
+      lead.lead_number?.toLowerCase().includes(term)
+    );
+  }, [leads, searchTerm]);
 
-  // Simple navigation object
-  const navigation = {
-    navigate: (screen: string, params?: any) => {
-      setCurrentScreen(screen);
-      if (params?.leadId) {
-        setSelectedLeadId(params.leadId);
-      }
-      if (params?.filter) {
-        setSelectedFilter(params.filter);
-      }
-    },
-    goBack: () => {
-      setCurrentScreen('dashboard');
-      setSelectedLeadId(null);
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'NEW': return COLORS.blue;
+      case 'INCOMPLETE': return COLORS.orange;
+      case 'VALIDATED': return COLORS.green;
+      default: return COLORS.gray[500];
     }
   };
 
-  // Render different screens based on currentScreen state
-  if (currentScreen === 'leads') {
-    return <LeadManagerLeadsScreen navigation={navigation} route={{ params: { filter: selectedFilter } }} />;
-  }
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'CRITICAL': return COLORS.red;
+      case 'URGENT': return COLORS.red;
+      case 'HIGH': return COLORS.orange;
+      case 'MEDIUM': return COLORS.blue;
+      case 'LOW': return COLORS.gray[500];
+      default: return COLORS.blue;
+    }
+  };
 
-  if (currentScreen === 'LeadManagerLeadDetail' && selectedLeadId) {
-    return <LeadManagerLeadDetailScreen navigation={navigation} route={{ params: { leadId: selectedLeadId } }} />;
-  }
+  const renderLeadCard = (lead: any) => {
+    const statusColor = getStatusColor(lead.status);
+    const priority = lead.priority || lead.lead_priority || 'MEDIUM';
+    const priorityColor = getPriorityColor(priority);
+    return (
+      <TouchableOpacity
+        key={lead.id}
+        style={styles.leadCard}
+        onPress={() => navigation.navigate('LeadManagerLeadDetail', { leadId: lead.id })}
+      >
+        <View style={styles.leadHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.leadNumber}>#{lead.lead_number}</Text>
+            <Text style={styles.leadName}>{lead.customer_name}</Text>
+            <Text style={styles.leadPhone}>{lead.customer_phone}</Text>
+          </View>
+          <View style={styles.badges}>
+            <View style={[styles.badge, { backgroundColor: statusColor + '20' }]}>
+              <Text style={[styles.badgeText, { color: statusColor }]}>{lead.status}</Text>
+            </View>
+            <View style={[styles.badge, { backgroundColor: priorityColor + '20' }]}>
+              <Text style={[styles.badgeText, { color: priorityColor }]}>{priority}</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.leadMeta}>
+          <Text style={styles.metaText}>Vehicle: {lead.model?.make || lead.vehicle_make} {lead.model?.model_name || lead.vehicle_model}</Text>
+          <Text style={styles.metaText}>City: {lead.city?.name || lead.city || 'N/A'}</Text>
+          <Text style={styles.metaText}>Created: {formatDateDMY(lead.created_at)}</Text>
+        </View>
+        <View style={styles.reviewRow}>
+          <Text style={styles.reviewText}>Review Lead</Text>
+          <Icon name="chevron-right" size={16} color={COLORS.primary} />
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
-  if (currentScreen === 'assignWorkshop' && selectedLeadId) {
-    return <LeadManagerAssignWorkshopScreen navigation={navigation} route={{ params: { leadId: selectedLeadId } }} />;
-  }
-
-  if (currentScreen === 'escalations') {
-    return <LeadManagerEscalationsScreen navigation={navigation} />;
-  }
-
-  // Main Dashboard Screen
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -250,167 +169,36 @@ export default function LeadManagerDashboard() {
         userProfile={userProfile}
         onLogout={handleLogout}
       />
-      
+
       <ScrollView
         style={styles.content}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
       >
-        {/* Critical Alerts Section */}
-        {(stats.slaBreached > 0 || stats.workshopRejected > 0 || stats.slaAtRisk > 0) && (
-          <View style={styles.alertSection}>
-            <Text style={styles.alertTitle}>🚨 Critical Alerts</Text>
-            
-            {stats.slaBreached > 0 && (
-              <TouchableOpacity
-                style={[styles.alertCard, { backgroundColor: COLORS.red + '20' }]}
-                onPress={() => handleFilterClick('SLA_BREACHED')}
-              >
-                <Icon name="alert-circle" size={24} color={COLORS.red} />
-                <View style={styles.alertContent}>
-                  <Text style={[styles.alertValue, { color: COLORS.red }]}>{stats.slaBreached}</Text>
-                  <Text style={styles.alertLabel}>SLA BREACHED</Text>
-                </View>
-                <Icon name="chevron-right" size={20} color={COLORS.red} />
-              </TouchableOpacity>
-            )}
-
-            {stats.slaAtRisk > 0 && (
-              <TouchableOpacity
-                style={[styles.alertCard, { backgroundColor: COLORS.orange + '20' }]}
-                onPress={() => handleFilterClick('SLA_AT_RISK')}
-              >
-                <Icon name="clock-alert" size={24} color={COLORS.orange} />
-                <View style={styles.alertContent}>
-                  <Text style={[styles.alertValue, { color: COLORS.orange }]}>{stats.slaAtRisk}</Text>
-                  <Text style={styles.alertLabel}>SLA AT RISK</Text>
-                </View>
-                <Icon name="chevron-right" size={20} color={COLORS.orange} />
-              </TouchableOpacity>
-            )}
-
-            {stats.workshopRejected > 0 && (
-              <TouchableOpacity
-                style={[styles.alertCard, { backgroundColor: COLORS.red + '15' }]}
-                onPress={() => handleFilterClick('WORKSHOP_REJECTED')}
-              >
-                <Icon name="close-circle" size={24} color={COLORS.red} />
-                <View style={styles.alertContent}>
-                  <Text style={[styles.alertValue, { color: COLORS.red }]}>{stats.workshopRejected}</Text>
-                  <Text style={styles.alertLabel}>WORKSHOP REJECTED</Text>
-                </View>
-                <Icon name="chevron-right" size={20} color={COLORS.red} />
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        {/* Main KPI Grid */}
+        {/* Summary Cards */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📊 Operational Overview</Text>
-          
+          <Text style={styles.sectionTitle}>📊 Pending Summary</Text>
           <View style={styles.kpiGrid}>
-            {/* New Leads */}
-            <TouchableOpacity
-              style={[styles.kpiCard, { backgroundColor: COLORS.blue + '15' }]}
-              onPress={() => handleFilterClick('NEW')}
-            >
-              <Icon name="new-box" size={32} color={COLORS.blue} />
-              <Text style={styles.kpiValue}>{stats.newLeads}</Text>
+            <View style={[styles.kpiCard, { backgroundColor: COLORS.blue + '15' }]}>
+              <Icon name="clock" size={28} color={COLORS.blue} />
+              <Text style={styles.kpiValue}>{summary.total_pending}</Text>
+              <Text style={styles.kpiLabel}>Total Pending</Text>
+            </View>
+            <View style={[styles.kpiCard, { backgroundColor: COLORS.blue + '10' }]}>
+              <Icon name="chart-line" size={28} color={COLORS.blue} />
+              <Text style={styles.kpiValue}>{summary.new_leads}</Text>
               <Text style={styles.kpiLabel}>New Leads</Text>
-            </TouchableOpacity>
-
-            {/* Incomplete */}
-            <TouchableOpacity
-              style={[styles.kpiCard, { backgroundColor: COLORS.orange + '15' }]}
-              onPress={() => handleFilterClick('INCOMPLETE')}
-            >
-              <Icon name="clipboard-alert" size={32} color={COLORS.orange} />
-              <Text style={styles.kpiValue}>{stats.incompleteLeads}</Text>
+            </View>
+            <View style={[styles.kpiCard, { backgroundColor: COLORS.orange + '15' }]}>
+              <Icon name="alert-circle" size={28} color={COLORS.orange} />
+              <Text style={styles.kpiValue}>{summary.incomplete_leads}</Text>
               <Text style={styles.kpiLabel}>Incomplete</Text>
-            </TouchableOpacity>
-
-            {/* Pending Assignment */}
-            <TouchableOpacity
-              style={[styles.kpiCard, { backgroundColor: COLORS.purple + '15' }]}
-              onPress={() => handleFilterClick('NEED_ASSIGNMENT')}
-            >
-              <Icon name="hand-pointing-right" size={32} color={COLORS.purple} />
-              <Text style={styles.kpiValue}>{stats.pendingAssignment}</Text>
-              <Text style={styles.kpiLabel}>Need Assignment</Text>
-            </TouchableOpacity>
-
-            {/* Awaiting Acceptance */}
-            <TouchableOpacity
-              style={[styles.kpiCard, { backgroundColor: COLORS.indigo + '15' }]}
-              onPress={() => handleFilterClick('AWAITING_ACCEPTANCE')}
-            >
-              <Icon name="clock-check-outline" size={32} color={COLORS.indigo} />
-              <Text style={styles.kpiValue}>{stats.awaitingAcceptance}</Text>
-              <Text style={styles.kpiLabel}>Awaiting Accept</Text>
-            </TouchableOpacity>
-
-            {/* Reopened */}
-            <TouchableOpacity
-              style={[styles.kpiCard, { backgroundColor: COLORS.red + '15' }]}
-              onPress={() => handleFilterClick('REOPENED')}
-            >
-              <Icon name="refresh-circle" size={32} color={COLORS.red} />
-              <Text style={styles.kpiValue}>{stats.reopenedLeads}</Text>
-              <Text style={styles.kpiLabel}>Reopened</Text>
-            </TouchableOpacity>
-
-            {/* Telecaller Pending */}
-            <TouchableOpacity
-              style={[styles.kpiCard, { backgroundColor: COLORS.teal + '15' }]}
-              onPress={() => handleFilterClick('TELECALLER_PENDING')}
-            >
-              <Icon name="phone-forward" size={32} color={COLORS.teal} />
-              <Text style={styles.kpiValue}>{stats.telecallerPending}</Text>
-              <Text style={styles.kpiLabel}>Tel. Pending</Text>
-            </TouchableOpacity>
-
-            {/* Pickup Pending */}
-            <TouchableOpacity
-              style={[styles.kpiCard, { backgroundColor: COLORS.green + '15' }]}
-              onPress={() => handleFilterClick('PICKUP_PENDING')}
-            >
-              <Icon name="car-pickup" size={32} color={COLORS.green} />
-              <Text style={styles.kpiValue}>{stats.pickupPending}</Text>
-              <Text style={styles.kpiLabel}>Pickup Pending</Text>
-            </TouchableOpacity>
-
-            {/* Total Active */}
-            <TouchableOpacity
-              style={[styles.kpiCard, { backgroundColor: COLORS.gray + '15' }]}
-              onPress={() => handleFilterClick('all')}
-            >
-              <Icon name="format-list-bulleted" size={32} color={COLORS.gray} />
-              <Text style={styles.kpiValue}>{stats.totalLeads}</Text>
-              <Text style={styles.kpiLabel}>Total Active</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Performance Metrics */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📈 Performance Metrics</Text>
-          <View style={styles.performanceCard}>
-            <View style={styles.performanceRow}>
-              <View style={styles.performanceItem}>
-                <Text style={[styles.performanceValue, { color: COLORS.green }]}>
-                  {stats.assignmentAccuracy}%
-                </Text>
-                <Text style={styles.performanceLabel}>Assignment Accuracy</Text>
-              </View>
-              <View style={styles.performanceDivider} />
-              <View style={styles.performanceItem}>
-                <Text style={[styles.performanceValue, { color: COLORS.blue }]}>
-                  {stats.avgAssignmentTime}m
-                </Text>
-                <Text style={styles.performanceLabel}>Avg Assignment Time</Text>
-              </View>
+            </View>
+            <View style={[styles.kpiCard, { backgroundColor: COLORS.green + '15' }]}>
+              <Icon name="check-circle" size={28} color={COLORS.green} />
+              <Text style={styles.kpiValue}>{summary.validated_leads}</Text>
+              <Text style={styles.kpiLabel}>Validated</Text>
             </View>
           </View>
         </View>
@@ -421,47 +209,104 @@ export default function LeadManagerDashboard() {
           <View style={styles.actionsGrid}>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
-              onPress={() => handleFilterClick('all')}
+              onPress={() => navigation.navigate('LeadManagerLeads')}
             >
-              <Icon name="format-list-bulleted-square" size={32} color="#fff" />
-              <Text style={styles.actionButtonText}>All Leads</Text>
+              <Icon name="clipboard" size={28} color="#fff" />
+              <Text style={styles.actionButtonText}>Manage Leads</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: COLORS.orange }]}
-              onPress={() => setCurrentScreen('escalations')}
+              onPress={() => navigation.navigate('LeadManagerEscalations')}
             >
-              <Icon name="alert-octagon" size={32} color="#fff" />
+              <Icon name="alert-circle" size={28} color="#fff" />
               <Text style={styles.actionButtonText}>Escalations</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.purple }]}
-              onPress={() => handleFilterClick('NEED_ASSIGNMENT')}
+              style={[styles.actionButton, { backgroundColor: COLORS.indigo }]}
+              onPress={() => navigation.navigate('LeadManagerWorkshops')}
             >
-              <Icon name="account-arrow-right" size={32} color="#fff" />
-              <Text style={styles.actionButtonText}>Assign Leads</Text>
+              <Icon name="wrench" size={28} color="#fff" />
+              <Text style={styles.actionButtonText}>Workshops</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: COLORS.green }]}
-              onPress={() => handleFilterClick('INCOMPLETE')}
+              onPress={() => navigation.navigate('LeadManagerReports')}
             >
-              <Icon name="clipboard-check" size={32} color="#fff" />
-              <Text style={styles.actionButtonText}>Fix Incomplete</Text>
+              <Icon name="chart-line" size={28} color="#fff" />
+              <Text style={styles.actionButtonText}>Reports</Text>
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Filters and Search */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🔎 Pending Leads</Text>
+          <View style={styles.searchRow}>
+            <Icon name="magnify" size={18} color={COLORS.textSecondary} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by name, phone, lead #, vehicle..."
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              placeholderTextColor={COLORS.textSecondary}
+            />
+          </View>
+          <View style={styles.filterRow}>
+            <TouchableOpacity
+              style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
+              onPress={() => setFilter('all')}
+            >
+              <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>
+                All ({summary.total_pending})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, filter === 'new' && styles.filterButtonActive]}
+              onPress={() => setFilter('new')}
+            >
+              <Text style={[styles.filterText, filter === 'new' && styles.filterTextActive]}>
+                New ({summary.new_leads})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, filter === 'validated' && styles.filterButtonActive]}
+              onPress={() => setFilter('validated')}
+            >
+              <Text style={[styles.filterText, filter === 'validated' && styles.filterTextActive]}>
+                Validated ({summary.validated_leads})
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          {filteredLeads.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Icon name="inbox" size={64} color={COLORS.gray} />
+              <Text style={styles.emptyTitle}>No leads found</Text>
+              <Text style={styles.emptyText}>
+                {searchTerm ? 'Try adjusting your search' : 'All pending leads are handled'}
+              </Text>
+            </View>
+          ) : (
+            filteredLeads.map(renderLeadCard)
+          )}
+        </View>
       </ScrollView>
 
-      <BottomNav 
-        activeTab="dashboard" 
-        onTabChange={setCurrentScreen}
+      <BottomNav
+        activeTab="dashboard"
+        onTabChange={(tabId: string) => {
+          if (tabId === 'dashboard') return;
+          if (tabId === 'leads') navigation.navigate('LeadManagerLeads');
+          if (tabId === 'workshops') navigation.navigate('LeadManagerWorkshops');
+          if (tabId === 'reports') navigation.navigate('LeadManagerReports');
+        }}
         tabs={[
-          { id: 'dashboard', label: 'Home', icon: '🏠' },
-          { id: 'leads', label: 'Leads', icon: '📋' },
-          { id: 'workshops', label: 'Workshops', icon: '🏭' },
-          { id: 'reports', label: 'Reports', icon: '📊' },
+          { id: 'dashboard', label: 'Home', icon: 'home' },
+          { id: 'leads', label: 'Leads', icon: 'clipboard' },
+          { id: 'workshops', label: 'Workshops', icon: 'wrench' },
+          { id: 'reports', label: 'Reports', icon: 'chart-line' },
         ]}
       />
     </View>
@@ -485,37 +330,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-  },
-  alertSection: {
-    padding: SPACING.md,
-    backgroundColor: '#fff',
-    marginBottom: SPACING.sm,
-  },
-  alertTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
-  },
-  alertCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACING.md,
-    borderRadius: 12,
-    marginBottom: SPACING.sm,
-  },
-  alertContent: {
-    flex: 1,
-    marginLeft: SPACING.sm,
-  },
-  alertValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  alertLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 2,
   },
   section: {
     paddingHorizontal: SPACING.md,
@@ -553,33 +367,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
-  performanceCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: SPACING.md,
-    elevation: 2,
-  },
-  performanceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  performanceItem: {
-    alignItems: 'center',
-  },
-  performanceDivider: {
-    width: 1,
-    backgroundColor: COLORS.gray + '30',
-  },
-  performanceValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  performanceLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 4,
-    textAlign: 'center',
-  },
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -598,6 +385,121 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: 'bold',
+    marginTop: SPACING.sm,
+    textAlign: 'center',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+    elevation: 2,
+    marginBottom: SPACING.md,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  filterButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 16,
+    backgroundColor: COLORS.background,
+  },
+  filterButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  filterText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  filterTextActive: {
+    color: '#fff',
+  },
+  leadCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    elevation: 2,
+  },
+  leadHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  leadNumber: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  leadName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.textPrimary,
+  },
+  leadPhone: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  badges: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  leadMeta: {
+    marginTop: SPACING.sm,
+    gap: 2,
+  },
+  metaText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  reviewRow: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+  reviewText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xxl,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.textPrimary,
+    marginTop: SPACING.md,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
     marginTop: SPACING.sm,
     textAlign: 'center',
   },

@@ -179,6 +179,20 @@
  | `/dashboard/workshop_admin/public-page` | (none) | Missing | Android missing public page management. |
  | `/dashboard/workshop_admin/additional-jobs-master` | (none) | Missing | Android missing additional jobs master. |
  
+**Workshop Admin detailed checklist (web → mobile)**  
+- Dashboard: pending/accepted/in-progress stats, staff count, recent jobs, quick actions.  
+- Pending Lead Approval: lead list, accept/reject, view lead detail, assign team.  
+- Leads list: status filters, search, lead detail.  
+- Lead detail: full lead info, status badges, workshop actions.  
+- Assign team: mechanic assignment, ETA/notes.  
+- Active Jobs: status filters, job detail.  
+- Staff Management: add/edit staff, role selection, activate/deactivate, reset password.  
+- Pickup Tracking: pickup status timeline, assign pickup boy, contact actions.  
+- Reports: date filters, summary stats.  
+- Settings: workshop profile, timings, contact details.  
+- Public Page: edit public profile fields, preview/publish.  
+- Additional Jobs Master: CRUD additional job types and pricing.  
+
  ### WORKSHOP_SUPERVISOR
  | Web (route) | Android (screen) | Status | Notes |
  | --- | --- | --- | --- |
@@ -202,6 +216,20 @@
  | (none) | `SupervisorMenu` | Partial | Android menu screen not in web. |
  | (none) | `JobMonitoring` | Partial | Android job monitoring not in web. |
  
+**Workshop Supervisor detailed checklist (web → mobile)**  
+- Dashboard: team stats (mechanics, active jobs, pending QC), recent jobs.  
+- Pending Leads: approve/reject flows, lead detail.  
+- Day Planning: schedules, assignments, filters.  
+- Manage Jobs: status filters, assign/reassign mechanics, job detail.  
+- QC Queue: review checklist, before/after photos, approve/reject with notes.  
+- Additional Jobs Approval: approve/reject extra work requests.  
+- Pickup & Delivery: assign pickup boy, track status, delivery checklist.  
+- Additional Jobs Master: CRUD master list.  
+- Team Overview/Performance: KPIs, per-mechanic stats.  
+- Daily Report/Analytics: date filters, summary metrics.  
+- Profile: update contact/profile info.  
+- Mechanic Assignment: assignment UI and validation rules.  
+
  ### WORKSHOP_MECHANIC
  | Web (route) | Android (screen) | Status | Notes |
  | --- | --- | --- | --- |
@@ -216,6 +244,15 @@
  | (none) | `AfterServicePhotos` | Partial | Android has after service photos. |
  | (none) | `LeadDetail` | Partial | Android includes lead detail screen. |
  
+**Workshop Mechanic detailed checklist (web → mobile)**  
+- Dashboard: filters (assigned/in-progress/hold/completed), KPI stats.  
+- Jobs list: search/filters, start/hold/complete actions.  
+- Job detail: checklist, parts/consumables, status updates, SLA.  
+- Manage job: before/progress/after photos, extra work request flow.  
+- Job history: completed jobs list and detail.  
+- Performance: KPIs, period filters.  
+- Profile: view/edit profile info.  
+
  ### WORKSHOP_PICKUP_BOY
  | Web (route) | Android (screen) | Status | Notes |
  | --- | --- | --- | --- |
@@ -228,6 +265,16 @@
  | (none) | `PickupPhotoUpload` | Partial | Android adds photo upload flow. |
  | (none) | `PickupIncident` | Partial | Android adds incident report flow. |
  
+**Workshop Pickup Boy detailed checklist (web → mobile)**  
+- Dashboard: task counts (pickup/delivery/in-transit/completed).  
+- Tasks list: status filters, search, task detail access.  
+- Task detail: customer info, vehicle info, address, ETA.  
+- OTP verification: pickup + delivery OTP flows.  
+- Photo uploads: pickup/drop photo requirements, odometer, damage.  
+- Incident report: reason, photos, notes.  
+- Task history: completed tasks list and detail.  
+- Profile: view/edit profile info.  
+
  ### COMPANY_MECHANIC_RSA
  | Web (route) | Android (screen) | Status | Notes |
  | --- | --- | --- | --- |

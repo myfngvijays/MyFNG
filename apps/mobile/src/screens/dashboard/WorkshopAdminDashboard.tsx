@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
@@ -109,16 +109,16 @@ export default function WorkshopAdminDashboard() {
   };
 
   const tabs = [
-    { id: 'dashboard', label: 'Home', icon: '🏠' },
-    { id: 'staff', label: 'Staff', icon: '👥' },
-    { id: 'leads', label: 'Leads', icon: '📋' },
-    { id: 'profile', label: 'Workshop', icon: '🏭' },
-    { id: 'more', label: 'More', icon: '⚙️' },
+    { id: 'dashboard', label: 'Home', icon: 'home' },
+    { id: 'staff', label: 'Staff', icon: 'account' },
+    { id: 'leads', label: 'Leads', icon: 'clipboard' },
+    { id: 'profile', label: 'Workshop', icon: 'wrench' },
+    { id: 'more', label: 'More', icon: 'menu' },
   ];
 
   const handleTabChange = (tab: string) => {
     if (tab === 'more') {
-      Alert.alert('Coming Soon', 'Reports and Settings will be available soon!');
+      navigation.navigate('WorkshopAdminMenu');
     } else {
       setCurrentScreen(tab);
     }

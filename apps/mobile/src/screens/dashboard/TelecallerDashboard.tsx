@@ -11,6 +11,7 @@ import {
   Linking,
   Dimensions
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../components/Icon';
 import { supabase } from '../../lib/supabase';
@@ -21,6 +22,7 @@ import TelecallerCreateLeadScreen from './telecaller/TelecallerCreateLeadScreen'
 import TelecallerLeadDetailScreen from './telecaller/TelecallerLeadDetailScreen';
 import TelecallerFollowUpsScreen from './telecaller/TelecallerFollowUpsScreen';
 import TelecallerScriptsScreen from './telecaller/TelecallerScriptsScreen';
+import TelecallerProfileScreen from './telecaller/TelecallerProfileScreen';
 import { COLORS, SPACING } from '../../constants/theme';
 
 const { width } = Dimensions.get('window');
@@ -37,12 +39,15 @@ export default function TelecallerDashboard() {
     followUpToday: 0,
     incompleteLeads: 0,
     bookedLeads: 0,
+    rejectedLeads: 0,
     todayCalls: 0,
     answeredCalls: 0,
     answerRate: 0
   });
   const [recentLeads, setRecentLeads] = useState<any[]>([]);
   const [upcomingFollowUps, setUpcomingFollowUps] = useState<any[]>([]);
+  const [rescheduleTarget, setRescheduleTarget] = useState<any | null>(null);
+  const [showReschedulePicker, setShowReschedulePicker] = useState(false);
 
   useEffect(() => {
     fetchUserProfile();
@@ -83,6 +88,7 @@ export default function TelecallerDashboard() {
         followUpsResult,
         incompleteResult,
         bookedResult,
+        rejectedResult,
         callStatsResult,
         recentLeadsResult,
         followUpsListResult
@@ -123,8 +129,15 @@ export default function TelecallerDashboard() {
         supabase
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
+          .eq('created_by_id', teleCallerId)
+          .in('status', ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS']),
+
+        // Rejected leads
+        supabase
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
           .eq('assigned_telecaller_id', teleCallerId)
-          .eq('status', 'BOOKED'),
+          .eq('status', 'REJECTED'),
 
         // Today's call stats
         supabase
@@ -169,6 +182,7 @@ export default function TelecallerDashboard() {
         followUpToday: followUpsResult.count || 0,
         incompleteLeads: incompleteResult.count || 0,
         bookedLeads: bookedResult.count || 0,
+        rejectedLeads: rejectedResult.count || 0,
         todayCalls: callsData.length,
         answeredCalls: answeredCount,
         answerRate: callsData.length > 0 ? Math.round((answeredCount / callsData.length) * 100) : 0
@@ -188,6 +202,36 @@ export default function TelecallerDashboard() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchDashboardData();
+  };
+
+  const handleCallNow = (phone?: string | null) => {
+    if (!phone) return;
+    Linking.openURL(`tel:${phone}`);
+  };
+
+  const handleReschedule = (followUp: any) => {
+    setRescheduleTarget(followUp);
+    setShowReschedulePicker(true);
+  };
+
+  const handleRescheduleChange = async (_event: any, selectedDate?: Date) => {
+    if (!selectedDate || !rescheduleTarget) {
+      setShowReschedulePicker(false);
+      return;
+    }
+
+    setShowReschedulePicker(false);
+    try {
+      await supabase
+        .from('telecaller_follow_ups')
+        .update({ scheduled_time: selectedDate.toISOString() })
+        .eq('id', rescheduleTarget.id);
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Error rescheduling follow-up:', error);
+    } finally {
+      setRescheduleTarget(null);
+    }
   };
 
   const handleLogout = async () => {
@@ -227,6 +271,10 @@ export default function TelecallerDashboard() {
 
   if (currentScreen === 'scripts') {
     return <TelecallerScriptsScreen navigation={navigation} />;
+  }
+
+  if (currentScreen === 'profile') {
+    return <TelecallerProfileScreen navigation={navigation} />;
   }
 
   if (currentScreen === 'enquiryLeads') {
@@ -283,6 +331,19 @@ export default function TelecallerDashboard() {
               <Text style={{ fontSize: 28, marginBottom: 8 }}>✅</Text>
               <Text style={styles.kpiValue}>{stats.bookedLeads}</Text>
               <Text style={styles.kpiLabel}>Booked Leads</Text>
+            </View>
+          </View>
+
+          <View style={styles.kpiRow}>
+            <View style={[styles.kpiCard, { backgroundColor: COLORS.yellow + '15' }]}>
+              <Text style={{ fontSize: 28, marginBottom: 8 }}>⚠️</Text>
+              <Text style={styles.kpiValue}>{stats.incompleteLeads}</Text>
+              <Text style={styles.kpiLabel}>Incomplete Leads</Text>
+            </View>
+            <View style={[styles.kpiCard, { backgroundColor: COLORS.red + '15' }]}>
+              <Text style={{ fontSize: 28, marginBottom: 8 }}>❌</Text>
+              <Text style={styles.kpiValue}>{stats.rejectedLeads}</Text>
+              <Text style={styles.kpiLabel}>Rejected Leads</Text>
             </View>
           </View>
         </View>
@@ -355,6 +416,14 @@ export default function TelecallerDashboard() {
               <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📋</Text>
               <Text style={styles.actionButtonText}>Call Scripts</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: COLORS.gray[700] }]}
+              onPress={() => setCurrentScreen('profile')}
+            >
+              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>👤</Text>
+              <Text style={styles.actionButtonText}>My Profile</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -408,20 +477,44 @@ export default function TelecallerDashboard() {
                   {formatDateTime(followUp.scheduled_time)}
                 </Text>
                 <Text style={styles.followUpType}>{followUp.follow_up_type}</Text>
+                <View style={styles.followUpActions}>
+                  <TouchableOpacity
+                    style={[styles.followUpActionButton, styles.followUpPrimary]}
+                    onPress={() => handleCallNow(followUp.lead?.customer_phone)}
+                  >
+                    <Text style={styles.followUpActionText}>Call Now</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.followUpActionButton, styles.followUpSecondary]}
+                    onPress={() => handleReschedule(followUp)}
+                  >
+                    <Text style={styles.followUpSecondaryText}>Reschedule</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ))
           )}
         </View>
       </ScrollView>
 
+      {showReschedulePicker && (
+        <DateTimePicker
+          value={rescheduleTarget?.scheduled_time ? new Date(rescheduleTarget.scheduled_time) : new Date()}
+          mode="datetime"
+          display="default"
+          onChange={handleRescheduleChange}
+        />
+      )}
+
       <BottomNav 
         activeTab="dashboard" 
         onTabChange={setCurrentScreen}
         tabs={[
-          { id: 'dashboard', label: 'Home', icon: '🏠' },
-          { id: 'leads', label: 'Leads', icon: '📋' },
-          { id: 'followups', label: 'Follow-ups', icon: '📅' },
-          { id: 'scripts', label: 'Scripts', icon: '📝' },
+          { id: 'dashboard', label: 'Home', icon: 'home' },
+          { id: 'leads', label: 'Leads', icon: 'clipboard' },
+          { id: 'enquiryLeads', label: 'Enquiry', icon: 'file' },
+          { id: 'followups', label: 'Follow-ups', icon: 'calendar' },
+          { id: 'profile', label: 'Profile', icon: 'account' },
         ]}
       />
     </View>
@@ -620,6 +713,33 @@ const styles = StyleSheet.create({
   followUpType: {
     fontSize: 12,
     color: COLORS.primary,
+    fontWeight: '600',
+  },
+  followUpActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  followUpActionButton: {
+    flex: 1,
+    paddingVertical: SPACING.xs,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  followUpPrimary: {
+    backgroundColor: COLORS.primary,
+  },
+  followUpSecondary: {
+    backgroundColor: COLORS.gray[200],
+  },
+  followUpActionText: {
+    color: COLORS.white,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  followUpSecondaryText: {
+    color: COLORS.textPrimary,
+    fontSize: 12,
     fontWeight: '600',
   },
   emptyCard: {

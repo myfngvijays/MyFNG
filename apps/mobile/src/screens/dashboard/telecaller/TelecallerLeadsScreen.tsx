@@ -87,6 +87,21 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
             .eq('assigned_telecaller_id', teleCallerId)
             .eq('follow_up_required', true);
           break;
+        case 'in_progress':
+          query = query
+            .eq('assigned_telecaller_id', teleCallerId)
+            .in('status', ['NEW', 'ASSIGNED']);
+          break;
+        case 'completed':
+          query = query
+            .eq('created_by_id', teleCallerId)
+            .in('status', ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED']);
+          break;
+        case 'rejected':
+          query = query
+            .eq('assigned_telecaller_id', teleCallerId)
+            .eq('status', 'REJECTED');
+          break;
         default:
           query = query.or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId},created_by_id.eq.${teleCallerId}`);
       }
@@ -96,7 +111,55 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
         .limit(100);
 
       if (error) throw error;
-      setLeads(data || []);
+
+      const leadsData = data || [];
+
+      const serviceTypeIds = new Set<string>();
+      leadsData.forEach((lead: any) => {
+        if (!lead.service_type_ids) return;
+        try {
+          const parsed = typeof lead.service_type_ids === 'string'
+            ? JSON.parse(lead.service_type_ids)
+            : lead.service_type_ids;
+          if (Array.isArray(parsed)) {
+            parsed.forEach((id) => serviceTypeIds.add(String(id)));
+          }
+        } catch (e) {
+          console.error('Error parsing service_type_ids:', e);
+        }
+      });
+
+      let map: Record<string, string> = {};
+      if (serviceTypeIds.size > 0) {
+        const { data: serviceTypesData } = await supabase
+          .from('service_types')
+          .select('id, name')
+          .in('id', Array.from(serviceTypeIds));
+        map = {};
+        (serviceTypesData || []).forEach((item) => {
+          map[String(item.id)] = item.name;
+        });
+      }
+
+      const leadsWithNames = leadsData.map((lead: any) => {
+        let names: string[] = [];
+        try {
+          const parsed = typeof lead.service_type_ids === 'string'
+            ? JSON.parse(lead.service_type_ids)
+            : lead.service_type_ids;
+          if (Array.isArray(parsed)) {
+            names = parsed.map((id) => map[String(id)]).filter(Boolean);
+          }
+        } catch {
+          // ignore parsing issues
+        }
+        return {
+          ...lead,
+          service_type_names: names.length > 0 ? names.join(', ') : lead.service_type,
+        };
+      });
+
+      setLeads(leadsWithNames);
     } catch (error) {
       console.error('Error fetching leads:', error);
     } finally {
@@ -117,7 +180,8 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       lead.customer_name?.toLowerCase().includes(search) ||
       lead.customer_phone?.includes(search) ||
       lead.lead_number?.toLowerCase().includes(search) ||
-      lead.vehicle_number?.toLowerCase().includes(search)
+      lead.vehicle_number?.toLowerCase().includes(search) ||
+      lead.city?.toLowerCase().includes(search)
     );
   });
 
@@ -191,7 +255,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       {item.service_type && (
         <View style={styles.infoRow}>
           <Icon name="wrench" size={16} color={COLORS.textSecondary} />
-          <Text style={styles.infoText}>{item.service_type}</Text>
+          <Text style={styles.infoText}>{item.service_type_names || item.service_type}</Text>
         </View>
       )}
 
@@ -232,7 +296,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
         {item.is_incomplete && (
           <TouchableOpacity
             style={[styles.actionButton, styles.secondaryButton]}
-            onPress={() => navigation.navigate('TelecallerCreateLead', { editLeadId: item.id })}
+            onPress={() => navigation.navigate('TelecallerEditLead', { leadId: item.id })}
           >
             <Icon name="pencil" size={18} color={COLORS.primary} />
           </TouchableOpacity>
@@ -314,6 +378,24 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
           active={activeFilter === 'follow_up'}
           onPress={() => setActiveFilter('follow_up')}
           color={COLORS.purple}
+        />
+        <FilterChip
+          label="In Progress"
+          active={activeFilter === 'in_progress'}
+          onPress={() => setActiveFilter('in_progress')}
+          color={COLORS.indigo}
+        />
+        <FilterChip
+          label="Completed"
+          active={activeFilter === 'completed'}
+          onPress={() => setActiveFilter('completed')}
+          color={COLORS.green}
+        />
+        <FilterChip
+          label="Rejected"
+          active={activeFilter === 'rejected'}
+          onPress={() => setActiveFilter('rejected')}
+          color={COLORS.red}
         />
       </View>
 

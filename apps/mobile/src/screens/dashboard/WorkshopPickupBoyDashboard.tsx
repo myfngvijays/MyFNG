@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
 import StatCard from '../../components/StatCard';
@@ -189,19 +189,14 @@ export default function WorkshopPickupBoyDashboard() {
   };
 
   const tabs = [
-    { id: 'dashboard', label: 'Home', icon: '🏠' },
-    { id: 'tasks', label: 'Tasks', icon: '🚗' },
-    { id: 'history', label: 'History', icon: '📋' },
-    { id: 'profile', label: 'Profile', icon: '👤' },
-    { id: 'more', label: 'More', icon: '⚙️' },
+    { id: 'dashboard', label: 'Home', icon: 'home' },
+    { id: 'tasks', label: 'Tasks', icon: 'car' },
+    { id: 'history', label: 'History', icon: 'history' },
+    { id: 'profile', label: 'Profile', icon: 'account' },
   ];
 
   const handleTabChange = (tab: string) => {
-    if (tab === 'more') {
-      Alert.alert('Coming Soon', 'Additional features will be available soon!');
-    } else {
-      setCurrentScreen(tab);
-    }
+    setCurrentScreen(tab);
   };
 
   const renderScreen = () => {

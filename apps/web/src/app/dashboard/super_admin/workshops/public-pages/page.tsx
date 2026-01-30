@@ -44,12 +44,23 @@ export default function WorkshopPublicPagesPage() {
     meta_title: '',
     meta_description: '',
     meta_keywords: [] as string[],
+    brands: [] as { name: string; logo_url: string }[],
+    packages: [] as { name: string; price: string | null; features: string[] }[],
+    faqs: [] as { question: string; answer: string }[],
     is_published: false,
     is_featured: false
   });
   const [serviceInput, setServiceInput] = useState('');
   const [galleryInput, setGalleryInput] = useState('');
   const [uploadingImages, setUploadingImages] = useState<{ [key: string]: boolean }>({});
+  const [brandName, setBrandName] = useState('');
+  const [brandLogo, setBrandLogo] = useState('');
+  const [packageName, setPackageName] = useState('');
+  const [packagePrice, setPackagePrice] = useState('');
+  const [packageFeature, setPackageFeature] = useState('');
+  const [packageFeatures, setPackageFeatures] = useState<string[]>([]);
+  const [faqQuestion, setFaqQuestion] = useState('');
+  const [faqAnswer, setFaqAnswer] = useState('');
 
   useEffect(() => {
     fetchPages();
@@ -123,6 +134,76 @@ export default function WorkshopPublicPagesPage() {
     setFormData(prev => ({
       ...prev,
       services_offered: prev.services_offered.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleAddBrand = () => {
+    if (!brandName.trim() || !brandLogo.trim()) return;
+    setFormData(prev => ({
+      ...prev,
+      brands: [...prev.brands, { name: brandName.trim(), logo_url: brandLogo.trim() }]
+    }));
+    setBrandName('');
+    setBrandLogo('');
+  };
+
+  const handleRemoveBrand = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      brands: prev.brands.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleAddPackageFeature = () => {
+    if (!packageFeature.trim()) return;
+    setPackageFeatures(prev => [...prev, packageFeature.trim()]);
+    setPackageFeature('');
+  };
+
+  const handleRemovePackageFeature = (index: number) => {
+    setPackageFeatures(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddPackage = () => {
+    if (!packageName.trim()) return;
+    setFormData(prev => ({
+      ...prev,
+      packages: [
+        ...prev.packages,
+        {
+          name: packageName.trim(),
+          price: packagePrice.trim() || null,
+          features: packageFeatures
+        }
+      ]
+    }));
+    setPackageName('');
+    setPackagePrice('');
+    setPackageFeatures([]);
+    setPackageFeature('');
+  };
+
+  const handleRemovePackage = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      packages: prev.packages.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleAddFaq = () => {
+    if (!faqQuestion.trim() || !faqAnswer.trim()) return;
+    setFormData(prev => ({
+      ...prev,
+      faqs: [...prev.faqs, { question: faqQuestion.trim(), answer: faqAnswer.trim() }]
+    }));
+    setFaqQuestion('');
+    setFaqAnswer('');
+  };
+
+  const handleRemoveFaq = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      faqs: prev.faqs.filter((_, i) => i !== index)
     }));
   };
 
@@ -230,6 +311,9 @@ export default function WorkshopPublicPagesPage() {
         services_offered: formData.services_offered,
         gallery_images: formData.gallery_images,
         meta_keywords: formData.meta_keywords,
+        brands: formData.brands,
+        packages: formData.packages,
+        faqs: formData.faqs,
         updated_by: user.id,
         ...(editingPage ? {} : { created_by: user.id }),
         ...(formData.is_published && !editingPage ? { published_at: new Date().toISOString() } : {})
@@ -288,6 +372,9 @@ export default function WorkshopPublicPagesPage() {
       meta_title: page.meta_title || '',
       meta_description: page.meta_description || '',
       meta_keywords: page.meta_keywords || [],
+      brands: page.brands || [],
+      packages: page.packages || [],
+      faqs: page.faqs || [],
       is_published: page.is_published || false,
       is_featured: page.is_featured || false
     });
@@ -319,9 +406,20 @@ export default function WorkshopPublicPagesPage() {
       meta_title: '',
       meta_description: '',
       meta_keywords: [],
+      brands: [],
+      packages: [],
+      faqs: [],
       is_published: false,
       is_featured: false
     });
+    setBrandName('');
+    setBrandLogo('');
+    setPackageName('');
+    setPackagePrice('');
+    setPackageFeature('');
+    setPackageFeatures([]);
+    setFaqQuestion('');
+    setFaqAnswer('');
   };
 
   const filteredPages = pages.filter(page =>
@@ -663,6 +761,195 @@ export default function WorkshopPublicPagesPage() {
                           ×
                         </button>
                       </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Brands */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Brands We Serve
+                  </label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={brandName}
+                      onChange={(e) => setBrandName(e.target.value)}
+                      placeholder="Brand name"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="url"
+                      value={brandLogo}
+                      onChange={(e) => setBrandLogo(e.target.value)}
+                      placeholder="Logo URL"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddBrand}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {formData.brands.map((brand, index) => (
+                      <span
+                        key={`${brand.name}-${index}`}
+                        className="inline-flex items-center gap-2 bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm"
+                      >
+                        {brand.name}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBrand(index)}
+                          className="text-gray-600 hover:text-gray-900"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Packages */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Periodic Service Packages
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={packageName}
+                      onChange={(e) => setPackageName(e.target.value)}
+                      placeholder="Package name"
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="text"
+                      value={packagePrice}
+                      onChange={(e) => setPackagePrice(e.target.value)}
+                      placeholder="Price (optional)"
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={packageFeature}
+                      onChange={(e) => setPackageFeature(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddPackageFeature())}
+                      placeholder="Add package feature"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddPackageFeature}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                    >
+                      Add Feature
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddPackage}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      Add Package
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {packageFeatures.map((feature, index) => (
+                      <span
+                        key={`${feature}-${index}`}
+                        className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
+                      >
+                        {feature}
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePackageFeature(index)}
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    {formData.packages.map((pkg, index) => (
+                      <div
+                        key={`${pkg.name}-${index}`}
+                        className="border border-gray-200 rounded-lg p-3 flex items-start justify-between"
+                      >
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {pkg.name} {pkg.price ? `• ${pkg.price}` : ''}
+                          </div>
+                          {pkg.features.length ? (
+                            <ul className="text-xs text-gray-600 mt-2 space-y-1">
+                              {pkg.features.map((feature, featureIndex) => (
+                                <li key={`${pkg.name}-feature-${featureIndex}`}>• {feature}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePackage(index)}
+                          className="text-gray-600 hover:text-gray-900"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* FAQs */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    FAQs
+                  </label>
+                  <div className="space-y-2 mb-2">
+                    <input
+                      type="text"
+                      value={faqQuestion}
+                      onChange={(e) => setFaqQuestion(e.target.value)}
+                      placeholder="FAQ question"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <textarea
+                      value={faqAnswer}
+                      onChange={(e) => setFaqAnswer(e.target.value)}
+                      rows={2}
+                      placeholder="FAQ answer"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddFaq}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                    >
+                      Add FAQ
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {formData.faqs.map((faq, index) => (
+                      <div
+                        key={`${faq.question}-${index}`}
+                        className="border border-gray-200 rounded-lg p-3 flex items-start justify-between"
+                      >
+                        <div>
+                          <div className="font-medium text-gray-900">{faq.question}</div>
+                          <div className="text-sm text-gray-600 mt-1">{faq.answer}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFaq(index)}
+                          className="text-gray-600 hover:text-gray-900"
+                        >
+                          ×
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>

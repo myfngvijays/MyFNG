@@ -219,10 +219,10 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
   };
 
   const tabs = [
-    { id: 'dashboard', label: 'Home', icon: '🏠' },
-    { id: 'jobs', label: 'Jobs', icon: '🔧' },
-    { id: 'history', label: 'History', icon: '📋' },
-    { id: 'profile', label: 'Profile', icon: '👤' },
+    { id: 'dashboard', label: 'Home', icon: 'home' },
+    { id: 'jobs', label: 'Jobs', icon: 'wrench' },
+    { id: 'history', label: 'History', icon: 'history' },
+    { id: 'profile', label: 'Profile', icon: 'account' },
   ];
 
   // Render different screens based on currentScreen

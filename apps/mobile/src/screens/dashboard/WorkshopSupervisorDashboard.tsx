@@ -194,10 +194,10 @@ export default function WorkshopSupervisorDashboard({ navigation }: any) {
   };
 
   const tabs = [
-    { id: 'dashboard', label: 'Home', icon: '🏠' },
-    { id: 'jobs', label: 'Jobs', icon: '🔧' },
-    { id: 'team', label: 'Team', icon: '👥' },
-    { id: 'menu', label: 'Menu', icon: '☰' },
+    { id: 'dashboard', label: 'Home', icon: 'home' },
+    { id: 'jobs', label: 'Jobs', icon: 'wrench' },
+    { id: 'team', label: 'Team', icon: 'account' },
+    { id: 'menu', label: 'Menu', icon: 'menu' },
   ];
 
   const handleTabChange = (tab: string) => {

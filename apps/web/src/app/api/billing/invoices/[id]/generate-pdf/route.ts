@@ -541,6 +541,39 @@ export async function GET(
       workshop = fetched;
     }
 
+    // Resolve invoice.line_items[*].included_items product_ids -> master_products
+    // so PDF can show correct Type + HSN/SAC for included package items.
+    let includedProducts: any[] = [];
+    try {
+      const ids = new Set<string>();
+      const li = Array.isArray((invoice as any)?.line_items) ? (invoice as any).line_items : [];
+      for (const row of li) {
+        const inc = Array.isArray((row as any)?.included_items) ? (row as any).included_items : [];
+        for (const it of inc) {
+          const pid = String((it as any)?.product_id || '').trim();
+          if (pid) ids.add(pid);
+        }
+      }
+
+      const idList = Array.from(ids);
+      if (idList.length > 0) {
+        const select =
+          'id, name, type, part_number, hsn_sac_code, tax_rate, default_price, unit';
+        const fetch = async (client: any) =>
+          client.from('master_products').select(select).in('id', idList);
+
+        let res = await fetch(supabase);
+        if (res.error && supabaseAdmin) {
+          res = await fetch(supabaseAdmin);
+        }
+        if (!res.error && res.data) {
+          includedProducts = res.data as any[];
+        }
+      }
+    } catch (e) {
+      console.error('[Generate PDF API] Error resolving included products:', e);
+    }
+
     // Combine all data
     const invoiceWithRelations = {
       ...invoice,
@@ -554,6 +587,7 @@ export async function GET(
       workshopServicePricing,
       serviceTypeItems,
       extraWorkItems,
+      includedProducts,
     };
 
     // Generate HTML for PDF (will be converted to PDF)
@@ -598,6 +632,20 @@ function generateInvoiceHTML(invoice: any): string {
   const serviceTypeItems = invoice.serviceTypeItems || [];
   const extraWorkItems = invoice.extraWorkItems || [];
   // vehicleClass is attached by the route (best-effort) for debugging/traceability
+
+  // IMPORTANT: invoice.line_items[*].included_items overrides store only product_id + pricing fields.
+  // For correct Type + HSN/SAC on PDF, resolve those product_ids against master_products.
+  const includedProductMap = (() => {
+    const fromRoute = Array.isArray((invoice as any)?.includedProducts)
+      ? (invoice as any).includedProducts
+      : [];
+    const m = new Map<string, any>();
+    for (const p of fromRoute) {
+      const id = String((p as any)?.id || '').trim();
+      if (id) m.set(id, p);
+    }
+    return m;
+  })();
   
   const invType = String(invoice?.invoice_type || '').toUpperCase();
   const docLabel =
@@ -819,15 +867,20 @@ function generateInvoiceHTML(invoice: any): string {
         const productPrice = product.default_price || 0;
         const quantity = item.quantity || 1;
         const totalPrice = productPrice * quantity;
+        const pType = String(product.type || '').trim().toUpperCase();
+        const looksLabour = pType.includes('LAB') || /labou?r/i.test(String(product.name || ''));
         
         allLineItems.push({
           sr: `${itemCounter - 1}.${partCounter++}`, // Sub-numbering: 1.1, 1.2, 1.3, etc.
           description: `${product.name}${product.part_number ? ` (${product.part_number})` : ''}`,
-          hsn_sac: product.hsn_sac_code || '271019',
+          hsn_sac: product.hsn_sac_code || (looksLabour ? '998714' : '271019'),
           qty: quantity,
           rate: productPrice,
           amount: totalPrice,
-          isPart: true
+          isPart: !looksLabour,
+          is_extra: false,
+          is_addon: false,
+          category: looksLabour ? 'LABOUR' : 'PART'
         });
       });
     });
@@ -954,13 +1007,18 @@ function generateInvoiceHTML(invoice: any): string {
   const money = (v: any) => num(v, 0).toFixed(2);
   const normCat = (v: any) => String(v ?? '').trim().toUpperCase();
   const isCustomServiceName = (s: string) => /custom\s*service/i.test(s);
-  const normalizeTypeLabel = (t: any, cat: any) => {
+  const normalizeTypeLabel = (t: any, cat: any, row?: any) => {
     const raw = String(t ?? '').trim().toUpperCase();
     if (raw.includes('LAB') || raw === 'SERVICE') return 'Labour';
     if (raw.includes('PART') || raw === 'PRODUCT') return 'Part';
     const c = normCat(cat);
     if (c === 'PART' || c === 'PARTS') return 'Part';
-    return c === 'SERVICE' || c === 'ADDON' || c === 'ADD_ON' || c === 'ADD-ON' || c === 'EXTRA' ? 'Labour' : 'Part';
+    if (c === 'SERVICE' || c === 'ADDON' || c === 'ADD_ON' || c === 'ADD-ON' || c === 'EXTRA') return 'Labour';
+    // Fallback for older invoices where category/type wasn't stored
+    if (row?.is_part || row?.isPart) return 'Part';
+    if (row?.is_addon || row?.isAddon || row?.is_extra || row?.isExtra) return 'Labour';
+    // Default to Labour for generic service rows (pricing items) when we can't infer category
+    return 'Labour';
   };
   const hsnFor = (row: any, typeLabel: 'Part' | 'Labour') => {
     const direct =
@@ -1029,7 +1087,10 @@ function generateInvoiceHTML(invoice: any): string {
   const srcItems = Array.isArray(finalLineItems) ? finalLineItems : [];
   const serviceRows = srcItems.filter((r: any) => {
     const c = normCat(r?.category);
-    return c === 'SERVICE' || c === 'ADDON' || c === 'ADD_ON' || c === 'ADD-ON';
+    if (c === 'SERVICE' || c === 'ADDON' || c === 'ADD_ON' || c === 'ADD-ON') return true;
+    // Fallback: if category missing, treat non-part/non-extra rows as service
+    if (!c && !(r?.is_part || r?.isPart) && !(r?.is_extra || r?.isExtra)) return true;
+    return false;
   });
   // Dedupe accidental duplicate Custom Service rows (same description + amount + qty)
   const serviceRowsUnique = (() => {
@@ -1055,9 +1116,18 @@ function generateInvoiceHTML(invoice: any): string {
   })();
   const partRows = srcItems.filter((r: any) => {
     const c = normCat(r?.category);
-    return c === 'PART' || c === 'PARTS';
+    if (c === 'PART' || c === 'PARTS') return true;
+    // Fallback for older invoices
+    if (!c && (r?.is_part || r?.isPart)) return true;
+    return false;
   });
-  const extraRows = srcItems.filter((r: any) => normCat(r?.category) === 'EXTRA');
+  const extraRows = srcItems.filter((r: any) => {
+    const c = normCat(r?.category);
+    if (c === 'EXTRA') return true;
+    // Fallback for older invoices
+    if (!c && (r?.is_extra || r?.isExtra)) return true;
+    return false;
+  });
 
   const addMainRowWithIncluded = (row: any) => {
     const description = String(row?.description ?? row?.item_name ?? 'Service').trim() || 'Service';
@@ -1079,7 +1149,7 @@ function generateInvoiceHTML(invoice: any): string {
     const taxable = gstRate > 0 ? totalInc / (1 + gstRate / 100) : totalInc;
     const unitPrice = qty ? totalInc / qty : totalInc;
     const total = totalInc;
-    const typeLabel = normalizeTypeLabel(row?.type, row?.category) as 'Part' | 'Labour';
+    const typeLabel = normalizeTypeLabel(row?.type, row?.category, row) as 'Part' | 'Labour';
 
     const isCustom = isCustomServiceName(description);
     const remarkRaw = isCustom ? String(row?.custom_remark ?? row?.remark ?? row?.notes ?? '').trim() : '';
@@ -1120,38 +1190,74 @@ function generateInvoiceHTML(invoice: any): string {
     }
 
     for (const inc of included) {
+      const incProductId = String((inc as any)?.product_id || '').trim();
+      const incProduct =
+        (inc as any)?.product ?? (incProductId ? includedProductMap.get(incProductId) : null);
+      const incRow = incProduct && !(inc as any)?.product ? { ...(inc as any), product: incProduct } : inc;
+
       const incName =
-        String((inc as any)?.name ?? (inc as any)?.description ?? (inc as any)?.item_name ?? (inc as any)?.product?.name ?? '').trim() ||
-        '';
+        String(
+          (incRow as any)?.name ??
+            (incRow as any)?.description ??
+            (incRow as any)?.item_name ??
+            (incRow as any)?.product?.name ??
+            ''
+        ).trim() || '';
       if (!incName) continue;
-      const incQty = Math.max(0, num((inc as any)?.quantity ?? (inc as any)?.qty ?? (inc as any)?.product_quantity ?? 1, 1) || 1);
-      const incGstRate = gstRateFor(inc);
+      const incQty = Math.max(
+        0,
+        num((incRow as any)?.quantity ?? (incRow as any)?.qty ?? (incRow as any)?.product_quantity ?? 1, 1) ||
+          1
+      );
+      const incGstRate = gstRateFor(incRow);
       // IMPORTANT:
       // - When we are showing "included items" coming from service definition (`service_type_items`),
       //   we should NOT add their default price to invoice totals (it double-counts).
       // - Still show item + qty + HSN/GST for transparency.
       const incRefUnitPrice =
-        (inc as any)?.unit_price != null
-          ? num((inc as any).unit_price, 0)
-          : (inc as any)?.rate != null
-            ? num((inc as any).rate, 0)
-            : (inc as any)?.product?.default_price != null
-              ? num((inc as any).product.default_price, 0)
-              : (inc as any)?.default_price != null
-                ? num((inc as any).default_price, 0)
+        (incRow as any)?.unit_price != null
+          ? num((incRow as any).unit_price, 0)
+          : (incRow as any)?.rate != null
+            ? num((incRow as any).rate, 0)
+            : (incRow as any)?.product?.default_price != null
+              ? num((incRow as any).product.default_price, 0)
+              : (incRow as any)?.default_price != null
+                ? num((incRow as any).default_price, 0)
                 : 0;
       const incTotalInc =
         isIncludedFromServiceDefinition
           ? 0
-          : (inc as any)?.amount != null
-            ? num((inc as any).amount, 0)
+          : (incRow as any)?.amount != null
+            ? num((incRow as any).amount, 0)
             : Math.max(0, incQty * incRefUnitPrice);
       const incTaxable = incTotalInc > 0 ? (incGstRate > 0 ? incTotalInc / (1 + incGstRate / 100) : incTotalInc) : 0;
       const incUnitPrice = incQty ? (isIncludedFromServiceDefinition ? incRefUnitPrice : incTotalInc / incQty) : incTotalInc;
       const incTotal = incTotalInc;
-      const incTypeLabel = normalizeTypeLabel((inc as any)?.type ?? (inc as any)?.product?.type, 'PART') as 'Part' | 'Labour';
-      const incHsn = hsnFor(inc, incTypeLabel);
-      const pn = (inc as any)?.part_number ?? (inc as any)?.product?.part_number ?? null;
+      // Included items can be PART or LABOUR. For older/incomplete master_products data, infer from name/HSN prefix.
+      const incDirectHsn = String(
+        (incRow as any)?.hsn_sac ??
+          (incRow as any)?.hsn_sac_code ??
+          (incRow as any)?.hsn_code ??
+          (incRow as any)?.hsn ??
+          (incRow as any)?.product?.hsn_sac_code ??
+          (incRow as any)?.product?.hsn_code ??
+          ''
+      ).trim();
+      const incLooksLabour =
+        /^998/.test(incDirectHsn) ||
+        /labou?r/i.test(incName) ||
+        String((incRow as any)?.product?.type ?? (incRow as any)?.type ?? '')
+          .toUpperCase()
+          .includes('LAB');
+      const incTypeLabel = (incLooksLabour
+        ? 'Labour'
+        : normalizeTypeLabel(
+            (incRow as any)?.type ?? (incRow as any)?.product?.type,
+            (incRow as any)?.category ?? (incRow as any)?.product?.type,
+            incRow
+          )) as 'Part' | 'Labour';
+      const incHsn = hsnFor(incRow, incTypeLabel);
+      const pn = (incRow as any)?.part_number ?? (incRow as any)?.product?.part_number ?? null;
       const suffix = pn ? ` (${String(pn)})` : '';
       const includedSuffix = isIncludedFromServiceDefinition ? ' <span class="muted">(Included)</span>' : '';
       pushItem({
@@ -1330,13 +1436,18 @@ function generateInvoiceHTML(invoice: any): string {
   const computedTaxableAfterDiscount = Math.max(0, rowsTaxableAfterDiscount * scale);
   const computedGstIncluded = Math.max(0, computedTotalAfterDiscount - computedTaxableAfterDiscount);
 
-  // Decide IGST vs CGST/SGST from GSTIN state codes (fallback: intra-state)
+  // Decide IGST vs CGST/SGST using GSTIN state codes (fallback: intra-state)
+  // Default workshop state to Maharashtra (27) when GSTIN missing.
+  const gstinStateCode = (gstinLike: any) => {
+    const s = String(gstinLike || '').trim();
+    const m = s.match(/^\d{2}/);
+    return m ? m[0] : '';
+  };
+
   const workshopGstin = String((workshop as any)?.gst_number || (workshop as any)?.gstin || '').trim();
-  const workshopStateCode = workshopGstin && workshopGstin.length >= 2 ? workshopGstin.slice(0, 2) : '';
-  const customerStateCodeEff =
-    String(customerBillingStateCode || '').trim() ||
-    (customerGstin && String(customerGstin).length >= 2 ? String(customerGstin).slice(0, 2) : '');
-  const useIGST = workshopStateCode && customerStateCodeEff ? workshopStateCode !== customerStateCodeEff : false;
+  const workshopStateCode = gstinStateCode(workshopGstin) || '27';
+  const customerGstinStateCode = gstinStateCode(customerGstin);
+  const useIGST = Boolean(customerGstinStateCode) && customerGstinStateCode !== workshopStateCode;
 
   const cgstIncluded = useIGST ? 0 : computedGstIncluded / 2;
   const sgstIncluded = useIGST ? 0 : computedGstIncluded / 2;
@@ -1912,20 +2023,20 @@ function generateInvoiceHTML(invoice: any): string {
         <tr>
           <td>IGST (Included)</td>
           <td class="text-right">${computedTaxableAfterDiscount.toFixed(2)}</td>
-          <td class="text-right">${effectiveGstRate ? `${effectiveGstRate.toFixed(2)}%` : '—'}</td>
+          <td class="text-right">18.00%</td>
           <td class="text-right">${igstIncluded.toFixed(2)}</td>
         </tr>
         ` : `
         <tr>
           <td>CGST (Included)</td>
           <td class="text-right">${computedTaxableAfterDiscount.toFixed(2)}</td>
-          <td class="text-right">${effectiveGstRate ? `${(effectiveGstRate / 2).toFixed(2)}%` : '—'}</td>
+          <td class="text-right">9.00%</td>
           <td class="text-right">${cgstIncluded.toFixed(2)}</td>
         </tr>
         <tr>
           <td>SGST / UTGST (Included)</td>
           <td class="text-right">${computedTaxableAfterDiscount.toFixed(2)}</td>
-          <td class="text-right">${effectiveGstRate ? `${(effectiveGstRate / 2).toFixed(2)}%` : '—'}</td>
+          <td class="text-right">9.00%</td>
           <td class="text-right">${sgstIncluded.toFixed(2)}</td>
         </tr>
         `}
@@ -1960,10 +2071,21 @@ function generateInvoiceHTML(invoice: any): string {
           <td>Net Taxable Value</td>
           <td>₹${computedTaxableAfterDiscount.toFixed(2)}</td>
         </tr>
+        ${useIGST ? `
         <tr>
-          <td>GST (Included)</td>
-          <td>₹${computedGstIncluded.toFixed(2)}</td>
+          <td>IGST (Included)</td>
+          <td>₹${igstIncluded.toFixed(2)}</td>
         </tr>
+        ` : `
+        <tr>
+          <td>CGST (Included)</td>
+          <td>₹${cgstIncluded.toFixed(2)}</td>
+        </tr>
+        <tr>
+          <td>SGST (Included)</td>
+          <td>₹${sgstIncluded.toFixed(2)}</td>
+        </tr>
+        `}
         <tr>
           <td>Grand Total</td>
           <td>₹${computedTotalAfterDiscount.toFixed(2)}</td>

@@ -15,7 +15,9 @@ import {
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
+import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
+import * as Location from 'expo-location';
 
 export default function TelecallerCreateLeadScreen({ navigation }: any) {
   const { user } = useAuth();
@@ -29,13 +31,17 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
     customer_alternate_phone: '',
     customer_email: '',
     customer_address: '',
+    city_id: '',
     city: '',
     pincode: '',
     contact_method: 'CALL',
+    customer_lat: '',
+    customer_lng: '',
     
     // Vehicle Details
     vehicle_number: '',
     vehicle_make: '',
+    model_id: '',
     vehicle_model: '',
     vehicle_variant: '',
     vehicle_year: '',
@@ -43,19 +49,33 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
     odometer_km: '',
     
     // Service Details
-    service_type: '',
+    service_type_ids: [] as string[],
+    subservice_ids: [] as string[],
     description: '',
     problem_description: '',
+    payment_mode: '',
+    coupon_code: '',
     
     // Additional
     pickup_required: false,
     pickup_address: '',
     preferred_slot_start: '',
+    preferred_slot_end: '',
     notes: '',
     lead_priority: 'NORMAL'
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [cities, setCities] = useState<any[]>([]);
+  const [makes, setMakes] = useState<string[]>([]);
+  const [models, setModels] = useState<any[]>([]);
+  const [serviceTypes, setServiceTypes] = useState<any[]>([]);
+  const [serviceAddons, setServiceAddons] = useState<any[]>([]);
+  const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
+  const [couponMode, setCouponMode] = useState<'dropdown' | 'manual'>('dropdown');
+  const [couponsLoading, setCouponsLoading] = useState(false);
+  const [couponsError, setCouponsError] = useState('');
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
   // Handle hardware back button
   useEffect(() => {
@@ -70,6 +90,122 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
     return () => backHandler.remove();
   }, [navigation]);
 
+  useEffect(() => {
+    fetchOptionsData();
+  }, []);
+
+  useEffect(() => {
+    if (formData.vehicle_make) {
+      fetchModels(formData.vehicle_make);
+    } else {
+      setModels([]);
+      setFormData(prev => ({ ...prev, model_id: '', vehicle_model: '' }));
+    }
+  }, [formData.vehicle_make]);
+
+  useEffect(() => {
+    fetchAvailableCoupons();
+  }, [formData.city_id, formData.service_type_ids.join(',')]);
+
+  const fetchOptionsData = async () => {
+    try {
+      // Cities via API (fallback to Supabase)
+      try {
+        const result = await apiFetch<{ cities: any[] }>('/api/cities');
+        setCities(result.cities || []);
+      } catch (apiError) {
+        const { data: citiesData } = await supabase
+          .from('cities')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name');
+        setCities(citiesData || []);
+      }
+
+      // Makes
+      const { data: makesData } = await supabase
+        .from('car_models')
+        .select('make')
+        .eq('is_active', true);
+      const uniqueMakes = [...new Set((makesData || []).map((item: any) => item.make))];
+      setMakes(uniqueMakes.sort());
+
+      // Service types
+      const { data: servicesData } = await supabase
+        .from('service_types')
+        .select('id, name, description')
+        .eq('is_active', true)
+        .order('name');
+      setServiceTypes(servicesData || []);
+
+      // Service add-ons
+      const { data: addonsData } = await supabase
+        .from('service_addons')
+        .select('id, name, description, price')
+        .eq('is_active', true)
+        .order('name');
+      setServiceAddons(addonsData || []);
+    } catch (error) {
+      console.error('Error fetching options:', error);
+    }
+  };
+
+  const fetchModels = async (make: string) => {
+    try {
+      const { data } = await supabase
+        .from('car_models')
+        .select('id, model_name, variant')
+        .eq('make', make)
+        .eq('is_active', true)
+        .order('model_name');
+      setModels(data || []);
+    } catch (error) {
+      console.error('Error fetching models:', error);
+      setModels([]);
+    }
+  };
+
+  const fetchAvailableCoupons = async () => {
+    setCouponsLoading(true);
+    setCouponsError('');
+    try {
+      const params = new URLSearchParams();
+      if (formData.city_id) params.set('city_id', formData.city_id);
+      if (formData.service_type_ids.length > 0) {
+        params.set('service_type_ids', formData.service_type_ids.join(','));
+      }
+      const data = await apiFetch<{ coupons: any[] }>(`/api/telecaller/coupons?${params.toString()}`);
+      setAvailableCoupons(data.coupons || []);
+    } catch (error: any) {
+      setAvailableCoupons([]);
+      setCouponsError(error?.message || 'Failed to load coupons');
+    } finally {
+      setCouponsLoading(false);
+    }
+  };
+
+  const getCurrentLocation = async () => {
+    try {
+      setLoadingLocation(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission denied', 'Location permission is required.');
+        return;
+      }
+      const location = await Location.getCurrentPositionAsync({});
+      setFormData(prev => ({
+        ...prev,
+        customer_lat: String(location.coords.latitude),
+        customer_lng: String(location.coords.longitude),
+      }));
+    } catch (error) {
+      console.error('Error fetching location:', error);
+      Alert.alert('Error', 'Unable to fetch location');
+    } finally {
+      setLoadingLocation(false);
+    }
+  };
+
   const updateField = (field: string, value: any) => {
     // Auto-uppercase vehicle number
     const finalValue = field === 'vehicle_number' ? value.toUpperCase() : value;
@@ -82,6 +218,32 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
         return newErrors;
       });
     }
+  };
+
+  const handleSelectCity = (city: any) => {
+    setFormData(prev => ({
+      ...prev,
+      city_id: city.id,
+      city: city.name,
+    }));
+  };
+
+  const toggleServiceType = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      service_type_ids: prev.service_type_ids.includes(id)
+        ? prev.service_type_ids.filter(t => t !== id)
+        : [...prev.service_type_ids, id],
+    }));
+  };
+
+  const toggleAddon = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      subservice_ids: prev.subservice_ids.includes(id)
+        ? prev.subservice_ids.filter(a => a !== id)
+        : [...prev.subservice_ids, id],
+    }));
   };
   
   const validateVehicleNumber = (vehicleNumber: string): boolean => {
@@ -100,7 +262,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       if (formData.customer_phone && formData.customer_phone.length < 10) {
         newErrors.customer_phone = 'Enter valid 10-digit number';
       }
-      if (!formData.city.trim()) newErrors.city = 'City required';
+      if (!formData.city_id && !formData.city.trim()) newErrors.city = 'City required';
     }
 
     if (step === 2) {
@@ -115,7 +277,7 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
     }
 
     if (step === 3) {
-      if (!formData.service_type.trim()) newErrors.service_type = 'Service type required';
+      if (formData.service_type_ids.length === 0) newErrors.service_type = 'Service type required';
       
       // Pickup validation - only if pickup is required
       if (formData.pickup_required) {
@@ -157,6 +319,10 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       // Generate lead number
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
 
+      const selectedServiceNames = serviceTypes
+        .filter((st: any) => formData.service_type_ids.includes(st.id))
+        .map((st: any) => st.name);
+
       // Create lead
       const { data: lead, error: leadError } = await supabase
         .from('service_leads')
@@ -172,25 +338,34 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           customer_alternate_phone: formData.customer_alternate_phone || null,
           customer_email: formData.customer_email || null,
           customer_address: formData.customer_address || null,
-          city: formData.city,
+          city_id: formData.city_id || null,
+          city: formData.city || null,
           pincode: formData.pincode || null,
           contact_method: formData.contact_method,
+          customer_lat: formData.customer_lat || null,
+          customer_lng: formData.customer_lng || null,
           
           vehicle_number: formData.vehicle_number, // Required field
           vehicle_make: formData.vehicle_make,
+          model_id: formData.model_id || null,
           vehicle_model: formData.vehicle_model,
           vehicle_variant: formData.vehicle_variant || null,
           vehicle_year: formData.vehicle_year ? parseInt(formData.vehicle_year) : null,
           vehicle_fuel_type: formData.vehicle_fuel_type,
           odometer_km: formData.odometer_km ? parseInt(formData.odometer_km) : null,
           
-          service_type: formData.service_type, // Service type UUID
+          service_type: selectedServiceNames.join(', ') || null,
+          service_type_ids: formData.service_type_ids,
+          subservice_ids: formData.subservice_ids,
           description: formData.description || null,
           problem_description: formData.problem_description || null,
+          payment_mode: formData.payment_mode || null,
+          coupon_code: formData.coupon_code || null,
           
           pickup_required: formData.pickup_required,
           pickup_address: formData.pickup_required ? (formData.pickup_address || formData.customer_address) : null,
           preferred_slot_start: formData.preferred_slot_start || null,
+          preferred_slot_end: formData.preferred_slot_end || null,
           
           notes: formData.notes || null,
           lead_priority: formData.lead_priority,
@@ -314,10 +489,29 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
         <TextInput
           style={[styles.input, !!errors.city && styles.inputError]}
           value={formData.city}
-          onChangeText={(value) => updateField('city', value)}
-          placeholder="City name"
+          onChangeText={(value) => {
+            updateField('city', value);
+            setFormData(prev => ({ ...prev, city_id: '' }));
+          }}
+          placeholder="Search city"
           placeholderTextColor={COLORS.textSecondary}
         />
+        {formData.city.length > 0 && cities.length > 0 && (
+          <View style={styles.optionList}>
+            {cities
+              .filter((c: any) => c.name.toLowerCase().includes(formData.city.toLowerCase()))
+              .slice(0, 6)
+              .map((c: any) => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.optionItem}
+                  onPress={() => handleSelectCity(c)}
+                >
+                  <Text style={styles.optionText}>{c.name}</Text>
+                </TouchableOpacity>
+              ))}
+          </View>
+        )}
         {errors.city && <Text style={styles.errorText}>{errors.city}</Text>}
       </View>
 
@@ -362,9 +556,25 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           style={[styles.input, !!errors.vehicle_make && styles.inputError]}
           value={formData.vehicle_make}
           onChangeText={(value) => updateField('vehicle_make', value)}
-          placeholder="e.g., Maruti, Hyundai"
+          placeholder="Search make"
           placeholderTextColor={COLORS.textSecondary}
         />
+        {formData.vehicle_make.length > 0 && makes.length > 0 && (
+          <View style={styles.optionList}>
+            {makes
+              .filter((m) => m.toLowerCase().includes(formData.vehicle_make.toLowerCase()))
+              .slice(0, 6)
+              .map((m) => (
+                <TouchableOpacity
+                  key={m}
+                  style={styles.optionItem}
+                  onPress={() => updateField('vehicle_make', m)}
+                >
+                  <Text style={styles.optionText}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+          </View>
+        )}
         {errors.vehicle_make && <Text style={styles.errorText}>{errors.vehicle_make}</Text>}
       </View>
 
@@ -374,9 +584,30 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           style={[styles.input, !!errors.vehicle_model && styles.inputError]}
           value={formData.vehicle_model}
           onChangeText={(value) => updateField('vehicle_model', value)}
-          placeholder="e.g., Swift, Creta"
+          placeholder="Select model"
           placeholderTextColor={COLORS.textSecondary}
         />
+        {models.length > 0 && (
+          <View style={styles.optionList}>
+            {models.slice(0, 6).map((m: any) => (
+              <TouchableOpacity
+                key={m.id}
+                style={styles.optionItem}
+                onPress={() =>
+                  setFormData(prev => ({
+                    ...prev,
+                    model_id: m.id,
+                    vehicle_model: m.model_name,
+                  }))
+                }
+              >
+                <Text style={styles.optionText}>
+                  {m.model_name}{m.variant ? ` (${m.variant})` : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         {errors.vehicle_model && <Text style={styles.errorText}>{errors.vehicle_model}</Text>}
       </View>
 
@@ -446,36 +677,50 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
       <Text style={styles.stepTitle}>Service Requirements & Pickup</Text>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Service Type *</Text>
+        <Text style={styles.label}>Service Types *</Text>
         <View style={styles.serviceTypeGrid}>
-          {[
-            { value: 'GENERAL_SERVICE', label: 'General Service' },
-            { value: 'OIL_CHANGE', label: 'Oil Change' },
-            { value: 'BRAKE_SERVICE', label: 'Brake Service' },
-            { value: 'AC_SERVICE', label: 'AC Service' },
-            { value: 'BATTERY', label: 'Battery' },
-            { value: 'TIRE_SERVICE', label: 'Tire Service' },
-            { value: 'ENGINE_REPAIR', label: 'Engine Repair' },
-            { value: 'DENTING_PAINTING', label: 'Denting' },
-          ].map(type => (
+          {serviceTypes.map((type: any) => (
             <TouchableOpacity
-              key={type.value}
+              key={type.id}
               style={[
                 styles.serviceTypeButton,
-                formData.service_type === type.value && styles.serviceTypeButtonActive
+                formData.service_type_ids.includes(type.id) && styles.serviceTypeButtonActive
               ]}
-              onPress={() => updateField('service_type', type.value)}
+              onPress={() => toggleServiceType(type.id)}
             >
               <Text style={[
                 styles.serviceTypeText,
-                formData.service_type === type.value && styles.serviceTypeTextActive
+                formData.service_type_ids.includes(type.id) && styles.serviceTypeTextActive
               ]}>
-                {type.label}
+                {type.name}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
         {errors.service_type && <Text style={styles.errorText}>{errors.service_type}</Text>}
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Add-ons / Sub-services</Text>
+        <View style={styles.serviceTypeGrid}>
+          {serviceAddons.map((addon: any) => (
+            <TouchableOpacity
+              key={addon.id}
+              style={[
+                styles.serviceTypeButton,
+                formData.subservice_ids.includes(addon.id) && styles.serviceTypeButtonActive
+              ]}
+              onPress={() => toggleAddon(addon.id)}
+            >
+              <Text style={[
+                styles.serviceTypeText,
+                formData.subservice_ids.includes(addon.id) && styles.serviceTypeTextActive
+              ]}>
+                {addon.name}{addon.price ? ` (₹${addon.price})` : ''}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       <View style={styles.inputGroup}>
@@ -502,6 +747,79 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           numberOfLines={4}
           placeholderTextColor={COLORS.textSecondary}
         />
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Payment Mode</Text>
+        <TextInput
+          style={styles.input}
+          value={formData.payment_mode}
+          onChangeText={(value) => updateField('payment_mode', value)}
+          placeholder="Cash / Card / UPI"
+          placeholderTextColor={COLORS.textSecondary}
+        />
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Coupon</Text>
+        <View style={styles.toggleRow}>
+          <TouchableOpacity
+            style={[styles.toggleButton, couponMode === 'dropdown' && styles.toggleButtonActive]}
+            onPress={() => setCouponMode('dropdown')}
+          >
+            <Text style={[styles.toggleText, couponMode === 'dropdown' && styles.toggleTextActive]}>Select</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleButton, couponMode === 'manual' && styles.toggleButtonActive]}
+            onPress={() => setCouponMode('manual')}
+          >
+            <Text style={[styles.toggleText, couponMode === 'manual' && styles.toggleTextActive]}>Manual</Text>
+          </TouchableOpacity>
+        </View>
+
+        {couponMode === 'manual' ? (
+          <TextInput
+            style={styles.input}
+            value={formData.coupon_code}
+            onChangeText={(value) => updateField('coupon_code', value.toUpperCase())}
+            placeholder="Enter coupon code"
+            placeholderTextColor={COLORS.textSecondary}
+          />
+        ) : (
+          <View style={styles.optionList}>
+            {couponsLoading && <Text style={styles.helperText}>Loading coupons...</Text>}
+            {!!couponsError && <Text style={styles.errorText}>{couponsError}</Text>}
+            {!couponsLoading && availableCoupons.length === 0 && (
+              <Text style={styles.helperText}>No coupons available</Text>
+            )}
+            {availableCoupons.map((coupon: any) => (
+              <TouchableOpacity
+                key={coupon.id}
+                style={styles.optionItem}
+                onPress={() => updateField('coupon_code', coupon.code)}
+              >
+                <Text style={styles.optionText}>
+                  {coupon.code} {coupon.description ? `• ${coupon.description}` : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Customer Location</Text>
+        <TouchableOpacity style={styles.locationButton} onPress={getCurrentLocation} disabled={loadingLocation}>
+          <Text style={styles.locationButtonEmoji}>📍</Text>
+          <Text style={styles.locationButtonText}>
+            {loadingLocation ? 'Fetching location...' : 'Get Current Location (Lat/Lng)'}
+          </Text>
+        </TouchableOpacity>
+        {(formData.customer_lat || formData.customer_lng) && (
+          <Text style={styles.helperText}>
+            {formData.customer_lat}, {formData.customer_lng}
+          </Text>
+        )}
       </View>
 
       {/* Pickup Section */}
@@ -533,10 +851,26 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
             {errors.pickup_address && <Text style={styles.errorText}>{errors.pickup_address}</Text>}
           </View>
 
-          <TouchableOpacity style={styles.locationButton}>
-            <Text style={styles.locationButtonEmoji}>📍</Text>
-            <Text style={styles.locationButtonText}>Get Current Location (Lat/Lng)</Text>
-          </TouchableOpacity>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Preferred Slot Start</Text>
+            <TextInput
+              style={styles.input}
+              value={formData.preferred_slot_start}
+              onChangeText={(value) => updateField('preferred_slot_start', value)}
+              placeholder="YYYY-MM-DDTHH:mm"
+              placeholderTextColor={COLORS.textSecondary}
+            />
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Preferred Slot End</Text>
+            <TextInput
+              style={styles.input}
+              value={formData.preferred_slot_end}
+              onChangeText={(value) => updateField('preferred_slot_end', value)}
+              placeholder="YYYY-MM-DDTHH:mm"
+              placeholderTextColor={COLORS.textSecondary}
+            />
+          </View>
         </>
       )}
 
@@ -797,6 +1131,50 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     fontSize: 14,
     color: COLORS.textPrimary,
+  },
+  optionList: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    marginTop: SPACING.xs,
+    overflow: 'hidden',
+  },
+  optionItem: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[200],
+  },
+  optionText: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  toggleButton: {
+    flex: 1,
+    paddingVertical: SPACING.xs,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+  },
+  toggleButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  toggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  toggleTextActive: {
+    color: COLORS.white,
   },
   inputError: {
     borderColor: COLORS.red,
