@@ -45,8 +45,8 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
     pincode: '400604',
     phone: '+91 9167779696',
     email: 'support@myfng.in',
-    gst: '27ABCDE1234F1Z5',
-    pan: 'ABCDE1234F',
+    gst: '27AATCM1780F1Z4',
+    pan: 'AATCM1780F',
     bank_name: 'HDFC Bank',
     bank_account_name: 'MyFNG Autocare Pvt. Ltd.',
     bank_account_number: '123456789012',
@@ -74,6 +74,7 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
       const taxable = Math.max(0, base - discount);
       const tax = (taxable * taxPercent) / 100;
       const total = taxable + tax;
+      const hsnSac = '996749';
       return `
         <tr>
           <td>${idx + 1}</td>
@@ -81,7 +82,7 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
             <div class="item-name">${item.item_name || ''}</div>
             <div class="item-desc">${item.item_description || ''}</div>
           </td>
-          <td class="num">${item.hsn_sac_code || '—'}</td>
+          <td class="num">${hsnSac}</td>
           <td class="num">${qty}</td>
           <td class="num">₹${unit.toFixed(2)}</td>
           <td class="num">${taxPercent.toFixed(2)}%</td>
@@ -143,7 +144,7 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
               <div class="muted">${company.name}</div>
               <div class="muted">${company.address}, ${company.city}, ${company.state} ${company.pincode}</div>
               <div class="muted">${company.phone} | ${company.email}</div>
-              <div class="gst">GSTIN: ${company.gst} | PAN: ${company.pan}</div>
+              <div class="gst">GSTIN: ${company.gst} | Company PAN No.: ${company.pan}</div>
             </div>
             <div class="meta">
               <div class="chip">INVOICE</div>
@@ -196,7 +197,7 @@ function generateManualInvoiceHTML(invoice: any, autoPrint: boolean): string {
 
           <div class="totals">
             <table>
-              <tr><td class="label">Base</td><td class="num">₹${baseAmount.toFixed(2)}</td></tr>
+              <tr><td class="label">Sub Total</td><td class="num">₹${baseAmount.toFixed(2)}</td></tr>
               <tr><td class="label">Discount</td><td class="num">₹${discountAmount.toFixed(2)}</td></tr>
               <tr><td class="label">CGST</td><td class="num">₹${cgst.toFixed(2)}</td></tr>
               <tr><td class="label">SGST</td><td class="num">₹${sgst.toFixed(2)}</td></tr>
