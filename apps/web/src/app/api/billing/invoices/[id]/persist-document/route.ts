@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -22,7 +22,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const invoiceId = params.id;
+    const { id: invoiceId } = await params;
 
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
@@ -68,15 +68,15 @@ export async function POST(
 
     const nextVersion = (latestDoc?.version || 0) + 1;
 
-    // Generate HTML by calling existing generator endpoint (single source of truth)
-    const htmlUrl = `${request.nextUrl.origin}/api/billing/invoices/${invoiceId}/generate-pdf`;
+    // Generate PDF by calling existing generator endpoint (single source of truth)
+    const pdfUrl = `${request.nextUrl.origin}/api/billing/invoices/${invoiceId}/generate-pdf`;
     // IMPORTANT: forward cookies so generate-pdf can auth as the same user.
     // Without this, generate-pdf returns 401 and persist-document fails with 500.
     const cookie = request.headers.get('cookie') || '';
     const authorization = request.headers.get('authorization') || '';
     const fallbackUrl = `/api/billing/invoices/${invoiceId}/generate-pdf`;
 
-    const htmlRes = await fetch(htmlUrl, {
+    const pdfRes = await fetch(pdfUrl, {
       method: 'GET',
       headers: {
         ...(cookie ? { cookie } : {}),
@@ -84,19 +84,19 @@ export async function POST(
       },
       cache: 'no-store',
     });
-    if (!htmlRes.ok) {
-      const text = await htmlRes.text();
+    if (!pdfRes.ok) {
+      const text = await pdfRes.text();
       // Non-fatal: printing can still proceed using generator URL.
       return NextResponse.json({
         success: false,
         reason: 'generate_failed',
-        status: htmlRes.status,
+        status: pdfRes.status,
         details: text.slice(0, 500),
         fallback_url: fallbackUrl,
       });
     }
 
-    const htmlContent = await htmlRes.text();
+    const pdfBytes = await pdfRes.arrayBuffer();
     const now = new Date().toISOString();
 
     // Upload to Supabase Storage
@@ -107,12 +107,12 @@ export async function POST(
     const monthName = monthNames[Math.max(1, Math.min(12, month)) - 1];
 
     const safeDocNo = (invoice.invoice_number || invoiceId).replace(/[^A-Za-z0-9_-]/g, '_');
-    const filePath = `invoices/${year}/${monthName}/${docFolder}/${safeDocNo}_v${nextVersion}.html`;
-    const fileBytes = new TextEncoder().encode(htmlContent);
+    const filePath = `invoices/${year}/${monthName}/${docFolder}/${safeDocNo}_v${nextVersion}.pdf`;
+    const fileBytes = new Uint8Array(pdfBytes);
     const uploadRes = await supabase.storage
       .from('invoices')
       .upload(filePath, fileBytes, {
-        contentType: 'text/html; charset=utf-8',
+        contentType: 'application/pdf',
         upsert: true,
       });
 
@@ -142,7 +142,7 @@ export async function POST(
       .from('invoices')
       .update({
         document_url: publicUrl,
-        document_type: 'HTML',
+        document_type: 'PDF',
         document_generated_at: now,
         updated_at: now,
       })
@@ -159,7 +159,7 @@ export async function POST(
           version: nextVersion,
           storage_path: filePath,
           public_url: publicUrl,
-          document_type: 'HTML',
+          document_type: 'PDF',
           snapshot: {
             invoice_id: invoiceId,
             invoice_type: invoiceType,
@@ -174,7 +174,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       document_url: publicUrl,
-      document_type: 'HTML',
+      document_type: 'PDF',
       stored_path: filePath,
       version: nextVersion,
     });

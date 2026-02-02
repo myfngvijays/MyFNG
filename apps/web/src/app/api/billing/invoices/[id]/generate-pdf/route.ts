@@ -7,11 +7,14 @@ import { formatDateDMY, formatDateTime } from "@/lib/utils";
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import puppeteer from 'puppeteer';
 import { resolveWorkshopServicePriceBestAvailable } from '@/lib/utils/workshopServicePricing';
+
+export const runtime = 'nodejs';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -33,7 +36,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const invoiceId = params.id;
+    const { id: invoiceId } = await params;
 
     // Get invoice details first (without joins to avoid RLS issues)
     const { data: invoice, error: invoiceError } = await supabase
@@ -56,12 +59,12 @@ export async function GET(
 
     // Fetch lead details separately - schema-tolerant fetch
     let lead: any = null;
-    if (invoice.lead_id) {
+    if ((invoice as any).lead_id) {
       const { data: leadData, error: leadError } = await supabase
         .from('service_leads')
         // NOTE: do NOT select non-existent columns like service_leads.workshop_name (varies by install)
-        .select('id, lead_number, workshop_id, customer_name, customer_email, customer_phone, customer_gstin, customer_legal_name, customer_billing_address, customer_billing_state_code, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, vehicle_year, vehicle_fuel_type, model_id, city_id, vehicle_odometer, odometer_km, daily_running_km, next_service_km, next_service_date, service_type, service_type_ids, subservice_ids, customer_address, city, state, pincode')
-        .eq('id', invoice.lead_id)
+        .select('id, lead_number, workshop_id, customer_name, customer_email, customer_phone, customer_gstin, customer_legal_name, customer_billing_address, customer_billing_state_code, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, vehicle_year, vehicle_fuel_type, vehicle_vin, engine_no, chassis_no, model_id, city_id, vehicle_odometer, odometer_km, daily_running_km, next_service_km, next_service_date, service_type, service_type_ids, subservice_ids, customer_address, city, state, pincode, coupon_code, coupon_meta')
+        .eq('id', (invoice as any).lead_id)
         .maybeSingle();
       
       if (leadError) {
@@ -70,7 +73,7 @@ export async function GET(
         const { data: leadDataFallback, error: leadErrorFallback } = await supabase
           .from('service_leads')
           .select('*')
-          .eq('id', invoice.lead_id)
+          .eq('id', (invoice as any).lead_id)
           .maybeSingle();
         
         if (!leadErrorFallback && leadDataFallback) {
@@ -97,7 +100,7 @@ export async function GET(
     // Fetch service types
     let serviceTypes: any[] = [];
     let workshopServicePricing: any[] = [];
-    if (lead?.service_type_ids && invoice.workshop_id) {
+    if (lead?.service_type_ids && (invoice as any).workshop_id) {
       try {
         let serviceTypeIds: string[] = [];
         if (typeof lead.service_type_ids === 'string') {
@@ -125,7 +128,7 @@ export async function GET(
           const { data: workshopPricingData } = await supabase
             .from('workshop_service_pricing')
             .select('service_type_id, custom_price')
-            .eq('workshop_id', invoice.workshop_id)
+            .eq('workshop_id', (invoice as any).workshop_id)
             .in('service_type_id', serviceTypeIds)
             .eq('is_active', true);
           
@@ -144,7 +147,7 @@ export async function GET(
               }
               const p = await resolveWorkshopServicePriceBestAvailable({
                 supabase,
-                workshopId: String(invoice.workshop_id),
+                workshopId: String((invoice as any).workshop_id),
                 serviceTypeId: stId,
               });
               resolved.push({ ...(st as any), resolved_price: p });
@@ -315,11 +318,11 @@ export async function GET(
     // Fetch job card separately
     let jobcard: any = null;
     let jobCardParts: any[] = [];
-    if (invoice.jobcard_id) {
+    if ((invoice as any).jobcard_id) {
       const { data: jobcardData, error: jobcardError } = await supabase
         .from('job_cards')
         .select('id, jobcard_number')
-        .eq('id', invoice.jobcard_id)
+        .eq('id', (invoice as any).jobcard_id)
         .maybeSingle();
       
       if (!jobcardError) {
@@ -340,7 +343,7 @@ export async function GET(
               master_products ( name, unit, hsn_sac_code, tax_rate )
             `
           )
-          .eq('job_card_id', invoice.jobcard_id);
+          .eq('job_card_id', (invoice as any).jobcard_id);
 
         if (!partsErr) {
           jobCardParts = (partsData || []) as any[];
@@ -348,7 +351,7 @@ export async function GET(
           const { data: partsDataFallback } = await supabase
             .from('job_card_parts')
             .select('id, part_name, part_number, quantity, unit_price, total_price')
-            .eq('job_card_id', invoice.jobcard_id);
+            .eq('job_card_id', (invoice as any).jobcard_id);
           jobCardParts = (partsDataFallback || []) as any[];
         }
       }
@@ -356,11 +359,11 @@ export async function GET(
 
     // Fetch lead pricing items for itemized breakdown
     let pricingItems: any[] = [];
-    if (invoice.lead_id) {
+    if ((invoice as any).lead_id) {
       const { data: pricingItemsData } = await supabase
         .from('lead_pricing_items')
         .select('*')
-        .eq('lead_id', invoice.lead_id)
+        .eq('lead_id', (invoice as any).lead_id)
         .eq('status', 'ACTIVE')
         .order('created_at', { ascending: true });
       
@@ -373,7 +376,7 @@ export async function GET(
     // NOTE: Rates are treated as GST-inclusive for Additional Work in PDF calculations (per business requirement).
     let extraWorkItems: any[] = [];
     try {
-      const leadId = String(invoice.lead_id || '').trim();
+      const leadId = String((invoice as any).lead_id || '').trim();
       const workshopIdForExtras = String((invoice as any)?.workshop_id || (lead as any)?.workshop_id || '').trim();
 
       if (leadId) {
@@ -576,7 +579,7 @@ export async function GET(
 
     // Combine all data
     const invoiceWithRelations = {
-      ...invoice,
+      ...(invoice as any),
       lead,
       jobcard,
       workshop,
@@ -591,16 +594,45 @@ export async function GET(
     };
 
     // Generate HTML for PDF (will be converted to PDF)
-    const htmlContent = generateInvoiceHTML(invoiceWithRelations);
+    const htmlContent = await generateInvoiceHTML(invoiceWithRelations, supabaseAdmin);
+    const format = request.nextUrl.searchParams.get('format');
 
-    // For now, return HTML that can be printed/downloaded
-    // In production, use a PDF library like puppeteer or pdfkit
-    return new NextResponse(htmlContent, {
-      headers: {
-        'Content-Type': 'text/html',
-        'Content-Disposition': `inline; filename="invoice-${invoice.invoice_number}.html"`,
-      },
+    if (format === 'html') {
+      return new NextResponse(htmlContent, {
+        headers: {
+          'Content-Type': 'text/html',
+          'Content-Disposition': `inline; filename="invoice-${invoice.invoice_number}.html"`,
+        },
+      });
+    }
+
+    const baseHref = request.nextUrl.origin.endsWith('/') ? request.nextUrl.origin : `${request.nextUrl.origin}/`;
+    const htmlWithBase = htmlContent.replace(/<head>/i, `<head><base href="${baseHref}">`);
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
+
+    try {
+      const page = await browser.newPage();
+      await page.setContent(htmlWithBase, { waitUntil: 'networkidle0' });
+      await page.emulateMediaType('screen');
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '12mm', right: '10mm', bottom: '12mm', left: '10mm' },
+      });
+
+      return new NextResponse(Buffer.from(pdfBuffer), {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="invoice-${invoice.invoice_number}.pdf"`,
+        },
+      });
+    } finally {
+      await browser.close();
+    }
 
   } catch (error) {
     console.error('Error generating invoice PDF:', error);
@@ -611,7 +643,7 @@ export async function GET(
   }
 }
 
-function generateInvoiceHTML(invoice: any): string {
+async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<string> {
   const invoiceDate = invoice.invoice_date 
     ? formatDateDMY(invoice.invoice_date)
     : formatDateDMY(invoice.created_at);
@@ -655,6 +687,22 @@ function generateInvoiceHTML(invoice: any): string {
         ? 'Customer Invoice (CI)'
         : 'Tax Invoice (TI)';
 
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+
+  // MyFNG (Company) details for invoice header.
+  // Can be overridden via env without changing code.
+  const company = {
+    legalName: process.env.MYFNG_LEGAL_NAME || 'MY FNG AUTOCARE PVT LTD',
+    headOfficeAddress:
+      process.env.MYFNG_HEAD_OFFICE_ADDRESS ||
+      'A/309, Centrum Business Square, Wagle Industrial Estate, Thane (W), Maharashtra - 400604',
+    phone: process.env.MYFNG_PHONE || '+91 9167779696',
+    email: process.env.MYFNG_EMAIL || 'support@myfng.in',
+    website: process.env.MYFNG_WEBSITE || 'www.myfng.in',
+    gstin: process.env.MYFNG_GSTIN || '27AATCM1780F1Z4',
+    pan: process.env.MYFNG_PAN || 'AATCM1780F',
+  };
+
   // Use invoice customer address if available, otherwise use lead
   const customerAddress = invoice.customer_address || lead.customer_address || lead.address || '';
   const customerCity = invoice.customer_city || lead.city || '';
@@ -662,11 +710,57 @@ function generateInvoiceHTML(invoice: any): string {
   const customerPincode = invoice.customer_pincode || lead.pincode || '';
   
   // Use invoice bank details if available, otherwise use workshop
-  const bankName = invoice.bank_name || workshop.bank_name || 'HDFC Bank';
-  const bankAccountName = invoice.bank_account_name || workshop.bank_account_name || workshop.name || 'MyFNG Autocare Pvt. Ltd.';
-  const bankAccountNumber = invoice.bank_account_number || workshop.bank_account_number || '123456789012';
-  const bankIFSC = invoice.bank_ifsc || workshop.bank_ifsc || 'HDFC0001234';
-  const bankBranch = invoice.bank_branch || workshop.bank_branch || `${workshop.city || 'Kamothe'}, Navi Mumbai`;
+  const firstNonEmpty = (...vals: any[]) => {
+    for (const v of vals) {
+      const s = String(v ?? '').trim();
+      if (s) return s;
+    }
+    return '';
+  };
+
+  // Workshops table varies across installs:
+  // - some use bank_account_number + ifsc_code
+  // - some use bank_account_number + bank_ifsc
+  // - some use account_number + ifsc_code (UI form)
+  const bankName = firstNonEmpty(
+    invoice.bank_name,
+    workshop.bank_name,
+    (workshop as any).bankName,
+    process.env.MYFNG_BANK_NAME,
+    'IndusInd Bank'
+  );
+  const bankAccountName = firstNonEmpty(
+    invoice.bank_account_name,
+    workshop.bank_account_name,
+    (workshop as any).account_name,
+    (workshop as any).bank_account_holder_name,
+    process.env.MYFNG_BANK_ACCOUNT_NAME,
+    company.legalName
+  );
+  const bankAccountNumber = firstNonEmpty(
+    invoice.bank_account_number,
+    workshop.bank_account_number,
+    (workshop as any).account_number,
+    (workshop as any).bank_account_no,
+    (workshop as any).account_no,
+    process.env.MYFNG_BANK_ACCOUNT_NUMBER,
+    '251317241026'
+  );
+  const bankIFSC = firstNonEmpty(
+    invoice.bank_ifsc,
+    workshop.bank_ifsc,
+    (workshop as any).ifsc_code,
+    (workshop as any).ifsc,
+    process.env.MYFNG_BANK_IFSC,
+    'INDB0001928'
+  );
+  const bankBranch = firstNonEmpty(
+    invoice.bank_branch,
+    workshop.bank_branch,
+    (workshop as any).bank_branch_name,
+    process.env.MYFNG_BANK_BRANCH,
+    'Talao Pali Thane Branch'
+  );
 
   const toYMD = (v: any) => {
     const s = String(v || '').trim();
@@ -683,7 +777,9 @@ function generateInvoiceHTML(invoice: any): string {
       : null;
   const nextServiceDate = toYMD(lead?.next_service_date);
 
-  const gstDetailsEnabled = invType === 'TAX_INVOICE';
+  // PDFs should show GST breakup for OS/CI/TI (per requirements).
+  // Customer GSTIN may be missing; in that case we treat it as same-state with workshop (CGST+SGST).
+  const gstDetailsEnabled = true;
   const customerGstin = gstDetailsEnabled ? (invoice.customer_gstin || lead.customer_gstin || '') : '';
   const customerLegalName = gstDetailsEnabled ? (invoice.customer_legal_name || lead.customer_legal_name || '') : '';
   const customerBillingAddress = gstDetailsEnabled ? (invoice.customer_billing_address || lead.customer_billing_address || '') : '';
@@ -705,10 +801,11 @@ function generateInvoiceHTML(invoice: any): string {
   // Round off amount
   const roundOffAmount = invoice.round_off_amount || 0;
   
-  // Calculate amounts
+  // Calculate amounts (legacy; final totals are computed later)
   const subtotal = (invoice.base_amount || 0) + (invoice.extra_charges || 0) + (invoice.parts_cost || 0);
   const netTaxableValue = subtotal - (invoice.discount_amount || 0);
-  const finalAmount = invoice.final_amount || invoice.total_amount || 0;
+  // Keep as 0 so the totals table uses the computed payable consistently.
+  const finalAmount = 0;
   
   // Service type names (combine all service types)
   const serviceTypeNames = serviceTypes.length > 0 
@@ -1008,10 +1105,13 @@ function generateInvoiceHTML(invoice: any): string {
   const normCat = (v: any) => String(v ?? '').trim().toUpperCase();
   const isCustomServiceName = (s: string) => /custom\s*service/i.test(s);
   const normalizeTypeLabel = (t: any, cat: any, row?: any) => {
-    const raw = String(t ?? '').trim().toUpperCase();
-    if (raw.includes('LAB') || raw === 'SERVICE') return 'Labour';
-    if (raw.includes('PART') || raw === 'PRODUCT') return 'Part';
+    const raw = String(t ?? '').trim();
+    const rawUpper = raw.toUpperCase();
+    if (rawUpper.includes('CONSUMABLE')) return 'Consumable';
+    if (rawUpper.includes('LAB') || rawUpper === 'SERVICE') return 'Labour';
+    if (rawUpper.includes('PART') || rawUpper === 'PRODUCT') return 'Part';
     const c = normCat(cat);
+    if (c === 'CONSUMABLE') return 'Consumable';
     if (c === 'PART' || c === 'PARTS') return 'Part';
     if (c === 'SERVICE' || c === 'ADDON' || c === 'ADD_ON' || c === 'ADD-ON' || c === 'EXTRA') return 'Labour';
     // Fallback for older invoices where category/type wasn't stored
@@ -1020,7 +1120,7 @@ function generateInvoiceHTML(invoice: any): string {
     // Default to Labour for generic service rows (pricing items) when we can't infer category
     return 'Labour';
   };
-  const hsnFor = (row: any, typeLabel: 'Part' | 'Labour') => {
+  const hsnFor = (row: any, _typeLabel: 'Part' | 'Labour' | 'Consumable') => {
     const direct =
       row?.hsn_sac ??
       row?.hsn_sac_code ??
@@ -1032,8 +1132,7 @@ function generateInvoiceHTML(invoice: any): string {
       row?.master_products?.hsn_code ??
       '';
     const s = String(direct || '').trim();
-    if (s) return s;
-    return typeLabel === 'Labour' ? '998714' : '271019';
+    return s;
   };
   const gstRateFor = (row: any) => {
     const r =
@@ -1067,7 +1166,7 @@ function generateInvoiceHTML(invoice: any): string {
         kind: 'item';
         sr: number;
         nameHtml: string;
-        typeLabel: 'Part' | 'Labour';
+        typeLabel: 'Part' | 'Labour' | 'Consumable';
         hsn: string;
         gstRate: number;
         qty: number;
@@ -1149,7 +1248,7 @@ function generateInvoiceHTML(invoice: any): string {
     const taxable = gstRate > 0 ? totalInc / (1 + gstRate / 100) : totalInc;
     const unitPrice = qty ? totalInc / qty : totalInc;
     const total = totalInc;
-    const typeLabel = normalizeTypeLabel(row?.type, row?.category, row) as 'Part' | 'Labour';
+    const typeLabel = normalizeTypeLabel(row?.type, row?.category, row) as 'Part' | 'Labour' | 'Consumable';
 
     const isCustom = isCustomServiceName(description);
     const remarkRaw = isCustom ? String(row?.custom_remark ?? row?.remark ?? row?.notes ?? '').trim() : '';
@@ -1255,7 +1354,7 @@ function generateInvoiceHTML(invoice: any): string {
             (incRow as any)?.type ?? (incRow as any)?.product?.type,
             (incRow as any)?.category ?? (incRow as any)?.product?.type,
             incRow
-          )) as 'Part' | 'Labour';
+          )) as 'Part' | 'Labour' | 'Consumable';
       const incHsn = hsnFor(incRow, incTypeLabel);
       const pn = (incRow as any)?.part_number ?? (incRow as any)?.product?.part_number ?? null;
       const suffix = pn ? ` (${String(pn)})` : '';
@@ -1338,14 +1437,20 @@ function generateInvoiceHTML(invoice: any): string {
         const name = String(ew?.name || 'Additional Work').trim() || 'Additional Work';
         const partType = String(ew?.part_price_type || 'OEM').toUpperCase() === 'OES' ? 'OES' : 'OEM';
         const gstRate = Number.isFinite(Number(ew?.tax_rate)) && Number(ew?.tax_rate) > 0 ? Number(ew?.tax_rate) : 18;
-        const hsn = String(ew?.hsn_sac_code || '').trim() || '998714';
+        const partHsn = String(ew?.hsn_sac_code || '').trim() || '998714';
+        const labourHsn = '998714';
 
         const partsInc =
           partType === 'OES' ? num(ew?.oes_price, 0) : num(ew?.oem_price, 0);
         const labourInc = num(ew?.labour_price, 0);
         const legacyInc = num(ew?.legacy_amount, 0);
 
-        const pushInclusiveRow = (label: string, typeLabel: 'Part' | 'Labour', totalInc: number) => {
+        const pushInclusiveRow = (
+          label: string,
+          typeLabel: 'Part' | 'Labour',
+          totalInc: number,
+          hsn: string
+        ) => {
           const qty = 1;
           const unitPriceInc = totalInc;
           const taxable = gstRate > 0 ? totalInc / (1 + gstRate / 100) : totalInc;
@@ -1364,11 +1469,11 @@ function generateInvoiceHTML(invoice: any): string {
 
         const anyBreakup = partsInc > 0 || labourInc > 0;
         if (anyBreakup) {
-          if (partsInc > 0) pushInclusiveRow(`${name} - Parts (${partType})`, 'Part', partsInc);
-          if (labourInc > 0) pushInclusiveRow(`${name} - Labour`, 'Labour', labourInc);
+          if (partsInc > 0) pushInclusiveRow(`${name} - Parts (${partType})`, 'Part', partsInc, partHsn);
+          if (labourInc > 0) pushInclusiveRow(`${name} - Labour`, 'Labour', labourInc, labourHsn);
         } else if (legacyInc > 0) {
           // Legacy fallback: show a single GST-inclusive line.
-          pushInclusiveRow(`${name}`, 'Labour', legacyInc);
+          pushInclusiveRow(`${name}`, 'Labour', legacyInc, labourHsn);
         }
       }
     } else {
@@ -1401,8 +1506,166 @@ function generateInvoiceHTML(invoice: any): string {
     }
   }
 
-  // Derived totals from displayed rows (GST-inclusive).
-  // NOTE: This is useful for breakdown, but final totals should align with invoice stored totals.
+  // Reorder rows inside each section so that CONSUMABLE lines come first, then PART, then LABOUR.
+  // Applies to both:
+  // - grouped service blocks (service heading + its sub-items)
+  // - loose blocks (items directly under a section)
+  // Keeps section/group headers in place and only reorders their item rows.
+  {
+    const typeRank = (t: any) => {
+      const label = String(t);
+      if (label === 'Consumable') return 0;
+      if (label === 'Part') return 1;
+      return 2;
+    };
+
+    const stableSortItems = (items: Extract<DisplayRow, { kind: 'item' }>[]) =>
+      items
+        .map((it, idx) => ({ it, idx }))
+        .sort((a, b) => {
+          const d = typeRank(a.it.typeLabel) - typeRank(b.it.typeLabel);
+          return d !== 0 ? d : a.idx - b.idx;
+        })
+        .map((x) => x.it);
+
+    const rebuilt: DisplayRow[] = [];
+    let i = 0;
+    while (i < out.length) {
+      const row = out[i];
+      if (row.kind !== 'section') {
+        // Pre-section rows (shouldn't happen, but keep stable)
+        rebuilt.push(row);
+        i++;
+        continue;
+      }
+
+      // Start a new section segment
+      rebuilt.push(row);
+      i++;
+
+      // Collect until next section or end
+      const segment: DisplayRow[] = [];
+      while (i < out.length && out[i].kind !== 'section') {
+        segment.push(out[i]);
+        i++;
+      }
+
+      // Split segment into blocks: either group blocks or loose item blocks
+      // Use loose typing here to keep the template schema-tolerant across installs.
+      const blocks: any[] = [];
+
+      let j = 0;
+      let loose: Extract<DisplayRow, { kind: 'item' }>[] = [];
+      const flushLoose = () => {
+        if (loose.length > 0) {
+          blocks.push({ kind: 'loose', items: loose });
+          loose = [];
+        }
+      };
+
+      while (j < segment.length) {
+        const r = segment[j];
+        if (r.kind === 'group') {
+          flushLoose();
+          const header = r;
+          const items: Extract<DisplayRow, { kind: 'item' }>[] = [];
+          j++;
+          while (j < segment.length && segment[j].kind === 'item') {
+            items.push(segment[j] as any);
+            j++;
+          }
+          blocks.push({ kind: 'group', header, items });
+          continue;
+        }
+        if (r.kind === 'item') {
+          loose.push(r as any);
+        }
+        j++;
+      }
+      flushLoose();
+
+      // Rebuild the section content with sorted items
+      for (const b of blocks) {
+        if (b.kind === 'group') {
+          rebuilt.push(b.header);
+          rebuilt.push(...stableSortItems(b.items));
+        } else {
+          rebuilt.push(...stableSortItems(b.items));
+        }
+      }
+    }
+
+    // Re-number S.NO after reorder (group/section rows do not consume S.NO)
+    let newSr = 1;
+    for (const r of rebuilt) {
+      if (r.kind === 'item') {
+        (r as any).sr = newSr++;
+      }
+    }
+
+    // Replace in-place
+    out.splice(0, out.length, ...rebuilt);
+  }
+
+  const normalizeDiscountMode = (mode: any): 'AMOUNT' | 'PERCENT' | null => {
+    const m = String(mode ?? '').trim().toUpperCase();
+    if (!m) return null;
+    if (m === 'AMOUNT' || m === 'FLAT' || m === 'FIXED' || m === 'VALUE') return 'AMOUNT';
+    if (m === 'PERCENT' || m === 'PERCENTAGE' || m === 'PCT') return 'PERCENT';
+    return null;
+  };
+  const parseDiscountFromDescription = (desc: any): { mode: 'AMOUNT' | 'PERCENT' | null; value: number | null } => {
+    const s = String(desc ?? '').trim();
+    if (!s) return { mode: null, value: null };
+    const percentMatch = s.match(/(\d+(?:\.\d+)?)\s*%/);
+    if (percentMatch) {
+      const v = Number(percentMatch[1]);
+      return { mode: 'PERCENT', value: Number.isFinite(v) ? v : null };
+    }
+    const numMatch = s.match(/(\d+(?:\.\d+)?)/);
+    if (numMatch) {
+      const v = Number(numMatch[1]);
+      return { mode: 'AMOUNT', value: Number.isFinite(v) ? v : null };
+    }
+    return { mode: null, value: null };
+  };
+  const parseCodes = (raw: any): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+      } catch {
+        // ignore
+      }
+      return raw
+        .split(',')
+        .map((c) => String(c || '').trim().toUpperCase())
+        .filter(Boolean);
+    }
+    return [];
+  };
+
+  const parseMeta = (raw: any) => {
+    if (!raw) return null;
+    if (typeof raw === 'string') {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+    return raw;
+  };
+  const invoiceCouponMeta = parseMeta((invoice as any)?.coupon_meta);
+  const leadCouponMeta = parseMeta((lead as any)?.coupon_meta);
+  const couponMeta = invoiceCouponMeta || leadCouponMeta || null;
+  const selectedCodes = parseCodes(couponMeta?.selected_codes);
+  const appliedCode = String((invoice as any)?.coupon_code || '').trim().toUpperCase();
+  const codes = Array.from(new Set([...(selectedCodes || []), ...(appliedCode ? [appliedCode] : [])])).filter(Boolean);
+
+  // Derived totals from displayed rows (GST-inclusive) - used for coupon calculations too.
   const rowsTotalInc = out
     .filter((r: any) => r?.kind === 'item' || r?.kind === 'group')
     .reduce((s: number, r: any) => s + (Number(r?.total) || 0), 0);
@@ -1410,24 +1673,96 @@ function generateInvoiceHTML(invoice: any): string {
     .filter((r: any) => r?.kind === 'item' || r?.kind === 'group')
     .reduce((s: number, r: any) => s + (Number(r?.taxable) || 0), 0);
 
-  // Totals source of truth:
-  // - prefer invoice.final_amount/total_amount for payable
-  // - prefer invoice.sub_total for pre-discount subtotal (newer installs store pre-discount)
-  // - fallback to rows totals if invoice fields are missing
-  const discountInc = Number(invoice?.discount_amount || 0) || 0;
-  const payableFromInvoice = num(invoice?.final_amount ?? invoice?.total_amount ?? 0, 0);
-  let subTotalFromInvoice = num(invoice?.sub_total ?? 0, 0);
-  if (subTotalFromInvoice <= 0 && payableFromInvoice > 0) subTotalFromInvoice = payableFromInvoice + discountInc;
-  // If sub_total appears to already be after-discount, normalize it to pre-discount.
-  if (subTotalFromInvoice > 0 && payableFromInvoice > 0 && discountInc > 0) {
-    const almostEqual = (a: number, b: number) => Math.abs(a - b) < 0.5;
-    if (almostEqual(subTotalFromInvoice, payableFromInvoice) || subTotalFromInvoice < payableFromInvoice) {
-      subTotalFromInvoice = payableFromInvoice + discountInc;
-    }
+  let couponRecords: Array<{
+    code?: string | null;
+    coupon_kind?: string | null;
+    target_custom_label?: string | null;
+    description?: string | null;
+    discount_mode?: string | null;
+    discount_value?: number | null;
+  }> = [];
+  if (supabaseAdmin && codes.length > 0) {
+    const { data: couponData } = await supabaseAdmin
+      .from('coupons')
+      .select('code, coupon_kind, target_custom_label, description, discount_mode, discount_value')
+      .in('code', codes);
+    couponRecords = couponData || [];
   }
+  const normCode = (c: any) => String(c || '').trim().toUpperCase();
+  const freeCouponRecord = couponRecords.find((c) => String(c?.coupon_kind || '').toUpperCase() === 'FREE_SERVICE');
+  const totalCouponRecord = couponRecords.find((c) => String(c?.coupon_kind || '').toUpperCase() === 'TOTAL_DISCOUNT');
+
+  const freeMeta = couponMeta?.free_service || null;
+  const freeLabel =
+    String(
+      freeMeta?.matched_label ||
+        freeMeta?.target_custom_label ||
+        freeCouponRecord?.target_custom_label ||
+        freeCouponRecord?.description ||
+        leadCouponMeta?.free_service?.target_custom_label ||
+        ''
+    ).trim() || null;
+  const freeServiceCode =
+    String(couponMeta?.coupon_kind || '').toUpperCase() === 'FREE_SERVICE'
+      ? normCode(couponMeta?.code || appliedCode)
+      : freeCouponRecord?.code
+        ? normCode(freeCouponRecord.code)
+        : appliedCode || null;
+
+  const discountCodeCandidates = codes.filter((c) => c && c !== freeServiceCode);
+  const totalDiscountCode =
+    String(couponMeta?.coupon_kind || '').toUpperCase() === 'TOTAL_DISCOUNT'
+      ? normCode(couponMeta?.code || appliedCode)
+      : totalCouponRecord?.code
+        ? normCode(totalCouponRecord.code)
+        : discountCodeCandidates[0] || (appliedCode && appliedCode !== freeServiceCode ? appliedCode : null);
+  const totalDiscountAmount =
+    (() => {
+      const stored = Number(invoice?.discount_amount || 0) || 0;
+      if (stored > 0) return stored;
+      const c = totalCouponRecord || null;
+      if (!c) return 0;
+      const derived = parseDiscountFromDescription((c as any)?.description);
+      const mode =
+        normalizeDiscountMode((c as any)?.discount_mode) ||
+        derived.mode;
+      const valueRaw =
+        (c as any)?.discount_value ?? derived.value;
+      const value = Number(valueRaw);
+      if (!mode || !Number.isFinite(value) || value <= 0) return 0;
+      // Match UI precedence: invoice.subtotal || invoice.sub_total
+      const subtotalField = Number(((invoice as any)?.subtotal || (invoice as any)?.sub_total || 0)) || 0;
+      const subtotal = subtotalField > 0 ? subtotalField : rowsTotalInc;
+      if (subtotal <= 0) return 0;
+      if (mode === 'AMOUNT') return Math.min(value, subtotal);
+      return (subtotal * value) / 100;
+    })();
+
+  const showFreeRow =
+    Boolean(freeServiceCode) &&
+    (String(couponMeta?.coupon_kind || '').toUpperCase() === 'FREE_SERVICE' || Boolean(freeCouponRecord) || Boolean(freeLabel));
+  const showTotalDiscountRow = Boolean(totalDiscountCode);
+
+  // Totals source of truth:
+  // - prefer invoice.sub_total/subtotal for pre-discount subtotal when present
+  // - fallback to rows totals if invoice fields are missing
+  // - prefer invoice.final_amount/total_amount for payable *only when it doesn't look like a pre-discount amount*
+  const discountInc = totalDiscountAmount;
+  const payableFromInvoice = num(invoice?.final_amount ?? invoice?.total_amount ?? 0, 0);
+  // Match UI precedence: invoice.subtotal || invoice.sub_total
+  let subTotalFromInvoice = Number(((invoice as any)?.subtotal || (invoice as any)?.sub_total || 0)) || 0;
+  if (subTotalFromInvoice <= 0) subTotalFromInvoice = rowsTotalInc;
+  if (subTotalFromInvoice <= 0 && payableFromInvoice > 0) {
+    // Last resort: infer pre-discount subtotal from payable + discount.
+    subTotalFromInvoice = discountInc > 0 ? payableFromInvoice + discountInc : payableFromInvoice;
+  }
+
   const computedTotalInc = subTotalFromInvoice > 0 ? subTotalFromInvoice : rowsTotalInc;
+  const computedAfterDiscount = Math.max(0, computedTotalInc - discountInc);
+  const almostEqual = (a: number, b: number) => Math.abs(a - b) < 0.5;
+  const payableLooksPreDiscount = discountInc > 0 && payableFromInvoice > 0 && almostEqual(payableFromInvoice, computedTotalInc);
   const computedTotalAfterDiscount =
-    payableFromInvoice > 0 ? payableFromInvoice : Math.max(0, computedTotalInc - discountInc);
+    payableFromInvoice > 0 ? (payableLooksPreDiscount ? computedAfterDiscount : payableFromInvoice) : computedAfterDiscount;
 
   // GST breakup should sum to payable; scale the row-derived taxable proportionally.
   const rowsTotalAfterDiscount = Math.max(0, rowsTotalInc - discountInc);
@@ -1436,18 +1771,35 @@ function generateInvoiceHTML(invoice: any): string {
   const computedTaxableAfterDiscount = Math.max(0, rowsTaxableAfterDiscount * scale);
   const computedGstIncluded = Math.max(0, computedTotalAfterDiscount - computedTaxableAfterDiscount);
 
-  // Decide IGST vs CGST/SGST using GSTIN state codes (fallback: intra-state)
-  // Default workshop state to Maharashtra (27) when GSTIN missing.
+  // Decide IGST vs CGST/SGST:
+  // - If customer GSTIN exists, prefer explicit billing_state_code (if present), else derive from GSTIN.
+  // - If customer GSTIN is missing, treat as same-state with workshop (CGST+SGST).
+  // Default workshop state to Maharashtra (27) when unknown.
   const gstinStateCode = (gstinLike: any) => {
     const s = String(gstinLike || '').trim();
     const m = s.match(/^\d{2}/);
     return m ? m[0] : '';
   };
+  const normalizeStateCode = (raw: any) => {
+    const s = String(raw || '').trim();
+    const m = s.match(/\d{2}/);
+    return m ? m[0] : '';
+  };
 
   const workshopGstin = String((workshop as any)?.gst_number || (workshop as any)?.gstin || '').trim();
-  const workshopStateCode = gstinStateCode(workshopGstin) || '27';
-  const customerGstinStateCode = gstinStateCode(customerGstin);
-  const useIGST = Boolean(customerGstinStateCode) && customerGstinStateCode !== workshopStateCode;
+  const workshopStateCode = normalizeStateCode(gstinStateCode(workshopGstin) || '27') || '27';
+
+  const hasCustomerGstin = Boolean(String(customerGstin || '').trim());
+  const customerStateFromBilling = normalizeStateCode(customerBillingStateCode);
+  const customerStateFromGstin = normalizeStateCode(gstinStateCode(customerGstin));
+  const customerStateCode = hasCustomerGstin ? (customerStateFromBilling || customerStateFromGstin) : '';
+
+  // Business rule:
+  // 1) If customer GSTIN exists and state code is 27 => CGST+SGST (9%+9%), else IGST (18%).
+  // 2) If customer GSTIN is missing => decide by workshop location (workshop state code).
+  const useIGST = hasCustomerGstin
+    ? Boolean(customerStateCode) && customerStateCode !== '27'
+    : Boolean(workshopStateCode) && workshopStateCode !== '27';
 
   const cgstIncluded = useIGST ? 0 : computedGstIncluded / 2;
   const sgstIncluded = useIGST ? 0 : computedGstIncluded / 2;
@@ -1456,7 +1808,11 @@ function generateInvoiceHTML(invoice: any): string {
     computedTaxableAfterDiscount > 0 ? (computedGstIncluded / computedTaxableAfterDiscount) * 100 : 0;
 
   const invoiceType = (invoice as any).invoice_type || 'TAX_INVOICE';
-  const showGstBreakup = (invoice as any).show_gst_breakup !== false && invoiceType === 'TAX_INVOICE';
+  // Show GST breakup for OS/CI/TI unless explicitly disabled.
+  const showGstBreakup = (invoice as any).show_gst_breakup !== false;
+  // Show GST% + Taxable columns only for Tax Invoice (TI)
+  const showItemGstCols = String(invoiceType).toUpperCase() === 'TAX_INVOICE';
+  const itemTableColCount = showItemGstCols ? 9 : 7;
   const docTitle =
     invoiceType === 'ORDER_SUMMARY'
       ? 'ORDER SUMMARY'
@@ -1863,19 +2219,20 @@ function generateInvoiceHTML(invoice: any): string {
     <div class="report-header">
       <div class="brand-block">
         <div class="brand-row">
-          <img src="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/logo.png" alt="MyFNG Logo" style="max-width: 48px; height: auto;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'48\\' height=\\'48\\'%3E%3Crect fill=\\'%232563eb\\' width=\\'48\\' height=\\'48\\'/%3E%3Ctext fill=\\'white\\' font-family=\\'Arial\\' font-size=\\'14\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3EMYFNG%3C/text%3E%3C/svg%3E';" />
+          <img src="${appUrl}/logo.png" alt="MyFNG Logo" style="width: 64px; height: 64px; object-fit: contain;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'64\\' height=\\'64\\'%3E%3Crect fill=\\'%232563eb\\' width=\\'64\\' height=\\'64\\'/%3E%3Ctext fill=\\'white\\' font-family=\\'Arial\\' font-size=\\'16\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3EMYFNG%3C/text%3E%3C/svg%3E';" />
           <div>
-            <div class="brand-title">MY FNG</div>
             <div class="brand-sub">${docLabel}</div>
           </div>
         </div>
         <div class="brand-meta">
-          <div class="brand-head">Head Office</div>
-          <div>123, Start-up Hub, Tech Park, Bangalore, Karnataka - 560102</div>
+          <div class="brand-head">${company.legalName}</div>
+          <div>${company.headOfficeAddress}</div>
           <div class="brand-contact">
-            <span><strong>Email:</strong> support@myfng.in</span> |
-            <span><strong>Website:</strong> www.myfng.in</span> |
-            <span><strong>GSTIN:</strong> 29AAAAA0000A1Z5</span>
+            <span><strong>Phone:</strong> ${company.phone}</span> |
+            <span><strong>Email:</strong> ${company.email}</span> |
+            <span><strong>Website:</strong> ${company.website}</span> |
+            <span><strong>PAN:</strong> ${company.pan}</span> |
+            <span><strong>GSTIN:</strong> ${company.gstin}</span>
           </div>
         </div>
       </div>
@@ -1885,6 +2242,7 @@ function generateInvoiceHTML(invoice: any): string {
         <div>${workshop.short_address || workshop.address || '—'}${workshop.city || workshop.state || workshop.pincode ? ` ${[workshop.city, workshop.state, workshop.pincode].filter(Boolean).join(', ')}` : ''}</div>
         <div><strong>Phone:</strong> ${workshop.phone || '—'}</div>
         <div><strong>Email:</strong> ${workshop.email || '—'}</div>
+        <div><strong>PAN:</strong> ${workshop.pan_number || '—'}</div>
         <div><strong>GSTIN:</strong> ${workshop.gst_number || '—'}</div>
       </div>
     </div>
@@ -1915,6 +2273,9 @@ function generateInvoiceHTML(invoice: any): string {
         ${lead.vehicle_variant ? `<div class="detail-row"><span>Variant:</span> ${lead.vehicle_variant}</div>` : ''}
         ${lead.vehicle_year ? `<div class="detail-row"><span>Year:</span> ${lead.vehicle_year}</div>` : ''}
         ${lead.vehicle_fuel_type ? `<div class="detail-row"><span>Fuel:</span> ${lead.vehicle_fuel_type}</div>` : ''}
+        ${lead.vehicle_vin ? `<div class="detail-row"><span>VIN:</span> ${lead.vehicle_vin}</div>` : ''}
+        ${lead.engine_no ? `<div class="detail-row"><span>Engine No:</span> ${lead.engine_no}</div>` : ''}
+        ${lead.chassis_no ? `<div class="detail-row"><span>Chassis No:</span> ${lead.chassis_no}</div>` : ''}
         <div class="detail-row"><span>Odometer:</span> ${odometerReading ? `${parseInt(odometerReading.toString()).toLocaleString('en-IN')} km` : '—'}</div>
         ${nextServiceKm != null && Number.isFinite(nextServiceKm) ? `<div class="detail-row"><span>Next Service KM:</span> <strong>${Math.round(nextServiceKm).toLocaleString('en-IN')} km</strong></div>` : ''}
         ${nextServiceDate ? `<div class="detail-row"><span>Next Service Date:</span> <strong>${formatDateDMY(nextServiceDate)}</strong></div>` : ''}
@@ -1929,10 +2290,10 @@ function generateInvoiceHTML(invoice: any): string {
           <th>Part / Service</th>
           <th style="width: 90px;">Type</th>
           <th style="width: 90px;">HSN / SAC</th>
-          <th style="width: 70px;" class="text-right">GST %</th>
+          ${showItemGstCols ? `<th style="width: 70px;" class="text-right">GST %</th>` : ''}
+          ${showItemGstCols ? `<th style="width: 110px;" class="text-right">Taxable (₹)</th>` : ''}
           <th style="width: 70px;" class="text-right">Qty</th>
           <th style="width: 110px;" class="text-right">Unit Price (₹)</th>
-          <th style="width: 110px;" class="text-right">Taxable (₹)</th>
           <th style="width: 110px;" class="text-right">Total (₹)</th>
         </tr>
       </thead>
@@ -1943,7 +2304,7 @@ function generateInvoiceHTML(invoice: any): string {
                 if (r.kind === 'section') {
                   return `
           <tr class="section-row">
-            <td colspan="9">${esc(r.title)}</td>
+            <td colspan="${itemTableColCount}">${esc(r.title)}</td>
           </tr>
         `;
                 }
@@ -1951,7 +2312,7 @@ function generateInvoiceHTML(invoice: any): string {
                   return `
           <tr class="group-row">
             <td></td>
-            <td colspan="8">${r.titleHtml}</td>
+            <td colspan="${itemTableColCount - 1}">${r.titleHtml}</td>
           </tr>
         `;
                 }
@@ -1961,10 +2322,10 @@ function generateInvoiceHTML(invoice: any): string {
             <td>${r.nameHtml}</td>
             <td>${r.typeLabel}</td>
             <td>${esc(r.hsn)}</td>
-            <td class="text-right">${money(r.gstRate)}</td>
+            ${showItemGstCols ? `<td class="text-right">${money(r.gstRate)}</td>` : ''}
+            ${showItemGstCols ? `<td class="text-right">${money(r.taxable)}</td>` : ''}
             <td class="text-right">${money(r.qty)}</td>
             <td class="text-right">${money(r.unitPrice)}</td>
-            <td class="text-right">${money(r.taxable)}</td>
             <td class="text-right">${money(r.total)}</td>
           </tr>
         `;
@@ -1976,36 +2337,15 @@ function generateInvoiceHTML(invoice: any): string {
             <td>Service Charges (Labour)</td>
             <td>Labour</td>
             <td>998714</td>
-            <td class="text-right">18.00</td>
+            ${showItemGstCols ? `<td class="text-right">18.00</td>` : ''}
+            ${showItemGstCols ? `<td class="text-right">${(invoice.base_amount || 0).toFixed(2)}</td>` : ''}
             <td class="text-right">1.00</td>
             <td class="text-right">${(invoice.base_amount || 0).toFixed(2)}</td>
-            <td class="text-right">${((invoice.base_amount || 0) / 1.18).toFixed(2)}</td>
             <td class="text-right">${(invoice.base_amount || 0).toFixed(2)}</td>
           </tr>
         `}
       </tbody>
     </table>
-
-    <!-- Discount Section -->
-    ${invoice.discount_amount > 0 ? `
-    <table class="details-table" style="margin-top: 10px;">
-      <thead>
-        <tr>
-          <th colspan="2" style="text-align: center; background: #059669;">Discount / Coupon (If Any)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Description</strong></td>
-          <td>${invoice.coupon_code || 'Discount'}</td>
-        </tr>
-        <tr>
-          <td><strong>Amount (₹)</strong></td>
-          <td>-${invoice.discount_amount.toFixed(2)}</td>
-        </tr>
-      </tbody>
-    </table>
-    ` : ''}
 
     ${showGstBreakup ? `
     <!-- GST Breakdown Table -->
@@ -2060,10 +2400,16 @@ function generateInvoiceHTML(invoice: any): string {
           <td>Sub-Total</td>
           <td>₹${computedTotalInc.toFixed(2)}</td>
         </tr>
-        ${invoice.discount_amount > 0 ? `
+        ${showFreeRow ? `
         <tr>
-          <td>(-) Discount</td>
-          <td>-₹${invoice.discount_amount.toFixed(2)}</td>
+          <td>${freeServiceCode || 'FREE_SERVICE'}</td>
+          <td>${esc(freeLabel || '—')}</td>
+        </tr>
+        ` : ''}
+        ${showTotalDiscountRow ? `
+        <tr>
+          <td>${totalDiscountCode || 'TOTAL_DISCOUNT'}</td>
+          <td>-₹${totalDiscountAmount.toFixed(2)}</td>
         </tr>
         ` : ''}
         ${showGstBreakup ? `
@@ -2143,12 +2489,12 @@ function generateInvoiceHTML(invoice: any): string {
 
     <!-- Bank Details -->
     <div class="bank-details">
-      <h3>Bank Details (if you want to accept NEFT/RTGS)</h3>
-      <p><strong>Bank Name:</strong> ${bankName}</p>
-      <p><strong>Account Name:</strong> ${bankAccountName}</p>
-      <p><strong>Account No.:</strong> ${bankAccountNumber}</p>
-      <p><strong>IFSC:</strong> ${bankIFSC}</p>
-      <p><strong>Branch:</strong> ${bankBranch}</p>
+      <h3>Bank Details (NEFT/RTGS)</h3>
+      <p><strong>Bank Name:</strong> ${bankName || '—'}</p>
+      <p><strong>Account Name:</strong> ${bankAccountName || '—'}</p>
+      <p><strong>Account No.:</strong> ${bankAccountNumber || '—'}</p>
+      <p><strong>IFSC:</strong> ${bankIFSC || '—'}</p>
+      <p><strong>Branch:</strong> ${bankBranch || '—'}</p>
     </div>
 
     <!-- Declaration -->

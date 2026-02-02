@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
+import { resolveWorkshopServicePrice } from '@/lib/utils/workshopServicePricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,9 +48,24 @@ function parseDiscountFromDescription(desc: any): { mode: 'AMOUNT' | 'PERCENT' |
   return { mode: null, value: null };
 }
 
+function parseIdList(raw: any): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(String).map((s) => s.trim()).filter(Boolean);
+    } catch {
+      // ignore
+    }
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -81,12 +97,12 @@ export async function POST(
     const allowed = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'];
     if (!allowed.includes(roleCode)) return NextResponse.json({ error: 'Forbidden', role: roleCode }, { status: 403 });
 
-    const leadId = params.id;
+    const { id: leadId } = await params;
 
     // Fetch lead (for workshop scoping + series fallback)
     const { data: lead, error: leadErr } = await supabaseAdmin
       .from('service_leads')
-      .select('id, workshop_id, invoice_series_year, invoice_series_month, invoice_series_seq, customer_gstin, customer_legal_name, customer_billing_address, customer_billing_state_code')
+      .select('id, workshop_id, invoice_series_year, invoice_series_month, invoice_series_seq, customer_gstin, customer_legal_name, customer_billing_address, customer_billing_state_code, city_id, city, model_id, vehicle_model, service_type_ids')
       .eq('id', leadId)
       .maybeSingle();
     if (leadErr || !lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
@@ -97,17 +113,18 @@ export async function POST(
       }
     }
 
-    // Fetch latest CI
-    const { data: ci } = await supabaseAdmin
+    // Fetch recent CIs (some flows may create multiple CI rows; pick the PAID one)
+    const { data: ciList, error: ciErr } = await supabaseAdmin
       .from('invoices')
       .select('*')
       .eq('lead_id', leadId)
       .eq('invoice_type', 'CUSTOMER_INVOICE')
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(5);
 
-    if (!ci?.id) {
+    if (ciErr) return NextResponse.json({ error: 'Failed to load Customer Invoice', details: ciErr.message }, { status: 500 });
+    const candidates = Array.isArray(ciList) ? ciList : [];
+    if (candidates.length === 0) {
       return NextResponse.json({ error: 'Customer Invoice not found' }, { status: 404 });
     }
 
@@ -116,89 +133,295 @@ export async function POST(
       return Number.isFinite(n) ? n : 0;
     };
 
-    // Accept "paid" if either status says PAID OR paid_amount >= final_amount (tolerant of stale payment_status).
-    let payable = toNum((ci as any).final_amount) || toNum((ci as any).total_amount);
-    const paidStored = toNum((ci as any).paid_amount);
+    const isPaidStatus = (inv: any) =>
+      String(inv?.payment_status || '').toUpperCase() === 'PAID' || String(inv?.status || '').toUpperCase() === 'PAID';
 
-    // If payable looks like pre-discount subtotal (and coupon/discount exists), derive net payable.
-    const subTotalPreDiscount = toNum((ci as any).sub_total) || toNum((ci as any).subtotal);
-    let discount = toNum((ci as any).discount_amount);
-    const couponCode = String((ci as any).coupon_code || '').trim();
+    const resolveServicePriceMaps = async (ci: any) => {
+      const li = Array.isArray((ci as any).line_items) ? ((ci as any).line_items as any[]) : [];
+      const idsFromLines = Array.from(
+        new Set(
+          li
+            .map((x: any) => String(x?.service_type_id || '').trim())
+            .filter(Boolean)
+        )
+      );
+      const leadIds = parseIdList((lead as any)?.service_type_ids);
+      const ids = Array.from(new Set([...(idsFromLines || []), ...(leadIds || [])]));
+      const priceById = new Map<string, number>();
+      const priceByName = new Map<string, number>();
+      if (ids.length === 0) return { priceById, priceByName };
 
-    if (couponCode && discount <= 0 && subTotalPreDiscount > 0) {
+      const workshopId = String((lead as any)?.workshop_id || '').trim();
+      let vehicleClass: string | null = null;
+      let workshopZoneId: string | null = null;
       try {
-        const { data: coupon } = await supabaseAdmin
-          .from('coupons')
-          .select('*')
-          .ilike('code', couponCode.toUpperCase())
-          .eq('is_active', true)
-          .maybeSingle();
-        if (coupon && String((coupon as any).coupon_kind || '').toUpperCase() === 'TOTAL_DISCOUNT') {
-          const derived = parseDiscountFromDescription((coupon as any).description);
-          const mode =
-            normalizeDiscountMode((coupon as any).discount_mode) ||
-            normalizeDiscountMode((coupon as any).mode) ||
-            normalizeDiscountMode((coupon as any).discount_type) ||
-            derived.mode;
-          const valueRaw =
-            (coupon as any).discount_value ??
-            (coupon as any).value ??
-            (coupon as any).amount ??
-            (coupon as any).discount ??
-            (coupon as any).amount_off ??
-            (coupon as any).percent_off ??
-            derived.value;
-          const value = Number(valueRaw);
-          const minOrder = Number((coupon as any).min_order_value || 0) || 0;
-          if (!(minOrder > 0 && subTotalPreDiscount < minOrder) && mode && Number.isFinite(value) && value > 0) {
-            discount = mode === 'AMOUNT' ? Math.min(value, subTotalPreDiscount) : (subTotalPreDiscount * value) / 100;
-          }
+        const modelId = String((lead as any)?.model_id || '').trim();
+        if (modelId) {
+          const { data: cm } = await supabaseAdmin
+            .from('car_models')
+            .select('class')
+            .eq('id', modelId)
+            .maybeSingle();
+          vehicleClass = (cm as any)?.class || null;
+        } else if ((lead as any)?.vehicle_model) {
+          const { data: cm } = await supabaseAdmin
+            .from('car_models')
+            .select('class')
+            .eq('model_name', (lead as any).vehicle_model)
+            .maybeSingle();
+          vehicleClass = (cm as any)?.class || null;
         }
       } catch {
-        // ignore
+        vehicleClass = null;
+      }
+      try {
+        if (workshopId) {
+          const { data: w } = await supabaseAdmin
+            .from('workshops')
+            .select('zone_id')
+            .eq('id', workshopId)
+            .maybeSingle();
+          workshopZoneId = (w as any)?.zone_id || null;
+        }
+      } catch {
+        workshopZoneId = null;
+      }
+
+      const nameById = new Map<string, string>();
+      if (ids.length > 0) {
+        try {
+          const { data: st } = await supabaseAdmin
+            .from('service_types')
+            .select('id, name')
+            .in('id', ids);
+          for (const row of st || []) {
+            const id = String((row as any)?.id || '').trim();
+            const name = String((row as any)?.name || '').trim();
+            if (id && name) nameById.set(id, name);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      for (const id of ids) {
+        try {
+          const price = await resolveWorkshopServicePrice({
+            supabase: supabaseAdmin,
+            workshopId,
+            serviceTypeId: id,
+            cityId: String((lead as any)?.city_id || '').trim() || null,
+            cityName: String((lead as any)?.city || '').trim() || null,
+            workshopZoneId,
+            vehicleClass,
+          });
+          if (Number.isFinite(price) && price > 0) {
+            const p = Number(price);
+            priceById.set(id, p);
+            const name = nameById.get(id);
+            if (name) priceByName.set(name.toLowerCase(), p);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      return { priceById, priceByName };
+    };
+
+    const computePaidSnapshot = async (ci: any) => {
+      const paidStored = toNum((ci as any).paid_amount);
+      const balanceDueStored = toNum((ci as any).balance_due);
+      const paymentTxnId = String((ci as any).payment_txn_id || '').trim();
+      const hasPaymentRef = Boolean(paymentTxnId);
+
+      // Prefer final_amount/total_amount; fallback to (sub_total/subtotal - discount) for older rows.
+      let payable = toNum((ci as any).final_amount) || toNum((ci as any).total_amount);
+
+      const li = Array.isArray((ci as any).line_items) ? ((ci as any).line_items as any[]) : [];
+      const { priceById, priceByName } = await resolveServicePriceMaps(ci);
+      const lineItemsTotal = li.reduce((s: number, x: any) => {
+        const qty = toNum(x?.qty ?? 1) || 1;
+        const baseAmt = toNum(x?.amount);
+        const baseRate = toNum(x?.rate);
+        const baseLineTotal = baseAmt > 0 ? baseAmt : baseRate * qty;
+        const cat = String(x?.category || '').toUpperCase();
+        if (cat === 'SERVICE') {
+          const sid = String(x?.service_type_id || '').trim();
+          const svcPrice = sid ? priceById.get(sid) : null;
+          if (svcPrice && svcPrice > 0) {
+            return s + svcPrice * qty;
+          }
+          const nameKey = String(x?.description || '').trim().toLowerCase();
+          const byName = nameKey ? priceByName.get(nameKey) : null;
+          if (byName && byName > 0) {
+            return s + byName * qty;
+          }
+        }
+        return s + baseLineTotal;
+      }, 0);
+
+      const storedSubTotal = toNum((ci as any).sub_total) || toNum((ci as any).subtotal);
+      const subTotalPreDiscount =
+        lineItemsTotal > 0 && Math.abs(lineItemsTotal - storedSubTotal) > 0.5
+          ? lineItemsTotal
+          : (storedSubTotal || lineItemsTotal);
+      const couponMeta: any = (ci as any).coupon_meta || null;
+      const couponMetaDiscount = couponMeta && typeof couponMeta === 'object' ? toNum(couponMeta.discount_amount) : 0;
+      // Some installs store coupon discount in alternate fields; treat all as "discount_amount".
+      const altDiscount =
+        toNum((ci as any).coupon_discount_amount) ||
+        toNum((ci as any).coupon_discount) ||
+        toNum((ci as any).total_discount) ||
+        toNum((ci as any).discount) ||
+        toNum((ci as any).discount_value);
+
+      let discount = Math.max(toNum((ci as any).discount_amount), couponMetaDiscount, altDiscount);
+      const couponCode = String((ci as any).coupon_code || '').trim();
+
+      if (couponCode && discount <= 0 && subTotalPreDiscount > 0) {
+        try {
+          const { data: coupon } = await supabaseAdmin
+            .from('coupons')
+            .select('*')
+            .ilike('code', couponCode.toUpperCase())
+            .eq('is_active', true)
+            .maybeSingle();
+          if (coupon && String((coupon as any).coupon_kind || '').toUpperCase() === 'TOTAL_DISCOUNT') {
+            const derived = parseDiscountFromDescription((coupon as any).description);
+            const mode =
+              normalizeDiscountMode((coupon as any).discount_mode) ||
+              normalizeDiscountMode((coupon as any).mode) ||
+              normalizeDiscountMode((coupon as any).discount_type) ||
+              derived.mode;
+            const valueRaw =
+              (coupon as any).discount_value ??
+              (coupon as any).value ??
+              (coupon as any).amount ??
+              (coupon as any).discount ??
+              (coupon as any).amount_off ??
+              (coupon as any).percent_off ??
+              derived.value;
+            const value = Number(valueRaw);
+            const minOrder = Number((coupon as any).min_order_value || 0) || 0;
+            if (!(minOrder > 0 && subTotalPreDiscount < minOrder) && mode && Number.isFinite(value) && value > 0) {
+              discount = mode === 'AMOUNT' ? Math.min(value, subTotalPreDiscount) : (subTotalPreDiscount * value) / 100;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      const payableLooksPreDiscount =
+        payable > 0 && subTotalPreDiscount > 0 && Math.abs(payable - subTotalPreDiscount) < 0.5;
+      const derivedPayable = subTotalPreDiscount > 0 ? Math.max(0, subTotalPreDiscount - (discount || 0)) : 0;
+      if (payableLooksPreDiscount && derivedPayable > 0 && derivedPayable < payable) {
+        payable = derivedPayable;
+      }
+      if (payable <= 0 && derivedPayable > 0) {
+        payable = derivedPayable;
+      }
+
+      let paidByTxns = 0;
+      try {
+        const { data: txns } = await supabaseAdmin
+          .from('payment_transactions')
+          .select('amount, status')
+          .eq('invoice_id', (ci as any).id)
+          .order('created_at', { ascending: false })
+          .limit(200);
+        paidByTxns = (txns || []).reduce((s: number, t: any) => {
+          const st = String(t?.status || '').toUpperCase();
+          if (st !== 'SUCCESS' && st !== 'COD_PENDING') return s;
+          return s + toNum(t?.amount);
+        }, 0);
+      } catch {
+        paidByTxns = 0;
+      }
+
+      const paidEffective = Math.max(paidStored, paidByTxns);
+
+      // If discount wasn't persisted but payment reflects discounted total,
+      // infer discount from payable vs paidEffective (only for reasonable discount ranges).
+      if (couponCode && payable > 0 && paidEffective > 0 && discount <= 0) {
+        const inferred = payable - paidEffective;
+        const ratio = inferred / payable;
+        // Guardrails: discount must be > ₹1 and between 1% and 60% to avoid misclassifying partial payments.
+        if (inferred > 1 && ratio >= 0.01 && ratio <= 0.6) {
+          discount = inferred;
+          payable = Math.max(0, payable - discount);
+        }
+      }
+
+      // Treat as paid if:
+      // - status says PAID, OR
+      // - balance_due is 0 (many flows update balance_due before flipping payment_status), OR
+      // - paid_amount / transactions cover payable, OR
+      // - payable is missing/0 but payment exists (safer than blocking TI generation indefinitely).
+      const ciPaid =
+        isPaidStatus(ci) ||
+        (balanceDueStored <= 0.01 && (paidStored > 0 || hasPaymentRef || paidByTxns > 0)) ||
+        (payable > 0 && paidEffective + 0.01 >= payable) ||
+        (payable <= 0 && paidEffective > 0 && (hasPaymentRef || paidByTxns > 0));
+
+      return {
+        payable,
+        paidStored,
+        paidByTxns,
+        paidEffective,
+        ciPaid,
+        subTotalPreDiscount,
+        discount,
+        balanceDueStored,
+        paymentTxnId,
+      };
+    };
+
+    // Prefer an explicitly PAID CI, else the most recent CI that has payment txns.
+    let ci: any = candidates.find((x: any) => isPaidStatus(x)) || candidates[0];
+    if (!isPaidStatus(ci)) {
+      for (const cand of candidates) {
+        const snap = await computePaidSnapshot(cand);
+        if (snap.paidEffective > 0) {
+          ci = cand;
+          break;
+        }
       }
     }
 
-    const payableLooksPreDiscount = payable > 0 && subTotalPreDiscount > 0 && Math.abs(payable - subTotalPreDiscount) < 0.5;
-    const derivedPayable = subTotalPreDiscount > 0 ? Math.max(0, subTotalPreDiscount - (discount || 0)) : 0;
-    if (payableLooksPreDiscount && derivedPayable > 0 && derivedPayable < payable) {
-      payable = derivedPayable;
-    }
-
-    let paidByTxns = 0;
-    try {
-      const { data: txns } = await supabaseAdmin
-        .from('payment_transactions')
-        .select('amount, status')
-        .eq('invoice_id', (ci as any).id)
-        .order('created_at', { ascending: false })
-        .limit(200);
-      paidByTxns = (txns || []).reduce((s: number, t: any) => {
-        const st = String(t?.status || '').toUpperCase();
-        if (st !== 'SUCCESS' && st !== 'COD_PENDING') return s;
-        return s + toNum(t?.amount);
-      }, 0);
-    } catch {
-      paidByTxns = 0;
-    }
-
-    const paidEffective = Math.max(paidStored, paidByTxns);
-    const ciPaid =
-      String((ci as any).payment_status || '').toUpperCase() === 'PAID' ||
-      String((ci as any).status || '').toUpperCase() === 'PAID' ||
-      (payable > 0 && paidEffective + 0.01 >= payable);
-
-    if (!ciPaid) {
+    const ciSnap = await computePaidSnapshot(ci);
+    if (!ciSnap.ciPaid) {
       return NextResponse.json(
         {
           error: 'Customer Invoice is not PAID yet',
-          payable,
-          paid_amount: paidStored,
-          paid_by_transactions: paidByTxns,
+          details: `payable=${ciSnap.payable.toFixed(2)} paid=${ciSnap.paidEffective.toFixed(2)} discount=${Number(ciSnap.discount || 0).toFixed(2)} balance_due=${Number(ciSnap.balanceDueStored || 0).toFixed(2)}`,
+          payable: ciSnap.payable,
+          paid_amount: ciSnap.paidStored,
+          paid_by_transactions: ciSnap.paidByTxns,
+          balance_due: ciSnap.balanceDueStored,
+          payment_txn_id: ciSnap.paymentTxnId || null,
+          checked_customer_invoices: candidates.map((x: any) => ({
+            id: x.id,
+            invoice_number: x.invoice_number,
+            payment_status: x.payment_status,
+            status: x.status,
+            paid_amount: x.paid_amount,
+            balance_due: (x as any).balance_due,
+            payment_txn_id: (x as any).payment_txn_id,
+            final_amount: x.final_amount,
+            total_amount: x.total_amount,
+            created_at: x.created_at,
+          })),
         },
         { status: 400 }
       );
     }
+
+    // Keep names used below
+    let payable = ciSnap.payable;
+    const subTotalPreDiscount = ciSnap.subTotalPreDiscount;
+    const discount = ciSnap.discount;
 
     // If TI already exists, return it
     const { data: existingTI } = await supabaseAdmin

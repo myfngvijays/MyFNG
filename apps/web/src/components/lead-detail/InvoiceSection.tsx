@@ -114,12 +114,16 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const [savingGst, setSavingGst] = useState(false);
   const autoTiAttemptedRef = useRef<Record<string, boolean>>({});
 
-  const [couponPreview, setCouponPreview] = useState<{
-    loading: boolean;
-    discount_amount: number;
-    coupon_kind: string | null;
-    error: string | null;
-  }>({ loading: false, discount_amount: 0, coupon_kind: null, error: null });
+  const [couponBreakdown, setCouponBreakdown] = useState<
+    Array<{
+      code: string;
+      coupon_kind: string | null;
+      discount_amount: number;
+      free_service_label?: string | null;
+      error?: string | null;
+    }>
+  >([]);
+  const [couponBreakdownLoading, setCouponBreakdownLoading] = useState(false);
 
   useEffect(() => {
     fetchInvoice();
@@ -767,7 +771,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
         }
       }
 
-      // Fallback to generator endpoint (HTML)
+      // Fallback to generator endpoint (PDF)
       if (!urlToDownload) {
         urlToDownload = `/api/billing/invoices/${invoice.id}/generate-pdf`;
       }
@@ -776,7 +780,10 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       link.href = urlToDownload;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.download = `Invoice-${invoice.invoice_number}.${(invoice.document_type || 'HTML').toLowerCase()}`;
+      const downloadExt = urlToDownload.includes('/generate-pdf')
+        ? 'pdf'
+        : String(invoice.document_type || 'pdf').toLowerCase();
+      link.download = `Invoice-${invoice.invoice_number}.${downloadExt}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -845,11 +852,69 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const lineItems = (Array.isArray((invoice as any)?.line_items) ? ((invoice as any).line_items as any[]) : []) as any[];
   const lineItemsWithIndex = lineItems.map((it: any, idx: number) => ({ ...it, _idx: idx }));
   const hasLineItems = lineItems.length > 0;
+  const parseCouponCodes = (raw: any): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+      } catch {
+        // ignore
+      }
+      return raw
+        .split(',')
+        .map((c) => String(c || '').trim().toUpperCase())
+        .filter(Boolean);
+    }
+    return [];
+  };
+  const parseCouponMeta = (raw: any): any => {
+    if (!raw) return null;
+    if (typeof raw === 'string') {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+    return raw;
+  };
+  const invoiceCouponMeta = parseCouponMeta((invoice as any)?.coupon_meta);
+  const leadCouponMeta = parseCouponMeta((lead as any)?.coupon_meta);
   const couponCodeForDisplay = String(
     (invoice as any)?.coupon_code ?? (lead as any)?.coupon_code ?? ''
   ).trim();
+  const couponMetaSelectedCodes = parseCouponCodes(invoiceCouponMeta?.selected_codes);
+  const leadMetaSelectedCodes = parseCouponCodes(leadCouponMeta?.selected_codes);
+  const allCouponCodesForDisplay = Array.from(
+    new Set([
+      ...(couponMetaSelectedCodes || []),
+      ...(leadMetaSelectedCodes || []),
+      ...(couponCodeForDisplay ? [couponCodeForDisplay] : []),
+    ])
+  ).filter(Boolean);
   const discountAmount = Number((invoice as any)?.discount_amount ?? 0) || 0;
-  const subTotalBeforeDiscount = Number((invoice as any)?.subtotal ?? (invoice as any)?.sub_total ?? 0) || 0;
+  const storedSubtotal = Number((invoice as any)?.subtotal ?? (invoice as any)?.sub_total ?? 0) || 0;
+  const lineItemsSubtotal = lineItems.reduce((sum, it: any) => {
+    const qty = Number(it?.qty ?? it?.quantity ?? 1) || 1;
+    const rate = Number(it?.rate ?? it?.unit_price ?? 0) || 0;
+    const amountRaw = Number(it?.amount ?? 0);
+    const originalRaw = Number(it?.original_amount ?? 0);
+    const isFreeService = Boolean(it?.free_service);
+    const baseLineTotal = isFreeService && originalRaw > 0 ? originalRaw : (amountRaw || qty * rate);
+    const cat = String(it?.category || '').toUpperCase();
+    const isService = cat === 'SERVICE';
+    const isCustomService = isCustomServiceName(String(it?.description || ''));
+    const displayServiceAmount = isService
+      ? (isOS && isCustomService ? baseLineTotal : getServicePrice(it))
+      : baseLineTotal;
+    return sum + (Number.isFinite(displayServiceAmount) ? displayServiceAmount : 0);
+  }, 0);
+  const subTotalBeforeDiscount =
+    lineItemsSubtotal > 0 && Math.abs(lineItemsSubtotal - storedSubtotal) > 0.5
+      ? lineItemsSubtotal
+      : (storedSubtotal || lineItemsSubtotal);
   // Backward-compatible: some older invoices stored sub_total as AFTER discount. If so, don't subtract again.
   const storedFinal = Number((invoice as any)?.final_amount ?? (invoice as any)?.total_amount ?? 0) || 0;
   const candidateAfterDiscount = subTotalBeforeDiscount - discountAmount;
@@ -863,13 +928,18 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     ? Math.max(0, (((invoice?.final_amount ?? invoice?.total_amount ?? 0) - (invoice?.total_tax ?? 0))))
     : grossAfterDiscount;
 
+  const couponMetaKind = String(invoiceCouponMeta?.coupon_kind || '').toUpperCase();
+  const couponMetaCode = String(invoiceCouponMeta?.code || '').trim();
+  const totalDiscountOnly = couponBreakdown
+    .filter((c) => String(c?.coupon_kind || '').toUpperCase() === 'TOTAL_DISCOUNT')
+    .reduce((s, c) => s + (Number(c?.discount_amount || 0) || 0), 0);
+  const hasTotalDiscountCoupon =
+    couponBreakdown.some((c) => String(c?.coupon_kind || '').toUpperCase() === 'TOTAL_DISCOUNT') ||
+    couponMetaKind === 'TOTAL_DISCOUNT' ||
+    (discountAmount > 0 && Boolean(couponCodeForDisplay || couponMetaCode));
   // Effective payable for display (handles coupon preview + legacy invoices)
   const previewDiscountForTotals =
-    discountAmount > 0
-      ? discountAmount
-      : couponPreview.coupon_kind === 'TOTAL_DISCOUNT'
-        ? couponPreview.discount_amount
-        : 0;
+    discountAmount > 0 && hasTotalDiscountCoupon ? discountAmount : totalDiscountOnly;
   const computedAfterDiscount = Math.max(0, subTotalBeforeDiscount - previewDiscountForTotals);
   const storedPayable = Number((invoice as any)?.final_amount ?? (invoice as any)?.total_amount ?? 0) || 0;
   const storedLooksPreDiscount =
@@ -877,9 +947,9 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     storedPayable > 0 &&
     Math.abs(storedPayable - subTotalBeforeDiscount) < 0.5;
   const effectivePayable =
-    isOS
+    isOS || isCI
       ? computedAfterDiscount
-      : (isCI || isTI) && storedLooksPreDiscount
+      : storedLooksPreDiscount
         ? computedAfterDiscount
         : storedPayable;
 
@@ -887,21 +957,83 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   // This is especially useful for OS before CI finalization.
   useEffect(() => {
     let cancelled = false;
-    const code = couponCodeForDisplay;
     const inv = invoice as any;
-    if (!inv || !code) {
-      setCouponPreview({ loading: false, discount_amount: 0, coupon_kind: null, error: null });
+    const selectedCodesInv = parseCouponCodes(parseCouponMeta((inv as any)?.coupon_meta)?.selected_codes);
+    const selectedCodesLead = parseCouponCodes(leadCouponMeta?.selected_codes);
+    const appliedInv = String((inv as any)?.coupon_code || '').trim().toUpperCase();
+    const appliedLead = String((lead as any)?.coupon_code || '').trim().toUpperCase();
+    const codes = Array.from(
+      new Set([
+        ...(selectedCodesInv || []),
+        ...(selectedCodesLead || []),
+        ...(appliedInv ? [appliedInv] : []),
+        ...(appliedLead ? [appliedLead] : []),
+      ])
+    ).filter(Boolean);
+
+    if (!inv || codes.length === 0) {
+      setCouponBreakdown([]);
       return;
     }
-    if (discountAmount > 0) {
-      // Already applied on invoice
-      setCouponPreview({ loading: false, discount_amount: 0, coupon_kind: null, error: null });
+
+    // CI: if discount_amount is stored, use stored breakdown; otherwise validate like OS so UI matches OS behavior.
+    if (isCI && discountAmount > 0) {
+      const applied = appliedInv || appliedLead || null;
+      const invCouponMeta = parseCouponMeta((inv as any)?.coupon_meta) || null;
+      const freeMeta = invCouponMeta?.free_service || null;
+      const freeLabel =
+        freeMeta?.matched_label ||
+        freeMeta?.target_custom_label ||
+        null;
+      const freeServiceOriginalTotal = (Array.isArray(inv?.line_items) ? inv.line_items : [])
+        .filter((it: any) => Boolean((it as any)?.free_service) && Number((it as any)?.original_amount ?? 0) > 0)
+        .reduce((s: number, it: any) => s + (Number((it as any)?.original_amount ?? 0) || 0), 0);
+      const freeServiceMetaOriginal = Number(freeMeta?.original_price ?? 0) || 0;
+      const freeServiceValue = Math.max(freeServiceOriginalTotal, freeServiceMetaOriginal);
+      const freeServiceCode =
+        String(invCouponMeta?.coupon_kind || '').toUpperCase() === 'FREE_SERVICE'
+          ? String(invCouponMeta?.code || applied || '').trim().toUpperCase() || null
+          : applied || null;
+      const discountCodeCandidates = codes.filter((c) => c !== freeServiceCode);
+      const discountCode = discountCodeCandidates[0] || (applied && applied !== freeServiceCode ? applied : null);
+
+      const next: any[] = [];
+      if (freeLabel || freeServiceValue > 0) {
+        next.push({
+          code: freeServiceCode || 'FREE_SERVICE',
+          coupon_kind: 'FREE_SERVICE',
+          discount_amount: freeServiceValue || 0,
+          free_service_label: freeLabel,
+          error: null,
+        });
+      }
+      if (discountAmount > 0) {
+        next.push({
+          code: discountCode || 'DISCOUNT',
+          coupon_kind: 'TOTAL_DISCOUNT',
+          discount_amount: discountAmount,
+          error: null,
+        });
+      } else if (codes.length > 0 && next.length === 0) {
+        next.push(...codes.map((c) => ({ code: c, coupon_kind: null, discount_amount: 0, error: null })));
+      }
+      setCouponBreakdown(next);
+      return;
+    }
+
+    // If discount is already applied on invoice, avoid noisy revalidations in most flows.
+    // But for TI we still validate so FREE_SERVICE label + kinds are resolved consistently like OS.
+    if (discountAmount > 0 && !isTI) {
+      // Already applied on invoice; still show coupon codes, but don't recompute preview to avoid noisy validations.
+      setCouponBreakdown(
+        codes.map((c) => ({ code: c, coupon_kind: null, discount_amount: 0, error: null }))
+      );
       return;
     }
 
     (async () => {
       try {
-        setCouponPreview((p) => ({ ...p, loading: true, error: null }));
+        setCouponBreakdownLoading(true);
         const serviceItems = (Array.isArray(inv?.line_items) ? inv.line_items : [])
           .filter((it: any) => {
             const c = String(it?.category || '').toUpperCase();
@@ -911,72 +1043,96 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
             service_type_id: it?.service_type_id ?? null,
             subservice_id: it?.subservice_id ?? null,
             label: it?.description ?? null,
-            price: Number(it?.amount ?? 0) || 0,
+            price:
+              Number((it as any)?.original_amount ?? 0) > 0
+                ? Number((it as any).original_amount)
+                : Number(it?.amount ?? 0) || 0,
           }));
 
-        const res = await fetch('/api/coupons/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            code,
-            lead_context: {
-              subtotal: subTotalBeforeDiscount,
-              service_type_ids: Array.isArray((lead as any)?.service_type_ids)
-                ? (lead as any).service_type_ids
-                : (() => {
-                    try {
-                      const raw = (lead as any)?.service_type_ids;
-                      if (typeof raw === 'string') return JSON.parse(raw);
-                    } catch {}
-                    return [];
-                  })(),
-              subservice_ids: Array.isArray((lead as any)?.subservice_ids)
-                ? (lead as any).subservice_ids
-                : (() => {
-                    try {
-                      const raw = (lead as any)?.subservice_ids;
-                      if (typeof raw === 'string') return JSON.parse(raw);
-                    } catch {}
-                    return [];
-                  })(),
-              custom_labels: serviceItems.map((x: any) => String(x?.label || '')).filter(Boolean),
-              service_items: serviceItems,
-              customer_phone: (lead as any)?.customer_phone ?? null,
-            },
-          }),
+        const parseIdArray = (raw: any): string[] => {
+          if (!raw) return [];
+          if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
+          if (typeof raw === 'string') {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) return parsed.map(String).map((s) => s.trim()).filter(Boolean);
+            } catch {
+              // ignore
+            }
+            return raw.split(',').map((s) => s.trim()).filter(Boolean);
+          }
+          return [];
+        };
+
+        const leadCtx = {
+          subtotal: subTotalBeforeDiscount,
+          service_type_ids: parseIdArray((lead as any)?.service_type_ids),
+          subservice_ids: parseIdArray((lead as any)?.subservice_ids),
+          custom_labels: serviceItems.map((x: any) => String(x?.label || '')).filter(Boolean),
+          service_items: serviceItems,
+          customer_phone: (lead as any)?.customer_phone ?? null,
+        };
+
+        const results = await Promise.all(
+          codes.map(async (c) => {
+            try {
+              const res = await fetch('/api/coupons/validate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: c, lead_context: leadCtx }),
+              });
+              const json = await res.json().catch(() => ({}));
+              const valid = Boolean(json?.valid);
+              const kind = String(json?.coupon?.coupon_kind || '').trim() || null;
+              const amt = Number(json?.discount_amount ?? 0) || 0;
+              const label =
+                String(json?.coupon_meta?.free_service?.matched_label || '').trim() ||
+                String(json?.coupon_meta?.free_service?.target_custom_label || '').trim() ||
+                String(json?.coupon?.target_custom_label || '').trim() ||
+                String(json?.coupon?.description || '').trim() ||
+                null;
+              return {
+                code: c,
+                coupon_kind: kind,
+                discount_amount: valid ? amt : 0,
+                free_service_label: label,
+                error: valid ? null : String(json?.error || 'Coupon not applicable'),
+              };
+            } catch (e: any) {
+              return { code: c, coupon_kind: null, discount_amount: 0, error: e?.message || 'Failed to validate coupon' };
+            }
+          })
+        );
+
+        // Best-effort FREE_SERVICE amount fallback from invoice line_items original_amount when validate can't compute.
+        const freeServiceOriginalTotal = (Array.isArray(inv?.line_items) ? inv.line_items : [])
+          .filter((it: any) => Boolean((it as any)?.free_service) && Number((it as any)?.original_amount ?? 0) > 0)
+          .reduce((s: number, it: any) => s + (Number((it as any)?.original_amount ?? 0) || 0), 0);
+        const freeServiceMetaOriginal = Number((inv as any)?.coupon_meta?.free_service?.original_price ?? 0) || 0;
+        const freeServiceFallbackValue = Math.max(freeServiceOriginalTotal, freeServiceMetaOriginal);
+        const next = results.map((r) => {
+          const k = String(r?.coupon_kind || '').toUpperCase();
+          if (k === 'FREE_SERVICE' && (Number(r.discount_amount || 0) || 0) <= 0 && freeServiceFallbackValue > 0) {
+            return { ...r, discount_amount: freeServiceFallbackValue };
+          }
+          return r;
         });
-        const json = await res.json().catch(() => ({}));
+
         if (cancelled) return;
-        if (!res.ok || !json?.valid) {
-          setCouponPreview({
-            loading: false,
-            discount_amount: 0,
-            coupon_kind: null,
-            error: String(json?.error || 'Coupon not applicable'),
-          });
-          return;
-        }
-        setCouponPreview({
-          loading: false,
-          discount_amount: Number(json?.discount_amount ?? 0) || 0,
-          coupon_kind: String(json?.coupon?.coupon_kind || '').trim() || null,
-          error: null,
-        });
+        setCouponBreakdown(next);
       } catch (e: any) {
         if (cancelled) return;
-        setCouponPreview({
-          loading: false,
-          discount_amount: 0,
-          coupon_kind: null,
-          error: e?.message || 'Failed to compute coupon discount',
-        });
+        setCouponBreakdown([]);
+      }
+      finally {
+        if (!cancelled) setCouponBreakdownLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [couponCodeForDisplay, discountAmount, subTotalBeforeDiscount, (invoice as any)?.id, lead?.id]);
+  }, [discountAmount, subTotalBeforeDiscount, (invoice as any)?.id, lead?.id]);
 
   const money = (n: any) => {
     const v = typeof n === 'number' ? n : parseFloat(String(n || '0'));
@@ -1022,7 +1178,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       : includedByServiceNameKey[normalizeName(String(it?.description || ''))] || [];
   };
 
-  const getServicePrice = (it: any) => {
+  function getServicePrice(it: any) {
     // Custom Service is editable (do not override from master service pricing maps)
     if (isCustomServiceName(String(it?.description || ''))) {
       const qty = Number(it?.qty ?? 1) || 1;
@@ -1042,7 +1198,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       : Number.isFinite(byName) && (byName as number) > 0
         ? (byName as number)
         : (Number.isFinite(fromLine) ? fromLine : 0);
-  };
+  }
 
   const computeIncludedTotal = (serviceRow: any, includedItems: any[], isEditingThis: boolean) => {
     return (includedItems || []).reduce((s: number, p: any) => {
@@ -1212,7 +1368,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                 );
               })}
               {/* Hide "View Tax Invoice" button (TI tab already exists). Keep only Generate action. */}
-              {canGenerateTI && (
+              {canGenerateTI && activeTypeKey !== 'CUSTOMER_INVOICE' && (
                 <button
                   type="button"
                   onClick={ensureTaxInvoice}
@@ -1251,7 +1407,13 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                           const rowIndex = Number(it?._idx ?? idx);
                           const qtyBase = Number(it?.qty ?? 1) || 1;
                           const rateBase =
-                            it?.rate != null ? Number(it.rate) : qtyBase ? Number(it?.amount || 0) / qtyBase : Number(it?.amount || 0);
+                            !isOS && it?.amount != null
+                              ? (qtyBase ? Number(it?.amount || 0) / qtyBase : Number(it?.amount || 0))
+                              : it?.rate != null
+                                ? Number(it.rate)
+                                : qtyBase
+                                  ? Number(it?.amount || 0) / qtyBase
+                                  : Number(it?.amount || 0);
                           const cat = String(it?.category || '').toUpperCase();
                           const isService = cat === 'SERVICE';
                           const isCustomService = isCustomServiceName(String(it?.description || ''));
@@ -1264,7 +1426,11 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                           const canEditIncluded = isOS && cat === 'SERVICE' && Array.isArray(includedItems) && includedItems.length > 0;
                           const isEditingThis = canEditIncluded && editingIncludedFor === String(it?.description || '');
                           const includedTotal = computeIncludedTotal(it, includedItems, isEditingThis);
-                          const servicePrice = isService ? (isCustomService && canEditLineItem ? amt : getServicePrice(it)) : amt;
+                          const servicePrice = isService
+                            ? isOS
+                              ? (isCustomService && canEditLineItem ? amt : getServicePrice(it))
+                              : getServicePrice(it)
+                            : amt;
                           const diffSigned = includedTotal - servicePrice;
                           const mismatch =
                             cat === 'SERVICE' &&
@@ -1272,6 +1438,11 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                             includedItems.length > 0 &&
                             !isCustomService &&
                             Math.abs(includedTotal - servicePrice) > 0.5;
+                          const displayRate =
+                            !isOS && isService
+                              ? (qty ? servicePrice / qty : servicePrice)
+                              : rate;
+                          const displayTotal = isService ? servicePrice : amt;
                           return (
                             <tr key={`${g.key}-${idx}`}>
                               <td className="px-4 py-3 text-gray-600">{sr}</td>
@@ -1510,10 +1681,10 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                     onBlur={saveLineItems}
                                   />
                                 ) : (
-                                  money(rate)
+                                  money(displayRate)
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-right font-medium">{money(isService ? servicePrice : amt)}</td>
+                              <td className="px-4 py-3 text-right font-medium">{money(displayTotal)}</td>
                             </tr>
                           );
                         })}
@@ -1564,86 +1735,85 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
               <tbody className="divide-y divide-gray-200">
                 <tr className="bg-gray-50">
                   <td className="px-4 py-3 font-semibold">Sub-Total</td>
-                  <td className="px-4 py-3 text-right font-semibold">₹{((invoice.subtotal || invoice.sub_total) || 0).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right font-semibold">₹{(subTotalBeforeDiscount || 0).toFixed(2)}</td>
                 </tr>
-                {couponCodeForDisplay && (
-                  <tr>
-                    <td className="px-4 py-3">Coupon Code</td>
-                    <td className="px-4 py-3 text-right font-semibold">{couponCodeForDisplay}</td>
-                  </tr>
-                )}
-                {couponCodeForDisplay && (
-                  <>
-                    {(() => {
-                      const previewDiscount = couponPreview.coupon_kind === 'TOTAL_DISCOUNT' ? couponPreview.discount_amount : 0;
-                      const benefit = couponPreview.coupon_kind === 'FREE_SERVICE' ? couponPreview.discount_amount : 0;
-                      const showPreview = discountAmount <= 0 && (previewDiscount > 0 || benefit > 0 || !!couponPreview.error);
+                {(() => {
+                  const free = couponBreakdown.find((c) => String(c?.coupon_kind || '').toUpperCase() === 'FREE_SERVICE');
+                  const total = couponBreakdown.find((c) => String(c?.coupon_kind || '').toUpperCase() === 'TOTAL_DISCOUNT');
+                  const freeLabel =
+                    free?.free_service_label ||
+                    String(invoiceCouponMeta?.free_service?.matched_label || '').trim() ||
+                    String(leadCouponMeta?.free_service?.matched_label || '').trim() ||
+                    String(invoiceCouponMeta?.free_service?.target_custom_label || '').trim() ||
+                    String(leadCouponMeta?.free_service?.target_custom_label || '').trim() ||
+                    null;
+                  const freeCode =
+                    free?.code ||
+                    (couponMetaKind === 'FREE_SERVICE' ? (couponMetaCode || couponCodeForDisplay) : null) ||
+                    allCouponCodesForDisplay[0] ||
+                    null;
+                  const totalDiscountAmount =
+                    Number(
+                      total?.discount_amount ??
+                        (discountAmount > 0 && (hasTotalDiscountCoupon || couponMetaKind === 'TOTAL_DISCOUNT')
+                          ? discountAmount
+                          : 0)
+                    ) || 0;
+                  const totalDiscountCode =
+                    total?.code ||
+                    (couponMetaKind === 'TOTAL_DISCOUNT' ? (couponMetaCode || couponCodeForDisplay) : null) ||
+                    (String(leadCouponMeta?.coupon_kind || '').toUpperCase() === 'TOTAL_DISCOUNT'
+                      ? String(leadCouponMeta?.code || '').trim()
+                      : null) ||
+                    allCouponCodesForDisplay.find((c) => c && c !== freeCode) ||
+                    null;
 
-                      if (discountAmount > 0) {
-                        return (
+                  const hasAny =
+                    Boolean(free) ||
+                    Boolean(freeCode) ||
+                    Boolean(totalDiscountCode) ||
+                    couponBreakdownLoading ||
+                    couponBreakdown.some((c) => Boolean(c?.error));
+                  if (!hasAny) return null;
+
+                  return (
+                    <>
+                      {(free || freeCode) && (
+                        <tr>
+                          <td className="px-4 py-3">{freeCode || 'FREE_SERVICE'}</td>
+                          <td className="px-4 py-3 text-right font-semibold">{freeLabel || '—'}</td>
+                        </tr>
+                      )}
+                      {totalDiscountCode && (
+                        <tr>
+                          <td className="px-4 py-3">{totalDiscountCode || 'TOTAL_DISCOUNT'}</td>
+                          <td className="px-4 py-3 text-right text-red-600">-₹{totalDiscountAmount.toFixed(2)}</td>
+                        </tr>
+                      )}
+                      {totalDiscountAmount <= 0 && couponBreakdownLoading && (
+                        <tr>
+                          <td className="px-4 py-3">Discount / Coupon</td>
+                          <td className="px-4 py-3 text-right text-gray-500">Calculating…</td>
+                        </tr>
+                      )}
+                      {!couponBreakdownLoading &&
+                        isOS &&
+                        couponBreakdown.some((c) => c.error) &&
+                        totalDiscountAmount <= 0 && (
                           <tr>
-                            <td className="px-4 py-3">Discount / Coupon</td>
-                            <td className="px-4 py-3 text-right text-red-600">-₹{discountAmount.toFixed(2)}</td>
+                            <td colSpan={2} className="px-4 py-2 text-xs text-red-600 bg-red-50">
+                              {(couponBreakdown.filter((c) => c.error).slice(0, 2) as any[])
+                                .map((c) => `${c.code}: ${c.error}`)
+                                .join(' • ')}
+                            </td>
                           </tr>
-                        );
-                      }
-
-                      if (!showPreview) return null;
-
-                      if (couponPreview.loading) {
-                        return (
-                          <tr>
-                            <td className="px-4 py-3">Discount / Coupon</td>
-                            <td className="px-4 py-3 text-right text-gray-500">Calculating…</td>
-                          </tr>
-                        );
-                      }
-
-                      if (couponPreview.error) {
-                        return (
-                          <tr>
-                            <td className="px-4 py-3">Discount / Coupon</td>
-                            <td className="px-4 py-3 text-right text-red-600">₹0.00</td>
-                          </tr>
-                        );
-                      }
-
-                      if (previewDiscount > 0) {
-                        return (
-                          <tr>
-                            <td className="px-4 py-3">Discount / Coupon</td>
-                            <td className="px-4 py-3 text-right text-red-600">-₹{previewDiscount.toFixed(2)}</td>
-                          </tr>
-                        );
-                      }
-
-                      if (benefit > 0) {
-                        return (
-                          <tr>
-                            <td className="px-4 py-3">Coupon Benefit</td>
-                            <td className="px-4 py-3 text-right text-green-700">₹{benefit.toFixed(2)}</td>
-                          </tr>
-                        );
-                      }
-
-                      return null;
-                    })()}
-                    {couponPreview.error && !couponPreview.loading && (
-                      <tr>
-                        <td colSpan={2} className="px-4 py-2 text-xs text-red-600 bg-red-50">
-                          Coupon not applied: {couponPreview.error}
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                )}
+                        )}
+                    </>
+                  );
+                })()}
                 {(() => {
                   const previewDiscount =
-                    discountAmount > 0
-                      ? discountAmount
-                      : couponPreview.coupon_kind === 'TOTAL_DISCOUNT'
-                        ? couponPreview.discount_amount
-                        : 0;
+                    discountAmount > 0 && hasTotalDiscountCoupon ? discountAmount : totalDiscountOnly;
                   const computedAfter = Math.max(0, subTotalBeforeDiscount - previewDiscount);
                   const effectiveValue = showGst ? taxableValue : computedAfter;
                   return (

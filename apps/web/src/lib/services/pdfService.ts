@@ -43,16 +43,13 @@ export async function downloadInvoicePDF(invoiceId: string, invoiceNumber: strin
       throw new Error('Failed to generate PDF');
     }
 
-    const htmlContent = await response.text();
-    
-    // Create a blob from HTML content
-    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     
     // Create download link
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Invoice-${invoiceNumber}.html`;
+    link.download = `Invoice-${invoiceNumber}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

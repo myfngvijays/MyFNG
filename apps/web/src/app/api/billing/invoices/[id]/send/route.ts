@@ -14,7 +14,7 @@ import { createNotification, notifyTelecallerTeamlead, notifyWorkshopRoles } fro
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -51,7 +51,7 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden: Insufficient permissions', role: roleCode }, { status: 403 });
     }
 
-    const invoiceId = params.id;
+    const { id: invoiceId } = await params;
     const body = await request.json();
     const { methods } = body; // ['EMAIL', 'SMS', 'WHATSAPP', 'IN_APP']
 
@@ -183,7 +183,7 @@ export async function POST(
           const pdfBlob = await pdfResponse.blob();
           const pdfBase64 = Buffer.from(await pdfBlob.arrayBuffer()).toString('base64');
           pdfAttachment = {
-            filename: `Invoice-${invoice.invoice_number}.html`,
+            filename: `Invoice-${invoice.invoice_number}.pdf`,
             content: pdfBase64,
           };
         }
