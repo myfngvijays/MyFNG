@@ -895,12 +895,16 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const couponCodeForDisplay = String(
     (invoice as any)?.coupon_code ?? (lead as any)?.coupon_code ?? ''
   ).trim();
+  const invoiceAppliedCode = String(invoiceCouponMeta?.applied_code || '').trim().toUpperCase();
+  const leadAppliedCode = String(leadCouponMeta?.applied_code || '').trim().toUpperCase();
   const couponMetaSelectedCodes = parseCouponCodes(invoiceCouponMeta?.selected_codes);
   const leadMetaSelectedCodes = parseCouponCodes(leadCouponMeta?.selected_codes);
   const allCouponCodesForDisplay = Array.from(
     new Set([
       ...(couponMetaSelectedCodes || []),
       ...(leadMetaSelectedCodes || []),
+      ...(invoiceAppliedCode ? [invoiceAppliedCode] : []),
+      ...(leadAppliedCode ? [leadAppliedCode] : []),
       ...(couponCodeForDisplay ? [couponCodeForDisplay] : []),
     ])
   ).filter(Boolean);
@@ -970,12 +974,18 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     const inv = invoice as any;
     const selectedCodesInv = parseCouponCodes(parseCouponMeta((inv as any)?.coupon_meta)?.selected_codes);
     const selectedCodesLead = parseCouponCodes(leadCouponMeta?.selected_codes);
+    const appliedMetaInv = String(parseCouponMeta((inv as any)?.coupon_meta)?.applied_code || '')
+      .trim()
+      .toUpperCase();
+    const appliedMetaLead = String(leadCouponMeta?.applied_code || '').trim().toUpperCase();
     const appliedInv = String((inv as any)?.coupon_code || '').trim().toUpperCase();
     const appliedLead = String((lead as any)?.coupon_code || '').trim().toUpperCase();
     const codes = Array.from(
       new Set([
         ...(selectedCodesInv || []),
         ...(selectedCodesLead || []),
+        ...(appliedMetaInv ? [appliedMetaInv] : []),
+        ...(appliedMetaLead ? [appliedMetaLead] : []),
         ...(appliedInv ? [appliedInv] : []),
         ...(appliedLead ? [appliedLead] : []),
       ])
