@@ -15,7 +15,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
  */
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -40,11 +40,13 @@ export async function POST(
 
     // Verify supervisor role
     const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'WORKSHOP_SUPERVISOR') {
+    if (!['WORKSHOP_SUPERVISOR', 'WORKSHOP_ADVISOR', 'WORKSHOP_ADVISER'].includes(String(roleCode || ''))) {
       return NextResponse.json({ error: 'Forbidden: Supervisor role required' }, { status: 403 });
     }
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
     const { qc_status, checklist_data, notes, failed_reason } = await request.json();
 
     if (!qc_status || !['PASSED', 'FAILED'].includes(qc_status)) {
@@ -217,7 +219,7 @@ export async function POST(
  */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -229,18 +231,9 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const leadId = params.id;
-
-    // Gate by workshop ownership (avoid leaking cross-workshop data when using service_role)
-    const { data: lead, error: leadError } = await supabase
-      .from('service_leads')
-      .select('id, workshop_id')
-      .eq('id', leadId)
-      .single();
-
-    if (leadError || !lead) {
-      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
-    }
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
 
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
@@ -252,14 +245,26 @@ export async function GET(
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
+    // Prefer service_role client for lead fetch (avoid RLS false negatives in prod)
+    const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
+    const leadReader = supabaseAdmin || supabase;
+
+    const { data: lead, error: leadError } = await leadReader
+      .from('service_leads')
+      .select('id, workshop_id')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !lead) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    }
+
     if ((userProfile as any).workshop_id !== (lead as any).workshop_id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Prefer service_role client for read (bypasses RLS) but only after we validate workshop ownership above.
-    const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
-
-    const db = supabaseAdmin || supabase;
+    const db = leadReader;
 
     // Fetch QC check
     const { data: qcCheck, error: qcError } = await db

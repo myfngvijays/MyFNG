@@ -864,15 +864,26 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const hasLineItems = lineItems.length > 0;
   const parseCouponCodes = (raw: any): string[] => {
     if (!raw) return [];
-    if (Array.isArray(raw)) return raw.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
-    if (typeof raw === 'string') {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
-      } catch {
-        // ignore
+    const parseMaybe = (value: any) => {
+      if (Array.isArray(value)) return value;
+      if (typeof value === 'string') {
+        try {
+          return JSON.parse(value);
+        } catch {
+          return value;
+        }
       }
-      return raw
+      return value;
+    };
+    let next = parseMaybe(raw);
+    if (typeof next === 'string') {
+      next = parseMaybe(next);
+    }
+    if (Array.isArray(next)) {
+      return next.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+    }
+    if (typeof next === 'string') {
+      return next
         .split(',')
         .map((c) => String(c || '').trim().toUpperCase())
         .filter(Boolean);
@@ -881,14 +892,19 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   };
   const parseCouponMeta = (raw: any): any => {
     if (!raw) return null;
-    if (typeof raw === 'string') {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return null;
+    const parseMaybe = (value: any) => {
+      if (typeof value === 'string') {
+        try {
+          return JSON.parse(value);
+        } catch {
+          return value;
+        }
       }
-    }
-    return raw;
+      return value;
+    };
+    const once = parseMaybe(raw);
+    const twice = parseMaybe(once);
+    return typeof twice === 'string' ? null : twice;
   };
   const invoiceCouponMeta = parseCouponMeta((invoice as any)?.coupon_meta);
   const leadCouponMeta = parseCouponMeta((lead as any)?.coupon_meta);
