@@ -47,6 +47,7 @@ web-build/
 .npm-cache/
 .puppeteer-cache/
 .tmp_inventory.html
+apps/web/public/tinymce/
 
 # Large files - excluded from git
 *.tar.gz
