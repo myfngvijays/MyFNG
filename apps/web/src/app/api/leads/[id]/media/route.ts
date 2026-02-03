@@ -10,6 +10,8 @@ type RoleCode =
   | 'SUB_ADMIN'
   | 'WORKSHOP_ADMIN'
   | 'WORKSHOP_SUPERVISOR'
+  | 'WORKSHOP_ADVISOR'
+  | 'WORKSHOP_ADVISER'
   | 'WORKSHOP_MECHANIC'
   | 'WORKSHOP_PICKUP_BOY';
 
@@ -75,6 +77,13 @@ async function assertLeadAccess(
     return { ok: true, lead };
   }
 
+  if (rc === 'WORKSHOP_ADVISOR' || rc === 'WORKSHOP_ADVISER') {
+    if (!userWorkshopId || lead.workshop_id !== userWorkshopId) {
+      return { ok: false, status: 403 as const, payload: { error: 'Forbidden: Lead not in your workshop' } };
+    }
+    return { ok: true, lead };
+  }
+
   if (rc === 'WORKSHOP_MECHANIC') {
     if (lead.assigned_mechanic_id !== userId) {
       return { ok: false, status: 403 as const, payload: { error: 'Forbidden: Lead not assigned to you' } };
@@ -106,7 +115,7 @@ function getAdminClient() {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -117,7 +126,9 @@ export async function GET(
     if (error === 'Unauthorized') return NextResponse.json({ error }, { status: 401 });
     if (!profile) return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
     const access = await assertLeadAccess(supabaseAdmin, leadId, roleCode, profile.id, profile.workshop_id || null);
     if (!access.ok) return NextResponse.json(access.payload, { status: access.status });
 
@@ -144,7 +155,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -155,7 +166,9 @@ export async function POST(
     if (error === 'Unauthorized') return NextResponse.json({ error }, { status: 401 });
     if (!profile) return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
     const access = await assertLeadAccess(supabaseAdmin, leadId, roleCode, profile.id, profile.workshop_id || null);
     if (!access.ok) return NextResponse.json(access.payload, { status: access.status });
 
@@ -218,7 +231,7 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -229,7 +242,9 @@ export async function DELETE(
     if (error === 'Unauthorized') return NextResponse.json({ error }, { status: 401 });
     if (!profile) return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
     const access = await assertLeadAccess(supabaseAdmin, leadId, roleCode, profile.id, profile.workshop_id || null);
     if (!access.ok) return NextResponse.json(access.payload, { status: access.status });
 

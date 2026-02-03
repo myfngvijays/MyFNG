@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { useRouter } from 'next/navigation';
 import { Store, Search, Plus, MapPin, Edit2, X, Building, Globe, Download, Upload } from 'lucide-react';
 
 export default function WorkshopManagementPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [zones, setZones] = useState<any[]>([]); // For Zone Dropdown
   const [loading, setLoading] = useState(true);

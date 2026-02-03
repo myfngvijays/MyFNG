@@ -35,8 +35,12 @@ async function requireSuperAdmin(request: NextRequest) {
 }
 
 // PATCH: change a user's role (+ optional related fields). SUPER_ADMIN only.
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
+    const params = await paramsPromise;
     const gate = await requireSuperAdmin(request);
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 

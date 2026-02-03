@@ -7,8 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { lead_id: string } }
+  { params: paramsPromise }: { params: Promise<{ lead_id: string }> }
 ) {
+  const params = await paramsPromise;
   try {
     const supabase = await createClient();
     

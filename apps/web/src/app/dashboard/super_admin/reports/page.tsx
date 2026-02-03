@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { BarChart3, Download, TrendingUp, Users, DollarSign, Award } from 'lucide-react';
 
 export default function ReportsAnalyticsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'year'>('month');
   

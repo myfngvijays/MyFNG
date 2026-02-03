@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { useRouter } from 'next/navigation';
 import { Globe, Upload, Image as ImageIcon, CheckCircle, XCircle, Star, X, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -9,7 +9,7 @@ import { useAuthStore } from '@/store/authStore';
 
 export default function WorkshopAdminPublicPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const { userProfile } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

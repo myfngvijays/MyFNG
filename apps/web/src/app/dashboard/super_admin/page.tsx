@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import {
   Users,
   Store,
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export default function SuperAdminDashboard() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [loading, setLoading] = useState(true);
   
   const [globalMetrics, setGlobalMetrics] = useState({

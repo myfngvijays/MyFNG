@@ -19,7 +19,7 @@ function getAdminClient() {
   return { supabaseAdmin, error: null };
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const authHeader = request.headers.get('authorization');
     if (!authHeader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const roleCode = (profile?.roles as any)?.role_code as string | undefined;
     if (!profile || !roleCode) return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
 
-    const leadId = params.id;
+    const { id: leadId } = await params;
     const { supabaseAdmin, error: adminError } = getAdminClient();
     if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
 

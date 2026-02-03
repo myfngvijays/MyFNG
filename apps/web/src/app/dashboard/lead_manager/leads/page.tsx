@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, Suspense } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Search, Loader2, ArrowRight, Building, X } from 'lucide-react';
@@ -10,12 +10,13 @@ import { toast } from 'react-hot-toast';
 import DashboardLayout from '@/components/DashboardLayout';
 
 function LeadManagerLeadsContent() {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   const searchParams = useSearchParams();
   const filterParam = searchParams.get('filter') || 'all';
 
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState(filterParam);
   const [sortBy, setSortBy] = useState<'priority' | 'sla' | 'created'>('created');
@@ -55,6 +56,8 @@ function LeadManagerLeadsContent() {
   }, [searchTerm]);
 
   const fetchLeads = async () => {
+    setLoading(true);
+    setLoadError('');
     try {
       let query = supabase
         .from('service_leads')
@@ -120,6 +123,10 @@ function LeadManagerLeadsContent() {
       setLeads(data || []);
     } catch (error) {
       console.error('Error fetching leads:', error);
+      const msg = (error as any)?.message || 'Failed to load leads';
+      setLoadError(msg);
+      toast.error(msg);
+      setLeads([]);
     } finally {
       setLoading(false);
     }
@@ -320,7 +327,11 @@ function LeadManagerLeadsContent() {
           <div className="text-4xl sm:text-5xl md:text-6xl mb-3 sm:mb-4">📋</div>
           <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-1 sm:mb-2">No Leads Found</h3>
           <p className="text-sm sm:text-base text-gray-600">
-            {searchTerm ? `No leads match "${searchTerm}"` : `No leads in ${activeFilter} filter`}
+            {loadError
+              ? loadError
+              : searchTerm
+                ? `No leads match "${searchTerm}"`
+                : `No leads in ${activeFilter} filter`}
           </p>
         </div>
       ) : (

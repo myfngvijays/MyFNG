@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // PUT - Update work notes
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -52,7 +52,11 @@ export async function PUT(
       return NextResponse.json({ error: 'Forbidden: Mechanic only' }, { status: 403 });
     }
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
 
     // Get request body
     const body = await request.json();
@@ -116,7 +120,7 @@ export async function PUT(
 // GET - Get work notes
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -127,7 +131,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
 
     // Get notes
     const { data: job, error: jobError } = await supabase

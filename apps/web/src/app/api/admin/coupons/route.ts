@@ -38,11 +38,73 @@ export async function GET(request: NextRequest) {
 
     const withCounts = await Promise.all(
       (coupons || []).map(async (coupon: any) => {
-        const { count } = await supabaseAdmin
-          .from('coupon_redemptions')
-          .select('id', { count: 'exact', head: true })
-          .eq('coupon_id', coupon.id);
-        return { ...coupon, usage_count: count || 0 };
+        // Primary source of truth: coupon_redemptions (each time a coupon is applied).
+        // Some installs/flows may not write to coupon_redemptions reliably, so we fallback to other sources.
+        let redemptionCount = 0;
+        try {
+          const redemptionsRes = await supabaseAdmin
+            .from('coupon_redemptions')
+            .select('id', { count: 'exact', head: true })
+            .eq('coupon_id', coupon.id);
+          if (!redemptionsRes.error && redemptionsRes.count != null) {
+            redemptionCount = redemptionsRes.count || 0;
+          }
+        } catch {
+          // ignore (table may not exist)
+        }
+
+        if (redemptionCount > 0) {
+          return { ...coupon, usage_count: redemptionCount };
+        }
+
+        // Fallback: approximate "actual usage" from other persisted places (avoid double-counting by taking max).
+        let leadsByCode = 0;
+        let leadsByMeta = 0;
+        let enquiriesByMeta = 0;
+        let invoicesByMeta = 0;
+
+        try {
+          const leadsRes = await supabaseAdmin
+            .from('service_leads')
+            .select('id', { count: 'exact', head: true })
+            .ilike('coupon_code', String(coupon.code || ''));
+          leadsByCode = leadsRes.count || 0;
+        } catch {
+          // ignore
+        }
+
+        try {
+          const leadsMetaRes = await supabaseAdmin
+            .from('service_leads')
+            .select('id', { count: 'exact', head: true })
+            .contains('coupon_meta', { coupon_id: coupon.id });
+          leadsByMeta = leadsMetaRes.count || 0;
+        } catch {
+          // ignore (column may not exist)
+        }
+
+        try {
+          const enquiryRes = await supabaseAdmin
+            .from('enquiry_hub')
+            .select('id', { count: 'exact', head: true })
+            .contains('meta', { coupon: { coupon_id: coupon.id } });
+          enquiriesByMeta = enquiryRes.count || 0;
+        } catch {
+          // ignore
+        }
+
+        try {
+          const invRes = await supabaseAdmin
+            .from('invoices')
+            .select('id', { count: 'exact', head: true })
+            .contains('coupon_meta', { coupon_id: coupon.id });
+          invoicesByMeta = invRes.count || 0;
+        } catch {
+          // ignore
+        }
+
+        const fallbackCount = Math.max(leadsByCode, leadsByMeta, enquiriesByMeta, invoicesByMeta, 0);
+        return { ...coupon, usage_count: fallbackCount };
       })
     );
 

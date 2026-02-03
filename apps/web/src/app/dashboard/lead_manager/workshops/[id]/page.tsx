@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY } from '@/lib/utils';
 import {
@@ -16,7 +16,7 @@ import { toast } from 'react-hot-toast';
 export default function WorkshopDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   
   const [workshop, setWorkshop] = useState<any>(null);
   const [loading, setLoading] = useState(true);

@@ -45,6 +45,8 @@ web-build/
 *.log
 .cache/
 .npm-cache/
+.puppeteer-cache/
+.tmp_inventory.html
 
 # Large files - excluded from git
 *.tar.gz

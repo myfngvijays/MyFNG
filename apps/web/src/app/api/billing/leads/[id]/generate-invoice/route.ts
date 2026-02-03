@@ -17,10 +17,11 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const params = await paramsPromise;
 
     // Optional service-role client for write operations when RLS blocks (best-effort).
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;

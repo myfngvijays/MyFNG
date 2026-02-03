@@ -108,15 +108,17 @@ export default function CouponsPage() {
     setSubmitting(true);
     setError(null);
     try {
+      const isFreeService = form.coupon_kind === 'FREE_SERVICE';
       const payload: any = {
         code: form.code.trim(),
         coupon_kind: form.coupon_kind,
         discount_mode: form.discount_mode || null,
         discount_value: form.discount_value ? Number(form.discount_value) : null,
         min_order_value: form.min_order_value ? Number(form.min_order_value) : null,
-        target_service_type_id: form.target_service_type_id || null,
-        target_subservice_id: form.target_subservice_id || null,
-        target_custom_label: form.target_custom_label || null,
+        // For FREE_SERVICE coupons we match by label (free text) rather than IDs.
+        target_service_type_id: isFreeService ? null : (form.target_service_type_id || null),
+        target_subservice_id: isFreeService ? null : (form.target_subservice_id || null),
+        target_custom_label: isFreeService ? (form.target_custom_label || null) : (form.target_custom_label || null),
         start_at: form.start_at ? new Date(form.start_at).toISOString() : null,
         end_at: form.end_at ? new Date(form.end_at).toISOString() : null,
         usage_limit_total: form.usage_limit_total ? Number(form.usage_limit_total) : null,
@@ -309,24 +311,12 @@ export default function CouponsPage() {
               )}
 
               {form.coupon_kind === 'FREE_SERVICE' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
                   <input
                     className="input"
-                    placeholder="Service Type ID"
-                    value={form.target_service_type_id}
-                    onChange={(e) => setForm({ ...form, target_service_type_id: e.target.value })}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Subservice ID"
-                    value={form.target_subservice_id}
-                    onChange={(e) => setForm({ ...form, target_subservice_id: e.target.value })}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Custom Label"
                     value={form.target_custom_label}
                     onChange={(e) => setForm({ ...form, target_custom_label: e.target.value })}
+                    placeholder="Service Name (free text) e.g. Free car service"
                   />
                 </div>
               )}

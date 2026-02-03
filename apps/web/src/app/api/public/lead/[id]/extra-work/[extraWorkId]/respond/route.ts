@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string; extraWorkId: string } }
+  { params }: { params: Promise<{ id: string; extraWorkId: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -25,8 +25,7 @@ export async function POST(
         : null;
 
     const updater = supabaseAdmin ?? supabase;
-    const leadId = params.id;
-    const extraWorkId = params.extraWorkId;
+    const { id: leadId, extraWorkId } = await params;
 
     const body = await request.json().catch(() => ({}));
     const action = String(body?.action || '').toUpperCase(); // APPROVE / REJECT

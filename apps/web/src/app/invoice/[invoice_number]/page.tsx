@@ -50,6 +50,14 @@ interface Invoice {
   };
 }
 
+type CouponBreakdownItem = {
+  code: string;
+  coupon_kind: string | null;
+  discount_amount: number;
+  free_service_label?: string | null;
+  error?: string | null;
+};
+
 export default function CustomerInvoicePage() {
   const params = useParams();
   const invoiceNumber = params.invoice_number as string;
@@ -57,6 +65,8 @@ export default function CustomerInvoicePage() {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [couponBreakdown, setCouponBreakdown] = useState<CouponBreakdownItem[]>([]);
+  const [couponBreakdownLoading, setCouponBreakdownLoading] = useState(false);
 
   useEffect(() => {
     fetchInvoice();
@@ -152,6 +162,143 @@ export default function CustomerInvoicePage() {
     }
   }
 
+  const parseCodes = (raw: any): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) {
+      return raw.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+    }
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+        }
+      } catch {
+        // ignore
+      }
+      return raw
+        .split(',')
+        .map((c) => String(c || '').trim().toUpperCase())
+        .filter(Boolean);
+    }
+    return [];
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const inv = invoice as any;
+    if (!inv) {
+      setCouponBreakdown([]);
+      return;
+    }
+
+    const selectedCodes = parseCodes(inv?.coupon_meta?.selected_codes);
+    const applied = String(inv?.coupon_code || '').trim().toUpperCase();
+    const codes = Array.from(new Set([...(selectedCodes || []), ...(applied ? [applied] : [])])).filter(Boolean);
+
+    if (codes.length === 0) {
+      setCouponBreakdown([]);
+      return;
+    }
+
+    const toNum = (v: any) => {
+      const n = typeof v === 'number' ? v : parseFloat(String(v ?? '0'));
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const subTotalBeforeDiscount =
+      toNum(inv?.sub_total ?? inv?.subtotal) ||
+      Math.max(0, toNum(inv?.base_amount) + toNum(inv?.parts_cost) + toNum(inv?.extra_charges));
+
+    const serviceItems = (Array.isArray(inv?.line_items) ? inv.line_items : [])
+      .filter((it: any) => {
+        const c = String(it?.category || '').toUpperCase();
+        return c === 'SERVICE' || c === 'ADDON' || c === 'ADD-ON' || c === 'ADD_ON';
+      })
+      .map((it: any) => ({
+        service_type_id: it?.service_type_id ?? null,
+        subservice_id: it?.subservice_id ?? null,
+        label: it?.description ?? null,
+        price:
+          Number((it as any)?.original_amount ?? 0) > 0
+            ? Number((it as any).original_amount)
+            : Number(it?.amount ?? 0) || 0,
+      }));
+
+    const leadCtx = {
+      subtotal: subTotalBeforeDiscount,
+      service_type_ids: serviceItems.map((x: any) => String(x?.service_type_id || '')).filter(Boolean),
+      subservice_ids: serviceItems.map((x: any) => String(x?.subservice_id || '')).filter(Boolean),
+      custom_labels: serviceItems.map((x: any) => String(x?.label || '')).filter(Boolean),
+      service_items: serviceItems,
+      customer_phone: inv?.lead?.customer_phone ?? null,
+    };
+
+    (async () => {
+      try {
+        setCouponBreakdownLoading(true);
+        const results = await Promise.all(
+          codes.map(async (c) => {
+            try {
+              const res = await fetch('/api/coupons/validate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: c, lead_context: leadCtx }),
+              });
+              const json = await res.json().catch(() => ({}));
+              const valid = Boolean(json?.valid);
+              const kind = String(json?.coupon?.coupon_kind || '').trim() || null;
+              const amt = Number(json?.discount_amount ?? 0) || 0;
+              const label =
+                String(json?.coupon_meta?.free_service?.matched_label || '').trim() ||
+                String(json?.coupon_meta?.free_service?.target_custom_label || '').trim() ||
+                null;
+              return {
+                code: c,
+                coupon_kind: kind,
+                discount_amount: valid ? amt : 0,
+                free_service_label: label,
+                error: valid ? null : String(json?.error || 'Coupon not applicable'),
+              };
+            } catch (e: any) {
+              return {
+                code: c,
+                coupon_kind: null,
+                discount_amount: 0,
+                error: e?.message || 'Failed to validate coupon',
+              };
+            }
+          })
+        );
+
+        // Best-effort FREE_SERVICE amount fallback from invoice line_items original_amount
+        const freeServiceOriginalTotal = (Array.isArray(inv?.line_items) ? inv.line_items : [])
+          .filter((it: any) => Boolean((it as any)?.free_service) && Number((it as any)?.original_amount ?? 0) > 0)
+          .reduce((s: number, it: any) => s + (Number((it as any)?.original_amount ?? 0) || 0), 0);
+
+        const next = results.map((r) => {
+          const k = String(r?.coupon_kind || '').toUpperCase();
+          if (k === 'FREE_SERVICE' && (Number(r.discount_amount || 0) || 0) <= 0 && freeServiceOriginalTotal > 0) {
+            return { ...r, discount_amount: freeServiceOriginalTotal };
+          }
+          return r;
+        });
+
+        if (cancelled) return;
+        setCouponBreakdown(next);
+      } catch {
+        if (cancelled) return;
+        setCouponBreakdown([]);
+      } finally {
+        if (!cancelled) setCouponBreakdownLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [invoice?.id]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -178,6 +325,14 @@ export default function CustomerInvoicePage() {
   const remainingAmount = invoice.final_amount - (invoice.paid_amount || 0);
   const isPaid = invoice.payment_status === 'PAID';
   const isPartial = invoice.payment_status === 'PARTIAL';
+  const selectedCodes = parseCodes((invoice as any)?.coupon_meta?.selected_codes);
+  const appliedCode = String((invoice as any)?.coupon_code || '').trim().toUpperCase();
+  const couponCodes = Array.from(new Set([...(selectedCodes || []), ...(appliedCode ? [appliedCode] : [])])).filter(Boolean);
+  const totalDiscountFromBreakdown = couponBreakdown.reduce((s, c) => s + (Number(c?.discount_amount || 0) || 0), 0);
+  const totalDiscountDisplay =
+    totalDiscountFromBreakdown > 0
+      ? totalDiscountFromBreakdown
+      : Number((invoice as any)?.discount_amount || 0) || 0;
   const docTitle =
     invoice.invoice_type === 'ORDER_SUMMARY'
       ? 'ORDER SUMMARY'
@@ -262,6 +417,41 @@ export default function CustomerInvoicePage() {
               <span>Subtotal:</span>
               <span>₹{(invoice.base_amount + invoice.extra_charges + invoice.parts_cost - invoice.discount_amount).toFixed(2)}</span>
             </div>
+            {couponCodes.length > 0 && (
+              <div className="flex justify-between">
+                <span>Coupon Code{couponCodes.length > 1 ? 's' : ''}:</span>
+                <span>{couponCodes.join(', ')}</span>
+              </div>
+            )}
+            {couponBreakdownLoading && (
+              <div className="flex justify-between text-gray-500">
+                <span>Coupon Details:</span>
+                <span>Calculating…</span>
+              </div>
+            )}
+            {!couponBreakdownLoading &&
+              couponBreakdown.map((c) => {
+                const kind = String(c?.coupon_kind || '').toUpperCase();
+                const label =
+                  kind === 'FREE_SERVICE'
+                    ? `Free Service (${c.code})${c.free_service_label ? ` - ${c.free_service_label}` : ''}`
+                    : kind === 'TOTAL_DISCOUNT'
+                      ? `Discount (${c.code})`
+                      : `Coupon (${c.code})`;
+                const value = Number(c?.discount_amount || 0) || 0;
+                return (
+                  <div key={`coupon-${c.code}`} className="flex justify-between">
+                    <span>{label}:</span>
+                    <span>{value > 0 ? `-₹${value.toFixed(2)}` : '—'}</span>
+                  </div>
+                );
+              })}
+            {totalDiscountDisplay > 0 && (
+              <div className="flex justify-between text-red-600">
+                <span>Total Discount:</span>
+                <span>-₹{totalDiscountDisplay.toFixed(2)}</span>
+              </div>
+            )}
             {showGst && invoice.cgst_amount > 0 && (
               <div className="flex justify-between">
                 <span>CGST (9%):</span>

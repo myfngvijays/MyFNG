@@ -7,6 +7,18 @@
       "@/*": ["./src/*"],
       "@/shared/*": ["../../shared/*"]
     }
-  }
+  },
+  "include": [
+    "App.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "android",
+    "ios",
+    "dist",
+    "build"
+  ]
 }
 

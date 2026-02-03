@@ -18,6 +18,37 @@ type ValidatePayload = {
   };
 };
 
+function parseBodyText(text: string): ValidatePayload | null {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed) as ValidatePayload;
+  } catch {
+    // ignore
+  }
+  try {
+    const params = new URLSearchParams(trimmed);
+    if (params.has('code') || params.has('lead_context')) {
+      let leadContext: ValidatePayload['lead_context'] | undefined = undefined;
+      const leadContextRaw = params.get('lead_context');
+      if (leadContextRaw) {
+        try {
+          leadContext = JSON.parse(leadContextRaw);
+        } catch {
+          // ignore
+        }
+      }
+      return {
+        code: params.get('code') || undefined,
+        lead_context: leadContext,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return { code: trimmed };
+}
+
 function normalizeCode(code: string) {
   return code.trim().toUpperCase();
 }
@@ -111,10 +142,13 @@ function findFreeServicePrice(
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json().catch(() => ({}))) as ValidatePayload;
-    const codeRaw = String(body?.code || '').trim();
+    const requestClone = request.clone();
+    const body = (await request
+      .json()
+      .catch(async () => parseBodyText(await requestClone.text().catch(() => '')) || {})) as ValidatePayload;
+    const codeRaw = String(body?.code || request.nextUrl.searchParams.get('code') || '').trim();
     if (!codeRaw) {
-      return NextResponse.json({ valid: false, error: 'Coupon code is required.' }, { status: 400 });
+      return NextResponse.json({ valid: false, error: 'Coupon code is required.' }, { status: 200 });
     }
 
     const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
@@ -133,14 +167,60 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (error || !coupon) {
-      return NextResponse.json({ valid: false, error: 'Invalid or inactive coupon.' }, { status: 404 });
+      return NextResponse.json({ valid: false, error: 'Invalid or inactive coupon.' }, { status: 200 });
     }
 
+    const baseCoupon = {
+      id: coupon.id,
+      code: coupon.code,
+      coupon_kind: coupon.coupon_kind,
+      discount_mode: coupon.discount_mode,
+      discount_value: coupon.discount_value,
+      min_order_value: coupon.min_order_value,
+      target_service_type_id: coupon.target_service_type_id,
+      target_subservice_id: coupon.target_subservice_id,
+      target_custom_label: coupon.target_custom_label,
+      description: coupon.description,
+    };
+    const baseMeta = {
+      coupon_id: coupon.id,
+      code: coupon.code,
+      coupon_kind: coupon.coupon_kind,
+      discount_mode: coupon.discount_mode ?? null,
+      discount_value: coupon.discount_value ?? null,
+      min_order_value: coupon.min_order_value,
+      discount_amount: 0,
+      computed_on_subtotal: Number(body?.lead_context?.subtotal || 0),
+      free_service:
+        coupon.coupon_kind === 'FREE_SERVICE'
+          ? {
+              target_service_type_id: coupon.target_service_type_id || null,
+              target_subservice_id: coupon.target_subservice_id || null,
+              // Some installs store the FREE_SERVICE label in description instead of target_custom_label.
+              target_custom_label: coupon.target_custom_label || coupon.description || null,
+              matched_label: null,
+              original_price: 0,
+            }
+          : null,
+      validated_at: nowIso,
+    };
+    const invalid = (msg: string) =>
+      NextResponse.json(
+        {
+          valid: false,
+          error: msg,
+          coupon: baseCoupon,
+          discount_amount: 0,
+          coupon_meta: baseMeta,
+        },
+        { status: 200 }
+      );
+
     if (coupon.start_at && String(coupon.start_at) > nowIso) {
-      return NextResponse.json({ valid: false, error: 'Coupon is not active yet.' }, { status: 400 });
+      return invalid('Coupon is not active yet.');
     }
     if (coupon.end_at && String(coupon.end_at) < nowIso) {
-      return NextResponse.json({ valid: false, error: 'Coupon has expired.' }, { status: 400 });
+      return invalid('Coupon has expired.');
     }
 
     // Usage limit checks
@@ -150,7 +230,7 @@ export async function POST(request: NextRequest) {
         .select('id', { count: 'exact', head: true })
         .eq('coupon_id', coupon.id);
       if ((count || 0) >= Number(coupon.usage_limit_total || 0)) {
-        return NextResponse.json({ valid: false, error: 'Coupon usage limit reached.' }, { status: 400 });
+        return invalid('Coupon usage limit reached.');
       }
     }
 
@@ -163,17 +243,14 @@ export async function POST(request: NextRequest) {
           .eq('coupon_id', coupon.id)
           .contains('meta', { customer_phone: customerPhone });
         if ((count || 0) >= Number(coupon.usage_limit_per_customer || 0)) {
-          return NextResponse.json({ valid: false, error: 'Coupon already used by customer.' }, { status: 400 });
+          return invalid('Coupon already used by customer.');
         }
       }
     }
 
     const subtotal = Number(body?.lead_context?.subtotal || 0);
     if (coupon.min_order_value && subtotal < Number(coupon.min_order_value || 0)) {
-      return NextResponse.json(
-        { valid: false, error: `Minimum order value is ₹${coupon.min_order_value}.` },
-        { status: 400 }
-      );
+      return invalid(`Minimum order value is ₹${coupon.min_order_value}.`);
     }
 
     let discountAmount = 0;
@@ -197,7 +274,7 @@ export async function POST(request: NextRequest) {
       const discountValue = Number(discountValueRaw);
 
       if (!discountMode || !Number.isFinite(discountValue) || discountValue <= 0 || subtotal <= 0) {
-        return NextResponse.json({ valid: false, error: 'Invalid discount configuration.' }, { status: 400 });
+        return invalid('Invalid discount configuration.');
       }
       if (discountMode === 'AMOUNT') {
         discountAmount = Math.min(discountValue, subtotal);
@@ -207,16 +284,31 @@ export async function POST(request: NextRequest) {
     } else if (coupon.coupon_kind === 'FREE_SERVICE') {
       const freeService = findFreeServicePrice(coupon, body?.lead_context);
       if (!freeService.matched) {
+        // Still return coupon details so UI can show FREE_SERVICE label even if not applicable.
         return NextResponse.json(
-          { valid: false, error: 'Coupon is not applicable to selected services.' },
-          { status: 400 }
+          {
+            valid: false,
+            error: 'Coupon is not applicable to selected services.',
+            coupon: baseCoupon,
+            discount_amount: 0,
+            coupon_meta: {
+              ...baseMeta,
+              free_service: {
+                ...(baseMeta as any).free_service,
+                matched_label: null,
+                original_price: 0,
+              },
+            },
+          },
+          { status: 200 }
         );
       }
       discountAmount = Math.max(0, Number(freeService.price || 0));
       freeServiceMeta = {
         target_service_type_id: coupon.target_service_type_id || null,
         target_subservice_id: coupon.target_subservice_id || null,
-        target_custom_label: coupon.target_custom_label || null,
+        // Some installs store the FREE_SERVICE label in description instead of target_custom_label.
+        target_custom_label: coupon.target_custom_label || coupon.description || null,
         matched_label: freeService.matchLabel || null,
         original_price: freeService.price || 0,
       };

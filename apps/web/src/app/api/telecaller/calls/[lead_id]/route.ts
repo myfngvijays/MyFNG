@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { lead_id: string } }
+  { params }: { params: Promise<{ lead_id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -19,7 +19,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const leadId = params.lead_id;
+    const { lead_id } = await params;
+    const leadId = String(lead_id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead_id' }, { status: 400 });
+    }
 
     // Resolve users_login profile robustly (email -> phone -> id) + role_code
     const email = (user.email || '').trim();
@@ -42,19 +46,20 @@ export async function GET(
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = supabaseAdmin ?? supabase;
 
-    // Authorization: telecaller can only read call logs for their own assigned lead
+    // Authorization: for TELECALLER, require that this lead is readable under RLS.
+    // This matches the UI (lead detail page uses the client/RLS to fetch the lead).
     if (roleCode === 'TELECALLER') {
-      const { data: leadRow } = await db
+      const { data: canReadLead } = await supabase
         .from('service_leads')
-        .select('id, assigned_telecaller_id')
+        .select('id')
         .eq('id', leadId)
         .maybeSingle();
-      if (!leadRow || String((leadRow as any).assigned_telecaller_id || '') !== String(userProfile?.id || '')) {
+      if (!canReadLead) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }
 
-    const { data: callLogs, error: logsError } = await db
+    let logsQuery = db
       .from('telecaller_call_logs')
       .select(`
         *,
@@ -62,6 +67,8 @@ export async function GET(
       `)
       .eq('lead_id', leadId)
       .order('created_at', { ascending: false });
+
+    const { data: callLogs, error: logsError } = await logsQuery;
 
     if (logsError) {
       console.error('Error fetching call logs:', logsError);

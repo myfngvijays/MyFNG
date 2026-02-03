@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { CheckCircle, XCircle, AlertTriangle, Eye, Clock, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatDateTime } from "@/lib/utils";
@@ -30,7 +30,7 @@ interface Invoice {
 
 export default function InvoiceReviewDashboard() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);

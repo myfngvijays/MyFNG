@@ -2,6 +2,7 @@ import { createClient as createSupabaseAnonClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
+import { createClientFromRequest } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -38,18 +39,36 @@ function inferSlotKey(row: any): string | null {
   return m?.[1] ? m[1] : null;
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
 
-    const token = authHeader.replace('Bearer ', '');
-    const supabase = createSupabaseAnonClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    // Support both:
+    // - Cookie auth (web)
+    // - Authorization: Bearer <access_token> (mobile/external)
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
+    let supabase: any = null;
+    let user: any = null;
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    if (authHeader && /^Bearer\s+/i.test(authHeader)) {
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+      if (!token || token.toLowerCase() === 'undefined' || token.toLowerCase() === 'null') {
+        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      }
+      supabase = createSupabaseAnonClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data, error: userError } = await supabase.auth.getUser(token);
+      user = data?.user || null;
+      if (userError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    } else {
+      supabase = await createClientFromRequest(request);
+      const { data, error: userError } = await supabase.auth.getUser();
+      user = data?.user || null;
+      if (userError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const email = (user.email || '').trim();
     const phone = (user.phone || '').trim();
@@ -64,7 +83,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const roleCode = (profile?.roles as any)?.role_code as string | undefined;
     if (!profile || !roleCode) return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
 
-    const leadId = params.id;
     const { supabaseAdmin, error: adminError } = getAdminClient();
     if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
 
@@ -97,7 +115,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const isPrivileged = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
     if (!isPrivileged) {
-      if (roleCode === 'WORKSHOP_ADMIN' || roleCode === 'WORKSHOP_SUPERVISOR') {
+      if (
+        roleCode === 'WORKSHOP_ADMIN' ||
+        roleCode === 'WORKSHOP_SUPERVISOR' ||
+        roleCode === 'WORKSHOP_ADVISOR' ||
+        roleCode === 'WORKSHOP_ADVISER'
+      ) {
         if (!profile.workshop_id || lead.workshop_id !== profile.workshop_id) {
           return NextResponse.json({ error: 'Forbidden: Lead not in your workshop' }, { status: 403 });
         }

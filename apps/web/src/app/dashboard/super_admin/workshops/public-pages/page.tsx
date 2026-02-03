@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { useRouter } from 'next/navigation';
 import { Globe, Search, Plus, Edit2, Eye, ExternalLink, Image as ImageIcon, CheckCircle, XCircle, Star, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function WorkshopPublicPagesPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [pages, setPages] = useState<any[]>([]);
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

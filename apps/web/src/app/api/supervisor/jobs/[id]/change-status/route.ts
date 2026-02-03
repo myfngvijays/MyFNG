@@ -9,10 +9,11 @@ import { createNotification, notifyTelecallerForLead } from '@/lib/notifications
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const params = await paramsPromise;
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();

@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyPickupBoy, notifyTeamAssignment } from '@/lib/notifications';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -40,7 +41,7 @@ export async function POST(
 
     // Verify user is workshop admin or supervisor - check role_code from joined roles table
     const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'WORKSHOP_ADMIN' && roleCode !== 'WORKSHOP_SUPERVISOR') {
+    if (!['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR', 'WORKSHOP_ADVISOR', 'WORKSHOP_ADVISER'].includes(String(roleCode || ''))) {
       return NextResponse.json({ 
         error: 'Forbidden: Workshop Admin or Supervisor only',
         current_role: roleCode
@@ -63,17 +64,40 @@ export async function POST(
       }, { status: 400 });
     }
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
 
-    // Get lead details
-    const { data: lead, error: leadError } = await supabase
+    // Prefer service-role client for lead/team updates (RLS-safe),
+    // but we still enforce workshop ownership using the logged-in user's workshop_id.
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const db = supabaseAdmin ?? supabase;
+
+    // Get lead details (try user client first to respect RLS, fallback to admin if needed)
+    const { data: leadUser, error: leadUserErr } = await supabase
       .from('service_leads')
       .select('*')
       .eq('id', leadId)
-      .single();
+      .maybeSingle();
 
-    if (leadError || !lead) {
-      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    const { data: leadAdmin } =
+      !leadUser && db !== supabase
+        ? await db.from('service_leads').select('*').eq('id', leadId).maybeSingle()
+        : { data: null as any };
+
+    const lead = leadUser || leadAdmin;
+
+    if (!lead) {
+      // Include debug hints (non-sensitive) to help diagnose RLS/workshop mismatch
+      return NextResponse.json(
+        {
+          error: 'Lead not found',
+          lead_id: leadId,
+          using_admin: Boolean(db !== supabase),
+          user_lead_error: leadUserErr?.message || null,
+        },
+        { status: 404 }
+      );
     }
 
     // Verify lead is assigned to this workshop
@@ -199,7 +223,7 @@ export async function POST(
       updatePayload.mechanic_assigned_at = now;
     }
     
-    const { data: updatedLead, error: updateError } = await supabase
+    const { data: updatedLead, error: updateError } = await db
       .from('service_leads')
       .update(updatePayload)
       .eq('id', leadId)
@@ -265,7 +289,7 @@ export async function POST(
 
     // Create mechanic assignment record (only if mechanic_id is provided)
     if (mechanic_id) {
-      await supabase
+      await db
         .from('mechanic_assignments')
         .insert({
           lead_id: leadId,
@@ -280,7 +304,7 @@ export async function POST(
     // CRITICAL: Create or update mechanic_jobs entry so mechanic can see the job (only if mechanic_id is provided)
     if (mechanic_id) {
       // Check if mechanic_jobs record already exists
-      const { data: existingJob, error: checkError } = await supabase
+      const { data: existingJob, error: checkError } = await db
         .from('mechanic_jobs')
         .select('id, mechanic_id, mechanic_status')
         .eq('lead_id', leadId)
@@ -302,7 +326,7 @@ export async function POST(
           work_notes: notes || null
         };
         
-        const { data: updatedJob, error: updateJobError } = await supabase
+        const { data: updatedJob, error: updateJobError } = await db
           .from('mechanic_jobs')
           .update(updateData)
           .eq('id', existingJob.id)
@@ -328,7 +352,7 @@ export async function POST(
           work_notes: notes || null
         };
         
-        const { data: newJob, error: mechanicJobError } = await supabase
+        const { data: newJob, error: mechanicJobError } = await db
           .from('mechanic_jobs')
           .insert(insertData)
           .select();

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { Users, Search, UserPlus, Shield, UserX, UserCheck } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ const AVAILABLE_ROLES = [
 ];
 
 export default function UserManagementPage() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');

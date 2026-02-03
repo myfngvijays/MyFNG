@@ -17,8 +17,9 @@ try {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
+  const params = await paramsPromise;
   try {
     const supabase = await createClient();
     

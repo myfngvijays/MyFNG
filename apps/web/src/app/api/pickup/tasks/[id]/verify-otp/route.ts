@@ -61,10 +61,11 @@ async function tryUpdateLeadDelivered(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClientFromRequest(request);
+    const params = await paramsPromise;
     const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Server misconfigured', details: adminErr }, { status: 500 });

@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // GET - Get parts for a job (Merged from Billing & Tracking)
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -13,7 +13,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
 
     // 1. Fetch Billing Parts (Job Card Parts)
     // We need to find the job_card_id first
@@ -50,7 +54,7 @@ export async function GET(
 // POST - Add a new part to the job (With Tax Calculation & Class Pricing)
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -61,7 +65,11 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
     const body = await request.json();
     const { 
       product_id, // Optional: Link to Master Product

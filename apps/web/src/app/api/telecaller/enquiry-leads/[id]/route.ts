@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
     const supabase = await createClientFromRequest(request);
+    const params = await paramsPromise;
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

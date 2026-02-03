@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { DollarSign, TrendingUp, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
 
 export default function FinanceManagementPage() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'payouts' | 'refunds'>('overview');
   

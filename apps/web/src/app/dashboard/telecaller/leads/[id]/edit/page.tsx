@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
@@ -23,6 +23,16 @@ export default function EditLeadPage() {
   // Service types and add-ons
   const [serviceTypes, setServiceTypes] = useState<any[]>([]);
   const [serviceAddons, setServiceAddons] = useState<any[]>([]);
+  const SHOW_SERVICE_ADDONS = false;
+
+  // Coupons (multi-select)
+  const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
+  const [couponsLoading, setCouponsLoading] = useState(false);
+  const [couponsError, setCouponsError] = useState('');
+  const [couponCodes, setCouponCodes] = useState<string[]>([]);
+  const [appliedCoupon, setAppliedCoupon] = useState<string>('');
+  const [manualCoupon, setManualCoupon] = useState('');
+  const [couponSaving, setCouponSaving] = useState(false);
   
   // Dropdowns data
   const [cities, setCities] = useState<any[]>([]);
@@ -64,10 +74,104 @@ export default function EditLeadPage() {
   useEffect(() => {
     fetchLeadDetails();
     fetchServiceTypes();
-    fetchServiceAddons();
+    if (SHOW_SERVICE_ADDONS) fetchServiceAddons();
     fetchCities();
     fetchMakes();
   }, [leadId]);
+
+  useEffect(() => {
+    fetchAvailableCouponsForForm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.city_id, formData.service_types.join(',')]);
+
+  async function fetchAvailableCouponsForForm() {
+    setCouponsLoading(true);
+    setCouponsError('');
+    try {
+      const params = new URLSearchParams();
+      if (formData.city_id) params.set('city_id', formData.city_id);
+      if (formData.service_types.length > 0) params.set('service_type_ids', formData.service_types.join(','));
+      const res = await fetch(`/api/telecaller/coupons?${params.toString()}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to load coupons');
+      setAvailableCoupons(json?.coupons || []);
+    } catch (e: any) {
+      setCouponsError(e?.message || 'Failed to load coupons');
+      setAvailableCoupons([]);
+    } finally {
+      setCouponsLoading(false);
+    }
+  }
+
+  const selectedCodes = useMemo(
+    () => couponCodes.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean),
+    [couponCodes]
+  );
+
+  const addCouponCode = (codeRaw: string) => {
+    const code = String(codeRaw || '').trim().toUpperCase();
+    if (!code) return;
+    setCouponCodes((prev) => {
+      const next = prev.includes(code) ? prev : [...prev, code];
+      if (!appliedCoupon) setAppliedCoupon(code);
+      return next;
+    });
+  };
+
+  const removeCouponCode = (codeRaw: string) => {
+    const code = String(codeRaw || '').trim().toUpperCase();
+    if (!code) return;
+    setCouponCodes((prev) => {
+      const next = prev.filter((c) => c !== code);
+      if (appliedCoupon === code) setAppliedCoupon(next[0] || '');
+      return next;
+    });
+  };
+
+  async function saveCouponsOnly() {
+    setCouponSaving(true);
+    try {
+      const supabase = createClient();
+      const applied = String(appliedCoupon || '').trim().toUpperCase();
+      const nextApplied = applied && selectedCodes.includes(applied) ? applied : (selectedCodes[0] || '');
+      const nextCouponMeta =
+        selectedCodes.length > 0
+          ? {
+              selected_codes: selectedCodes,
+              applied_code: nextApplied || null,
+            }
+          : null;
+
+      const { error } = await supabase
+        .from('service_leads')
+        .update({
+          coupon_code: nextApplied || null,
+          discount_amount: 0,
+          coupon_meta: nextCouponMeta,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', leadId);
+
+      if (error) throw error;
+
+      // Keep local lead state in sync without resetting formData edits
+      setLead((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              coupon_code: nextApplied || null,
+              coupon_meta: nextCouponMeta,
+              discount_amount: 0,
+            }
+          : prev
+      );
+      alert('Coupon saved');
+    } catch (e: any) {
+      alert(e?.message || 'Failed to save coupon');
+    } finally {
+      setCouponSaving(false);
+    }
+  }
 
   async function fetchCities() {
     const supabase = createClient();
@@ -235,6 +339,15 @@ export default function EditLeadPage() {
         lead_priority: leadData.lead_priority || 'NORMAL'
       });
 
+      // Initialize coupons from stored data (best-effort)
+      const existingSelected = Array.isArray((leadData as any)?.coupon_meta?.selected_codes)
+        ? (leadData as any).coupon_meta.selected_codes.map((c: any) => String(c || '').trim().toUpperCase()).filter(Boolean)
+        : [];
+      const existingApplied = String((leadData as any)?.coupon_code || '').trim().toUpperCase();
+      const init = existingSelected.length > 0 ? existingSelected : (existingApplied ? [existingApplied] : []);
+      setCouponCodes(init);
+      setAppliedCoupon(existingApplied && init.includes(existingApplied) ? existingApplied : (init[0] || ''));
+
     } catch (error) {
       console.error('Error fetching lead:', error);
       setError('Failed to load lead details');
@@ -337,59 +450,51 @@ export default function EditLeadPage() {
     setSaving(true);
 
     try {
-      const supabase = createClient();
-      
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      const applied = String(appliedCoupon || '').trim().toUpperCase();
+      const nextApplied = applied && selectedCodes.includes(applied) ? applied : (selectedCodes[0] || '');
 
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
+      const payload: any = {
+        customer_name: formData.customer_name,
+        customer_phone: formData.customer_phone,
+        customer_alternate_phone: formData.customer_alternate_phone || null,
+        customer_email: formData.customer_email || null,
+        customer_address: formData.customer_address || null,
+        city_id: formData.city_id || null,
+        city: formData.city || null,
+        pincode: formData.pincode || null,
 
-      // Update lead
-      const { error: updateError } = await supabase
-        .from('service_leads')
-        .update({
-          customer_name: formData.customer_name,
-          customer_phone: formData.customer_phone,
-          customer_alternate_phone: formData.customer_alternate_phone || null,
-          customer_email: formData.customer_email || null,
-          customer_address: formData.customer_address || null,
-          city_id: formData.city_id || null,
-          city: formData.city || null,
-          pincode: formData.pincode || null,
-          
-          vehicle_number: formData.vehicle_number,
-          vehicle_make: formData.vehicle_make,
-          model_id: formData.model_id || null,
-          vehicle_model: formData.vehicle_model,
-          vehicle_variant: formData.vehicle_variant || null,
-          vehicle_year: formData.vehicle_year ? parseInt(formData.vehicle_year) : null,
-          vehicle_fuel_type: formData.vehicle_fuel_type,
-          odometer_km: formData.odometer_km ? parseInt(formData.odometer_km) : null,
-          
-          service_type_ids: JSON.stringify(formData.service_types),
-          subservice_ids: JSON.stringify(formData.service_addons),
-          service_type: formData.service_type,
-          problem_description: formData.problem_description || null,
-          description: formData.description || null,
-          
-          pickup_required: formData.pickup_required,
-          pickup_address: formData.pickup_address || null,
-          
-          notes: formData.notes || null,
-          lead_priority: formData.lead_priority,
-          
-          is_incomplete: false,
-          updated_by_id: userProfile?.id,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', leadId);
+        vehicle_number: formData.vehicle_number,
+        vehicle_make: formData.vehicle_make,
+        model_id: formData.model_id || null,
+        vehicle_model: formData.vehicle_model,
+        vehicle_variant: formData.vehicle_variant || null,
+        vehicle_year: formData.vehicle_year ? parseInt(formData.vehicle_year) : null,
+        vehicle_fuel_type: formData.vehicle_fuel_type,
+        odometer_km: formData.odometer_km ? parseInt(formData.odometer_km) : null,
 
-      if (updateError) throw updateError;
+        service_types: formData.service_types,
+        service_addons: formData.service_addons,
+        service_type: formData.service_type,
+        problem_description: formData.problem_description || null,
+        description: formData.description || null,
+
+        pickup_required: formData.pickup_required,
+        pickup_address: formData.pickup_address || null,
+
+        notes: formData.notes || null,
+        lead_priority: formData.lead_priority,
+
+        coupon_codes: selectedCodes,
+        applied_coupon: nextApplied || null,
+      };
+
+      const res = await fetch(`/api/telecaller/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to update lead');
 
       // Success - redirect to lead details
       router.push(`/dashboard/telecaller/leads/${leadId}`);
@@ -775,28 +880,145 @@ export default function EditLeadPage() {
               </div>
 
               {/* Service Add-ons */}
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-2 sm:mb-3">
-                  Service Add-ons (Optional)
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-                  {serviceAddons.map(addon => (
-                    <label key={addon.id} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.service_addons.includes(addon.id)}
-                        onChange={(e) => handleMultiSelect('service_addons', addon.id, e.target.checked)}
-                        className="mt-0.5 sm:mt-1 flex-shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-xs sm:text-sm text-text-heading">{addon.name}</div>
-                        {addon.price && (
-                          <div className="text-xs sm:text-sm text-brand-primary mt-0.5">₹{addon.price}</div>
-                        )}
-                      </div>
-                    </label>
-                  ))}
+              {SHOW_SERVICE_ADDONS && (
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-2 sm:mb-3">
+                    Service Add-ons (Optional)
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                    {serviceAddons.map(addon => (
+                      <label key={addon.id} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.service_addons.includes(addon.id)}
+                          onChange={(e) => handleMultiSelect('service_addons', addon.id, e.target.checked)}
+                          className="mt-0.5 sm:mt-1 flex-shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-xs sm:text-sm text-text-heading">{addon.name}</div>
+                          {addon.price && (
+                            <div className="text-xs sm:text-sm text-brand-primary mt-0.5">₹{addon.price}</div>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </div>
+              )}
+
+              {/* Coupons */}
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+                  <label className="block text-xs sm:text-sm font-medium text-text-body">
+                    Coupons (select multiple)
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-secondary text-xs sm:text-sm"
+                    onClick={saveCouponsOnly}
+                    disabled={couponSaving}
+                    title="Save coupon changes"
+                  >
+                    {couponSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+
+                <div className="border rounded-lg p-2 max-h-44 overflow-auto bg-white">
+                  {couponsLoading ? (
+                    <div className="text-xs text-gray-600 p-2">Loading coupons…</div>
+                  ) : availableCoupons.length === 0 ? (
+                    <div className="text-xs text-gray-500 p-2">
+                      {couponsError ? `Unable to load coupons: ${couponsError}` : 'No active coupons available.'}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {availableCoupons.map((c) => {
+                        const code = String(c.code || '').toUpperCase();
+                        const label =
+                          c.coupon_kind === 'TOTAL_DISCOUNT'
+                            ? `${code} — ${c.discount_mode === 'PERCENT' ? `${c.discount_value}% off` : `₹${c.discount_value} off`}${c.min_order_value ? ` (min ₹${c.min_order_value})` : ''}`
+                            : `${code} — Free Service${c.target_custom_label ? ` (${c.target_custom_label})` : ''}`;
+                        const checked = selectedCodes.includes(code);
+                        return (
+                          <label key={c.id} className="flex items-start gap-2 text-xs sm:text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) addCouponCode(code);
+                                else removeCouponCode(code);
+                              }}
+                            />
+                            <span className="text-gray-800">{label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 mt-2">
+                  <input
+                    className="input text-xs sm:text-sm flex-1"
+                    placeholder="Add coupon code manually"
+                    value={manualCoupon}
+                    onChange={(e) => setManualCoupon((e.target.value || '').toUpperCase())}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary text-xs sm:text-sm"
+                    onClick={() => {
+                      addCouponCode(manualCoupon);
+                      setManualCoupon('');
+                    }}
+                    disabled={!manualCoupon.trim()}
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {selectedCodes.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    <div className="text-[11px] text-gray-600">Selected: {selectedCodes.join(', ')}</div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedCodes.map((code) => (
+                        <button
+                          key={code}
+                          type="button"
+                          className="text-xs px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200"
+                          onClick={() => removeCouponCode(code)}
+                          title="Remove"
+                        >
+                          {code} ×
+                        </button>
+                      ))}
+                    </div>
+                    <select
+                      className="input text-xs sm:text-sm"
+                      value={appliedCoupon}
+                      onChange={(e) => setAppliedCoupon(e.target.value)}
+                    >
+                      <option value="">Applied coupon (optional)</option>
+                      {selectedCodes.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn btn-secondary text-xs sm:text-sm w-full"
+                      onClick={() => {
+                        setCouponCodes([]);
+                        setAppliedCoupon('');
+                        setManualCoupon('');
+                      }}
+                    >
+                      Clear all coupons
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Problem Description */}

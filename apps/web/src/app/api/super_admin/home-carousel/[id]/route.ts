@@ -27,7 +27,8 @@ async function requireSuperAdmin(supabase: any) {
   return { ok: true, user };
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await paramsPromise;
   try {
     const supabase = await createClient();
     const auth = await requireSuperAdmin(supabase);
@@ -71,7 +72,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, { params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await paramsPromise;
   try {
     const supabase = await createClient();
     const auth = await requireSuperAdmin(supabase);

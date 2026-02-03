@@ -1,5 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -7,10 +6,11 @@ export const dynamic = 'force-dynamic';
 // GET: Fetch single package with items (NOW SERVICE TYPES)
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
+    const { id } = await params;
     
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -28,7 +28,7 @@ export async function GET(
           product:master_products(id, name, type, default_price, part_number, unit)
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (error) throw error;
@@ -46,10 +46,11 @@ export async function GET(
 // PUT: Update package details
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
+    const { id } = await params;
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {
@@ -68,7 +69,7 @@ export async function PUT(
         default_tax_rate: default_tax_rate || 18.00,
         is_active
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -84,10 +85,11 @@ export async function PUT(
 // DELETE: Delete package (Service Type)
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
+    const { id } = await params;
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {
@@ -109,7 +111,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('service_types')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (error) throw error;
 

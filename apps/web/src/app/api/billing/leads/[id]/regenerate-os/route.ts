@@ -36,7 +36,7 @@ function isApprovedExtra(row: any) {
   );
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
 
   // Optional service-role client for write operations when RLS blocks (best-effort).
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const allowedRoles = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'];
   if (!allowedRoles.includes(roleCode)) return NextResponse.json({ error: 'Forbidden', role: roleCode }, { status: 403 });
 
-  const leadId = params.id;
+  const { id: leadId } = await params;
   const { data: lead, error: leadError } = await supabase.from('service_leads').select('*').eq('id', leadId).single();
   if (leadError || !lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
 

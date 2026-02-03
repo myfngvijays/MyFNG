@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Search, Loader2, Upload, X, Check, Car } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 interface CarBrand {
   id: string;
@@ -15,7 +15,7 @@ interface CarBrand {
 }
 
 export default function CarBrandsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [brands, setBrands] = useState<CarBrand[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');

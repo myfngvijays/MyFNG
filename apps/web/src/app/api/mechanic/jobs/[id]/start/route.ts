@@ -4,7 +4,7 @@ import { createNotification, notifyWorkshopRoles } from '@/lib/notifications';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -56,7 +56,11 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const { notes } = body as any;
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
 
     // Get lead details (minimal fields for fast start)
     const { data: lead, error: leadError } = await supabase

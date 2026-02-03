@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, MapPin, Loader2, Building2, X, Check, Edit, Trash2 } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 export default function ZoneManagerPage() {
   const [zones, setZones] = useState<any[]>([]);
@@ -17,7 +17,7 @@ export default function ZoneManagerPage() {
   const [citySubmitting, setCitySubmitting] = useState(false);
   const [selectedCityIds, setSelectedCityIds] = useState<string[]>([]);
   
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
 
   useEffect(() => {
     fetchZones();

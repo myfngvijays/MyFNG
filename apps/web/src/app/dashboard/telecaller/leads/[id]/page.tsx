@@ -25,6 +25,29 @@ export default function LeadDetailPage() {
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
+  const SHOW_SERVICE_ADDONS = false;
+
+  function parseIds(raw: any): string[] {
+    if (raw == null) return [];
+    if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
+    if (typeof raw !== 'string') return [];
+    const s = raw.trim();
+    if (!s) return [];
+    // If it looks like JSON, try parsing; otherwise fallback to comma-separated.
+    if (s.startsWith('[') || s.startsWith('{') || s.startsWith('"')) {
+      try {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed)) return parsed.map(String).map((v) => v.trim()).filter(Boolean);
+      } catch {
+        // fall through
+      }
+    }
+    return s.split(',').map((v) => v.trim()).filter(Boolean);
+  }
+
+  function parseCodes(raw: any): string[] {
+    return parseIds(raw).map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+  }
 
   const [callLogData, setCallLogData] = useState({
     call_status: 'ANSWERED',
@@ -68,39 +91,31 @@ export default function LeadDetailPage() {
 
       // Fetch service type names if service_type_ids exists
       if (leadData.service_type_ids) {
-        try {
-          const serviceIds = JSON.parse(leadData.service_type_ids);
-          if (Array.isArray(serviceIds) && serviceIds.length > 0) {
-            const { data: serviceTypesData } = await supabase
-              .from('service_types')
-              .select('id, name')
-              .in('id', serviceIds);
-            
-            if (serviceTypesData) {
-              setServiceTypeNames(serviceTypesData.map(st => st.name));
-            }
+        const serviceIds = parseIds(leadData.service_type_ids);
+        if (serviceIds.length > 0) {
+          const { data: serviceTypesData } = await supabase
+            .from('service_types')
+            .select('id, name')
+            .in('id', serviceIds);
+
+          if (serviceTypesData) {
+            setServiceTypeNames(serviceTypesData.map((st) => st.name));
           }
-        } catch (e) {
-          console.error('Error parsing service_type_ids:', e);
         }
       }
 
       // Fetch subservice names if subservice_ids exists
       if (leadData.subservice_ids) {
-        try {
-          const subserviceIds = JSON.parse(leadData.subservice_ids);
-          if (Array.isArray(subserviceIds) && subserviceIds.length > 0) {
-            const { data: subservicesData } = await supabase
-              .from('service_addons')
-              .select('id, name')
-              .in('id', subserviceIds);
-            
-            if (subservicesData) {
-              setSubserviceNames(subservicesData.map(sa => sa.name));
-            }
+        const subserviceIds = parseIds(leadData.subservice_ids);
+        if (subserviceIds.length > 0) {
+          const { data: subservicesData } = await supabase
+            .from('service_addons')
+            .select('id, name')
+            .in('id', subserviceIds);
+
+          if (subservicesData) {
+            setSubserviceNames(subservicesData.map((sa) => sa.name));
           }
-        } catch (e) {
-          console.error('Error parsing subservice_ids:', e);
         }
       }
 
@@ -413,7 +428,7 @@ export default function LeadDetailPage() {
                 </div>
 
                 {/* Subservices / Add-ons */}
-                {subserviceNames.length > 0 && (
+                {SHOW_SERVICE_ADDONS && subserviceNames.length > 0 && (
                   <div>
                     <div className="flex items-start gap-1.5 sm:gap-2">
                       <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 mt-0.5 flex-shrink-0" />
@@ -456,19 +471,48 @@ export default function LeadDetailPage() {
                 {/* Coupon (if applied during lead creation) */}
                 {(() => {
                   const code = String(
-                    lead?.coupon_code ?? lead?.coupon ?? lead?.applied_coupon_code ?? ''
+                    lead?.coupon_code ??
+                      (lead as any)?.coupon_meta?.applied_code ??
+                      (lead as any)?.coupon_meta?.code ??
+                      lead?.coupon ??
+                      lead?.applied_coupon_code ??
+                      ''
                   ).trim();
+                  const selectedCodes = parseCodes((lead as any)?.coupon_meta?.selected_codes);
                   const discountAmount =
                     Number(lead?.discount_amount ?? lead?.coupon_discount_amount ?? lead?.coupon_discount ?? 0) || 0;
-                  if (!code) return null;
+                  if (!code && selectedCodes.length === 0) return null;
                   return (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-amber-800">Coupon Applied</p>
-                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
-                          {code}
-                        </span>
+                        <p className="text-sm font-semibold text-amber-800">
+                          {selectedCodes.length > 1 ? 'Coupons Applied' : 'Coupon Applied'}
+                        </p>
+                        {code ? (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                            {code}
+                          </span>
+                        ) : null}
                       </div>
+                      {selectedCodes.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {selectedCodes.map((c) => {
+                            const isPrimary = code && c === code.toUpperCase();
+                            return (
+                              <span
+                                key={c}
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                  isPrimary ? 'bg-amber-200 text-amber-900' : 'bg-amber-100 text-amber-900'
+                                }`}
+                                title={isPrimary ? 'Applied coupon' : 'Selected coupon'}
+                              >
+                                {c}
+                                {isPrimary ? ' (Applied)' : ''}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                       {discountAmount > 0 ? (
                         <p className="mt-1 text-xs text-gray-700">
                           Discount: <span className="font-semibold">₹{discountAmount.toFixed(2)}</span>
@@ -481,6 +525,8 @@ export default function LeadDetailPage() {
                     </div>
                   );
                 })()}
+
+                {/* Coupon editing is available only on the Edit Lead page */}
                 {lead.pickup_required && (
                   <div className="bg-blue-50 p-3 rounded-lg">
                     <p className="text-sm font-semibold text-blue-700">Pickup Required</p>

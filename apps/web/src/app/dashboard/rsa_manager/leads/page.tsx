@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
@@ -13,7 +13,7 @@ import {
 import Link from 'next/link';
 
 function RSALeadsListContent() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const searchParams = useSearchParams();
   
   const [leads, setLeads] = useState<any[]>([]);

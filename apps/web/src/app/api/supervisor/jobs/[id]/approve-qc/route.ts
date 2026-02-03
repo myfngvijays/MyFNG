@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -60,7 +60,7 @@ export async function POST(
     const body = await request.json();
     const { notes, checklist_data, quality_score } = body;
 
-    const leadId = params.id;
+    const { id: leadId } = await params;
 
     // Get lead details
     const { data: lead, error: leadError } = await supabase

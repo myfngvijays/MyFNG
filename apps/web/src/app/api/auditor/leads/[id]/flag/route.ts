@@ -20,8 +20,9 @@ interface FlagLeadRequest {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
+  const params = await paramsPromise;
   try {
     const supabase = await createClient();
     

@@ -4,7 +4,7 @@ import { notifyReadyForQC, createNotification, notifyWorkshopRoles, notifyTeleca
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -56,7 +56,11 @@ export async function POST(
     const body = await request.json();
     const { notes, work_summary } = body;
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
 
     // Get lead details
     const { data: lead, error: leadError } = await supabase

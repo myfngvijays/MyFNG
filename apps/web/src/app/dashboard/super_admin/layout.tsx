@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import {
   LayoutDashboard,
   Users,
@@ -187,7 +187,7 @@ export default function SuperAdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => getBrowserClient(), []);
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start expanded by default
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [websiteImagesOpen, setWebsiteImagesOpen] = useState(true);

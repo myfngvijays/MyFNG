@@ -1,5 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 
@@ -32,16 +31,17 @@ async function requireSuperAdmin(supabase: any) {
 }
 
 // POST: upsert into kb_manual_faqs + mark kb_question_events as added_to_kb
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
     const gate = await requireSuperAdmin(supabase);
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
     const { db, error: adminErr } = getAdminDb();
     if (!db) return NextResponse.json({ error: adminErr }, { status: 500 });
 
-    const id = String(params.id || '').trim();
+    const { id: rawId } = await params;
+    const id = String(rawId || '').trim();
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
     const { data: ev, error: evErr } = await db

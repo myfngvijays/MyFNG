@@ -82,8 +82,12 @@ async function createNotificationAdmin(params: {
   return data;
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
+    const params = await paramsPromise;
     const supabase = await createClientFromRequest(request);
     const { data: auth, error: authError } = await supabase.auth.getUser();
     if (authError || !auth?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Map, Edit, Trash2, Loader2 } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { formatDateDMY } from "@/lib/utils";
 
 export default function ZonesTab() {
@@ -11,7 +11,7 @@ export default function ZonesTab() {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ name: '', description: '' });
 
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
 
   useEffect(() => {
     fetchZones();

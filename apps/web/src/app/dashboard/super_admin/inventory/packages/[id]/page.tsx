@@ -5,13 +5,15 @@ import {
   ArrowLeft, Save, Plus, Trash2, Search, Package, 
   Wrench, Box, Loader2 
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useRouter, useParams } from 'next/navigation';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import Link from 'next/link';
 
-export default function PackageDetailPage({ params }: { params: { id: string } }) {
+export default function PackageDetailPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const params = useParams();
+  const packageId = params?.id ? String(params.id) : '';
+  const supabase = getBrowserClient();
   
   const [pkg, setPkg] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
@@ -27,8 +29,9 @@ export default function PackageDetailPage({ params }: { params: { id: string } }
   const [itemSearchTerm, setItemSearchTerm] = useState('');
 
   useEffect(() => {
-    fetchPackageDetails();
-  }, []);
+    if (!packageId) return;
+    fetchPackageDetails(packageId);
+  }, [packageId]);
 
   useEffect(() => {
     if (showAddItem) {
@@ -36,10 +39,10 @@ export default function PackageDetailPage({ params }: { params: { id: string } }
     }
   }, [showAddItem]);
 
-  const fetchPackageDetails = async () => {
+  const fetchPackageDetails = async (id: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/inventory/packages/${params.id}`);
+      const res = await fetch(`/api/admin/inventory/packages/${id}`);
       if (!res.ok) throw new Error('Failed to load package');
       const data = await res.json();
       setPkg(data);
@@ -55,7 +58,7 @@ export default function PackageDetailPage({ params }: { params: { id: string } }
   const handleUpdatePackage = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/admin/inventory/packages/${params.id}`, {
+      const res = await fetch(`/api/admin/inventory/packages/${packageId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -110,7 +113,7 @@ export default function PackageDetailPage({ params }: { params: { id: string } }
         quantity: itemQty 
       };
 
-      const res = await fetch(`/api/admin/inventory/packages/${params.id}/items`, {
+      const res = await fetch(`/api/admin/inventory/packages/${packageId}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -122,7 +125,7 @@ export default function PackageDetailPage({ params }: { params: { id: string } }
       }
       
       // Refresh
-      fetchPackageDetails();
+      fetchPackageDetails(packageId);
       setShowAddItem(false);
       setSelectedItem(null);
       setItemQty(1);
@@ -136,12 +139,12 @@ export default function PackageDetailPage({ params }: { params: { id: string } }
     if (!confirm('Are you sure you want to remove this item?')) return;
 
     try {
-      const res = await fetch(`/api/admin/inventory/packages/${params.id}/items?item_id=${itemId}`, {
+      const res = await fetch(`/api/admin/inventory/packages/${packageId}/items?item_id=${itemId}`, {
         method: 'DELETE'
       });
 
       if (!res.ok) throw new Error('Failed to remove item');
-      fetchPackageDetails();
+      fetchPackageDetails(packageId);
     } catch (error) {
       console.error('Error:', error);
       alert('Failed to remove item');

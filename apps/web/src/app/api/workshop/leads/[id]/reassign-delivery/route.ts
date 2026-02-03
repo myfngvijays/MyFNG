@@ -10,9 +10,13 @@ const STARTED_DROP_STATUSES = new Set([
 
 const COMPLETED_DROP_STATUSES = new Set(['DELIVERED']);
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
     const supabase = await createClient();
+    const params = await paramsPromise;
 
     const {
       data: { user },

@@ -21,7 +21,7 @@ async function requireSuperAdmin(request: NextRequest) {
   return { ok: true as const, userId: user.id };
 }
 
-export async function PUT(request: NextRequest, { params }: any) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const gate = await requireSuperAdmin(request);
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
@@ -29,7 +29,8 @@ export async function PUT(request: NextRequest, { params }: any) {
     const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
     if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
 
-    const id = String(params?.id || '').trim();
+    const { id: rawId } = await params;
+    const id = String(rawId || '').trim();
     if (!id) return NextResponse.json({ error: 'Missing coupon id' }, { status: 400 });
 
     const body = await request.json().catch(() => ({}));

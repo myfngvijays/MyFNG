@@ -7,9 +7,13 @@ function normalizeCode(code: string) {
   return code.trim().toUpperCase();
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
     const supabase = await createClientFromRequest(request);
+    const params = await paramsPromise;
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

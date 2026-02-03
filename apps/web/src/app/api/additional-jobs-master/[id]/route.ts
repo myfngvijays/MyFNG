@@ -32,9 +32,13 @@ function isRoleAllowed(roleCode: string | null): roleCode is RoleCode {
   return roleCode === 'SUPER_ADMIN' || roleCode === 'WORKSHOP_ADMIN' || roleCode === 'WORKSHOP_SUPERVISOR';
 }
 
-export async function PATCH(request: NextRequest, { params }: any) {
+export async function PATCH(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
     const supabase = await createClient();
+    const params = await paramsPromise;
     const { profile, roleCode, error } = await getAuthedProfile(supabase);
     if (error === 'Unauthorized') return NextResponse.json({ error }, { status: 401 });
     if (!profile) return NextResponse.json({ error: 'User profile not found' }, { status: 404 });

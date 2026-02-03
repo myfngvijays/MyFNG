@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 // POST - Generate checklist for a job if it doesn't exist
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -54,7 +54,11 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden: Mechanic only' }, { status: 403 });
     }
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
 
     // Get lead details
     const { data: lead, error: leadError } = await supabase

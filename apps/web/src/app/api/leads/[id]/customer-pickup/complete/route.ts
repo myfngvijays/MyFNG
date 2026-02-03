@@ -17,8 +17,12 @@ function isRlsError(e: any) {
  * For leads where pickup_required=false (customer self pickup),
  * allow Supervisor/Advisor to mark the lead as DELIVERED after payment (TI generated / paid).
  */
-export async function POST(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  _request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   const supabase = await createClient();
+  const params = await paramsPromise;
 
   // Optional service-role client for write operations when RLS blocks (best-effort).
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit, Trash2, Loader2, Box } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 export default function ProductsTab() {
   const [products, setProducts] = useState<any[]>([]);
@@ -18,7 +18,7 @@ export default function ProductsTab() {
     category: ''
   });
 
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
 
   useEffect(() => {
     fetchProducts();

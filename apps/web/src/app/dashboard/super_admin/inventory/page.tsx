@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { Package, Map, Box, Plus, Edit, Trash2, Search, Loader2 } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 // Components
 import ProductsTab from './tabs/ProductsTab';

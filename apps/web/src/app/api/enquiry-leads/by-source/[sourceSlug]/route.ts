@@ -13,7 +13,8 @@ const SOURCE_SLUG_MAP: Record<string, string> = {
   'other': 'Other',
 };
 
-export async function POST(request: NextRequest, { params }: { params: { sourceSlug: string } }) {
+export async function POST(request: NextRequest, { params: paramsPromise }: { params: Promise<{ sourceSlug: string }> }) {
+  const params = await paramsPromise;
   try {
     const slug = String(params?.sourceSlug || '').trim().toLowerCase();
     const leadSource = SOURCE_SLUG_MAP[slug];

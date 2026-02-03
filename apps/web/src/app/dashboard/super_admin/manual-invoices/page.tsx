@@ -1,30 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Upload, Loader2, FileText, FileDown } from 'lucide-react';
-
-type ManualInvoice = {
-  id: string;
-  invoice_number: string;
-  customer_name: string | null;
-  customer_phone: string | null;
-  total_amount: number | null;
-  currency: string | null;
-  status: string | null;
-  created_at: string | null;
-  payment_mode?: string | null;
-  payment_reference?: string | null;
-  paid_at?: string | null;
-  customer_gstin?: string | null;
-  car_number?: string | null;
-  car_model?: string | null;
-};
+import { useMemo, useRef, useState } from 'react';
+import { Download, Upload, Loader2, FileText } from 'lucide-react';
+import Link from 'next/link';
 
 export default function ManualInvoicesPage() {
   const [csvText, setCsvText] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [invoices, setInvoices] = useState<ManualInvoice[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState<any>({
@@ -49,23 +31,8 @@ export default function ManualInvoicesPage() {
     items: [{ item_name: '', item_description: '', hsn_sac_code: '', qty: 1, unit_price: 0, tax_percent: 0, discount: 0 }],
   });
 
-  useEffect(() => {
-    fetchInvoices();
-  }, []);
-
-  async function fetchInvoices() {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/admin/manual-invoices');
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'Failed to load invoices');
-      setInvoices(json.invoices || []);
-    } catch (e: any) {
-      setMessage(e?.message || 'Failed to load invoices');
-    } finally {
-      setLoading(false);
-    }
-  }
+  // This page is focused on creating/importing invoices.
+  // Use the "View Created Invoice" button to see all created invoices.
 
   const templateCsv = useMemo(() => {
     return [
@@ -106,7 +73,6 @@ export default function ManualInvoicesPage() {
       if (!res.ok) throw new Error(json?.error || 'Upload failed');
       setMessage(`Imported ${json.count || 0} invoices.`);
       setCsvText('');
-      await fetchInvoices();
     } catch (e: any) {
       setMessage(e?.message || 'Upload failed');
     } finally {
@@ -145,7 +111,6 @@ export default function ManualInvoicesPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Create failed');
       setMessage('Manual invoice created.');
-      await fetchInvoices();
     } catch (e: any) {
       setMessage(e?.message || 'Create failed');
     }
@@ -153,11 +118,20 @@ export default function ManualInvoicesPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-5 sm:py-6 md:py-8 space-y-4">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-text-heading">Manual Invoices</h1>
-        <p className="text-xs sm:text-sm text-gray-600 mt-1">
-          Upload CSV to generate invoices in MyFNG format.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-text-heading">Manual Invoices</h1>
+          <p className="text-xs sm:text-sm text-gray-600 mt-1">
+            Upload CSV to generate invoices in MyFNG format.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/super_admin/manual-invoices/created"
+          className="btn btn-secondary flex items-center gap-2 text-sm w-fit"
+        >
+          <FileText className="w-4 h-4" />
+          View Created Invoice
+        </Link>
       </div>
 
       <div className="bg-white rounded-lg border p-4 space-y-4">
@@ -353,80 +327,6 @@ export default function ManualInvoicesPage() {
           onChange={(e) => setCsvText(e.target.value)}
         />
         {message && <div className="text-sm text-gray-700">{message}</div>}
-      </div>
-
-      <div className="bg-white rounded-lg border overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr className="text-left">
-              <th className="px-4 py-3">Invoice #</th>
-              <th className="px-4 py-3">Customer</th>
-              <th className="px-4 py-3">Phone</th>
-              <th className="px-4 py-3">GSTIN</th>
-              <th className="px-4 py-3">Vehicle</th>
-              <th className="px-4 py-3">Total</th>
-              <th className="px-4 py-3">Payment</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={9} className="px-4 py-6 text-center text-gray-500">
-                  Loading...
-                </td>
-              </tr>
-            )}
-            {!loading && invoices.length === 0 && (
-              <tr>
-                <td colSpan={9} className="px-4 py-6 text-center text-gray-500">
-                  No manual invoices yet.
-                </td>
-              </tr>
-            )}
-            {invoices.map((inv) => (
-              <tr key={inv.id} className="border-t">
-                <td className="px-4 py-3">{inv.invoice_number}</td>
-                <td className="px-4 py-3">{inv.customer_name || '—'}</td>
-                <td className="px-4 py-3">{inv.customer_phone || '—'}</td>
-                <td className="px-4 py-3">{inv.customer_gstin || '—'}</td>
-                <td className="px-4 py-3">
-                  {inv.car_number || '—'}{inv.car_model ? ` / ${inv.car_model}` : ''}
-                </td>
-                <td className="px-4 py-3">
-                  {inv.total_amount != null ? `₹${Number(inv.total_amount).toFixed(2)}` : '—'}
-                </td>
-                <td className="px-4 py-3">
-                  {inv.payment_mode || '—'}{inv.payment_reference ? ` / ${inv.payment_reference}` : ''}
-                </td>
-                <td className="px-4 py-3">{inv.status || 'CREATED'}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <a
-                      className="inline-flex items-center gap-1 text-brand-primary hover:underline"
-                      href={`/api/manual-invoices/${inv.id}/generate-pdf`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <FileText className="w-4 h-4" />
-                      View
-                    </a>
-                    <a
-                      className="inline-flex items-center gap-1 text-brand-primary hover:underline"
-                      href={`/api/manual-invoices/${inv.id}/generate-pdf?print=1`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <FileDown className="w-4 h-4" />
-                      PDF
-                    </a>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </div>
   );

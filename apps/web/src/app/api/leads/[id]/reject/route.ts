@@ -15,10 +15,11 @@ interface RejectLeadRequest {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const params = await paramsPromise;
     
     // 1. Authenticate user
     const { data: { user }, error: authError } = await supabase.auth.getUser();

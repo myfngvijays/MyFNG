@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
 import { 
@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 export default function RSAMechanicsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const router = useRouter();
   
   const [mechanics, setMechanics] = useState<any[]>([]);

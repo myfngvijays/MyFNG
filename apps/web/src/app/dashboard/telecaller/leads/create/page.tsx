@@ -14,6 +14,7 @@ export default function CreateLeadPage() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const SHOW_SERVICE_ADDONS = false;
 
   const [formData, setFormData] = useState({
     // Customer Details
@@ -44,6 +45,7 @@ export default function CreateLeadPage() {
     problem_description: '',
     payment_mode: '',
     coupon_code: '',
+    coupon_codes: [] as string[],
     
     // Pickup Details
     pickup_required: false,
@@ -106,6 +108,50 @@ export default function CreateLeadPage() {
   useEffect(() => {
     fetchAvailableCoupons();
   }, [formData.city_id, formData.service_types.join(',')]);
+
+  // Keep applied coupon_code consistent with selected coupon_codes.
+  useEffect(() => {
+    setFormData((prev) => {
+      const selected = Array.isArray(prev.coupon_codes) ? prev.coupon_codes : [];
+      const applied = String(prev.coupon_code || '').trim().toUpperCase();
+      if (selected.length === 0) {
+        return applied ? { ...prev, coupon_code: '' } : prev;
+      }
+      if (!applied || !selected.includes(applied)) {
+        return { ...prev, coupon_code: selected[0] };
+      }
+      return prev;
+    });
+  }, [formData.coupon_codes.join(',')]);
+
+  const addCouponCode = (codeRaw: string) => {
+    const code = String(codeRaw || '').trim().toUpperCase();
+    if (!code) return;
+    setFormData((prev) => {
+      const nextCodes = Array.isArray(prev.coupon_codes) ? [...prev.coupon_codes] : [];
+      if (!nextCodes.includes(code)) nextCodes.push(code);
+      const applied = String(prev.coupon_code || '').trim().toUpperCase();
+      return {
+        ...prev,
+        coupon_codes: nextCodes,
+        coupon_code: applied && nextCodes.includes(applied) ? applied : (nextCodes[0] || ''),
+      };
+    });
+  };
+
+  const removeCouponCode = (codeRaw: string) => {
+    const code = String(codeRaw || '').trim().toUpperCase();
+    if (!code) return;
+    setFormData((prev) => {
+      const nextCodes = (Array.isArray(prev.coupon_codes) ? prev.coupon_codes : []).filter((c) => c !== code);
+      const applied = String(prev.coupon_code || '').trim().toUpperCase();
+      return {
+        ...prev,
+        coupon_codes: nextCodes,
+        coupon_code: applied === code ? (nextCodes[0] || '') : applied,
+      };
+    });
+  };
   
   // Fetch models when make changes
   useEffect(() => {
@@ -117,7 +163,7 @@ export default function CreateLeadPage() {
   }, [formData.vehicle_make]);
   
   async function fetchOptionsData() {
-    const supabase = createClient();
+    const supabase = createClient() as any;
     
     try {
       // Fetch cities from API (more reliable than direct Supabase query)
@@ -170,8 +216,12 @@ export default function CreateLeadPage() {
         ]);
       } else {
         // Get unique makes
-        const uniqueMakes = [...new Set(makesData.map(item => item.make))];
-        setMakes(uniqueMakes);
+        const uniqueMakes = [
+          ...new Set(
+            (Array.isArray(makesData) ? makesData : []).map((item: any) => String(item?.make || '')).filter(Boolean)
+          ),
+        ];
+        setMakes(uniqueMakes as string[]);
       }
       
       // Service types from database
@@ -250,7 +300,7 @@ export default function CreateLeadPage() {
   }
   
   async function fetchModels(make: string) {
-    const supabase = createClient();
+    const supabase = createClient() as any;
     
     try {
       // Fetch models from database filtered by make
@@ -457,17 +507,16 @@ export default function CreateLeadPage() {
     setLoading(true);
 
     try {
-      const supabase = createClient();
+      const supabase = createClient() as any;
       
       // Get current telecaller
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
+      const email = String(user.email || '').trim();
+      const { data: userProfile } = email
+        ? await supabase.from('users_login').select('id').eq('email', email).single()
+        : await supabase.from('users_login').select('id').eq('id', user.id).single();
 
       // Generate lead number
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
@@ -521,6 +570,13 @@ export default function CreateLeadPage() {
       problem_description: formData.problem_description || null,
       payment_mode: formData.payment_mode || null,
       coupon_code: formData.coupon_code || null,
+      coupon_meta:
+        Array.isArray(formData.coupon_codes) && formData.coupon_codes.length > 0
+          ? {
+              selected_codes: formData.coupon_codes,
+              applied_code: formData.coupon_code || null,
+            }
+          : null,
           
       // Pickup
       pickup_required: formData.pickup_required,
@@ -905,27 +961,29 @@ export default function CreateLeadPage() {
                 )}
               </div>
 
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-2 sm:mb-3">
-                  Service Add-ons (Optional)
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-                  {serviceAddons.map(addon => (
-                    <label key={addon.id} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.service_addons.includes(addon.id)}
-                        onChange={(e) => handleMultiSelect('service_addons', addon.id, e.target.checked)}
-                        className="mt-0.5 sm:mt-1 flex-shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm sm:text-base text-text-heading">{addon.name}</div>
-                        <div className="text-xs sm:text-sm text-brand-primary">₹{addon.price}</div>
-                      </div>
-                    </label>
-                  ))}
+              {SHOW_SERVICE_ADDONS && (
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-2 sm:mb-3">
+                    Service Add-ons (Optional)
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                    {serviceAddons.map(addon => (
+                      <label key={addon.id} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.service_addons.includes(addon.id)}
+                          onChange={(e) => handleMultiSelect('service_addons', addon.id, e.target.checked)}
+                          className="mt-0.5 sm:mt-1 flex-shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm sm:text-base text-text-heading">{addon.name}</div>
+                          <div className="text-xs sm:text-sm text-brand-primary">₹{addon.price}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
                 <div>
@@ -953,73 +1011,123 @@ export default function CreateLeadPage() {
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                      Coupon
+                      Coupon (select multiple)
                     </label>
                     <button
                       type="button"
                       className="text-xs text-brand-primary hover:underline"
                       onClick={() => setCouponMode(prev => (prev === 'dropdown' ? 'manual' : 'dropdown'))}
                     >
-                      {couponMode === 'dropdown' ? 'Type manually' : 'Pick from list'}
+                      {couponMode === 'dropdown' ? 'Add manually' : 'Pick from list'}
                     </button>
                   </div>
 
                   {couponMode === 'dropdown' ? (
                     <>
-                      <select
-                        name="coupon_code"
-                        value={formData.coupon_code}
-                        onChange={handleChange}
-                        className="input text-sm"
-                      >
-                        <option value="">
-                          {couponsLoading ? 'Loading coupons...' : 'Select coupon (optional)'}
-                        </option>
-                      {availableCoupons.map((c) => {
-                        const label =
-                          c.coupon_kind === 'TOTAL_DISCOUNT'
-                            ? `${c.code} — ${c.discount_mode === 'PERCENT' ? `${c.discount_value}% off` : `₹${c.discount_value} off`}${c.min_order_value ? ` (min ₹${c.min_order_value})` : ''}`
-                            : `${c.code} — Free Service${c.target_custom_label ? ` (${c.target_custom_label})` : ''}`;
-                        return (
-                          <option key={c.id} value={String(c.code || '').toUpperCase()}>
-                            {label}
-                          </option>
-                        );
-                      })}
-                      </select>
+                      <div className="border rounded-lg p-2 max-h-44 overflow-auto bg-white">
+                        {couponsLoading ? (
+                          <div className="text-xs text-gray-600 p-2">Loading coupons…</div>
+                        ) : availableCoupons.length === 0 ? (
+                          <div className="text-xs text-gray-500 p-2">
+                            No active coupons available. Ensure the coupon is <b>Active</b> in Super Admin → Coupons.
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {availableCoupons.map((c) => {
+                              const code = String(c.code || '').toUpperCase();
+                              const label =
+                                c.coupon_kind === 'TOTAL_DISCOUNT'
+                                  ? `${code} — ${c.discount_mode === 'PERCENT' ? `${c.discount_value}% off` : `₹${c.discount_value} off`}${c.min_order_value ? ` (min ₹${c.min_order_value})` : ''}`
+                                  : `${code} — Free Service${c.target_custom_label ? ` (${c.target_custom_label})` : ''}`;
+                              const checked = Array.isArray(formData.coupon_codes) && formData.coupon_codes.includes(code);
+                              return (
+                                <label key={c.id} className="flex items-start gap-2 text-xs sm:text-sm cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="mt-0.5"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) addCouponCode(code);
+                                      else removeCouponCode(code);
+                                    }}
+                                  />
+                                  <span className="text-gray-800">{label}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
 
                       {couponsError ? (
                         <p className="mt-1 text-[10px] sm:text-xs text-red-600">
                           Unable to load coupons: {couponsError}
                         </p>
-                      ) : (!couponsLoading && availableCoupons.length === 0) ? (
-                        <p className="mt-1 text-[10px] sm:text-xs text-gray-500">
-                          No active coupons available. Ensure the coupon is <b>Active</b> in Super Admin → Coupons.
-                        </p>
                       ) : null}
                     </>
                   ) : (
-                    <input
-                      type="text"
-                      name="coupon_code"
-                      value={formData.coupon_code}
-                      onChange={(e) => {
-                        const upper = (e.target.value || '').toUpperCase();
-                        setFormData(prev => ({ ...prev, coupon_code: upper }));
-                      }}
-                      className="input text-sm"
-                      placeholder="Enter coupon code (if any)"
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        className="input text-sm flex-1"
+                        placeholder="Enter coupon code (optional)"
+                        value={formData.coupon_code}
+                        onChange={(e) => {
+                          const upper = (e.target.value || '').toUpperCase();
+                          setFormData((prev) => ({ ...prev, coupon_code: upper }));
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-secondary text-sm"
+                        onClick={() => addCouponCode(formData.coupon_code)}
+                        disabled={!String(formData.coupon_code || '').trim()}
+                      >
+                        Add
+                      </button>
+                    </div>
                   )}
 
-                  {!!formData.coupon_code && (
-                    <button
-                      type="button"
-                      className="mt-2 text-xs text-gray-600 hover:underline"
-                      onClick={() => setFormData(prev => ({ ...prev, coupon_code: '' }))}
-                    >
-                      Clear coupon
-                    </button>
+                  {Array.isArray(formData.coupon_codes) && formData.coupon_codes.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                      <div className="text-[10px] sm:text-xs text-gray-600">
+                        Selected: {formData.coupon_codes.join(', ')}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {formData.coupon_codes.map((code) => (
+                          <button
+                            key={code}
+                            type="button"
+                            className="text-xs px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200"
+                            onClick={() => removeCouponCode(code)}
+                            title="Remove"
+                          >
+                            {code} ×
+                          </button>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <select
+                          className="input text-sm"
+                          value={formData.coupon_code}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, coupon_code: e.target.value }))}
+                        >
+                          <option value="">Applied coupon (optional)</option>
+                          {formData.coupon_codes.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="btn btn-secondary text-sm"
+                          onClick={() => setFormData((prev) => ({ ...prev, coupon_codes: [], coupon_code: '' }))}
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

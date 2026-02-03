@@ -1,5 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +6,7 @@ export const dynamic = 'force-dynamic';
 // GET: List all Service Types (treated as Packages)
 export async function GET(request: Request) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
     
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -59,7 +58,7 @@ export async function GET(request: Request) {
 // POST: Create a new Service Type (Package)
 export async function POST(request: Request) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

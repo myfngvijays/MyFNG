@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
 import { formatDateTime } from '@/lib/utils';
@@ -16,7 +16,7 @@ import Link from 'next/link';
 export default function RSALeadDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   
   const [lead, setLead] = useState<any>(null);
   const [timeline, setTimeline] = useState<any[]>([]);

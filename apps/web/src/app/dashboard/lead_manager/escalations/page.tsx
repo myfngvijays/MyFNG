@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import Link from 'next/link';
 import { formatDateTime } from "@/lib/utils";
 
 export default function LeadManagerEscalationsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [escalations, setEscalations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'active' | 'resolved'>('active');

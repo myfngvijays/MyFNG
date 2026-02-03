@@ -1,7 +1,11 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { Database } from '@/types/database';
 
-export const createClient = () => {
+let browserClient: ReturnType<typeof createBrowserClient<Database>> | null = null;
+
+export const getBrowserClient = () => {
+  if (browserClient) return browserClient;
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
@@ -13,6 +17,10 @@ export const createClient = () => {
     Make sure .env.local is in: /Users/roadserve/Downloads/MyFNG/apps/web/.env.local`);
   }
 
-  return createBrowserClient<Database>(supabaseUrl, supabaseKey);
+  browserClient = createBrowserClient<Database>(supabaseUrl, supabaseKey);
+  return browserClient;
 };
+
+// Backward-compatible export
+export const createClient = getBrowserClient;
 

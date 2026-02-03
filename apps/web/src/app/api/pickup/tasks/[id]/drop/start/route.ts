@@ -9,9 +9,13 @@ export const dynamic = 'force-dynamic';
  * Start delivery (drop) for a lead that is READY_FOR_DELIVERY / COD_PENDING.
  * Cookie-auth (server client) so pickup boy UI can call it without passing bearer token.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
     const supabase = await createClientFromRequest(request);
+    const params = await paramsPromise;
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Save, DollarSign, Package, Plus } from 'lucide-react';
 
@@ -36,7 +36,7 @@ export default function WorkshopRatesPage() {
   const router = useRouter();
   const params = useParams();
   const workshopId = params.id as string;
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
 
   const [workshop, setWorkshop] = useState<any>(null);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);

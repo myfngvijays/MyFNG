@@ -2,13 +2,13 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { ArrowLeft, Save, Store, User, Building2, Banknote } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function AddWorkshopPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({

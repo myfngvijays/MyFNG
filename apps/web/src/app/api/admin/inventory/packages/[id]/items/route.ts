@@ -1,5 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -7,10 +6,11 @@ export const dynamic = 'force-dynamic';
 // POST: Add item (Product) to Service Type (Package)
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
+    const { id } = await params;
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {
@@ -40,7 +40,7 @@ export async function POST(
     const { data, error } = await supabase
       .from('service_type_items')
       .insert({
-        service_type_id: params.id,
+        service_type_id: id,
         product_id: product_id,
         quantity: quantity || 1
       })
@@ -65,10 +65,11 @@ export async function POST(
 // DELETE: Remove item from Service Type (Package)
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
+    const { id } = await params;
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {
@@ -99,7 +100,7 @@ export async function DELETE(
       .from('service_type_items')
       .delete()
       .eq('id', itemId)
-      .eq('service_type_id', params.id);
+      .eq('service_type_id', id);
 
     if (deleteError) throw deleteError;
 

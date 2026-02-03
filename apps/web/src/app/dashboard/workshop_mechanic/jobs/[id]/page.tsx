@@ -45,6 +45,13 @@ interface JobDetail {
   min_before_images: number;
   min_progress_images: number;
   min_after_images: number;
+  coupon_code?: string | null;
+  applied_coupon_code?: string | null;
+  coupon?: string | null;
+  coupon_meta?: any;
+  discount_amount?: number | null;
+  coupon_discount_amount?: number | null;
+  coupon_discount?: number | null;
 }
 
 interface ChecklistItem {
@@ -149,6 +156,32 @@ export default function MechanicJobDetailPage() {
     const all = fromNames.length ? fromNames : fromJob;
     return all.some((s) => s.includes('custom'));
   }, [serviceTypeNames, job?.service_types]);
+
+  const parseCodes = (raw: any): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) {
+      return raw
+        .map((c) => String(c || '').trim().toUpperCase())
+        .filter(Boolean);
+    }
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((c) => String(c || '').trim().toUpperCase())
+            .filter(Boolean);
+        }
+      } catch {
+        // ignore
+      }
+      return raw
+        .split(',')
+        .map((c) => String(c || '').trim().toUpperCase())
+        .filter(Boolean);
+    }
+    return [];
+  };
 
   const withTimeout = async <T,>(p: Promise<T>, ms: number, label: string): Promise<T> => {
     return await new Promise<T>((resolve, reject) => {
@@ -530,12 +563,8 @@ export default function MechanicJobDetailPage() {
 
     const run = async () => {
       
-      // Get job details
-      const { data: jobData, error: jobError } = await supabase
-        .from('mechanic_jobs')
-        .select(`
-          *,
-          service_leads:lead_id (
+      // Get job details (schema-tolerant for coupon fields)
+      const leadBaseSelect = `
             lead_number,
             customer_name,
             customer_phone,
@@ -554,11 +583,23 @@ export default function MechanicJobDetailPage() {
             supervisor_observation,
             supervisor_observation_updated_at,
             supervisor_observation_by_user:supervisor_observation_by(full_name)
+      `;
+      const selectBase = `
+          *,
+          service_leads:lead_id (
+            ${leadBaseSelect}
           )
-        `)
+        `;
+
+      let jobData: any = null;
+      let jobError: any = null;
+      const attempt = await supabase
+        .from('mechanic_jobs')
+        .select(selectBase)
         .eq('lead_id', leadId)
-        // Avoid 406 on first open if row isn't visible yet
         .maybeSingle();
+      jobData = attempt.data as any;
+      jobError = attempt.error as any;
 
       if (jobError) {
         console.error('Error fetching job from mechanic_jobs:', jobError);
@@ -566,6 +607,63 @@ export default function MechanicJobDetailPage() {
 
 
       if (jobData) {
+        let couponMeta = null;
+        let couponDetails: any = null;
+        try {
+          const res = await supabase.from('service_leads').select('*').eq('id', leadId).maybeSingle();
+          if (!res.error && res.data) couponDetails = res.data;
+        } catch {
+          // ignore
+        }
+
+        couponMeta = (couponDetails as any)?.coupon_meta ?? null;
+        if (typeof couponMeta === 'string') {
+          try {
+            couponMeta = JSON.parse(couponMeta);
+          } catch {
+            // ignore
+          }
+        }
+        // If coupon_meta doesn't include coupon kind (older flows), infer from coupons master by code via server API (avoids RLS).
+        try {
+          const appliedCode = String(
+            (couponDetails as any)?.coupon_code ??
+              (couponMeta as any)?.applied_code ??
+              (couponMeta as any)?.code ??
+              (couponDetails as any)?.coupon ??
+              ''
+          )
+            .trim()
+            .toUpperCase();
+          const hasKind = Boolean(String((couponMeta as any)?.coupon_kind || '').trim());
+          const hasFreeService = Boolean((couponMeta as any)?.free_service);
+          if (appliedCode && !hasKind && !hasFreeService) {
+            const resp = await fetch(`/api/mechanic/coupons/by-code?code=${encodeURIComponent(appliedCode)}`, {
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' },
+            });
+            const j = await resp.json().catch(() => ({}));
+            const kind = String(j?.coupon?.coupon_kind || '').trim().toUpperCase();
+            if (kind) {
+              couponMeta = {
+                ...(couponMeta && typeof couponMeta === 'object' ? couponMeta : {}),
+                coupon_kind: kind,
+                free_service:
+                  kind === 'FREE_SERVICE'
+                    ? {
+                        ...(couponMeta as any)?.free_service,
+                        target_custom_label:
+                          (couponMeta as any)?.free_service?.target_custom_label ||
+                          String(j?.coupon?.target_custom_label || '').trim() ||
+                          null,
+                      }
+                    : (couponMeta as any)?.free_service,
+              };
+            }
+          }
+        } catch {
+          // ignore
+        }
         const vehicleYear = Number((jobData.service_leads as any)?.vehicle_year ?? 0) || 0;
 
         // Odometer: prefer service_leads.vehicle_odometer, fallback to legacy/pickup tracking
@@ -640,7 +738,14 @@ export default function MechanicJobDetailPage() {
           after_images_count: jobData.after_images_count,
           min_before_images: jobData.min_before_images,
           min_progress_images: jobData.min_progress_images,
-          min_after_images: jobData.min_after_images
+          min_after_images: jobData.min_after_images,
+          coupon_code: (couponDetails as any)?.coupon_code ?? null,
+          applied_coupon_code: (couponDetails as any)?.applied_coupon_code ?? null,
+          coupon: (couponDetails as any)?.coupon ?? null,
+          coupon_meta: couponMeta,
+          discount_amount: (couponDetails as any)?.discount_amount ?? null,
+          coupon_discount_amount: (couponDetails as any)?.coupon_discount_amount ?? null,
+          coupon_discount: (couponDetails as any)?.coupon_discount ?? null,
         };
         setJob(jobDetail);
         setWorkNotes(jobDetail.work_notes);
@@ -1621,6 +1726,61 @@ export default function MechanicJobDetailPage() {
                     </div>
                   </div>
                 )}
+                {(() => {
+                  if (!job) return null;
+                  const code = String(
+                    job.coupon_code ??
+                      (job.coupon_meta as any)?.applied_code ??
+                      (job.coupon_meta as any)?.code ??
+                      job.coupon ??
+                      job.applied_coupon_code ??
+                      ''
+                  ).trim();
+                  const discountAmount =
+                    Number(
+                      job.discount_amount ??
+                        job.coupon_discount_amount ??
+                        job.coupon_discount ??
+                        (job.coupon_meta as any)?.discount_amount ??
+                        0
+                    ) || 0;
+                  const couponKindRaw = String((job.coupon_meta as any)?.coupon_kind || '').toUpperCase();
+                  const isFreeService = couponKindRaw === 'FREE_SERVICE' || Boolean((job.coupon_meta as any)?.free_service);
+                  // Mechanic overview should show ONLY FREE_SERVICE coupons.
+                  if (!isFreeService) return null;
+                  const freeServiceLabel =
+                    (job.coupon_meta as any)?.free_service?.matched_label ||
+                    (job.coupon_meta as any)?.free_service?.target_custom_label ||
+                    '';
+                  return (
+                    <div className="mt-2 sm:mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs sm:text-sm font-semibold text-amber-800">
+                          Free Service Coupon
+                        </p>
+                        {code ? (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                            {code}
+                          </span>
+                        ) : null}
+                      </div>
+                      {isFreeService && freeServiceLabel ? (
+                        <p className="mt-1 text-xs text-gray-700">
+                          Free service: <span className="font-semibold">{freeServiceLabel}</span>
+                        </p>
+                      ) : null}
+                      {discountAmount > 0 ? (
+                        <p className="mt-1 text-xs text-gray-700">
+                          Discount: <span className="font-semibold">₹{discountAmount.toFixed(2)}</span>
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-gray-600">
+                          Note: Discount will reflect in invoice at billing time.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 

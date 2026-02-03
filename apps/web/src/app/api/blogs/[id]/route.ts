@@ -15,10 +15,11 @@ import { resolveCityGeoAndLocalities } from '@/lib/blog/googlePlaces';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const params = await paramsPromise;
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -84,10 +85,11 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const params = await paramsPromise;
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -469,10 +471,11 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const params = await paramsPromise;
     
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();

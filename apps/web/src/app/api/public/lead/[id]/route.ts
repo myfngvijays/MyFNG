@@ -5,10 +5,10 @@ import { resolveWorkshopServicePrice } from '@/lib/utils/workshopServicePricing'
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createClient();
-    const leadId = params.id;
+    const { id: leadId } = await params;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
     const serviceRoleKey =

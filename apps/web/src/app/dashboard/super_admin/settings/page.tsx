@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { Settings, Save, AlertTriangle } from 'lucide-react';
 
 export default function SystemSettingsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<Record<string, any>>({});

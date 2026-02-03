@@ -18,7 +18,7 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB in bytes
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -37,7 +37,11 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
     const formData = await request.formData();
     const photoType = formData.get('photoType') || formData.get('photo_type') as string;
     const photoCategory = formData.get('photoCategory') || formData.get('photo_category') as string;
@@ -506,7 +510,7 @@ export async function POST(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -525,7 +529,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
     const category = request.nextUrl.searchParams.get('category'); // before, during, after
 
     // Get user profile to check role (users_login is mapped by email/phone; not always same as auth user.id)
@@ -651,7 +659,7 @@ export async function GET(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -670,7 +678,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
     const photoId = request.nextUrl.searchParams.get('photo_id');
 
     if (!photoId) {

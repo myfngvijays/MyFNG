@@ -44,9 +44,13 @@ function normalizeFuelType(v: any): 'PETROL' | 'DIESEL' | 'CNG' {
   return 'PETROL';
 }
 
-export async function GET(_request: NextRequest, { params }: any) {
+export async function GET(
+  _request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
     const supabase = await createClient();
+    const params = await paramsPromise;
     const { profile, roleCode, error } = await getAuthedProfile(supabase);
 
     if (error === 'Unauthorized') return NextResponse.json({ error }, { status: 401 });
@@ -95,9 +99,13 @@ export async function GET(_request: NextRequest, { params }: any) {
   }
 }
 
-export async function PUT(request: NextRequest, { params }: any) {
+export async function PUT(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
     const supabase = await createClient();
+    const params = await paramsPromise;
     const { profile, roleCode, error } = await getAuthedProfile(supabase);
 
     if (error === 'Unauthorized') return NextResponse.json({ error }, { status: 401 });

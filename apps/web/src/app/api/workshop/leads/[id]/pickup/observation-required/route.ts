@@ -8,9 +8,13 @@ export const dynamic = 'force-dynamic';
  * POST /api/workshop/leads/[id]/pickup/observation-required
  * Toggle per-lead pickup observation requirement (admin/supervisor).
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
     const supabase = await createClientFromRequest(request);
+    const params = await paramsPromise;
 
     const { data: auth, error: authError } = await supabase.auth.getUser();
     if (authError || !auth?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

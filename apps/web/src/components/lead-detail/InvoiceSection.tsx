@@ -862,6 +862,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const lineItems = (Array.isArray((invoice as any)?.line_items) ? ((invoice as any).line_items as any[]) : []) as any[];
   const lineItemsWithIndex = lineItems.map((it: any, idx: number) => ({ ...it, _idx: idx }));
   const hasLineItems = lineItems.length > 0;
+  const normalizeCouponCode = (raw: any) => String(raw || '').trim().toUpperCase();
   const parseCouponCodes = (raw: any): string[] => {
     if (!raw) return [];
     const parseMaybe = (value: any) => {
@@ -880,12 +881,12 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       next = parseMaybe(next);
     }
     if (Array.isArray(next)) {
-      return next.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
+      return next.map((c) => normalizeCouponCode(c)).filter(Boolean);
     }
     if (typeof next === 'string') {
       return next
         .split(',')
-        .map((c) => String(c || '').trim().toUpperCase())
+        .map((c) => normalizeCouponCode(c))
         .filter(Boolean);
     }
     return [];
@@ -997,15 +998,19 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     const appliedInv = String((inv as any)?.coupon_code || '').trim().toUpperCase();
     const appliedLead = String((lead as any)?.coupon_code || '').trim().toUpperCase();
     const codes = Array.from(
-      new Set([
-        ...(selectedCodesInv || []),
-        ...(selectedCodesLead || []),
-        ...(appliedMetaInv ? [appliedMetaInv] : []),
-        ...(appliedMetaLead ? [appliedMetaLead] : []),
-        ...(appliedInv ? [appliedInv] : []),
-        ...(appliedLead ? [appliedLead] : []),
-      ])
-    ).filter(Boolean);
+      new Set(
+        [
+          ...(selectedCodesInv || []),
+          ...(selectedCodesLead || []),
+          ...(appliedMetaInv ? [appliedMetaInv] : []),
+          ...(appliedMetaLead ? [appliedMetaLead] : []),
+          ...(appliedInv ? [appliedInv] : []),
+          ...(appliedLead ? [appliedLead] : []),
+        ]
+          .map((c) => normalizeCouponCode(c))
+          .filter(Boolean)
+      )
+    );
 
     if (!inv || codes.length === 0) {
       setCouponBreakdown([]);
@@ -1112,7 +1117,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
         const results = await Promise.all(
           codes.map(async (c) => {
             try {
-              const res = await fetch('/api/coupons/validate', {
+              const res = await fetch(`/api/coupons/validate?code=${encodeURIComponent(c)}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code: c, lead_context: leadCtx }),

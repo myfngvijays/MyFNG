@@ -1,5 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 
@@ -34,7 +33,7 @@ async function requireSuperAdmin(supabase: any) {
 // GET: list kb_question_events for triage (service_role read, SUPER_ADMIN gated)
 export async function GET(request: Request) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
     const gate = await requireSuperAdmin(supabase);
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 

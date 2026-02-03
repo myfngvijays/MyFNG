@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { Shield, AlertTriangle, CheckCircle, XCircle, Search } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
 
 export default function FraudManagementPage() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   const [fraudCases, setFraudCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');

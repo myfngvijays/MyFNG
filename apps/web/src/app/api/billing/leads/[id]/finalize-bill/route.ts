@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -62,7 +62,7 @@ export async function POST(
 
     const canOverrideCoupon = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode);
 
-    const leadId = params.id;
+    const { id: leadId } = await params;
 
     // Best-effort payload: allow billing adjustments / checklist notes later.
     let payload: any = {};

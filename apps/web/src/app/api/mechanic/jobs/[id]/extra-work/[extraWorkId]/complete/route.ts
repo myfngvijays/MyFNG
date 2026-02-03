@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string; extraWorkId: string } }
+  { params }: { params: Promise<{ id: string; extraWorkId: string }> }
 ) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -51,8 +51,9 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden: Mechanic only' }, { status: 403 });
     }
 
-    const leadId = String(params.id || '').trim();
-    const extraWorkId = String(params.extraWorkId || '').trim();
+    const { id, extraWorkId: extraWorkIdParam } = await params;
+    const leadId = String(id || '').trim();
+    const extraWorkId = String(extraWorkIdParam || '').trim();
     if (!leadId || !extraWorkId) {
       return NextResponse.json({ error: 'Invalid id/extraWorkId' }, { status: 400 });
     }

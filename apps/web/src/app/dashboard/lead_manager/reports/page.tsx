@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY } from '@/lib/utils';
 import {
@@ -12,7 +12,7 @@ import {
 import { toast } from 'react-hot-toast';
 
 export default function LeadManagerReportsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
 
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState({

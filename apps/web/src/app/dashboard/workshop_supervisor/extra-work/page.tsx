@@ -21,9 +21,9 @@ interface ExtraWorkRequest {
   description: string;
   reason: string;
   amount: number;
-  oem_price?: number;
-  oes_price?: number;
-  labour_price?: number;
+  oem_price?: number | null;
+  oes_price?: number | null;
+  labour_price?: number | null;
   part_price_type?: string;
   customer_approved?: boolean;
   customer_approved_at?: string | null;
@@ -146,9 +146,9 @@ export default function ExtraWorkApprovalsPage() {
     const r = approveModalRequest;
     if (!r) return null;
     const p = editedPricing[r.id];
-    const baseOem = r.oem_price && r.oem_price > 0 ? r.oem_price : (r.master_oem_price || 0);
-    const baseOes = r.oes_price && r.oes_price > 0 ? r.oes_price : (r.master_oes_price || 0);
-    const baseLabour = r.labour_price && r.labour_price > 0 ? r.labour_price : (r.master_labour_price || 0);
+    const baseOem = r.oem_price != null ? r.oem_price : (r.master_oem_price || 0);
+    const baseOes = r.oes_price != null ? r.oes_price : (r.master_oes_price || 0);
+    const baseLabour = r.labour_price != null ? r.labour_price : (r.master_labour_price || 0);
     return {
       oem: p ? p.oem : String(baseOem),
       oes: p ? p.oes : String(baseOes),
@@ -444,9 +444,12 @@ export default function ExtraWorkApprovalsPage() {
 
         const savedAmount = Number(req.amount);
         const amount = Number.isFinite(savedAmount) ? savedAmount : 0;
-        const savedOem = Number((req as any).oem_price);
-        const savedOes = Number((req as any).oes_price);
-        const savedLabour = Number((req as any).labour_price);
+        const hasOem = Object.prototype.hasOwnProperty.call(req, 'oem_price');
+        const hasOes = Object.prototype.hasOwnProperty.call(req, 'oes_price');
+        const hasLabour = Object.prototype.hasOwnProperty.call(req, 'labour_price');
+        const savedOem = hasOem ? Number((req as any).oem_price) : NaN;
+        const savedOes = hasOes ? Number((req as any).oes_price) : NaN;
+        const savedLabour = hasLabour ? Number((req as any).labour_price) : NaN;
 
         const fuelRaw = String(req?.service_leads?.vehicle_fuel_type || '').trim().toUpperCase();
         const fuel = fuelRaw === 'DIESEL' ? 'DIESEL' : fuelRaw === 'CNG' ? 'CNG' : fuelRaw ? 'PETROL' : '';
@@ -482,9 +485,9 @@ export default function ExtraWorkApprovalsPage() {
           description: req.description,
           reason: req.reason,
           amount,
-          oem_price: Number.isFinite(savedOem) ? savedOem : 0,
-          oes_price: Number.isFinite(savedOes) ? savedOes : 0,
-          labour_price: Number.isFinite(savedLabour) ? savedLabour : 0,
+          oem_price: hasOem ? (Number.isFinite(savedOem) ? savedOem : 0) : null,
+          oes_price: hasOes ? (Number.isFinite(savedOes) ? savedOes : 0) : null,
+          labour_price: hasLabour ? (Number.isFinite(savedLabour) ? savedLabour : 0) : null,
           part_price_type: (req as any).part_price_type,
           customer_approved: (req as any).customer_approved,
           customer_approved_at: (req as any).customer_approved_at,
@@ -521,9 +524,9 @@ export default function ExtraWorkApprovalsPage() {
           }
 
           // If DB values exist use them, else fallback to master; legacy fallback: if amount > 0 and oem is 0 treat amount as OEM
-          const oem = r.oem_price && r.oem_price > 0 ? r.oem_price : (r.amount > 0 ? r.amount : (r.master_oem_price || 0));
-          const oes = r.oes_price && r.oes_price > 0 ? r.oes_price : (r.master_oes_price || 0);
-          const labour = r.labour_price && r.labour_price > 0 ? r.labour_price : (r.master_labour_price || 0);
+          const oem = r.oem_price != null ? r.oem_price : (r.amount > 0 ? r.amount : (r.master_oem_price || 0));
+          const oes = r.oes_price != null ? r.oes_price : (r.master_oes_price || 0);
+          const labour = r.labour_price != null ? r.labour_price : (r.master_labour_price || 0);
 
           next[r.id] = {
             oem: Number.isFinite(oem) ? String(oem) : '0',
@@ -928,9 +931,9 @@ export default function ExtraWorkApprovalsPage() {
 
   function getEffectivePricingForRequest(r: ExtraWorkRequest) {
     const p = editedPricing[r.id];
-    const baseOem = r.oem_price && r.oem_price > 0 ? r.oem_price : (r.master_oem_price || 0);
-    const baseOes = r.oes_price && r.oes_price > 0 ? r.oes_price : (r.master_oes_price || 0);
-    const baseLabour = r.labour_price && r.labour_price > 0 ? r.labour_price : (r.master_labour_price || 0);
+    const baseOem = r.oem_price != null ? r.oem_price : (r.master_oem_price || 0);
+    const baseOes = r.oes_price != null ? r.oes_price : (r.master_oes_price || 0);
+    const baseLabour = r.labour_price != null ? r.labour_price : (r.master_labour_price || 0);
     const oem = p ? getEditedPartNumber(p.oem, baseOem) : baseOem;
     const oes = p ? getEditedPartNumber(p.oes, baseOes) : baseOes;
     const labour = p ? getEditedPartNumber(p.labour, baseLabour) : baseLabour;
@@ -1216,9 +1219,9 @@ export default function ExtraWorkApprovalsPage() {
                         <tbody className="divide-y">
                           {group.items.map((request: ExtraWorkRequest) => {
                             const p = editedPricing[request.id] || {
-                              oem: String(request.oem_price || request.master_oem_price || 0),
-                              oes: String(request.oes_price || request.master_oes_price || 0),
-                              labour: String(request.labour_price || request.master_labour_price || 0),
+                              oem: String(request.oem_price ?? request.master_oem_price ?? 0),
+                              oes: String(request.oes_price ?? request.master_oes_price ?? 0),
+                              labour: String(request.labour_price ?? request.master_labour_price ?? 0),
                             };
                             const isExpanded = expandedRequestIds[request.id] ?? request.is_urgent;
                             const status = String(request.status || 'PENDING').toUpperCase();

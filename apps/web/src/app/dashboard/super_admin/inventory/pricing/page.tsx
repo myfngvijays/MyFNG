@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Save, Search, Store, Loader2, Car, MapPin, Copy, Download, Upload, X } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 export default function WorkshopPricingPage() {
   const [workshops, setWorkshops] = useState<any[]>([]);
@@ -29,7 +29,7 @@ export default function WorkshopPricingPage() {
   const [csvError, setCsvError] = useState<string>('');
   const [csvInfo, setCsvInfo] = useState<string>('');
 
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
 
   const escapeCsv = (value: any) => {
     const s = value === null || value === undefined ? '' : String(value);

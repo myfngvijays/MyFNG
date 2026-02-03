@@ -33,7 +33,7 @@ function isRoleAllowed(roleCode: string | null): roleCode is RoleCode {
   return roleCode === 'WORKSHOP_ADMIN' || roleCode === 'WORKSHOP_SUPERVISOR' || roleCode === 'SUPER_ADMIN';
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createClient();
     const { profile, roleCode, error } = await getAuthedProfile(supabase);
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     if (!profile) return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     if (!isRoleAllowed(roleCode)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const leadId = params.id;
+    const { id: leadId } = await params;
     const body = await request.json().catch(() => ({}));
     const enabled = Boolean(body?.enabled);
 

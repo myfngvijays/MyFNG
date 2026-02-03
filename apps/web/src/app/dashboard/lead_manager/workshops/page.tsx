@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { 
   Building, Search, MapPin, Phone, Mail, Star, 
@@ -12,7 +12,7 @@ import Link from 'next/link';
 import { toast } from 'react-hot-toast';
 
 export default function WorkshopsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

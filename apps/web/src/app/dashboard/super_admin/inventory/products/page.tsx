@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, Package, Search, Filter, Loader2, Edit2, X } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 export default function ProductMasterPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -26,7 +26,7 @@ export default function ProductMasterPage() {
     part_number: ''
   });
   
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
 
   useEffect(() => {
     fetchProducts();

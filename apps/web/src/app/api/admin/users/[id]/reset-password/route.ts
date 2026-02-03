@@ -35,8 +35,12 @@ async function requireSuperAdmin(request: NextRequest) {
 }
 
 // POST: reset a user's password (SUPER_ADMIN only)
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> }
+) {
   try {
+    const params = await paramsPromise;
     const gate = await requireSuperAdmin(request);
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit, Package, Loader2 } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 export default function PackagesTab() {
   const [packages, setPackages] = useState<any[]>([]);
@@ -15,7 +15,7 @@ export default function PackagesTab() {
     tax_rate: '18.00'
   });
 
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
 
   useEffect(() => {
     fetchPackages();

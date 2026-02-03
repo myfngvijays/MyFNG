@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY } from '@/lib/utils';
 import {
@@ -11,7 +11,7 @@ import {
 import Link from 'next/link';
 
 export default function LeadManagerDashboard() {
-  const supabase = createClientComponentClient();
+  const supabase = getBrowserClient();
   
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

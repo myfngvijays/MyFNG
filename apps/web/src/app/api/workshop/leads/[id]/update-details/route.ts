@@ -95,7 +95,7 @@ const pickAllowed = (body: UpdateBody) => {
   return out;
 };
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createClient();
 
@@ -108,7 +108,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const leadId = params.id;
+    const { id: leadId } = await params;
     const body = (await request.json().catch(() => ({}))) as UpdateBody;
     const updates = pickAllowed(body);
 
