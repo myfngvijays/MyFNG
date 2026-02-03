@@ -4,6 +4,9 @@ import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js
 
 export const dynamic = 'force-dynamic';
 
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 const ALLOWED_ROLES = [
   'SUPER_ADMIN',
   'SUB_ADMIN',
@@ -17,7 +20,7 @@ const sumByCategories = (rows: any[], cats: string[]) =>
     .filter((x: any) => cats.includes(String(x?.category || '').toUpperCase()))
     .reduce((s: number, x: any) => s + (Number(x?.amount || 0) || 0), 0);
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createClient();
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -38,7 +41,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const invoiceId = params.id;
+    const { id: invoiceId } = await params;
+    if (!invoiceId || !isUuid(String(invoiceId))) {
+      return NextResponse.json({ error: 'Invalid invoice id' }, { status: 400 });
+    }
     const body = await request.json().catch(() => ({}));
     const rawLineItems = Array.isArray(body?.line_items) ? body.line_items : null;
 

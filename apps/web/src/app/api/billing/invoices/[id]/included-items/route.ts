@@ -4,6 +4,9 @@ import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js
 
 export const dynamic = 'force-dynamic';
 
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 function normalizeName(s: string) {
   return String(s || '')
     .trim()
@@ -13,7 +16,7 @@ function normalizeName(s: string) {
     .trim();
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     let step = 'start';
     const supabase = await createClient();
@@ -32,7 +35,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const invoiceId = params.id;
+    const { id: invoiceId } = await params;
+    if (!invoiceId || !isUuid(String(invoiceId))) {
+      return NextResponse.json({ error: 'Invalid invoice id' }, { status: 400 });
+    }
     const body = await request.json().catch(() => ({}));
     const serviceDescription = String(body?.service_description || '').trim();
     const serviceTypeIdInput = String(body?.service_type_id || '').trim();

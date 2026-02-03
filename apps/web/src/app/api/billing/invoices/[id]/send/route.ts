@@ -12,6 +12,9 @@ import { createShortUrl } from '@/lib/services/urlShortener';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { createNotification, notifyTelecallerTeamlead, notifyWorkshopRoles } from '@/lib/notifications';
 
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -52,6 +55,9 @@ export async function POST(
     }
 
     const { id: invoiceId } = await params;
+    if (!invoiceId || !isUuid(String(invoiceId))) {
+      return NextResponse.json({ error: 'Invalid invoice id' }, { status: 400 });
+    }
     const body = await request.json();
     const { methods } = body; // ['EMAIL', 'SMS', 'WHATSAPP', 'IN_APP']
 

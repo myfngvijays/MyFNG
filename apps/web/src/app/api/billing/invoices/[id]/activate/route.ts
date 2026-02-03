@@ -3,13 +3,16 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 /**
  * POST /api/billing/invoices/[id]/activate
  * Supervisor/Admin activates a CUSTOMER_INVOICE for customer visibility and payment.
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -41,7 +44,10 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden', role: roleCode }, { status: 403 });
     }
 
-    const invoiceId = params.id;
+    const { id: invoiceId } = await params;
+    if (!invoiceId || !isUuid(String(invoiceId))) {
+      return NextResponse.json({ error: 'Invalid invoice id' }, { status: 400 });
+    }
 
     const { data: invoice, error: invErr } = await supabase
       .from('invoices')

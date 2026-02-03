@@ -12,9 +12,12 @@ import { resolveWorkshopServicePrice } from '@/lib/utils/workshopServicePricing'
 
 export const dynamic = 'force-dynamic';
 
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -23,9 +26,14 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const leadId = params.id;
-
   try {
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    if (!isUuid(leadId)) {
+      return NextResponse.json({ error: 'Invalid lead id' }, { status: 400 });
+    }
+
     // Fetch lead details with all related data including pricing fields
     const { data: lead, error: leadError } = await supabase
       .from('service_leads')
@@ -66,7 +74,7 @@ export async function POST(
     const roleCode = (userProfile.roles as any)?.role_code;
 
     // Verify user has invoice generation permissions
-    const allowedRoles = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'];
+    const allowedRoles = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR', 'WORKSHOP_ADVISOR', 'WORKSHOP_ADVISER'];
     if (!allowedRoles.includes(roleCode)) {
       return NextResponse.json({ 
         error: 'Forbidden: Insufficient permissions',
@@ -75,7 +83,7 @@ export async function POST(
     }
 
     // Verify user belongs to the same workshop (for workshop staff)
-    if (['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode)) {
+    if (['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR', 'WORKSHOP_ADVISOR', 'WORKSHOP_ADVISER'].includes(roleCode)) {
       if (!userProfile.workshop_id || userProfile.workshop_id !== lead.workshop_id) {
         return NextResponse.json({ error: 'Forbidden: Lead not in your workshop' }, { status: 403 });
       }
@@ -382,7 +390,7 @@ export async function POST(
 // GET invoice details
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -391,9 +399,14 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const leadId = params.id;
-
   try {
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    if (!isUuid(leadId)) {
+      return NextResponse.json({ error: 'Invalid lead id' }, { status: 400 });
+    }
+
     const parseIdList = (raw: any): string[] => {
       if (!raw) return [];
       if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
@@ -503,7 +516,7 @@ export async function GET(
     const roleCode = (userProfile.roles as any)?.role_code;
 
     // Verify user has invoice viewing permissions
-    const allowedRoles = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'];
+    const allowedRoles = ['SUPER_ADMIN', 'SUB_ADMIN', 'WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR', 'WORKSHOP_ADVISOR', 'WORKSHOP_ADVISER'];
     if (!allowedRoles.includes(roleCode)) {
       return NextResponse.json({ 
         error: 'Forbidden: Insufficient permissions',
@@ -543,7 +556,7 @@ export async function GET(
       .eq('id', leadId)
       .maybeSingle();
 
-    if (invoice && ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'].includes(roleCode)) {
+    if (invoice && ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR', 'WORKSHOP_ADVISOR', 'WORKSHOP_ADVISER'].includes(roleCode)) {
       if (leadMeta && userProfile.workshop_id !== (leadMeta as any).workshop_id) {
         return NextResponse.json({ error: 'Forbidden: Lead not in your workshop' }, { status: 403 });
       }

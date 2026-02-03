@@ -10,6 +10,9 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 // Keep this route portable (Node/Edge). Avoid Node-only APIs (e.g. Buffer).
 
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -23,6 +26,9 @@ export async function POST(
     }
 
     const { id: invoiceId } = await params;
+    if (!invoiceId || !isUuid(String(invoiceId))) {
+      return NextResponse.json({ error: 'Invalid invoice id' }, { status: 400 });
+    }
 
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')

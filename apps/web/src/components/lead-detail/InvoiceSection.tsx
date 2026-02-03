@@ -291,6 +291,9 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       .replace(/\s+/g, ' ')
       .trim();
 
+  const isUuid = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
   const isCustomServiceName = (s: string) => normalizeName(s) === 'custom service';
 
   const deriveStateCodeFromGstin = (gstinRaw: string) => {
@@ -300,10 +303,17 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   };
 
   async function fetchInvoice() {
+    const leadId = String(lead?.id || '').trim();
+    if (!leadId || !isUuid(leadId)) {
+      setInvoice(null);
+      setInvoiceList([]);
+      return;
+    }
+
     setLoading(true);
     try {
       // Fetch invoice using the existing API route
-      const response = await fetch(`/api/leads/${lead.id}/invoice`, { cache: 'no-store' });
+      const response = await fetch(`/api/leads/${leadId}/invoice`, { cache: 'no-store' });
       
       if (response.ok) {
         const data = await response.json();

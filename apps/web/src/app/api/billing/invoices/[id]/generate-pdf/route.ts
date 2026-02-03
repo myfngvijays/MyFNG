@@ -12,6 +12,9 @@ import { resolveWorkshopServicePriceBestAvailable } from '@/lib/utils/workshopSe
 
 export const runtime = 'nodejs';
 
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -37,6 +40,9 @@ export async function GET(
     }
 
     const { id: invoiceId } = await params;
+    if (!invoiceId || !isUuid(String(invoiceId))) {
+      return NextResponse.json({ error: 'Invalid invoice id' }, { status: 400 });
+    }
 
     // Get invoice details first (without joins to avoid RLS issues)
     const { data: invoice, error: invoiceError } = await supabase
