@@ -75,7 +75,14 @@ export async function POST(
     const nextVersion = (latestDoc?.version || 0) + 1;
 
     // Generate PDF by calling existing generator endpoint (single source of truth)
-    const pdfUrl = `${request.nextUrl.origin}/api/billing/invoices/${invoiceId}/generate-pdf`;
+    // Use internal HTTP origin to avoid HTTPS->HTTP TLS mismatch behind reverse proxies.
+    const internalOrigin =
+      process.env.INTERNAL_APP_ORIGIN ||
+      `http://127.0.0.1:${process.env.PORT || 3000}`;
+    const baseOrigin = request.nextUrl.origin.startsWith('https://')
+      ? internalOrigin
+      : request.nextUrl.origin;
+    const pdfUrl = `${baseOrigin}/api/billing/invoices/${invoiceId}/generate-pdf`;
     // IMPORTANT: forward cookies so generate-pdf can auth as the same user.
     // Without this, generate-pdf returns 401 and persist-document fails with 500.
     const cookie = request.headers.get('cookie') || '';
