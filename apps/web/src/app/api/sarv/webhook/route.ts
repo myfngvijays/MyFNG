@@ -69,20 +69,65 @@ function isTimeInWindow(timeValue: string, from: string | null, to: string | nul
   return timeValue >= from || timeValue <= to;
 }
 
+function parseSarvTimestamp(input: string | null) {
+  if (!input) return null;
+  const raw = String(input).trim();
+  if (!raw) return null;
+  const hasTz = raw.endsWith('Z') || /[+\-]\d{2}:?\d{2}$/.test(raw);
+  const hasT = raw.includes('T');
+
+  if (hasTz) {
+    const dt = new Date(raw);
+    if (Number.isNaN(dt.getTime())) return null;
+    const iso = dt.toISOString();
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(dt);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+    const weekday = get('weekday');
+    const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const day = dayMap[weekday] ?? 0;
+    const timeValue = `${get('hour')}:${get('minute')}:${get('second')}`;
+    return { iso, day, timeValue };
+  }
+
+  // Assume SARV timestamps are local IST if no timezone provided.
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const [, y, mo, d, hh, mm, ss = '00'] = match;
+  const utcMs = Date.UTC(
+    Number(y),
+    Number(mo) - 1,
+    Number(d),
+    Number(hh) - 5,
+    Number(mm) - 30,
+    Number(ss)
+  );
+  const dt = new Date(utcMs);
+  const iso = dt.toISOString();
+  const day = dt.getUTCDay();
+  const timeValue = `${hh}:${mm}:${ss}`;
+  return { iso, day, timeValue };
+}
+
 async function resolveAssignee(db: any, aanshIds: number[], custAnswerSTime: string | null) {
   if (!aanshIds.length || !custAnswerSTime) return null;
-  const time = new Date(custAnswerSTime);
-  if (Number.isNaN(time.getTime())) return null;
-  const day = time.getDay(); // 0=Sun..6=Sat
-  const timeValue = time.toISOString().slice(11, 19); // HH:MM:SS
+  const stamp = parseSarvTimestamp(custAnswerSTime);
+  if (!stamp) return null;
+  const { day, timeValue, iso } = stamp;
 
   for (const aanshId of aanshIds) {
     const { data: mapping } = await db
       .from('sarv_aansh_mappings')
       .select('assignee_id, assignee_role, telecaller_id, effective_from, effective_to, day_of_week, time_from, time_to')
       .eq('aansh_id', aanshId)
-      .lte('effective_from', time.toISOString())
-      .or(`effective_to.is.null,effective_to.gte.${time.toISOString()}`)
+      .lte('effective_from', iso)
+      .or(`effective_to.is.null,effective_to.gte.${iso}`)
       .order('effective_from', { ascending: false })
       .limit(10);
 
@@ -179,7 +224,7 @@ async function generateTranscriptionAndSummary(recordingUrl: string) {
         {
           role: 'system',
           content:
-            'You are a call quality assistant. Summarize the call in short structured bullet points with Customer Issue, Resolution, Sentiment, and Action Items.',
+            'You are a call summary assistant. Use ONLY the transcript. Return exactly four lines with these labels: Customer Issue, Resolution, Sentiment, Action Items. If a detail is missing, write "—". Do not add any other sections or commentary.',
         },
         { role: 'user', content: transcription },
       ],

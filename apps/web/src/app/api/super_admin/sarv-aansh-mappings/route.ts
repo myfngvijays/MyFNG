@@ -51,8 +51,7 @@ export async function GET() {
         effective_to,
         day_of_week,
         time_from,
-        time_to,
-        assignee:users_login(id, full_name, email, phone)
+        time_to
       `
       )
       .order('effective_from', { ascending: false });
@@ -61,7 +60,30 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to fetch mappings' }, { status: 500 });
     }
 
-    return NextResponse.json({ mappings: mappings || [] });
+    const rows = Array.isArray(mappings) ? mappings : [];
+    const assigneeIds = Array.from(new Set(rows.map((r: any) => r?.assignee_id).filter(Boolean)));
+    let assigneeMap = new Map<string, any>();
+    if (assigneeIds.length) {
+      const { data: users } = await supabaseAdmin
+        .from('users_login')
+        .select('id, full_name, email, phone')
+        .in('id', assigneeIds);
+      for (const u of users || []) {
+        assigneeMap.set(u.id, u);
+      }
+    }
+
+    const enriched = rows.map((row: any) => {
+      const user = row.assignee_id ? assigneeMap.get(row.assignee_id) : null;
+      return {
+        ...row,
+        assignee_name: user?.full_name || null,
+        assignee_email: user?.email || null,
+        assignee_phone: user?.phone || null,
+      };
+    });
+
+    return NextResponse.json({ mappings: enriched });
   } catch (error: any) {
     return NextResponse.json({ error: 'Internal server error', details: error?.message }, { status: 500 });
   }

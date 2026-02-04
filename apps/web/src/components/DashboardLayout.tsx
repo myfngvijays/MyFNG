@@ -166,7 +166,10 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
         // Check if user has correct role for this page
         // For SUB_ADMIN, allow access to sub_admin routes
-        if (roleCode && roleCode.toLowerCase() !== role.toLowerCase() && role.toLowerCase() !== 'sub_admin') {
+        const normalizedRole = role.toLowerCase();
+        const normalizedUserRole = roleCode.toLowerCase();
+        const superAdminOverride = normalizedUserRole === 'super_admin';
+        if (!superAdminOverride && normalizedUserRole !== normalizedRole && normalizedRole !== 'sub_admin') {
           router.push(`/dashboard/${roleCode.toLowerCase()}`);
         }
       } else {
