@@ -125,6 +125,12 @@ const navigationItems: NavItem[] = [
     description: 'Auto-assignment allocation settings'
   },
   {
+    name: 'RSA',
+    href: '/dashboard/super_admin/rsa',
+    icon: AlertTriangle,
+    description: 'RSA tools & mappings'
+  },
+  {
     name: 'Coupons',
     href: '/dashboard/super_admin/coupons',
     icon: Ticket,

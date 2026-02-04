@@ -148,7 +148,7 @@ export default function RSAMechanicDetailPage() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
               <div className="min-w-0 flex-1">
                 <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1 sm:mb-2">{mechanic.mechanic_name}</h1>
-                <p className="text-white/90 font-medium text-xs sm:text-sm md:text-base">Code: {mechanic.mechanic_code}</p>
+                <p className="text-white/90 font-medium text-xs sm:text-sm md:text-base">Code: {mechanic.code || mechanic.mechanic_code}</p>
               </div>
               <div
                 className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm ${
@@ -183,7 +183,7 @@ export default function RSAMechanicDetailPage() {
                 </div>
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-2 py-2 border-b border-gray-100">
                   <span className="text-xs sm:text-sm font-medium text-text-secondary">Mechanic Code</span>
-                  <span className="text-xs sm:text-sm text-text-body font-semibold">{mechanic.mechanic_code}</span>
+                  <span className="text-xs sm:text-sm text-text-body font-semibold">{mechanic.code || mechanic.mechanic_code}</span>
                 </div>
                 {mechanic.timing && (
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-2 py-2 border-b border-gray-100">

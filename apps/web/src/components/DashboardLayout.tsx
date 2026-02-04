@@ -256,8 +256,12 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       ],
       'RSA_MANAGER': [
         { href: '/dashboard/rsa_manager', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
-        { href: '/dashboard/rsa_manager/leads', icon: <FileText className="w-5 h-5" />, label: 'RSA Leads' },
-        { href: '/dashboard/rsa_manager/mechanics', icon: <Wrench className="w-5 h-5" />, label: 'Mechanics' },
+        { href: '/dashboard/rsa_manager/leads', icon: <FileText className="w-5 h-5" />, label: 'View All Complaints' },
+        { href: '/dashboard/rsa_manager/registered', icon: <ClipboardCheck className="w-5 h-5" />, label: 'View Registered' },
+        { href: '/dashboard/rsa_manager/mechanics', icon: <Wrench className="w-5 h-5" />, label: 'Manage Mechanics' },
+        { href: '/dashboard/rsa_manager/membership-customer', icon: <Users className="w-5 h-5" />, label: 'Membership Customer' },
+        { href: '/dashboard/rsa_manager/reports', icon: <BarChart3 className="w-5 h-5" />, label: 'Reports' },
+        { href: '/dashboard/rsa_manager/settings', icon: <Settings className="w-5 h-5" />, label: 'Settings' },
       ],
       'CUSTOMER': [
         { href: '/dashboard/customer', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
@@ -297,6 +301,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/telecaller/enquiry-leads', icon: <FileText className="w-5 h-5" />, label: 'Enquiry' },
         { href: '/dashboard/telecaller/leads', icon: <FileText className="w-5 h-5" />, label: 'My Leads' },
         { href: '/dashboard/telecaller/leads/create', icon: <ClipboardList className="w-5 h-5" />, label: 'Create Lead' },
+        { href: '/dashboard/telecaller/rsa', icon: <AlertTriangle className="w-5 h-5" />, label: 'RSA' },
         { href: '/dashboard/telecaller/profile', icon: <Users className="w-5 h-5" />, label: 'My Profile' },
       ],
       'SUB_ADMIN': [
