@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     }
 
     const roleCode = String((profile.roles as any)?.role_code || '');
-    const allowed = new Set(['TELECALLER', 'SUPER_ADMIN', 'SUB_ADMIN']);
+    const allowed = new Set(['TELECALLER', 'RSA_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN']);
     if (!allowed.has(roleCode)) {
       return NextResponse.json({ error: 'Forbidden: Telecaller only' }, { status: 403 });
     }
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     }
 
     const roleCode = String((profile.roles as any)?.role_code || '');
-    const allowed = new Set(['TELECALLER', 'SUPER_ADMIN', 'SUB_ADMIN']);
+    const allowed = new Set(['TELECALLER', 'RSA_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN']);
     if (!allowed.has(roleCode)) {
       return NextResponse.json({ error: 'Forbidden: Telecaller only' }, { status: 403 });
     }

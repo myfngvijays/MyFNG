@@ -257,6 +257,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       'RSA_MANAGER': [
         { href: '/dashboard/rsa_manager', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/rsa_manager/leads', icon: <FileText className="w-5 h-5" />, label: 'View All Complaints' },
+        { href: '/dashboard/rsa_manager/create-complaint', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Create Complaint' },
         { href: '/dashboard/rsa_manager/registered', icon: <ClipboardCheck className="w-5 h-5" />, label: 'View Registered' },
         { href: '/dashboard/rsa_manager/mechanics', icon: <Wrench className="w-5 h-5" />, label: 'Manage Mechanics' },
         { href: '/dashboard/rsa_manager/membership-customer', icon: <Users className="w-5 h-5" />, label: 'Membership Customer' },

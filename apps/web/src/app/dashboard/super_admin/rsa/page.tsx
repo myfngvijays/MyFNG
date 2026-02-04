@@ -60,6 +60,7 @@ export default function SuperAdminRSASettingsPage() {
   const [error, setError] = useState('');
   const [mappings, setMappings] = useState<MappingRow[]>([]);
   const [telecallers, setTelecallers] = useState<Telecaller[]>([]);
+  const [backfillLoading, setBackfillLoading] = useState(false);
   const [form, setForm] = useState({
     id: '',
     aansh_id: '',
@@ -180,6 +181,26 @@ export default function SuperAdminRSASettingsPage() {
       loadMappings();
     } catch (e: any) {
       setError(e?.message || 'Delete failed');
+    }
+  };
+
+  const runBackfill = async () => {
+    if (!confirm('Run backfill for unmapped SARV calls?')) return;
+    setBackfillLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/super_admin/sarv-aansh-mappings/backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 500 }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Backfill failed');
+      await loadMappings();
+    } catch (e: any) {
+      setError(e?.message || 'Backfill failed');
+    } finally {
+      setBackfillLoading(false);
     }
   };
 
@@ -307,7 +328,17 @@ export default function SuperAdminRSASettingsPage() {
           <div className="bg-white rounded-lg shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-800">Mappings</h2>
-              <div className="text-xs text-gray-500">{loading ? 'Loading...' : `${mappings.length} rows`}</div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="btn btn-outline text-xs px-3 py-1.5"
+                  onClick={runBackfill}
+                  disabled={backfillLoading}
+                >
+                  {backfillLoading ? 'Running Backfill...' : 'Run Backfill'}
+                </button>
+                <div className="text-xs text-gray-500">{loading ? 'Loading...' : `${mappings.length} rows`}</div>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-xs sm:text-sm">

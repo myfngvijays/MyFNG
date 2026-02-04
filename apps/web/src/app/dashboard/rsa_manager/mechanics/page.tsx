@@ -27,7 +27,8 @@ export default function RSAMechanicsPage() {
   const router = useRouter();
   
   const [mechanics, setMechanics] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [pincodeFilter, setPincodeFilter] = useState('');
   const [serviceTagFilter, setServiceTagFilter] = useState('');
@@ -47,10 +48,6 @@ export default function RSAMechanicsPage() {
     timing: '',
     active: true,
   });
-
-  useEffect(() => {
-    fetchMechanics();
-  }, [pincodeFilter, serviceTagFilter, availabilityFilter]);
 
   const fetchMechanics = async () => {
     setLoading(true);
@@ -78,6 +75,7 @@ export default function RSAMechanicsPage() {
   };
 
   const handleSearch = () => {
+    setHasSearched(true);
     fetchMechanics();
   };
 
@@ -163,7 +161,12 @@ export default function RSAMechanicsPage() {
               Mechanics ({mechanics.length})
             </h2>
             
-            {loading ? (
+            {!hasSearched ? (
+              <div className="text-center py-8 sm:py-10 md:py-12">
+                <Wrench className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
+                <p className="text-gray-600 text-sm sm:text-base">Search to view mechanics</p>
+              </div>
+            ) : loading ? (
               <div className="text-center py-8 sm:py-10 md:py-12">
                 <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary mx-auto"></div>
                 <p className="mt-3 sm:mt-4 text-gray-600 text-sm sm:text-base">Loading mechanics...</p>

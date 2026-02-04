@@ -53,6 +53,8 @@ export default function RSALeadDetailPage() {
   const [changingMechanic, setChangingMechanic] = useState(false);
   const [rsaMediaUploading, setRsaMediaUploading] = useState(false);
   const [rsaMediaError, setRsaMediaError] = useState('');
+  const leadStatus = String(lead?.lead_status || lead?.complaint_status || '').toLowerCase();
+  const canTransferManager = leadStatus !== 'completed' && leadStatus !== 'cancelled' && leadStatus !== 'closed';
 
   useEffect(() => {
     fetchUser();
@@ -473,6 +475,14 @@ export default function RSALeadDetailPage() {
                 Claim Lead
               </button>
             )}
+            {canTransferManager ? (
+              <button
+                onClick={() => setShowAssignManager(true)}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs sm:text-sm flex-1 sm:flex-initial"
+              >
+                {lead.assigned_manager_id ? 'Transfer Manager' : 'Assign Manager'}
+              </button>
+            ) : null}
             {lead.assigned_manager_id === user?.id && (
               <>
                 <button
@@ -941,7 +951,9 @@ export default function RSALeadDetailPage() {
         {showAssignManager && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-md w-full mx-4">
-              <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">Assign to Manager</h3>
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">
+                {lead?.assigned_manager_id ? 'Transfer to Manager' : 'Assign to Manager'}
+              </h3>
               <select
                 value={selectedManagerId}
                 onChange={(e) => setSelectedManagerId(e.target.value)}
@@ -969,7 +981,7 @@ export default function RSALeadDetailPage() {
                   disabled={!selectedManagerId}
                   className="flex-1 px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-xs sm:text-sm"
                 >
-                  Assign
+                  {lead?.assigned_manager_id ? 'Transfer' : 'Assign'}
                 </button>
               </div>
             </div>
