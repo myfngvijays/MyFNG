@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useParams, useRouter, usePathname } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -17,12 +17,16 @@ function normalizePincode(value: string) {
   return String(value || '').replace(/\D/g, '').slice(0, 6);
 }
 
-export default function RSALeadDetailPage() {
+export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean }) {
   const params = useParams();
   const router = useRouter();
   const pathname = usePathname();
   const layoutRole = pathname?.includes('/dashboard/super_admin') ? 'super_admin' : 'rsa_manager';
+  const backHref = layoutRole === 'super_admin' ? '/dashboard/super_admin/rsa' : '/dashboard/rsa_manager';
   const supabase = getBrowserClient();
+
+  const shell = (node: ReactNode) =>
+    embedded ? <>{node}</> : <DashboardLayout role={layoutRole}>{node}</DashboardLayout>;
   
   const [lead, setLead] = useState<any>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
@@ -428,84 +432,82 @@ export default function RSALeadDetailPage() {
   };
 
   if (loading) {
-    return (
-      <DashboardLayout role={layoutRole}>
-        <div className="p-3 sm:p-4 md:p-5 lg:p-6">
-          <div className="text-center py-8 sm:py-10 md:py-12">
-            <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-red-600 mx-auto"></div>
-            <p className="mt-3 sm:mt-4 text-gray-600 text-xs sm:text-sm md:text-base">Loading lead details...</p>
-          </div>
+    return shell(
+      <div className="p-3 sm:p-4 md:p-5 lg:p-6">
+        <div className="text-center py-8 sm:py-10 md:py-12">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-red-600 mx-auto"></div>
+          <p className="mt-3 sm:mt-4 text-gray-600 text-xs sm:text-sm md:text-base">Loading lead details...</p>
         </div>
-      </DashboardLayout>
+      </div>
     );
   }
 
   if (!lead) {
-    return (
-      <DashboardLayout role={layoutRole}>
-        <div className="p-3 sm:p-4 md:p-5 lg:p-6">
-          <div className="text-center py-8 sm:py-10 md:py-12">
-            <AlertCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-2 sm:mb-3 md:mb-4" />
-            <p className="text-gray-600 text-xs sm:text-sm md:text-base">Lead not found</p>
-            <Link href="/dashboard/rsa_manager" className="text-red-600 hover:underline mt-2 sm:mt-3 md:mt-4 inline-block text-xs sm:text-sm md:text-base">
-              Back to Dashboard
-            </Link>
-          </div>
+    return shell(
+      <div className="p-3 sm:p-4 md:p-5 lg:p-6">
+        <div className="text-center py-8 sm:py-10 md:py-12">
+          <AlertCircle className="w-12 h-12 sm:w-14 sm:h-14 md:h-16 md:w-16 text-gray-400 mx-auto mb-2 sm:mb-3 md:mb-4" />
+          <p className="text-gray-600 text-xs sm:text-sm md:text-base">Lead not found</p>
+          <Link
+            href={backHref}
+            className="text-red-600 hover:underline mt-2 sm:mt-3 md:mt-4 inline-block text-xs sm:text-sm md:text-base"
+          >
+            Back to Dashboard
+          </Link>
         </div>
-      </DashboardLayout>
+      </div>
     );
   }
 
-  return (
-    <DashboardLayout role={layoutRole}>
-      <div className="p-3 sm:p-4 md:p-5 lg:p-6 max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
-          <Link
-            href="/dashboard/rsa_manager"
-            className="flex items-center gap-1.5 sm:gap-2 text-gray-600 hover:text-gray-900 text-xs sm:text-sm md:text-base"
-          >
-            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span>Back to Dashboard</span>
-          </Link>
-          <div className="flex flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
-            {!lead.assigned_manager_id && (
+  return shell(
+    <div className="p-3 sm:p-4 md:p-5 lg:p-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
+        <Link
+          href={backHref}
+          className="flex items-center gap-1.5 sm:gap-2 text-gray-600 hover:text-gray-900 text-xs sm:text-sm md:text-base"
+        >
+          <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+          <span>Back to Dashboard</span>
+        </Link>
+        <div className="flex flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
+          {!lead.assigned_manager_id && (
+            <button
+              onClick={handleClaimLead}
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-xs sm:text-sm flex-1 sm:flex-initial"
+            >
+              Claim Lead
+            </button>
+          )}
+          {canTransferManager ? (
+            <button
+              onClick={() => setShowAssignManager(true)}
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs sm:text-sm flex-1 sm:flex-initial"
+            >
+              {lead.assigned_manager_id ? 'Transfer Manager' : 'Assign Manager'}
+            </button>
+          ) : null}
+          {lead.assigned_manager_id === user?.id && (
+            <>
               <button
-                onClick={handleClaimLead}
-                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-xs sm:text-sm flex-1 sm:flex-initial"
+                onClick={() => setShowUpdateStatus(true)}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-xs sm:text-sm flex-1 sm:flex-initial"
               >
-                Claim Lead
+                Update Status
               </button>
-            )}
-            {canTransferManager ? (
               <button
-                onClick={() => setShowAssignManager(true)}
-                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs sm:text-sm flex-1 sm:flex-initial"
+                onClick={async () => {
+                  setChangingMechanic(Boolean(lead.assigned_mechanic_id));
+                  await handleSearchMechanics();
+                }}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs sm:text-sm flex-1 sm:flex-initial"
               >
-                {lead.assigned_manager_id ? 'Transfer Manager' : 'Assign Manager'}
+                {lead.assigned_mechanic_id ? 'Change Mechanic' : 'Assign Mechanic'}
               </button>
-            ) : null}
-            {lead.assigned_manager_id === user?.id && (
-              <>
-                <button
-                  onClick={() => setShowUpdateStatus(true)}
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-xs sm:text-sm flex-1 sm:flex-initial"
-                >
-                  Update Status
-                </button>
-                <button
-                  onClick={async () => {
-                    setChangingMechanic(Boolean(lead.assigned_mechanic_id));
-                    await handleSearchMechanics();
-                  }}
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs sm:text-sm flex-1 sm:flex-initial"
-                >
-                  {lead.assigned_mechanic_id ? 'Change Mechanic' : 'Assign Mechanic'}
-                </button>
-              </>
-            )}
-          </div>
+            </>
+          )}
         </div>
+      </div>
 
         {/* Lead Info Card */}
         <div className="bg-white rounded-lg shadow-lg p-3 sm:p-4 md:p-5 lg:p-6 mb-4 sm:mb-5 md:mb-6">
@@ -1235,8 +1237,11 @@ export default function RSALeadDetailPage() {
             </div>
           </div>
         )}
-      </div>
-    </DashboardLayout>
+    </div>
   );
+}
+
+export default function RSALeadDetailPage() {
+  return <RSALeadDetailPageView />;
 }
 

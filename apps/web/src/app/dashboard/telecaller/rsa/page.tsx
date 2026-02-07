@@ -1169,7 +1169,259 @@ export default function TelecallerRSAPage() {
             <div className="p-4 space-y-4">
               {summaryCall?.summary ? (
                 (() => {
+                  const raw = String(summaryCall.summary || '').trim();
+                  const extractRating = (text: string) => {
+                    const m =
+                      text.match(/Call Rating\s*\(1-5\)\s*[:\-–]?\s*([1-5])/i) ||
+                      text.match(/\bRating\b\s*[:\-–]?\s*([1-5])/i);
+                    if (!m) return null;
+                    const n = Number(m[1]);
+                    return n >= 1 && n <= 5 ? n : null;
+                  };
+                  const isRoadsideFormat =
+                    /Full Transcription/i.test(raw) &&
+                    /Customer Summary/i.test(raw) &&
+                    /Employee Summary/i.test(raw) &&
+                    /Actionable Outcome/i.test(raw);
+
+                  if (isRoadsideFormat) {
+                    const rating = extractRating(raw);
+                    const parseRoadsideSummary = (text: string) => {
+                      const lines = String(text || '')
+                        .replace(/\r\n/g, '\n')
+                        .split('\n')
+                        .map((l) => l.replace(/\s+$/g, ''));
+
+                      const buckets: Record<string, string[]> = {
+                        transcription: [],
+                        customerSummary: [],
+                        employeeSummary: [],
+                        outcome: [],
+                      };
+
+                      let section: keyof typeof buckets | null = null;
+                      for (const line of lines) {
+                        const t = line.trim();
+                        if (/^Full Transcription$/i.test(t)) {
+                          section = 'transcription';
+                          continue;
+                        }
+                        if (/^Customer Summary$/i.test(t)) {
+                          section = 'customerSummary';
+                          continue;
+                        }
+                        if (/^Employee Summary$/i.test(t)) {
+                          section = 'employeeSummary';
+                          continue;
+                        }
+                        if (/^Actionable Outcome$/i.test(t)) {
+                          section = 'outcome';
+                          continue;
+                        }
+                        if (!section) continue;
+                        buckets[section].push(line);
+                      }
+
+                      const speaker = { customer: [] as string[], employee: [] as string[] };
+                      let current: keyof typeof speaker | null = null;
+                      for (const line of buckets.transcription) {
+                        const trimmed = line.trim();
+                        const m = trimmed.match(/^(Customer|Employee)\s*:\s*(.*)$/i);
+                        if (m) {
+                          current = m[1].toLowerCase() as any;
+                          const rest = (m[2] || '').trim();
+                          if (rest) speaker[current].push(rest);
+                          continue;
+                        }
+                        if (current) speaker[current].push(line);
+                      }
+                      const transcriptionCustomer = speaker.customer.join('\n').trim();
+                      const transcriptionEmployee = speaker.employee.join('\n').trim();
+
+                      const normalizeBullets = (arr: string[]) =>
+                        arr
+                          .map((l) => l.trim())
+                          .filter(Boolean)
+                          .map((l) => l.replace(/^\s*[-•]\s*/, ''));
+
+                      const customerSummary = normalizeBullets(buckets.customerSummary);
+                      const employeeSummaryAll = normalizeBullets(buckets.employeeSummary);
+
+                      const employeeSummary: string[] = [];
+                      const operationalInsights: string[] = [];
+                      let confidence: string | null = null;
+                      let mode: 'main' | 'ops' = 'main';
+                      for (const item of employeeSummaryAll) {
+                        if (/^Operational Insights\s*:/i.test(item)) {
+                          mode = 'ops';
+                          const rest = item.replace(/^Operational Insights\s*:/i, '').trim();
+                          if (rest) operationalInsights.push(rest);
+                          continue;
+                        }
+                        if (/^Confidence\s*:/i.test(item)) {
+                          const rest = item.replace(/^Confidence\s*:/i, '').trim();
+                          confidence = rest || null;
+                          mode = 'main';
+                          continue;
+                        }
+                        if (mode === 'ops') operationalInsights.push(item);
+                        else employeeSummary.push(item);
+                      }
+
+                      const outcomeLines = buckets.outcome.map((l) => l.trim()).filter(Boolean);
+                      const extractField = (label: string) => {
+                        const re = new RegExp(`^${label}\\s*[:\\-–]?\\s*(.*)$`, 'i');
+                        const hit = outcomeLines.find((l) => re.test(l));
+                        if (!hit) return null;
+                        const m = hit.match(re);
+                        return (m?.[1] || '').trim() || null;
+                      };
+                      const callStatus = extractField('Call Status');
+                      const missingInfo = extractField('Missing Info');
+                      const nextStep = extractField('Next Step');
+
+                      return {
+                        transcriptionCustomer,
+                        transcriptionEmployee,
+                        customerSummary,
+                        employeeSummary,
+                        operationalInsights,
+                        confidence,
+                        callStatus,
+                        missingInfo,
+                        nextStep,
+                      };
+                    };
+
+                    const parsed = parseRoadsideSummary(raw);
+                    return (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-xs text-gray-600">
+                            Call Rating: <b>{rating ? `${rating}/5` : '—'}</b>
+                          </div>
+                          {rating ? (
+                            <div className="text-sm text-yellow-600" aria-label={`Rating ${rating} out of 5`}>
+                              {'★'.repeat(rating)}
+                              <span className="text-gray-300">{'★'.repeat(5 - rating)}</span>
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="max-h-[70vh] overflow-auto space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="rounded-lg border bg-white p-4">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">Customer Summary</div>
+                              {parsed.customerSummary.length ? (
+                                <ul className="list-disc pl-5 space-y-1 text-xs sm:text-sm text-gray-900">
+                                  {parsed.customerSummary.map((it, idx) => (
+                                    <li key={idx}>{it}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className="text-xs sm:text-sm text-gray-600">—</div>
+                              )}
+                            </div>
+                            <div className="rounded-lg border bg-white p-4 space-y-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="text-xs font-semibold text-gray-700">Employee Summary</div>
+                                {parsed.confidence ? (
+                                  <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                                    Confidence: {parsed.confidence}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {parsed.employeeSummary.length ? (
+                                <ul className="list-disc pl-5 space-y-1 text-xs sm:text-sm text-gray-900">
+                                  {parsed.employeeSummary.map((it, idx) => (
+                                    <li key={idx}>{it}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className="text-xs sm:text-sm text-gray-600">—</div>
+                              )}
+
+                              {parsed.operationalInsights.length ? (
+                                <div className="rounded-lg border bg-gray-50 p-3">
+                                  <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                    Operational Insights
+                                  </div>
+                                  <ul className="list-disc pl-5 space-y-1 text-xs sm:text-sm text-gray-900">
+                                    {parsed.operationalInsights.map((it, idx) => (
+                                      <li key={idx}>{it}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border bg-gray-50 p-4">
+                            <div className="text-xs font-semibold text-gray-700 mb-2">Actionable Outcome</div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <div className="rounded-lg border bg-white p-3">
+                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                  Call Status
+                                </div>
+                                <div className="text-xs sm:text-sm text-gray-900">{parsed.callStatus || '—'}</div>
+                              </div>
+                              <div className="rounded-lg border bg-white p-3 md:col-span-2">
+                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                  Missing Info
+                                </div>
+                                <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                  {parsed.missingInfo || '—'}
+                                </div>
+                              </div>
+                              <div className="rounded-lg border bg-white p-3 md:col-span-3">
+                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                  Next Step
+                                </div>
+                                <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                  {parsed.nextStep || '—'}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <details className="rounded-lg border bg-white p-4">
+                            <summary className="cursor-pointer text-xs sm:text-sm font-semibold text-gray-700">
+                              Full Transcription
+                            </summary>
+                            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div className="rounded-lg border bg-gray-50 p-3">
+                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                  Customer
+                                </div>
+                                <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                  {parsed.transcriptionCustomer || '—'}
+                                </div>
+                              </div>
+                              <div className="rounded-lg border bg-gray-50 p-3">
+                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                  Employee
+                                </div>
+                                <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                  {parsed.transcriptionEmployee || '—'}
+                                </div>
+                              </div>
+                            </div>
+                          </details>
+                        </div>
+                      </>
+                    );
+                  }
+
                   const sections = parseSummarySections(summaryCall.summary);
+                  const rating =
+                    extractRating(raw) ||
+                    (sections.sentiment && /negative|नकारात्मक/i.test(sections.sentiment)
+                      ? 2
+                      : sections.sentiment && /neutral|तटस्थ/i.test(sections.sentiment)
+                        ? 3
+                        : sections.sentiment && /positive|सकारात्मक/i.test(sections.sentiment)
+                          ? 4
+                          : null);
                   return (
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1190,6 +1442,19 @@ export default function TelecallerRSAPage() {
                         <div className="rounded-lg border bg-white p-4">
                           <div className="text-xs font-semibold text-gray-700 mb-2">Action Items</div>
                           <div className="text-sm text-gray-800">{sections.actionItems || '—'}</div>
+                        </div>
+                      </div>
+                      <div className="rounded-lg border bg-gray-50 p-4 flex items-center justify-between">
+                        <div className="text-xs font-semibold text-gray-700">Call Rating</div>
+                        <div className="text-sm text-gray-900">
+                          {rating ? (
+                            <span>
+                              <span className="text-yellow-600">{'★'.repeat(rating)}</span>
+                              <span className="text-gray-300">{'★'.repeat(5 - rating)}</span> ({rating}/5)
+                            </span>
+                          ) : (
+                            '—'
+                          )}
                         </div>
                       </div>
                     </>

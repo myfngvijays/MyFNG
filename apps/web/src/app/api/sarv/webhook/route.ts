@@ -185,11 +185,35 @@ async function generateTranscriptionAndSummary(recordingUrl: string) {
     throw new Error(`Recording fetch failed: ${audioRes.status}`);
   }
   const audioBuffer = await audioRes.arrayBuffer();
-  const audioBlob = new Blob([audioBuffer], { type: audioRes.headers.get('content-type') || 'audio/mpeg' });
+  const contentType = audioRes.headers.get('content-type') || 'audio/mpeg';
+  const audioBlob = new Blob([audioBuffer], { type: contentType });
+
+  // Pick a reasonable filename/extension for better decoder hints.
+  const extFromType = (() => {
+    const t = String(contentType).toLowerCase();
+    if (t.includes('wav')) return 'wav';
+    if (t.includes('mp4') || t.includes('m4a') || t.includes('aac')) return 'm4a';
+    if (t.includes('ogg') || t.includes('opus')) return 'ogg';
+    if (t.includes('webm')) return 'webm';
+    return 'mp3';
+  })();
 
   const formData = new FormData();
   formData.append('model', OPENAI_TRANSCRIBE_MODEL);
-  formData.append('file', audioBlob, 'call.mp3');
+  // Bias toward Hindi/Hinglish (common for RSA calls in India).
+  // If the audio is pure English, the model will still generally handle it.
+  formData.append('language', 'hi');
+  formData.append('temperature', '0');
+  formData.append(
+    'prompt',
+    [
+      'This is a MyFNG Roadside Assistance (RSA) phone call in Hinglish/Hindi and English.',
+      'Two speakers: Customer and MyFNG employee/agent.',
+      'Common words: RSA, roadside assistance, towing, battery, puncture, tyre, jump start, fuel delivery, mechanic, location, landmark, pincode, vehicle number, model, ETA, charges, payment.',
+      'Transcribe accurately, keep proper nouns and numbers (vehicle number, phone, pincode) if spoken.',
+    ].join(' ')
+  );
+  formData.append('file', audioBlob, `call.${extFromType}`);
 
   const transcribeRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -211,6 +235,11 @@ async function generateTranscriptionAndSummary(recordingUrl: string) {
     return { transcription: null, summary: null };
   }
 
+  // If transcription is suspiciously short, don't generate a misleading summary.
+  if (transcription.replace(/\s+/g, ' ').length < 40) {
+    return { transcription, summary: null };
+  }
+
   const summaryRes = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -219,14 +248,122 @@ async function generateTranscriptionAndSummary(recordingUrl: string) {
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      temperature: 0.2,
+      temperature: 0,
       messages: [
         {
           role: 'system',
-          content:
-            'You are a call summary assistant. Use ONLY the transcript. Return exactly four lines with these labels: Customer Issue, Resolution, Sentiment, Action Items. If a detail is missing, write "—". Do not add any other sections or commentary.',
+          content: [
+            'You are a Roadside Assistance Call Analysis Assistant.',
+            '',
+            'Context:',
+            'This is a recorded phone call between a customer and a Roadside Assistance support employee.',
+            'The call may include details about vehicle issues, location, urgency, pricing discussion, confirmation, or follow-up steps.',
+            '',
+            'Your tasks are strictly in this order:',
+            '',
+            'Transcription',
+            '',
+            'Accurately transcribe the full call.',
+            '',
+            'Clearly separate speakers as:',
+            '',
+            'Customer',
+            '',
+            'Employee',
+            '',
+            'Do not add or assume anything that is not spoken.',
+            '',
+            'Customer Summary',
+            'Create a concise, structured summary from the customer’s point of view covering:',
+            '',
+            'Problem reported (breakdown / issue)',
+            '',
+            'Vehicle details (if mentioned)',
+            '',
+            'Location / landmark / pin code (if mentioned)',
+            '',
+            'Urgency level (low / medium / high)',
+            '',
+            'Expectations from service',
+            '',
+            'Any concern, hesitation, or objection raised',
+            '',
+            'Employee Summary',
+            'Create a clear summary from the employee’s point of view covering:',
+            '',
+            'How the issue was understood',
+            '',
+            'Questions asked to the customer',
+            '',
+            'Solution or service promised',
+            '',
+            'Pricing / ETA / mechanic assignment (if discussed)',
+            '',
+            'Next action committed by the employee',
+            '',
+            'Actionable Outcome',
+            '',
+            'Final call status: (Booked / Follow-up Required / Cancelled / No Confirmation)',
+            '',
+            'Any missing information that must be collected',
+            '',
+            'Immediate next step for operations team',
+            '',
+            'Output Format (strictly follow):',
+            '',
+            'Full Transcription',
+            'Customer:',
+            'Employee:',
+            '',
+            'Customer Summary',
+            '',
+            '…',
+            '',
+            'Employee Summary',
+            '',
+            '…',
+            '',
+            'Actionable Outcome',
+            '',
+            'Call Status:',
+            '',
+            'Call Rating (1-5):',
+            '',
+            'Missing Info:',
+            '',
+            'Next Step:',
+            '',
+            'Rules:',
+            '',
+            'Be factual, neutral, and operational.',
+            '',
+            'No assumptions.',
+            '',
+            'No extra explanations.',
+            '',
+            'This output will be stored in a CRM and used by ops & service teams.',
+            '',
+            'Additional Guidance (still follow the exact Output Format headings above):',
+            '- In "Customer Summary" and "Employee Summary", use short bullet points with labels for clarity (e.g., "Problem:", "Vehicle:", "Location:", "Urgency:", "Expectation:", "Objections:").',
+            '- Add "Operational Insights:" inside the Employee Summary with bullets like:',
+            '  - Service category (towing/battery/tyre/fuel/jump start/other) if inferable from spoken words',
+            '  - Pricing mentioned? (yes/no + amount if spoken)',
+            '  - ETA mentioned? (yes/no + time if spoken)',
+            '  - Confirmation obtained? (yes/no/unclear)',
+            '  - Risks/Flags (e.g., wrong number, incomplete location, customer hesitant, urgent safety risk) based only on transcript',
+            '- Add "Confidence:" (High/Medium/Low) in Employee Summary based on transcript completeness.',
+          ].join('\n'),
         },
-        { role: 'user', content: transcription },
+        {
+          role: 'user',
+          content: [
+            'Here is the raw ASR transcript text (may not be diarized).',
+            'Convert it to the required output format. Do not invent details.',
+            'For Call Rating (1-5): rate the overall call outcome & customer experience from the transcript only (1=very poor, 3=neutral/unclear, 5=excellent). Output an integer.',
+            '',
+            transcription,
+          ].join('\n'),
+        },
       ],
     }),
   });
