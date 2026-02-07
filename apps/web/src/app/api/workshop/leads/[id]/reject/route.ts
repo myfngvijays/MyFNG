@@ -16,20 +16,26 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, role, workshop_id')
-      .eq('email', user.email)
-      .single();
+    // Get user profile (id/email/phone fallback like accept route)
+    const selectProfile = 'id, full_name, workshop_id, role_id, roles!inner(role_code)';
+    const { data: profileById } = await supabase.from('users_login').select(selectProfile).eq('id', user.id).maybeSingle();
+    const { data: profileByEmail } = !profileById && user.email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', user.email).maybeSingle()
+      : { data: null as any };
+    const { data: profileByPhone } = !profileById && !profileByEmail && user.phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', user.phone).maybeSingle()
+      : { data: null as any };
+    const userProfile = profileById || profileByEmail || profileByPhone;
 
-    if (profileError || !userProfile) {
+    if (!userProfile) {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
-    // Verify user is workshop admin
-    if (userProfile.role !== 'workshop_admin') {
-      return NextResponse.json({ error: 'Forbidden: Workshop Admin only' }, { status: 403 });
+    const roleCode = (userProfile as any).roles?.role_code;
+    const isWorkshopAdmin = roleCode === 'WORKSHOP_ADMIN';
+    const isSupervisor = roleCode === 'WORKSHOP_SUPERVISOR';
+    if (!isWorkshopAdmin && !isSupervisor) {
+      return NextResponse.json({ error: 'Forbidden: Workshop Admin or Supervisor only' }, { status: 403 });
     }
 
     // Get request body

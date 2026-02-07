@@ -33,7 +33,8 @@ import {
   Megaphone,
   BarChart3,
   ClipboardCheck,
-  Globe
+  Globe,
+  MessageSquare
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -217,6 +218,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       ],
       'WORKSHOP_ADMIN': [
         { href: '/dashboard/workshop_admin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/workshop_admin/chat', icon: <MessageSquare className="w-5 h-5" />, label: 'Chat' },
         { href: '/dashboard/workshop_admin/pending-leads', icon: <Clock className="w-5 h-5" />, label: 'Pending Lead Approval' },
         { href: '/dashboard/workshop_admin/leads', icon: <FileText className="w-5 h-5" />, label: 'All Leads' },
         { href: '/dashboard/workshop_admin/public-page', icon: <Globe className="w-5 h-5" />, label: 'Public Page' },
@@ -227,6 +229,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       ],
       'WORKSHOP_SUPERVISOR': [
         { href: '/dashboard/workshop_supervisor', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/workshop_supervisor/chat', icon: <MessageSquare className="w-5 h-5" />, label: 'Chat' },
         { href: '/dashboard/workshop_supervisor/pending-leads', icon: <Clock className="w-5 h-5" />, label: 'Pending Lead Approval' },
         { href: '/dashboard/workshop_supervisor/day-planning', icon: <Calendar className="w-5 h-5" />, label: 'Day Planning' },
         { href: '/dashboard/workshop_supervisor/jobs', icon: <Wrench className="w-5 h-5" />, label: 'Manage Jobs' },
@@ -241,12 +244,14 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       ],
       'WORKSHOP_MECHANIC': [
         { href: '/dashboard/workshop_mechanic', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/workshop_mechanic/chat', icon: <MessageSquare className="w-5 h-5" />, label: 'Chat' },
         { href: '/dashboard/workshop_mechanic/jobs', icon: <Wrench className="w-5 h-5" />, label: 'My Jobs' },
         { href: '/dashboard/workshop_mechanic/history', icon: <ClipboardList className="w-5 h-5" />, label: 'Job History' },
         { href: '/dashboard/workshop_mechanic/profile', icon: <Users className="w-5 h-5" />, label: 'Profile' },
       ],
       'WORKSHOP_PICKUP_BOY': [
         { href: '/dashboard/workshop_pickup_boy', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/workshop_pickup_boy/chat', icon: <MessageSquare className="w-5 h-5" />, label: 'Chat' },
         { href: '/dashboard/workshop_pickup_boy/tasks', icon: <Truck className="w-5 h-5" />, label: 'My Tasks' },
         { href: '/dashboard/workshop_pickup_boy/history', icon: <ClipboardList className="w-5 h-5" />, label: 'Task History' },
         { href: '/dashboard/workshop_pickup_boy/profile', icon: <Users className="w-5 h-5" />, label: 'Profile' },
