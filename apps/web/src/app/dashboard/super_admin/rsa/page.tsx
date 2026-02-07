@@ -1,6 +1,19 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import GoogleEmbedMap from '@/components/maps/GoogleEmbedMap';
+import GoogleStateHeatmapMap, { type GoogleStateHeatmapPoint } from '@/components/maps/GoogleStateHeatmapMap';
+import StateHeatmapLeafletVanillaMap, { type StateHeatmapPoint as LeafletStatePoint } from '@/components/maps/StateHeatmapLeafletVanillaMap';
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip as ReTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 type Telecaller = {
   id: string;
@@ -55,6 +68,18 @@ type SarvCallRow = {
   assignee_phone?: string | null;
 };
 
+type SarvCallAudit = {
+  id: string;
+  sarv_call_id: string;
+  audit_status: string | null;
+  audit_score: number | null;
+  feedback: string | null;
+  audited_by_id: string | null;
+  audited_at: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+};
+
 type OverviewBreakdownRow = {
   key: string;
   name: string;
@@ -81,7 +106,7 @@ type OverviewLeadRow = {
 };
 
 type OverviewSelection = {
-  type: 'district' | 'state' | 'employee' | 'department';
+  type: 'all' | 'district' | 'state' | 'employee' | 'department' | 'mechanic';
   value: string;
   label: string;
 };
@@ -93,6 +118,8 @@ type OverviewData = {
     pending: number;
     avg_resolution_hours: number | null;
     total_quoted: number;
+    total_mechanics?: number;
+    advance_amount?: number;
     payment_received: number;
     payment_to_mechanic: number;
     company_profit: number;
@@ -102,8 +129,21 @@ type OverviewData = {
     district: OverviewBreakdownRow[];
     state: OverviewBreakdownRow[];
     employee: OverviewBreakdownRow[];
+    mechanic?: OverviewBreakdownRow[];
   };
 };
+
+type OverviewTrendPoint = {
+  date: string; // YYYY-MM-DD (UTC)
+  total_requests: number;
+  resolved: number;
+  total_quoted: number;
+  mechanic_payment: number;
+  advance_amount: number;
+  company_profit: number;
+};
+
+type TrendMetric = 'total_requests' | 'resolved' | 'company_profit' | 'total_quoted';
 
 type TabKey = 'mapping' | 'report' | 'overview';
 
@@ -226,6 +266,92 @@ function formatDateInput(value: Date) {
   return value.toISOString().slice(0, 10);
 }
 
+const IST_OFFSET_MS = 330 * 60 * 1000;
+
+function todayISTYMD() {
+  return new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+function addDaysYMD(ymd: string, days: number) {
+  const d = new Date(`${ymd}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function toISTBoundaryISO(ymd: string, which: 'start' | 'end') {
+  // ymd: YYYY-MM-DD (interpreted as India date, convert to UTC ISO)
+  const [y, m, d] = String(ymd || '')
+    .split('-')
+    .map((n) => Number(n));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  const baseUtc =
+    which === 'start'
+      ? Date.UTC(y, m - 1, d, 0, 0, 0, 0)
+      : Date.UTC(y, m - 1, d, 23, 59, 59, 999);
+  // Convert IST -> UTC by subtracting offset.
+  return new Date(baseUtc - IST_OFFSET_MS).toISOString();
+}
+
+function formatYMD(value?: string | null) {
+  const raw = String(value || '').trim();
+  if (!raw) return '—';
+  return raw.slice(0, 10);
+}
+
+function normalizeStateLabel(value?: string | null) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '');
+}
+
+const INDIA_CENTER = { lat: 22.9734, lng: 78.6569 };
+
+// Centroids used to place state-level markers. (No lead-level lat/lng available in RSA overview data.)
+const STATE_CENTROIDS: Record<string, { lat: number; lng: number }> = {
+  andhrapradesh: { lat: 15.9129, lng: 79.74 },
+  arunachalpradesh: { lat: 28.218, lng: 94.7278 },
+  assam: { lat: 26.2006, lng: 92.9376 },
+  bihar: { lat: 25.0961, lng: 85.3131 },
+  chhattisgarh: { lat: 21.2787, lng: 81.8661 },
+  goa: { lat: 15.2993, lng: 74.124 },
+  gujarat: { lat: 22.2587, lng: 71.1924 },
+  haryana: { lat: 29.0588, lng: 76.0856 },
+  himachalpradesh: { lat: 31.1048, lng: 77.1734 },
+  jammuandkashmir: { lat: 33.7782, lng: 76.5762 },
+  jharkhand: { lat: 23.6102, lng: 85.2799 },
+  karnataka: { lat: 15.3173, lng: 75.7139 },
+  kerala: { lat: 10.8505, lng: 76.2711 },
+  madhyapradesh: { lat: 22.9734, lng: 78.6569 },
+  maharashtra: { lat: 19.7515, lng: 75.7139 },
+  manipur: { lat: 24.6637, lng: 93.9063 },
+  meghalaya: { lat: 25.467, lng: 91.3662 },
+  mizoram: { lat: 23.1645, lng: 92.9376 },
+  nagaland: { lat: 26.1584, lng: 94.5624 },
+  odisha: { lat: 20.9517, lng: 85.0985 },
+  punjab: { lat: 31.1471, lng: 75.3412 },
+  rajasthan: { lat: 27.0238, lng: 74.2179 },
+  sikkim: { lat: 27.533, lng: 88.5122 },
+  tamilnadu: { lat: 11.1271, lng: 78.6569 },
+  telangana: { lat: 18.1124, lng: 79.0193 },
+  tripura: { lat: 23.9408, lng: 91.9882 },
+  uttarpradesh: { lat: 26.8467, lng: 80.9462 },
+  uttarakhand: { lat: 30.0668, lng: 79.0193 },
+  westbengal: { lat: 22.9868, lng: 87.855 },
+
+  // UTs (common ones)
+  delhi: { lat: 28.7041, lng: 77.1025 },
+  chandigarh: { lat: 30.7333, lng: 76.7794 },
+  puducherry: { lat: 11.9416, lng: 79.8083 },
+  andamannicobar: { lat: 11.7401, lng: 92.6586 },
+  ladakh: { lat: 34.1526, lng: 77.577 },
+};
+
+function getStateCentroid(name?: string | null) {
+  const key = normalizeStateLabel(name);
+  if (key === 'unknown') return INDIA_CENTER;
+  return STATE_CENTROIDS[key] || null;
+}
+
 function formatCurrency(value?: number | null) {
   if (!Number.isFinite(value as number)) return '₹0';
   return `₹${Math.round(Number(value)).toLocaleString('en-IN')}`;
@@ -265,14 +391,84 @@ export default function SuperAdminRSASettingsPage() {
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState('');
   const [overviewData, setOverviewData] = useState<OverviewData | null>(null);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [trendError, setTrendError] = useState('');
+  const [trendPoints, setTrendPoints] = useState<OverviewTrendPoint[]>([]);
+  const [trendGranularity, setTrendGranularity] = useState<'day' | 'hour'>('day');
+  const [activeStateId, setActiveStateId] = useState<string>('');
+  const [mechCoverageOpen, setMechCoverageOpen] = useState(false);
+  const [mechCoverageLoading, setMechCoverageLoading] = useState(false);
+  const [mechCoverageError, setMechCoverageError] = useState('');
+  const [mechCoverageTab, setMechCoverageTab] = useState<'state' | 'district'>('state');
+  const [mechCoverageFilterState, setMechCoverageFilterState] = useState<string>('');
+  const [mechListOpen, setMechListOpen] = useState(false);
+  const [mechListLoading, setMechListLoading] = useState(false);
+  const [mechListError, setMechListError] = useState('');
+  const [mechListTitle, setMechListTitle] = useState('');
+  const [mechList, setMechList] = useState<
+    { id: string; code: string | null; mechanic_name: string | null; number: string | null; matched_pincode_count: number; matched_pincodes: string[] }[]
+  >([]);
+  const [mechCoverage, setMechCoverage] = useState<{
+    kpis: {
+      total_mechanics: number;
+      mechanics_with_coverage: number;
+      service_pincodes: number;
+      total_mechanics_all?: number;
+      total_mechanics_active?: number;
+      breakdown_scope?: 'all' | 'active';
+    };
+    breakdowns: {
+      state: { state: string; mechanics: number }[];
+      district: { district: string; state: string; mechanics: number }[];
+    };
+  } | null>(null);
+  const [employeeReportLoading, setEmployeeReportLoading] = useState(false);
+  const [employeeReportError, setEmployeeReportError] = useState('');
+  const [employeeReportRows, setEmployeeReportRows] = useState<
+    {
+      user_id: string;
+      name: string;
+      role: string;
+      registered_complaints: number;
+      completed_complaints: number;
+      registered_resolved_complaints: number;
+      total_quoted: number;
+      registered_advance_amount: number;
+      registered_profit: number;
+      self_completed_mechanic_payment: number;
+      self_completed_profit: number;
+      completed_only_mechanic_payment: number;
+      completed_only_profit: number;
+      total_answer_calls: number;
+      avg_call_rating: number | null;
+      avg_audit_rating: number | null;
+    }[]
+  >([]);
   const [overviewSelection, setOverviewSelection] = useState<OverviewSelection | null>(null);
   const [overviewLeads, setOverviewLeads] = useState<OverviewLeadRow[]>([]);
   const [overviewLeadsLoading, setOverviewLeadsLoading] = useState(false);
   const [overviewLeadsError, setOverviewLeadsError] = useState('');
+  const [districtOpen, setDistrictOpen] = useState(false);
+  const [mechanicOpen, setMechanicOpen] = useState(false);
+  const [showProfit, setShowProfit] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryCall, setSummaryCall] = useState<SarvCallRow | null>(null);
+  const [transcriptionView, setTranscriptionView] = useState<'raw' | 'split'>('raw');
+  const [swapSpeakers, setSwapSpeakers] = useState(false);
   const [regenLoading, setRegenLoading] = useState(false);
   const [regenError, setRegenError] = useState('');
+
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditCall, setAuditCall] = useState<SarvCallRow | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditSaving, setAuditSaving] = useState(false);
+  const [auditError, setAuditError] = useState('');
+  const [auditForm, setAuditForm] = useState(() => ({
+    audit_status: '',
+    audit_score: '',
+    feedback: '',
+  }));
+  const [auditByCallId, setAuditByCallId] = useState<Record<string, SarvCallAudit | null>>({});
   const [form, setForm] = useState({
     id: '',
     aansh_id: '',
@@ -285,19 +481,19 @@ export default function SuperAdminRSASettingsPage() {
     time_to: '',
   });
   const [overviewFilters, setOverviewFilters] = useState(() => {
-    const today = new Date();
-    const from = addDays(today, -7);
+    const today = todayISTYMD();
+    const from = addDaysYMD(today, -7);
     return {
-      from: formatDateInput(from),
-      to: formatDateInput(today),
+      from,
+      to: today,
     };
   });
   const [reportFilters, setReportFilters] = useState(() => {
-    const today = new Date();
-    const from = addDays(today, -7);
+    const today = todayISTYMD();
+    const from = addDaysYMD(today, -7);
     return {
-      from: formatDateInput(from),
-      to: formatDateInput(today),
+      from,
+      to: today,
       assignee_role: '',
       assignee_id: '',
       has_recording: false,
@@ -422,6 +618,8 @@ export default function SuperAdminRSASettingsPage() {
     setSummaryOpen(true);
     setRegenLoading(false);
     setRegenError('');
+    setTranscriptionView('raw');
+    setSwapSpeakers(false);
   };
 
   const closeSummary = () => {
@@ -429,6 +627,75 @@ export default function SuperAdminRSASettingsPage() {
     setSummaryCall(null);
     setRegenLoading(false);
     setRegenError('');
+    setTranscriptionView('raw');
+    setSwapSpeakers(false);
+  };
+
+  const openAudit = async (call: SarvCallRow) => {
+    setAuditCall(call);
+    setAuditOpen(true);
+    setAuditError('');
+
+    const cached = call?.id ? auditByCallId[call.id] : null;
+    setAuditForm({
+      audit_status: String(cached?.audit_status || '').trim(),
+      audit_score: cached?.audit_score != null ? String(cached.audit_score) : '',
+      feedback: String(cached?.feedback || '').trim(),
+    });
+
+    if (!call?.id) return;
+    setAuditLoading(true);
+    try {
+      const res = await fetch(`/api/super_admin/sarv-calls/${encodeURIComponent(String(call.id))}/audit`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load audit');
+      const audit = (json?.audit || null) as SarvCallAudit | null;
+      setAuditByCallId((prev) => ({ ...prev, [call.id]: audit }));
+      setAuditForm({
+        audit_status: String(audit?.audit_status || '').trim(),
+        audit_score: audit?.audit_score != null ? String(audit.audit_score) : '',
+        feedback: String(audit?.feedback || '').trim(),
+      });
+    } catch (e: any) {
+      setAuditError(e?.message || 'Failed to load audit');
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const closeAudit = () => {
+    setAuditOpen(false);
+    setAuditCall(null);
+    setAuditLoading(false);
+    setAuditSaving(false);
+    setAuditError('');
+  };
+
+  const saveAudit = async () => {
+    if (!auditCall?.id) return;
+    setAuditSaving(true);
+    setAuditError('');
+    try {
+      const payload = {
+        audit_status: auditForm.audit_status,
+        audit_score: auditForm.audit_score || null,
+        feedback: auditForm.feedback,
+      };
+      const res = await fetch(`/api/super_admin/sarv-calls/${encodeURIComponent(String(auditCall.id))}/audit`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to save audit');
+      const audit = (json?.audit || null) as SarvCallAudit | null;
+      setAuditByCallId((prev) => ({ ...prev, [auditCall.id]: audit }));
+      closeAudit();
+    } catch (e: any) {
+      setAuditError(e?.message || 'Failed to save audit');
+    } finally {
+      setAuditSaving(false);
+    }
   };
 
   const regenerateSummary = async () => {
@@ -478,10 +745,12 @@ export default function SuperAdminRSASettingsPage() {
     try {
       const params = new URLSearchParams();
       if (overviewFilters.from) {
-        params.set('from', new Date(`${overviewFilters.from}T00:00:00`).toISOString());
+        const iso = toISTBoundaryISO(overviewFilters.from, 'start');
+        if (iso) params.set('from', iso);
       }
       if (overviewFilters.to) {
-        params.set('to', new Date(`${overviewFilters.to}T23:59:59`).toISOString());
+        const iso = toISTBoundaryISO(overviewFilters.to, 'end');
+        if (iso) params.set('to', iso);
       }
       const res = await fetch(`/api/super_admin/rsa-overview?${params.toString()}`);
       const json = await res.json().catch(() => ({}));
@@ -495,6 +764,57 @@ export default function SuperAdminRSASettingsPage() {
     }
   };
 
+  const loadOverviewTrends = async () => {
+    setTrendLoading(true);
+    setTrendError('');
+    try {
+      const params = new URLSearchParams();
+      if (overviewFilters.from) {
+        const iso = toISTBoundaryISO(overviewFilters.from, 'start');
+        if (iso) params.set('from', iso);
+      }
+      if (overviewFilters.to) {
+        const iso = toISTBoundaryISO(overviewFilters.to, 'end');
+        if (iso) params.set('to', iso);
+      }
+      const res = await fetch(`/api/super_admin/rsa-overview/trends?${params.toString()}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load trends');
+      setTrendGranularity(json?.granularity === 'hour' ? 'hour' : 'day');
+      setTrendPoints(Array.isArray(json?.points) ? json.points : []);
+    } catch (e: any) {
+      setTrendError(e?.message || 'Failed to load trends');
+      setTrendPoints([]);
+    } finally {
+      setTrendLoading(false);
+    }
+  };
+
+  const loadEmployeeReport = async () => {
+    setEmployeeReportLoading(true);
+    setEmployeeReportError('');
+    try {
+      const params = new URLSearchParams();
+      if (overviewFilters.from) {
+        const iso = toISTBoundaryISO(overviewFilters.from, 'start');
+        if (iso) params.set('from', iso);
+      }
+      if (overviewFilters.to) {
+        const iso = toISTBoundaryISO(overviewFilters.to, 'end');
+        if (iso) params.set('to', iso);
+      }
+      const res = await fetch(`/api/super_admin/rsa-overview/employee-report?${params.toString()}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load employee report');
+      setEmployeeReportRows(Array.isArray(json?.rows) ? json.rows : []);
+    } catch (e: any) {
+      setEmployeeReportError(e?.message || 'Failed to load employee report');
+      setEmployeeReportRows([]);
+    } finally {
+      setEmployeeReportLoading(false);
+    }
+  };
+
   const loadOverviewLeads = async (selection: OverviewSelection) => {
     setOverviewSelection(selection);
     setOverviewLeadsLoading(true);
@@ -502,10 +822,12 @@ export default function SuperAdminRSASettingsPage() {
     try {
       const params = new URLSearchParams();
       if (overviewFilters.from) {
-        params.set('from', new Date(`${overviewFilters.from}T00:00:00`).toISOString());
+        const iso = toISTBoundaryISO(overviewFilters.from, 'start');
+        if (iso) params.set('from', iso);
       }
       if (overviewFilters.to) {
-        params.set('to', new Date(`${overviewFilters.to}T23:59:59`).toISOString());
+        const iso = toISTBoundaryISO(overviewFilters.to, 'end');
+        if (iso) params.set('to', iso);
       }
       params.set('type', selection.type);
       params.set('value', selection.value);
@@ -518,6 +840,48 @@ export default function SuperAdminRSASettingsPage() {
       setOverviewLeads([]);
     } finally {
       setOverviewLeadsLoading(false);
+    }
+  };
+
+  const openMechanicCoverage = async () => {
+    setMechCoverageOpen(true);
+    setMechCoverageTab('state');
+    setMechCoverageFilterState('');
+    setMechCoverageLoading(true);
+    setMechCoverageError('');
+    try {
+      const res = await fetch('/api/super_admin/mechanics/coverage');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load mechanic coverage');
+      setMechCoverage(json || null);
+    } catch (e: any) {
+      setMechCoverageError(e?.message || 'Failed to load mechanic coverage');
+      setMechCoverage(null);
+    } finally {
+      setMechCoverageLoading(false);
+    }
+  };
+
+  const openMechanicsList = async (params: { state: string; district?: string }) => {
+    setMechListOpen(true);
+    setMechListLoading(true);
+    setMechListError('');
+    setMechList([]);
+    const title = params.district ? `${params.district}, ${params.state}` : params.state;
+    setMechListTitle(title);
+    try {
+      const qs = new URLSearchParams();
+      qs.set('state', params.state);
+      if (params.district) qs.set('district', params.district);
+      const res = await fetch(`/api/super_admin/mechanics/coverage/mechanics?${qs.toString()}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load mechanics');
+      setMechList(Array.isArray(json?.mechanics) ? json.mechanics : []);
+    } catch (e: any) {
+      setMechListError(e?.message || 'Failed to load mechanics');
+      setMechList([]);
+    } finally {
+      setMechListLoading(false);
     }
   };
 
@@ -541,7 +905,77 @@ export default function SuperAdminRSASettingsPage() {
     setOverviewSelection(null);
     setOverviewLeads([]);
     loadOverview();
+    loadOverviewTrends();
+    loadEmployeeReport();
   }, [tab, overviewFilters]);
+
+  const stateRows = useMemo(() => overviewData?.breakdowns.state || [], [overviewData]);
+
+  const activeStateRow = useMemo(() => {
+    if (!activeStateId || activeStateId === '__ALL__') return null;
+    return stateRows.find((r) => r.key === activeStateId) || null;
+  }, [stateRows, activeStateId]);
+
+  const activeStateCenter = useMemo(() => {
+    const row = activeStateRow;
+    if (!row) return INDIA_CENTER;
+    const centroid = getStateCentroid(row?.name);
+    return centroid || INDIA_CENTER;
+  }, [activeStateRow]);
+
+  const googleMapsKey =
+    (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '').trim();
+
+  const allStatePoints = useMemo(() => {
+    const pts: GoogleStateHeatmapPoint[] = [];
+    for (const row of stateRows) {
+      const centroid = getStateCentroid(row?.name);
+      if (!centroid) continue;
+      pts.push({
+        id: row.key,
+        name: row.name,
+        lat: centroid.lat,
+        lng: centroid.lng,
+        total: row.total,
+        resolved: row.resolved,
+        company_profit: row.company_profit,
+      });
+    }
+    return pts;
+  }, [stateRows]);
+
+  const allStateLeafletPoints = useMemo(() => {
+    const pts: LeafletStatePoint[] = [];
+    for (const row of stateRows) {
+      const centroid = getStateCentroid(row?.name);
+      if (!centroid) continue;
+      pts.push({
+        id: row.key,
+        name: row.name,
+        lat: centroid.lat,
+        lng: centroid.lng,
+        total: row.total,
+        resolved: row.resolved,
+        company_profit: row.company_profit,
+      });
+    }
+    return pts;
+  }, [stateRows]);
+
+  useEffect(() => {
+    if (tab !== 'overview') return;
+    if (stateRows.length === 0) {
+      if (activeStateId) setActiveStateId('');
+      return;
+    }
+    if (!activeStateId) {
+      setActiveStateId('__ALL__');
+      return;
+    }
+    const stillExists = activeStateId && stateRows.some((m) => m.key === activeStateId);
+    if (stillExists) return;
+    setActiveStateId('__ALL__');
+  }, [tab, stateRows, activeStateId]);
 
   const submitForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -977,12 +1411,13 @@ export default function SuperAdminRSASettingsPage() {
                     <th className="py-2 pr-3">Disposition</th>
                     <th className="py-2 pr-3">Summary</th>
                     <th className="py-2 pr-3">Recording</th>
+                    <th className="py-2 pr-3">Audit</th>
                   </tr>
                 </thead>
                 <tbody>
                   {groupedReportCalls.length === 0 ? (
                     <tr>
-                      <td className="py-3 text-gray-500" colSpan={7}>
+                      <td className="py-3 text-gray-500" colSpan={9}>
                         No calls found.
                       </td>
                     </tr>
@@ -992,6 +1427,7 @@ export default function SuperAdminRSASettingsPage() {
                       const latest = group.calls[0];
                       if (group.calls.length === 1) {
                         const row = latest;
+                        const audit = auditByCallId[row.id] ?? null;
                         return (
                           <tr key={row.id} className="border-b last:border-b-0 align-top">
                             <td className="py-2 pr-3 whitespace-nowrap">
@@ -1037,6 +1473,29 @@ export default function SuperAdminRSASettingsPage() {
                               ) : (
                                 '—'
                               )}
+                            </td>
+                            <td className="py-2 pr-3">
+                              <div className="flex flex-col gap-1">
+                                <div className="text-[10px] text-gray-600">
+                                  {audit?.audit_status ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5">
+                                      <span className="font-semibold text-emerald-700">{audit.audit_status}</span>
+                                      {audit.audit_score != null ? (
+                                        <span className="text-emerald-700">({audit.audit_score}/5)</span>
+                                      ) : null}
+                                    </span>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="text-emerald-700 hover:text-emerald-800 font-semibold"
+                                  onClick={() => openAudit(row)}
+                                >
+                                  Audit
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1100,9 +1559,13 @@ export default function SuperAdminRSASettingsPage() {
                                 {isOpen ? 'Hide' : 'View'}
                               </button>
                             </td>
+                            <td className="py-2 pr-3"> </td>
                           </tr>
                           {isOpen
                             ? group.calls.map((row) => (
+                                (() => {
+                                  const audit = auditByCallId[row.id] ?? null;
+                                  return (
                                 <tr key={row.id} className="border-b last:border-b-0 align-top">
                                   <td className="py-2 pr-3 whitespace-nowrap">
                                     {formatDateTime(row.custanswerstime || row.sarv_created_at || row.created_at)}
@@ -1150,7 +1613,32 @@ export default function SuperAdminRSASettingsPage() {
                                       '—'
                                     )}
                                   </td>
+                                  <td className="py-2 pr-3">
+                                    <div className="flex flex-col gap-1">
+                                      <div className="text-[10px] text-gray-600">
+                                        {audit?.audit_status ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5">
+                                            <span className="font-semibold text-emerald-700">{audit.audit_status}</span>
+                                            {audit.audit_score != null ? (
+                                              <span className="text-emerald-700">({audit.audit_score}/5)</span>
+                                            ) : null}
+                                          </span>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="text-emerald-700 hover:text-emerald-800 font-semibold"
+                                        onClick={() => openAudit(row)}
+                                      >
+                                        Audit
+                                      </button>
+                                    </div>
+                                  </td>
                                 </tr>
+                                  );
+                                })()
                               ))
                             : null}
                         </Fragment>
@@ -1186,6 +1674,19 @@ export default function SuperAdminRSASettingsPage() {
       {tab === 'overview' ? (
         <div className="space-y-6">
           {overviewError ? <div className="text-sm text-red-600">{overviewError}</div> : null}
+          {trendError ? <div className="text-sm text-red-600">{trendError}</div> : null}
+
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              className="btn btn-outline text-xs px-3 py-1.5"
+              onClick={() => setShowProfit((v) => !v)}
+              disabled={overviewLoading}
+              title="Toggle profit visibility"
+            >
+              {showProfit ? 'Hide Profit' : 'Show Profit'}
+            </button>
+          </div>
 
           <div className="bg-white rounded-lg shadow-sm p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1237,11 +1738,30 @@ export default function SuperAdminRSASettingsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="bg-white rounded-lg shadow-sm p-4">
               <div className="text-xs text-gray-500">Total Quoted</div>
               <div className="text-xl font-semibold">
                 {overviewLoading ? '—' : formatCurrency(overviewData?.kpis.total_quoted ?? 0)}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="bg-white rounded-lg shadow-sm p-4 text-left hover:shadow-md transition"
+              onClick={openMechanicCoverage}
+              disabled={overviewLoading}
+              title="View mechanic coverage by state/district"
+            >
+              <div className="text-xs text-gray-500">Total Mechanics</div>
+              <div className="text-xl font-semibold">
+                {overviewLoading ? '—' : (overviewData?.kpis as any)?.total_mechanics ?? 0}
+              </div>
+              <div className="text-[11px] text-blue-600 font-semibold mt-1">View coverage</div>
+            </button>
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="text-xs text-gray-500">Advance Amount</div>
+              <div className="text-xl font-semibold">
+                {overviewLoading ? '—' : formatCurrency((overviewData?.kpis as any)?.advance_amount ?? 0)}
               </div>
             </div>
             <div className="bg-white rounded-lg shadow-sm p-4">
@@ -1251,16 +1771,268 @@ export default function SuperAdminRSASettingsPage() {
               </div>
             </div>
             <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="text-xs text-gray-500">Payment Received</div>
-              <div className="text-xl font-semibold">
-                {overviewLoading ? '—' : formatCurrency(overviewData?.kpis.payment_received ?? 0)}
-              </div>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm p-4">
               <div className="text-xs text-gray-500">Company Profit</div>
               <div className="text-xl font-semibold text-green-600">
-                {overviewLoading ? '—' : formatCurrency(overviewData?.kpis.company_profit ?? 0)}
+                {overviewLoading ? '—' : showProfit ? formatCurrency(overviewData?.kpis.company_profit ?? 0) : '**'}
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+            <div className="bg-white rounded-lg shadow-sm p-4 lg:col-span-2">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-800">
+                    Trend ({trendGranularity === 'hour' ? 'Hourly' : 'Daily'})
+                  </h2>
+                  <div className="text-[11px] text-gray-500">
+                    {formatYMD(overviewFilters.from)} → {formatYMD(overviewFilters.to)} (UTC)
+                  </div>
+                </div>
+                <div className="text-[11px] text-gray-600">4 metrics</div>
+              </div>
+
+              <div className="border rounded-lg p-3">
+                {trendLoading ? (
+                  <div className="text-xs text-gray-500">Loading…</div>
+                ) : trendPoints.length === 0 ? (
+                  <div className="text-xs text-gray-500">No trend data found.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {!showProfit ? (
+                      <div className="text-[11px] text-gray-600">
+                        Profit is hidden. Click <b>Show Profit</b> to show profit line + values.
+                      </div>
+                    ) : null}
+                    <div className="h-44 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={trendPoints.map((p) => ({
+                            ...p,
+                            label:
+                              trendGranularity === 'hour'
+                                ? String(p.date).slice(11, 16) // HH:MM from YYYY-MM-DDTHH:00Z
+                                : String(p.date).slice(5, 10), // MM-DD
+                            profit_visible: showProfit ? p.company_profit : null,
+                          }))}
+                          margin={{ top: 5, right: 8, left: -10, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={12} />
+                          <YAxis hide />
+                          <ReTooltip
+                            content={({ active, payload, label }) => {
+                              if (!active || !payload || payload.length === 0) return null;
+                              const row: any = payload[0]?.payload || {};
+                              const title =
+                                trendGranularity === 'hour'
+                                  ? `${String(row.date).slice(0, 10)} ${String(label)}`
+                                  : String(row.date);
+                              return (
+                                <div className="rounded-lg border bg-white shadow-sm px-3 py-2 text-xs">
+                                  <div className="font-semibold text-gray-900">{title}</div>
+                                  <div className="text-gray-700 mt-1">Requests: <b>{row.total_requests ?? 0}</b></div>
+                                  <div className="text-gray-700">Resolved: <b>{row.resolved ?? 0}</b></div>
+                                  <div className="text-gray-700">Quoted: <b>{formatCurrency(row.total_quoted ?? 0)}</b></div>
+                                  <div className="text-gray-700">
+                                    Profit: <b>{showProfit ? formatCurrency(row.company_profit ?? 0) : '**'}</b>
+                                  </div>
+                                </div>
+                              );
+                            }}
+                          />
+                          <Legend
+                            verticalAlign="top"
+                            height={18}
+                            wrapperStyle={{ fontSize: 10 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="total_requests"
+                            name="Requests"
+                            stroke="#2563eb"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="resolved"
+                            name="Resolved"
+                            stroke="#16a34a"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="total_quoted"
+                            name="Quoted"
+                            stroke="#a855f7"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          {showProfit ? (
+                            <Line
+                              type="monotone"
+                              dataKey="profit_visible"
+                              name="Profit"
+                              stroke="#f59e0b"
+                              strokeWidth={2}
+                              dot={false}
+                            />
+                          ) : null}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="text-[10px] text-gray-500">
+                      Hover/cursor on chart to see values.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm p-4 lg:col-span-3">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-800">Map (State Heatmap)</h2>
+                  <div className="text-[11px] text-gray-500">
+                    Google Map view (select a state from dropdown).
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline text-xs px-3 py-1.5"
+                    onClick={() => {
+                      if (activeStateId === '__ALL__' || !activeStateRow) {
+                        loadOverviewLeads({ type: 'all', value: 'all', label: 'All' });
+                        return;
+                      }
+                      loadOverviewLeads({ type: 'state', value: activeStateRow.key, label: activeStateRow.name });
+                    }}
+                    disabled={overviewLoading}
+                    title="Open customers for selected state (or All)"
+                  >
+                    Open customers
+                  </button>
+                </div>
+              </div>
+
+              {overviewLoading ? (
+                <div className="text-xs text-gray-500">Loading…</div>
+              ) : (overviewData?.breakdowns.state || []).length === 0 ? (
+                <div className="text-xs text-gray-500">No state data found.</div>
+              ) : (
+                (() => {
+                  const rows = overviewData?.breakdowns.state || [];
+                  const sorted = [...rows].sort((a, b) => (b.total || 0) - (a.total || 0));
+                  return (
+                    <div className="space-y-3">
+                      <div className="rounded-lg border overflow-hidden">
+                        <div className="relative h-72">
+                          {activeStateId === '__ALL__' && googleMapsKey ? (
+                            <GoogleStateHeatmapMap
+                              className="w-full h-full"
+                              apiKey={googleMapsKey}
+                              points={allStatePoints}
+                              activeId={null}
+                              showProfit={showProfit}
+                              onSelect={(id) => {
+                                setActiveStateId(id);
+                              }}
+                              onOpenCustomers={(id) => {
+                                const row = stateRows.find((r) => r.key === id);
+                                if (!row) return;
+                                setActiveStateId(id);
+                                loadOverviewLeads({ type: 'state', value: row.key, label: row.name });
+                              }}
+                            />
+                          ) : activeStateId === '__ALL__' ? (
+                            <StateHeatmapLeafletVanillaMap
+                              className="w-full h-full"
+                              points={allStateLeafletPoints}
+                              activeId={null}
+                              showProfit={showProfit}
+                              onSelect={(id) => setActiveStateId(id)}
+                              onOpenCustomers={(id) => {
+                                const row = stateRows.find((r) => r.key === id);
+                                if (!row) return;
+                                setActiveStateId(id);
+                                loadOverviewLeads({ type: 'state', value: row.key, label: row.name });
+                              }}
+                            />
+                          ) : (
+                            <GoogleEmbedMap
+                              className="w-full h-full"
+                              center={activeStateCenter}
+                              zoom={activeStateId === '__ALL__' ? 4 : 6}
+                              query={activeStateId === '__ALL__' ? 'India' : undefined}
+                              overlayLabel={
+                                activeStateId === '__ALL__'
+                                  ? googleMapsKey
+                                    ? 'All states (heatmap)'
+                                    : 'All states (add Google Maps API key for heatmap)'
+                                  : activeStateRow?.name || ''
+                              }
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="md:col-span-2">
+                          <label className="text-xs text-gray-600">State</label>
+                          <select
+                            className="w-full border rounded-md px-3 py-2 text-sm"
+                            value={activeStateId || ''}
+                            onChange={(e) => setActiveStateId(e.target.value)}
+                          >
+                            <option value="__ALL__">All (All states)</option>
+                            {sorted.map((s) => (
+                              <option key={s.key} value={s.key}>
+                                {s.name} ({s.total})
+                              </option>
+                            ))}
+                          </select>
+                          <div className="text-[11px] text-gray-500 mt-1">
+                            Tip: dropdown select karke map center hoga, fir “Open customers”.
+                          </div>
+                        </div>
+                        <div className="rounded-lg border bg-emerald-50 p-3">
+                          <div className="text-xs text-gray-600">Selected</div>
+                          <div className="text-sm font-semibold text-gray-900">
+                            {activeStateId === '__ALL__' ? 'All states' : activeStateRow?.name || '—'}
+                          </div>
+                          <div className="text-[11px] text-gray-700 mt-1">
+                            Total:{' '}
+                            <b>
+                              {activeStateId === '__ALL__'
+                                ? overviewData?.kpis.total_requests ?? 0
+                                : activeStateRow?.total ?? 0}
+                            </b>{' '}
+                            • Solved:{' '}
+                            <b>
+                              {activeStateId === '__ALL__' ? overviewData?.kpis.resolved ?? 0 : activeStateRow?.resolved ?? 0}
+                            </b>
+                          </div>
+                          <div className="text-[11px] text-gray-700">
+                            Profit:{' '}
+                            <b className="text-emerald-900">
+                              {showProfit
+                                ? formatCurrency(
+                                    activeStateId === '__ALL__'
+                                      ? overviewData?.kpis.company_profit ?? 0
+                                      : activeStateRow?.company_profit ?? 0
+                                  )
+                                : '**'}
+                            </b>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
             </div>
           </div>
 
@@ -1298,7 +2070,7 @@ export default function SuperAdminRSASettingsPage() {
                       <td className="py-2 pr-3">{formatRate(row.rate)}</td>
                       <td className="py-2 pr-3">{formatCurrency(row.revenue)}</td>
                       <td className="py-2 pr-3">{formatCurrency(row.mechanic_payment)}</td>
-                      <td className="py-2 pr-3">{formatCurrency(row.company_profit)}</td>
+                      <td className="py-2 pr-3">{showProfit ? formatCurrency(row.company_profit) : '**'}</td>
                     </tr>
                   ))}
                   {overviewLoading || (overviewData?.breakdowns.department || []).length > 0 ? null : (
@@ -1313,9 +2085,19 @@ export default function SuperAdminRSASettingsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="bg-white rounded-lg shadow-sm p-4">
-              <h2 className="text-sm font-semibold text-gray-800 mb-3">District-wise Breakdown</h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-800">District-wise Breakdown</h2>
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                  onClick={() => setDistrictOpen(true)}
+                  disabled={overviewLoading}
+                >
+                  Show more
+                </button>
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-xs sm:text-sm">
                   <thead>
@@ -1326,10 +2108,11 @@ export default function SuperAdminRSASettingsPage() {
                       <th className="py-2 pr-3">Rate</th>
                       <th className="py-2 pr-3">Revenue</th>
                       <th className="py-2 pr-3">Mechanic Payment</th>
+                      <th className="py-2 pr-3">Company Profit</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(overviewData?.breakdowns.district || []).map((row) => (
+                    {(overviewData?.breakdowns.district || []).slice(0, 10).map((row) => (
                       <tr key={row.name} className="border-b last:border-b-0">
                       <td className="py-2 pr-3 font-semibold">
                         <button
@@ -1347,11 +2130,12 @@ export default function SuperAdminRSASettingsPage() {
                         <td className="py-2 pr-3">{formatRate(row.rate)}</td>
                         <td className="py-2 pr-3">{formatCurrency(row.revenue)}</td>
                         <td className="py-2 pr-3">{formatCurrency(row.mechanic_payment)}</td>
+                        <td className="py-2 pr-3">{showProfit ? formatCurrency(row.company_profit) : '**'}</td>
                       </tr>
                     ))}
                     {overviewLoading || (overviewData?.breakdowns.district || []).length > 0 ? null : (
                       <tr>
-                        <td className="py-3 text-gray-500" colSpan={6}>
+                        <td className="py-3 text-gray-500" colSpan={7}>
                           No data found.
                         </td>
                       </tr>
@@ -1372,6 +2156,7 @@ export default function SuperAdminRSASettingsPage() {
                       <th className="py-2 pr-3">Rate</th>
                       <th className="py-2 pr-3">Revenue</th>
                       <th className="py-2 pr-3">Mechanic Payment</th>
+                      <th className="py-2 pr-3">Company Profit</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1391,11 +2176,12 @@ export default function SuperAdminRSASettingsPage() {
                         <td className="py-2 pr-3">{formatRate(row.rate)}</td>
                         <td className="py-2 pr-3">{formatCurrency(row.revenue)}</td>
                         <td className="py-2 pr-3">{formatCurrency(row.mechanic_payment)}</td>
+                        <td className="py-2 pr-3">{showProfit ? formatCurrency(row.company_profit) : '**'}</td>
                       </tr>
                     ))}
                     {overviewLoading || (overviewData?.breakdowns.state || []).length > 0 ? null : (
                       <tr>
-                        <td className="py-3 text-gray-500" colSpan={6}>
+                        <td className="py-3 text-gray-500" colSpan={7}>
                           No data found.
                         </td>
                       </tr>
@@ -1404,44 +2190,200 @@ export default function SuperAdminRSASettingsPage() {
                 </table>
               </div>
             </div>
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-800">Top Mechanics</h2>
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                  onClick={() => setMechanicOpen(true)}
+                  disabled={overviewLoading}
+                >
+                  Show more
+                </button>
+              </div>
+              <div className="overflow-hidden rounded-lg border">
+                {overviewLoading ? (
+                  <div className="text-xs text-gray-500 p-3">Loading…</div>
+                ) : (overviewData?.breakdowns as any)?.mechanic?.length ? (
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr className="text-left">
+                        <th className="py-2 px-3">Mechanic</th>
+                        <th className="py-2 px-3">Solved</th>
+                        <th className="py-2 px-3 text-right">Profit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {((overviewData?.breakdowns as any).mechanic as OverviewBreakdownRow[])
+                        .slice(0, 10)
+                        .map((m) => (
+                          <tr key={m.key} className="border-t">
+                            <td className="py-2 px-3">
+                              <button
+                                type="button"
+                                className="font-semibold text-blue-600 hover:text-blue-700 text-left"
+                                onClick={() => loadOverviewLeads({ type: 'mechanic', value: m.key, label: m.name })}
+                              >
+                                {m.name}
+                              </button>
+                              <div className="text-[10px] text-gray-500">
+                                Paid: <b>{formatCurrency(m.mechanic_payment)}</b>
+                              </div>
+                            </td>
+                            <td className="py-2 px-3 whitespace-nowrap">
+                              <b>{m.resolved}</b> / {m.total}
+                            </td>
+                            <td className="py-2 px-3 text-right whitespace-nowrap">
+                              <span className="font-semibold text-green-700">
+                                {showProfit ? formatCurrency(m.company_profit) : '**'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-xs text-gray-500 p-3">No mechanics found.</div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-4">
-            <h2 className="text-sm font-semibold text-gray-800 mb-3">Employee-wise Breakdown</h2>
+            {(() => {
+              const callMap = new Map(employeeReportRows.map((r) => [r.user_id, r]));
+              const leadRows = overviewData?.breakdowns.employee || [];
+              const leadMap = new Map(leadRows.map((r) => [r.key, r]));
+              const allIds = Array.from(new Set([...Array.from(leadMap.keys()), ...Array.from(callMap.keys())]));
+              const roleRank = (role?: string | null) => {
+                const r = String(role || '').toUpperCase();
+                if (r === 'RSA_MANAGER') return 0;
+                if (r === 'TELECALLER') return 1;
+                return 2;
+              };
+
+              const combined = allIds
+                .map((id) => {
+                  const lead = leadMap.get(id) || null;
+                  const call = callMap.get(id) || null;
+                  const name = lead?.name || call?.name || '—';
+                  const registeredBy = (call as any)?.registered_complaints ?? (lead as any)?.total ?? 0;
+                  const completedBy = (call as any)?.completed_complaints ?? (lead as any)?.resolved ?? 0;
+                  const regResolved = (call as any)?.registered_resolved_complaints ?? 0;
+                  const rate = registeredBy ? (regResolved / registeredBy) * 100 : null;
+                  const quoted = (call as any)?.total_quoted ?? (lead as any)?.revenue ?? 0;
+                  const role = (call as any)?.role || '—';
+                  return { id, name, role, registeredBy, completedBy, rate, quoted, lead, call };
+                })
+                .sort((a, b) => {
+                  const rr = roleRank(a.role) - roleRank(b.role);
+                  if (rr !== 0) return rr;
+                  // case-wise: completed first, then registered
+                  if ((b.completedBy || 0) !== (a.completedBy || 0)) return (b.completedBy || 0) - (a.completedBy || 0);
+                  if ((b.registeredBy || 0) !== (a.registeredBy || 0)) return (b.registeredBy || 0) - (a.registeredBy || 0);
+                  // tie-break: answered calls
+                  const ac = (a.call as any)?.total_answer_calls ?? 0;
+                  const bc = (b.call as any)?.total_answer_calls ?? 0;
+                  return bc - ac;
+                });
+              const fmt = (v: number | null | undefined) => (v == null ? '—' : `${Number(v).toFixed(1)}/5`);
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold text-gray-800">Employee-wise Breakdown</h2>
+                    {employeeReportLoading ? <div className="text-xs text-gray-500">Loading call metrics…</div> : null}
+                  </div>
+                  {employeeReportError ? <div className="text-xs text-red-600 mb-2">{employeeReportError}</div> : null}
             <div className="overflow-x-auto">
               <table className="min-w-full text-xs sm:text-sm">
                 <thead>
                   <tr className="text-left text-gray-600 border-b">
                     <th className="py-2 pr-3">Employee</th>
-                    <th className="py-2 pr-3">Total</th>
-                    <th className="py-2 pr-3">Resolved</th>
+                    <th className="py-2 pr-3">Role</th>
+                    <th className="py-2 pr-3">Registered By</th>
+                    <th className="py-2 pr-3">Completed By</th>
                     <th className="py-2 pr-3">Rate</th>
-                    <th className="py-2 pr-3">Revenue</th>
+                    <th className="py-2 pr-3">Quoted</th>
+                    <th className="py-2 pr-3">Advance</th>
+                    <th className="py-2 pr-3">Reg Profit</th>
+                    <th className="py-2 pr-3">Self Done (Mech/Profit)</th>
+                    <th className="py-2 pr-3">Completed Only (Mech/Profit)</th>
+                    <th className="py-2 pr-3">Answered Calls</th>
+                    <th className="py-2 pr-3">Avg Call Rating</th>
+                    <th className="py-2 pr-3">Avg Audit</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(overviewData?.breakdowns.employee || []).map((row) => (
-                    <tr key={row.name} className="border-b last:border-b-0">
-                      <td className="py-2 pr-3 font-semibold">
-                        <button
-                          type="button"
-                          className="text-blue-600 hover:text-blue-700"
-                          onClick={() =>
-                            loadOverviewLeads({ type: 'employee', value: row.key, label: row.name })
-                          }
-                        >
-                          {row.name}
-                        </button>
-                      </td>
-                      <td className="py-2 pr-3">{row.total}</td>
-                      <td className="py-2 pr-3">{row.resolved}</td>
-                      <td className="py-2 pr-3">{formatRate(row.rate)}</td>
-                      <td className="py-2 pr-3">{formatCurrency(row.revenue)}</td>
-                    </tr>
-                  ))}
-                  {overviewLoading || (overviewData?.breakdowns.employee || []).length > 0 ? null : (
+                  {combined.map((row, idx) => {
+                    const call = row.call as any;
+                    const groupLabel =
+                      String(row.role || '').toUpperCase() === 'RSA_MANAGER'
+                        ? 'RSA Managers'
+                        : String(row.role || '').toUpperCase() === 'TELECALLER'
+                          ? 'Telecallers'
+                          : 'Others';
+                    const prev = idx > 0 ? combined[idx - 1] : null;
+                    const prevGroup =
+                      prev
+                        ? String(prev.role || '').toUpperCase() === 'RSA_MANAGER'
+                          ? 'RSA Managers'
+                          : String(prev.role || '').toUpperCase() === 'TELECALLER'
+                            ? 'Telecallers'
+                            : 'Others'
+                        : null;
+                    return (
+                      <Fragment key={row.id}>
+                        {idx === 0 || groupLabel !== prevGroup ? (
+                        <tr className="bg-gray-50 border-b">
+                            <td className="py-2 px-3 text-xs font-semibold text-gray-700" colSpan={13}>
+                              {groupLabel}
+                            </td>
+                          </tr>
+                        ) : null}
+                        <tr className="border-b last:border-b-0">
+                        <td className="py-2 pr-3 font-semibold">
+                          <button
+                            type="button"
+                            className="text-blue-600 hover:text-blue-700"
+                            onClick={() => loadOverviewLeads({ type: 'employee', value: row.id, label: row.name })}
+                            disabled={!row.id}
+                            title="View employee customers"
+                          >
+                            {row.name}
+                          </button>
+                        </td>
+                        <td className="py-2 pr-3">{row.role || '—'}</td>
+                        <td className="py-2 pr-3">{row.registeredBy}</td>
+                        <td className="py-2 pr-3">{row.completedBy}</td>
+                        <td className="py-2 pr-3">{row.rate == null ? '—' : formatRate(row.rate)}</td>
+                        <td className="py-2 pr-3">{formatCurrency(row.quoted)}</td>
+                        <td className="py-2 pr-3">{formatCurrency(call?.registered_advance_amount ?? 0)}</td>
+                        <td className="py-2 pr-3 font-semibold text-green-700">
+                          {showProfit ? formatCurrency(call?.registered_profit ?? 0) : '**'}
+                        </td>
+                        <td className="py-2 pr-3 whitespace-nowrap">
+                          {formatCurrency(call?.self_completed_mechanic_payment ?? 0)} /{' '}
+                          <span className="font-semibold text-green-700">
+                            {showProfit ? formatCurrency(call?.self_completed_profit ?? 0) : '**'}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 whitespace-nowrap">
+                          {formatCurrency(call?.completed_only_mechanic_payment ?? 0)} /{' '}
+                          <span className="font-semibold text-green-700">
+                            {showProfit ? formatCurrency(call?.completed_only_profit ?? 0) : '**'}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3">{call?.total_answer_calls ?? 0}</td>
+                        <td className="py-2 pr-3">{fmt(call?.avg_call_rating ?? null)}</td>
+                        <td className="py-2 pr-3">{fmt(call?.avg_audit_rating ?? null)}</td>
+                        </tr>
+                      </Fragment>
+                    );
+                  })}
+                  {overviewLoading || combined.length > 0 ? null : (
                     <tr>
-                      <td className="py-3 text-gray-500" colSpan={5}>
+                      <td className="py-3 text-gray-500" colSpan={13}>
                         No data found.
                       </td>
                     </tr>
@@ -1449,11 +2391,17 @@ export default function SuperAdminRSASettingsPage() {
                 </tbody>
               </table>
             </div>
+                  <div className="text-[11px] text-gray-500 mt-2">
+                    Note: call metrics come from SARV calls and audits in the selected date range.
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {overviewSelection ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-              <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl max-h-[80vh] overflow-hidden">
+            <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/40 px-4">
+              <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl max-h-[80vh] overflow-hidden flex flex-col">
                 <div className="flex items-center justify-between px-4 py-3 border-b">
                   <div>
                     <h2 className="text-sm font-semibold text-gray-800">
@@ -1470,7 +2418,7 @@ export default function SuperAdminRSASettingsPage() {
                   </button>
                 </div>
                 {overviewLeadsError ? <div className="text-sm text-red-600 px-4 py-2">{overviewLeadsError}</div> : null}
-                <div className="overflow-auto">
+                <div className="flex-1 overflow-auto">
                   <table className="min-w-full text-xs sm:text-sm">
                     <thead>
                       <tr className="text-left text-gray-600 border-b">
@@ -1520,13 +2468,148 @@ export default function SuperAdminRSASettingsPage() {
               </div>
             </div>
           ) : null}
+
+          {mechanicOpen ? (
+            <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/40 px-4">
+              <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl max-h-[80vh] overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between px-4 py-3 border-b">
+                  <div>
+                    <h2 className="text-sm font-semibold text-gray-800">Mechanic Performance</h2>
+                    <div className="text-xs text-gray-500">Solved cases, payouts, profit</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline text-xs px-3 py-1.5"
+                    onClick={() => setMechanicOpen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="flex-1 overflow-auto">
+                  <table className="min-w-full text-xs sm:text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-600 border-b">
+                        <th className="py-2 px-4">Mechanic</th>
+                        <th className="py-2 px-4">Total</th>
+                        <th className="py-2 px-4">Solved</th>
+                        <th className="py-2 px-4">Rate</th>
+                        <th className="py-2 px-4">Quoted</th>
+                        <th className="py-2 px-4">Mechanic Paid</th>
+                        <th className="py-2 px-4">Company Profit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {((overviewData?.breakdowns as any)?.mechanic || []).length === 0 ? (
+                        <tr>
+                          <td className="py-3 text-gray-500 px-4" colSpan={7}>
+                            No mechanics found.
+                          </td>
+                        </tr>
+                      ) : (
+                        ((overviewData?.breakdowns as any).mechanic as OverviewBreakdownRow[]).map((m) => (
+                          <tr key={m.key} className="border-b last:border-b-0">
+                            <td className="py-2 px-4 font-semibold">
+                              <button
+                                type="button"
+                                className="text-blue-600 hover:text-blue-700 text-left"
+                                onClick={() => {
+                                  setMechanicOpen(false);
+                                  loadOverviewLeads({ type: 'mechanic', value: m.key, label: m.name });
+                                }}
+                              >
+                                {m.name}
+                              </button>
+                            </td>
+                            <td className="py-2 px-4">{m.total}</td>
+                            <td className="py-2 px-4">{m.resolved}</td>
+                            <td className="py-2 px-4">{formatRate(m.rate)}</td>
+                            <td className="py-2 px-4">{formatCurrency(m.revenue)}</td>
+                            <td className="py-2 px-4">{formatCurrency(m.mechanic_payment)}</td>
+                            <td className="py-2 px-4">{showProfit ? formatCurrency(m.company_profit) : '**'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* District-wise breakdown (Show more) */}
+      {districtOpen ? (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-800">All Districts</h2>
+                <div className="text-xs text-gray-500">Click a district to open customers.</div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline text-xs px-3 py-1.5"
+                onClick={() => setDistrictOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto">
+              <table className="min-w-full text-xs sm:text-sm">
+                <thead className="bg-gray-50 text-gray-600 sticky top-0">
+                  <tr className="text-left border-b">
+                    <th className="py-2 px-4">District</th>
+                    <th className="py-2 px-4">Total</th>
+                    <th className="py-2 px-4">Resolved</th>
+                    <th className="py-2 px-4">Rate</th>
+                    <th className="py-2 px-4">Revenue</th>
+                    <th className="py-2 px-4">Mechanic Payment</th>
+                    <th className="py-2 px-4">Company Profit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(overviewData?.breakdowns.district || []).length === 0 ? (
+                    <tr>
+                      <td className="py-3 px-4 text-gray-500" colSpan={7}>
+                        {overviewLoading ? 'Loading…' : 'No data found.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    (overviewData?.breakdowns.district || []).map((row) => (
+                      <tr key={row.key} className="border-b last:border-b-0">
+                        <td className="py-2 px-4 font-semibold">
+                          <button
+                            type="button"
+                            className="text-blue-600 hover:text-blue-700"
+                            onClick={() => {
+                              setDistrictOpen(false);
+                              loadOverviewLeads({ type: 'district', value: row.key, label: row.name });
+                            }}
+                          >
+                            {row.name}
+                          </button>
+                        </td>
+                        <td className="py-2 px-4">{row.total}</td>
+                        <td className="py-2 px-4">{row.resolved}</td>
+                        <td className="py-2 px-4">{formatRate(row.rate)}</td>
+                        <td className="py-2 px-4">{formatCurrency(row.revenue)}</td>
+                        <td className="py-2 px-4">{formatCurrency(row.mechanic_payment)}</td>
+                        <td className="py-2 px-4">{showProfit ? formatCurrency(row.company_profit) : '**'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       ) : null}
 
       {/* Summary modal should render regardless of selected tab */}
       {summaryOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white w-full max-w-4xl rounded-xl shadow-lg overflow-hidden">
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white w-full max-w-4xl max-h-[80vh] rounded-xl shadow-lg overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <div>
                 <div className="text-sm font-semibold text-gray-900">AI Summary</div>
@@ -1547,7 +2630,7 @@ export default function SuperAdminRSASettingsPage() {
                 </button>
               </div>
             </div>
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 flex-1 overflow-auto">
               {regenError ? (
                 <div className="text-xs sm:text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                   {regenError}
@@ -1776,23 +2859,87 @@ export default function SuperAdminRSASettingsPage() {
                             <summary className="cursor-pointer text-xs sm:text-sm font-semibold text-gray-700">
                               Full Transcription
                             </summary>
-                            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div className="rounded-lg border bg-gray-50 p-3">
-                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
-                                  Customer
+                            <div className="mt-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <div className="inline-flex rounded-lg border bg-gray-50 p-1 text-xs">
+                                  <button
+                                    type="button"
+                                    className={`px-2 py-1 rounded-md ${
+                                      transcriptionView === 'raw'
+                                        ? 'bg-white shadow-sm text-gray-900'
+                                        : 'text-gray-600 hover:text-gray-800'
+                                    }`}
+                                    onClick={() => setTranscriptionView('raw')}
+                                  >
+                                    Raw (from recording)
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`px-2 py-1 rounded-md ${
+                                      transcriptionView === 'split'
+                                        ? 'bg-white shadow-sm text-gray-900'
+                                        : 'text-gray-600 hover:text-gray-800'
+                                    }`}
+                                    onClick={() => setTranscriptionView('split')}
+                                  >
+                                    AI speaker split
+                                  </button>
                                 </div>
-                                <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
-                                  {parsed.transcriptionCustomer || '—'}
-                                </div>
+
+                                {transcriptionView === 'split' ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline text-xs px-3 py-1.5"
+                                    onClick={() => setSwapSpeakers((v) => !v)}
+                                  >
+                                    Swap Customer/Employee
+                                  </button>
+                                ) : null}
                               </div>
-                              <div className="rounded-lg border bg-gray-50 p-3">
-                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
-                                  Employee
+
+                              {transcriptionView === 'raw' ? (
+                                <div className="rounded-lg border bg-gray-50 p-3">
+                                  <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                    Transcription
+                                  </div>
+                                  <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                    {String(summaryCall?.transcription || '').trim() ||
+                                      (parsed.transcriptionCustomer || parsed.transcriptionEmployee
+                                        ? [parsed.transcriptionCustomer, parsed.transcriptionEmployee]
+                                            .filter(Boolean)
+                                            .join('\n\n')
+                                        : '—')}
+                                  </div>
+                                  <div className="text-[11px] text-gray-500 mt-2">
+                                    Note: this is the raw transcription generated directly from the recording.
+                                  </div>
                                 </div>
-                                <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
-                                  {parsed.transcriptionEmployee || '—'}
+                              ) : (
+                                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="rounded-lg border bg-gray-50 p-3">
+                                    <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                      Customer
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                      {(swapSpeakers ? parsed.transcriptionEmployee : parsed.transcriptionCustomer) ||
+                                        '—'}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg border bg-gray-50 p-3">
+                                    <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                      Employee
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                      {(swapSpeakers ? parsed.transcriptionCustomer : parsed.transcriptionEmployee) ||
+                                        '—'}
+                                    </div>
+                                  </div>
+                                  <div className="md:col-span-2 text-[11px] text-gray-500">
+                                    Note: speaker split is best-effort AI formatting; use “Raw” if speakers look
+                                    swapped or unclear.
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </div>
                           </details>
                         </div>
@@ -1851,6 +2998,335 @@ export default function SuperAdminRSASettingsPage() {
               ) : (
                 <div className="text-sm text-gray-600">Summary not available.</div>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Audit modal */}
+      {auditOpen ? (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white w-full max-w-3xl max-h-[80vh] rounded-xl shadow-lg overflow-hidden flex flex-col">
+            <div className="bg-emerald-700 text-white px-5 py-4 flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="text-lg font-semibold">Call Audit</div>
+                <div className="text-xs opacity-90 truncate">Call ID: {auditCall?.callid || auditCall?.id || '—'}</div>
+              </div>
+              <button type="button" className="text-white/80 hover:text-white text-xl" onClick={closeAudit}>
+                ×
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 flex-1 overflow-auto">
+              {auditError ? (
+                <div className="text-xs sm:text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {auditError}
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-lg border bg-emerald-50 p-4">
+                  <div className="text-xs text-gray-600">Customer</div>
+                  <div className="text-xl font-semibold text-gray-900">{auditCall?.cnumber || '—'}</div>
+                </div>
+                <div className="rounded-lg border bg-emerald-50 p-4">
+                  <div className="text-xs text-gray-600">Agent</div>
+                  <div className="text-xl font-semibold text-gray-900">
+                    {auditCall?.assignee_name ||
+                      auditCall?.assignee_email ||
+                      auditCall?.assignee_phone ||
+                      auditCall?.assigned_user_id ||
+                      '—'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-gray-600">Audit Status</label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                    value={auditForm.audit_status}
+                    onChange={(e) => setAuditForm((f) => ({ ...f, audit_status: e.target.value }))}
+                    disabled={auditLoading || auditSaving}
+                  >
+                    <option value="">Select status...</option>
+                    <option value="PASS">PASS</option>
+                    <option value="FAIL">FAIL</option>
+                    <option value="NEEDS_IMPROVEMENT">NEEDS_IMPROVEMENT</option>
+                    <option value="FOLLOW_UP">FOLLOW_UP</option>
+                    <option value="INVALID_CALL">INVALID_CALL</option>
+                    <option value="OTHER">OTHER</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Score</label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                    value={auditForm.audit_score}
+                    onChange={(e) => setAuditForm((f) => ({ ...f, audit_score: e.target.value }))}
+                    disabled={auditLoading || auditSaving}
+                  >
+                    <option value="">—</option>
+                    <option value="5">5</option>
+                    <option value="4">4</option>
+                    <option value="3">3</option>
+                    <option value="2">2</option>
+                    <option value="1">1</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-600">Feedback</label>
+                <textarea
+                  className="w-full border rounded-md px-3 py-2 text-sm min-h-[140px]"
+                  placeholder="Write audit notes / feedback..."
+                  value={auditForm.feedback}
+                  onChange={(e) => setAuditForm((f) => ({ ...f, feedback: e.target.value }))}
+                  disabled={auditLoading || auditSaving}
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button type="button" className="btn btn-outline text-sm px-5 py-2" onClick={closeAudit} disabled={auditSaving}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn text-sm px-5 py-2 bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-60"
+                  onClick={saveAudit}
+                  disabled={auditSaving || auditLoading || !auditForm.audit_status}
+                >
+                  {auditSaving ? 'Saving…' : 'Save Audit'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Mechanic coverage modal */}
+      {mechCoverageOpen ? (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-800">Mechanic Coverage</h2>
+                <div className="text-xs text-gray-500">Where we can provide service (from mechanic service areas)</div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline text-xs px-3 py-1.5"
+                onClick={() => setMechCoverageOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 flex-1 overflow-auto">
+              {mechCoverageError ? (
+                <div className="text-sm text-red-600">{mechCoverageError}</div>
+              ) : null}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-lg border bg-gray-50 p-3">
+                  <div className="text-xs text-gray-600">Total Mechanics (All)</div>
+                  <div className="text-lg font-semibold">{mechCoverage?.kpis.total_mechanics_all ?? mechCoverage?.kpis.total_mechanics ?? '—'}</div>
+                </div>
+                <div className="rounded-lg border bg-gray-50 p-3">
+                  <div className="text-xs text-gray-600">Active Mechanics</div>
+                  <div className="text-lg font-semibold">{mechCoverage?.kpis.total_mechanics_active ?? '—'}</div>
+                </div>
+                <div className="rounded-lg border bg-gray-50 p-3">
+                  <div className="text-xs text-gray-600">Active With Coverage</div>
+                  <div className="text-lg font-semibold">{mechCoverage?.kpis.mechanics_with_coverage ?? '—'}</div>
+                  <div className="text-[10px] text-gray-500">Scope: {mechCoverage?.kpis.breakdown_scope || 'active'}</div>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-gray-600">
+                Note: KPI card shows <b>All mechanics</b>, but coverage breakdown is based on <b>active</b> mechanics (serviceable areas).
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className={mechCoverageTab === 'state' ? 'btn btn-primary text-xs px-3 py-1.5' : 'btn btn-outline text-xs px-3 py-1.5'}
+                  onClick={() => setMechCoverageTab('state')}
+                >
+                  State-wise
+                </button>
+                <button
+                  type="button"
+                  className={mechCoverageTab === 'district' ? 'btn btn-primary text-xs px-3 py-1.5' : 'btn btn-outline text-xs px-3 py-1.5'}
+                  onClick={() => setMechCoverageTab('district')}
+                >
+                  District-wise
+                </button>
+                {mechCoverageLoading ? <div className="text-xs text-gray-500 ml-2">Loading…</div> : null}
+              </div>
+
+              <div className="overflow-auto border rounded-lg">
+                {mechCoverageTab === 'state' ? (
+                  <table className="min-w-full text-xs sm:text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr className="text-left border-b">
+                        <th className="py-2 px-3">State</th>
+                        <th className="py-2 px-3">Mechanics</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(mechCoverage?.breakdowns.state || []).length === 0 ? (
+                        <tr>
+                          <td className="py-3 px-3 text-gray-500" colSpan={2}>
+                            {mechCoverageLoading ? 'Loading…' : 'No data found.'}
+                          </td>
+                        </tr>
+                      ) : (
+                        (mechCoverage?.breakdowns.state || []).map((r) => (
+                          <tr key={r.state} className="border-b last:border-b-0">
+                            <td className="py-2 px-3 font-semibold">
+                              <button
+                                type="button"
+                                className="text-blue-600 hover:text-blue-700"
+                                title="Click to view districts"
+                                onClick={() => {
+                                  setMechCoverageFilterState(r.state);
+                                  setMechCoverageTab('district');
+                                }}
+                              >
+                                {r.state}
+                              </button>
+                            </td>
+                            <td className="py-2 px-3">{r.mechanics}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div>
+                    {mechCoverageFilterState ? (
+                      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
+                        <div className="text-xs text-gray-700">
+                          Filter: <b>{mechCoverageFilterState}</b>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                          onClick={() => setMechCoverageFilterState('')}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    ) : null}
+                    <table className="min-w-full text-xs sm:text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr className="text-left border-b">
+                        <th className="py-2 px-3">District</th>
+                        <th className="py-2 px-3">State</th>
+                        <th className="py-2 px-3">Mechanics</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(mechCoverage?.breakdowns.district || []).length === 0 ? (
+                        <tr>
+                          <td className="py-3 px-3 text-gray-500" colSpan={3}>
+                            {mechCoverageLoading ? 'Loading…' : 'No data found.'}
+                          </td>
+                        </tr>
+                      ) : (
+                        (mechCoverage?.breakdowns.district || [])
+                          .filter((r) => (mechCoverageFilterState ? r.state === mechCoverageFilterState : true))
+                          .map((r, idx) => (
+                            <tr key={`${r.district}-${r.state}-${idx}`} className="border-b last:border-b-0">
+                              <td className="py-2 px-3 font-semibold">
+                                <button
+                                  type="button"
+                                  className="text-blue-600 hover:text-blue-700"
+                                  title="Click to view mechanics list"
+                                  onClick={() => openMechanicsList({ state: r.state, district: r.district })}
+                                >
+                                  {r.district}
+                                </button>
+                              </td>
+                              <td className="py-2 px-3">{r.state}</td>
+                              <td className="py-2 px-3">{r.mechanics}</td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Mechanics list modal (drill-down) */}
+      {mechListOpen ? (
+        <div className="fixed inset-0 z-[6000] flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-800">Mechanics - {mechListTitle || '—'}</h2>
+                {mechListLoading ? <div className="text-xs text-gray-500">Loading…</div> : null}
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline text-xs px-3 py-1.5"
+                onClick={() => setMechListOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="p-4 space-y-2 flex-1 overflow-auto">
+              {mechListError ? <div className="text-sm text-red-600">{mechListError}</div> : null}
+              <div className="text-xs text-gray-600">Total mechanics: <b>{mechList.length}</b></div>
+
+              <div className="overflow-auto border rounded-lg">
+                <table className="min-w-full text-xs sm:text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr className="text-left border-b">
+                      <th className="py-2 px-3">Mechanic</th>
+                      <th className="py-2 px-3">Phone</th>
+                      <th className="py-2 px-3">Code</th>
+                      <th className="py-2 px-3">Matched pincodes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mechListLoading ? (
+                      <tr>
+                        <td className="py-3 px-3 text-gray-500" colSpan={4}>Loading…</td>
+                      </tr>
+                    ) : mechList.length === 0 ? (
+                      <tr>
+                        <td className="py-3 px-3 text-gray-500" colSpan={4}>No mechanics found.</td>
+                      </tr>
+                    ) : (
+                      mechList.map((m) => (
+                        <tr key={m.id} className="border-b last:border-b-0">
+                          <td className="py-2 px-3 font-semibold">{m.mechanic_name || '—'}</td>
+                          <td className="py-2 px-3">{m.number || '—'}</td>
+                          <td className="py-2 px-3">{m.code || '—'}</td>
+                          <td className="py-2 px-3">
+                            <div className="text-[11px] text-gray-700">
+                              <b>{m.matched_pincode_count}</b>
+                              {Array.isArray(m.matched_pincodes) && m.matched_pincodes.length ? (
+                                <span className="text-gray-500"> • {m.matched_pincodes.join(', ')}</span>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>

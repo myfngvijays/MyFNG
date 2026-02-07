@@ -71,7 +71,11 @@ export async function GET(request: NextRequest) {
     const filterType = String(searchParams.get('type') || '').trim();
     const filterValue = String(searchParams.get('value') || '').trim();
 
-    if (!filterType || !filterValue) {
+    if (!filterType) {
+      return NextResponse.json({ error: 'type is required' }, { status: 400 });
+    }
+    // For "all", value is optional.
+    if (filterType !== 'all' && !filterValue) {
       return NextResponse.json({ error: 'type and value are required' }, { status: 400 });
     }
 
@@ -90,6 +94,8 @@ export async function GET(request: NextRequest) {
         lead_registered_at,
         address,
         pincode,
+        assigned_mechanic_id,
+        assigned_mechanic_name,
         assigned_manager_id,
         assigned_manager_name,
         registered_by_id,
@@ -129,6 +135,7 @@ export async function GET(request: NextRequest) {
     }
 
     const filtered = rows.filter((lead: any) => {
+      if (filterType === 'all') return true;
       if (filterType === 'department') {
         const department = normalizeKey(lead.service_type || lead.service_tag, 'Unknown');
         return department === filterValue;
@@ -139,6 +146,13 @@ export async function GET(request: NextRequest) {
           return employeeId === 'Unassigned';
         }
         return employeeId === filterValue;
+      }
+      if (filterType === 'mechanic') {
+        const mechanicId = normalizeKey(lead.assigned_mechanic_id, 'Unassigned');
+        if (filterValue === 'Unassigned') {
+          return mechanicId === 'Unassigned';
+        }
+        return mechanicId === filterValue;
       }
       if (filterType === 'district' || filterType === 'state') {
         const normalizedPin = normalizePincode(lead.pincode);

@@ -1244,4 +1244,3 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
 export default function RSALeadDetailPage() {
   return <RSALeadDetailPageView />;
 }
-

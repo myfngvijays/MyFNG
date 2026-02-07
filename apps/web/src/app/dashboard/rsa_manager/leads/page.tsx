@@ -27,7 +27,7 @@ function RSALeadsListContent() {
     unassigned_leads: 0
   });
   
-  const [filter, setFilter] = useState<'all' | 'assigned' | 'unassigned' | 'pending' | 'completed'>('all');
+  const [filter, setFilter] = useState<'assigned' | 'pending' | 'completed' | 'cancelled'>('assigned');
   const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState<any>(null);
 
@@ -64,16 +64,38 @@ function RSALeadsListContent() {
     setLoading(true);
     try {
       const managerId = user?.id;
-      const status = filter === 'all' ? '' : filter === 'assigned' ? 'assigned' : filter;
-      const showAll = filter === 'all' || filter === 'unassigned';
-      
-      const [leadsData, statsData] = await Promise.all([
-        RSAManagerService.getAllLeads(managerId, status, showAll),
-        managerId ? RSAManagerService.getManagerStatistics(managerId) : Promise.resolve(stats)
-      ]);
-      
-      setLeads(leadsData);
-      setStats(statsData);
+
+      // Always enforce "only my assigned complaints" on this page.
+      const leadsData = await RSAManagerService.getAllLeads(managerId, '', false);
+      const assignedOnly = (Array.isArray(leadsData) ? leadsData : []).filter(
+        (lead: any) => lead?.assigned_manager_id && lead.assigned_manager_id === managerId
+      );
+
+      const normalizeStatus = (lead: any) =>
+        String(lead?.lead_status || lead?.complaint_status || '').toLowerCase();
+
+      const isCompleted = (s: string) => s === 'completed' || s === 'closed';
+      const isCancelled = (s: string) => s === 'cancelled';
+      const isPending = (s: string) => !isCompleted(s) && !isCancelled(s);
+
+      const filteredByStatus = assignedOnly.filter((lead: any) => {
+        const s = normalizeStatus(lead);
+        if (filter === 'assigned') return true;
+        if (filter === 'pending') return isPending(s);
+        if (filter === 'completed') return isCompleted(s);
+        if (filter === 'cancelled') return isCancelled(s);
+        return true;
+      });
+
+      setLeads(filteredByStatus);
+      setStats({
+        total_leads: assignedOnly.length,
+        pending_leads: assignedOnly.filter((l: any) => isPending(normalizeStatus(l))).length,
+        completed_leads: assignedOnly.filter((l: any) => isCompleted(normalizeStatus(l))).length,
+        cancelled_leads: assignedOnly.filter((l: any) => isCancelled(normalizeStatus(l))).length,
+        assigned_to_me: assignedOnly.length,
+        unassigned_leads: 0,
+      });
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -170,7 +192,7 @@ function RSALeadsListContent() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {(['all', 'assigned', 'unassigned', 'pending', 'completed'] as const).map((f) => (
+              {(['assigned', 'pending', 'completed', 'cancelled'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
@@ -180,7 +202,7 @@ function RSALeadsListContent() {
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                  {f === 'assigned' ? 'My Complaints' : f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
             </div>

@@ -21,6 +21,11 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_live_Rgt6qLXXubyJqO
 RAZORPAY_KEY_SECRET=tyYNU0O5YumXdWH20imreikK
 RAZORPAY_WEBHOOK_SECRET=your_webhook_secret_from_razorpay_dashboard
+
+# Car Service Enquiry (server-side only)
+CAR_SERVICE_ENQUIRY_POST_URL=https://022os10kr2.execute-api.ap-south-1.amazonaws.com/enterprise/66f6bc6faf29b5a6f29c9bbf/autoupdatelead
+# Optional override (default: DL-Service)
+CAR_SERVICE_ENQUIRY_LEADTAG=DL-Service
 ```
 
 ### Where to Get Values:

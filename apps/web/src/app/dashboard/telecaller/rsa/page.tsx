@@ -3,9 +3,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSALeadCreateForm } from '@/components/telecaller/RSALeadCreateForm';
+import { formatDateTimeIST } from '@/lib/utils';
 import { CheckCircle, Clock, FileText, RefreshCw } from 'lucide-react';
 
-type TabKey = 'overview' | 'create' | 'created' | 'call_report';
+type TabKey = 'overview' | 'create' | 'created' | 'call_report' | 'car_service';
 
 type SarvCallRow = {
   id: string;
@@ -30,6 +31,15 @@ type SarvCallRow = {
   disposition_updated_at: string | null;
   sarv_created_at: string | null;
   created_at: string;
+};
+
+type SarvCallAudit = {
+  id: string;
+  sarv_call_id: string;
+  audit_status: string | null;
+  audit_score: number | null;
+  feedback: string | null;
+  audited_at: string | null;
 };
 
 const DISPOSITION_OPTIONS = [
@@ -236,7 +246,14 @@ export default function TelecallerRSAPage() {
   const [citySuggestOpen, setCitySuggestOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryCall, setSummaryCall] = useState<SarvCallRow | null>(null);
+  const [transcriptionView, setTranscriptionView] = useState<'raw' | 'split'>('raw');
+  const [swapSpeakers, setSwapSpeakers] = useState(false);
   const [expandedCustomers, setExpandedCustomers] = useState<Record<string, boolean>>({});
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditCall, setAuditCall] = useState<SarvCallRow | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState('');
+  const [auditByCallId, setAuditByCallId] = useState<Record<string, SarvCallAudit | null>>({});
 
   const groupedCalls = useMemo(() => groupCallsByCustomer(calls), [calls]);
   const [sarvOpen, setSarvOpen] = useState(false);
@@ -244,6 +261,19 @@ export default function TelecallerRSAPage() {
   const [sarvCalls, setSarvCalls] = useState<any[]>([]);
   const [sarvLoading, setSarvLoading] = useState(false);
   const [sarvError, setSarvError] = useState('');
+  const [carForm, setCarForm] = useState({
+    customer_name: '',
+    customer_phone: '',
+    car_model: '',
+    remark: '',
+  });
+  const [carSubmitLoading, setCarSubmitLoading] = useState(false);
+  const [carSubmitError, setCarSubmitError] = useState('');
+  const [carSubmitSuccess, setCarSubmitSuccess] = useState('');
+  const [carViewOpen, setCarViewOpen] = useState(false);
+  const [carViewLoading, setCarViewLoading] = useState(false);
+  const [carViewError, setCarViewError] = useState('');
+  const [carEnquiries, setCarEnquiries] = useState<any[]>([]);
 
   const stats = useMemo(() => {
     const total = leads.length;
@@ -304,6 +334,51 @@ export default function TelecallerRSAPage() {
     }
   };
 
+  const fetchCarEnquiries = async () => {
+    setCarViewLoading(true);
+    setCarViewError('');
+    try {
+      const res = await fetch('/api/telecaller/car-service-enquiries?limit=200');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load enquiries');
+      setCarEnquiries(Array.isArray(json?.enquiries) ? json.enquiries : []);
+    } catch (e: any) {
+      setCarViewError(e?.message || 'Failed to load enquiries');
+      setCarEnquiries([]);
+    } finally {
+      setCarViewLoading(false);
+    }
+  };
+
+  const submitCarEnquiry = async () => {
+    setCarSubmitLoading(true);
+    setCarSubmitError('');
+    setCarSubmitSuccess('');
+    try {
+      const res = await fetch('/api/telecaller/car-service-enquiries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: carForm.customer_name,
+          customer_phone: carForm.customer_phone,
+          car_model: carForm.car_model,
+          remark: carForm.remark,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to submit enquiry');
+      setCarSubmitSuccess('Enquiry submitted successfully.');
+      setCarForm({ customer_name: '', customer_phone: '', car_model: '', remark: '' });
+      if (carViewOpen) {
+        fetchCarEnquiries();
+      }
+    } catch (e: any) {
+      setCarSubmitError(e?.message || 'Failed to submit enquiry');
+    } finally {
+      setCarSubmitLoading(false);
+    }
+  };
+
   const fetchCalls = async () => {
     setCallLoading(true);
     setCallError('');
@@ -354,11 +429,43 @@ export default function TelecallerRSAPage() {
   const openSummary = (call: SarvCallRow) => {
     setSummaryCall(call);
     setSummaryOpen(true);
+    setTranscriptionView('raw');
+    setSwapSpeakers(false);
   };
 
   const closeSummary = () => {
     setSummaryOpen(false);
     setSummaryCall(null);
+    setTranscriptionView('raw');
+    setSwapSpeakers(false);
+  };
+
+  const openAudit = async (call: SarvCallRow) => {
+    setAuditCall(call);
+    setAuditOpen(true);
+    setAuditError('');
+    if (!call?.id) return;
+
+    setAuditLoading(true);
+    try {
+      const res = await fetch(`/api/sarv-calls/${encodeURIComponent(String(call.id))}/audit`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load audit');
+      const audit = (json?.audit || null) as SarvCallAudit | null;
+      setAuditByCallId((prev) => ({ ...prev, [call.id]: audit }));
+    } catch (e: any) {
+      setAuditError(e?.message || 'Failed to load audit');
+      setAuditByCallId((prev) => ({ ...prev, [call.id]: null }));
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const closeAudit = () => {
+    setAuditOpen(false);
+    setAuditCall(null);
+    setAuditLoading(false);
+    setAuditError('');
   };
 
   const closeDisposition = () => {
@@ -398,6 +505,11 @@ export default function TelecallerRSAPage() {
   const formatDateTime = (value: string | null | undefined) => {
     if (!value) return '—';
     return String(value).replace('T', ' ').slice(0, 19);
+  };
+
+  const formatDateTimeISTLocal = (value: string | null | undefined) => {
+    if (!value) return '—';
+    return formatDateTimeIST(value);
   };
 
   const openSarvCalls = async (lead: any) => {
@@ -497,6 +609,9 @@ export default function TelecallerRSAPage() {
             }}
           >
             Created Leads
+          </TabButton>
+          <TabButton active={tab === 'car_service'} onClick={() => setTab('car_service')}>
+            Car Service Enquiry
           </TabButton>
           <TabButton active={tab === 'call_report'} onClick={() => setTab('call_report')}>
             Call Report
@@ -669,6 +784,156 @@ export default function TelecallerRSAPage() {
               )}
             </div>
           </div>
+        ) : tab === 'car_service' ? (
+          <div className="space-y-4">
+            <div className="card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm sm:text-base font-bold text-text-heading">Create Car Service Enquiry</h2>
+              </div>
+
+              {carSubmitError ? (
+                <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg text-sm mb-3">
+                  {carSubmitError}
+                </div>
+              ) : null}
+              {carSubmitSuccess ? (
+                <div className="bg-green-50 border border-green-200 text-green-800 px-3 py-2 rounded-lg text-sm mb-3">
+                  {carSubmitSuccess}
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-600">Customer Name</label>
+                  <input
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                    type="text"
+                    placeholder="Name"
+                    value={carForm.customer_name}
+                    onChange={(e) => setCarForm((f) => ({ ...f, customer_name: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Phone</label>
+                  <input
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                    type="text"
+                    placeholder="Phone"
+                    value={carForm.customer_phone}
+                    onChange={(e) => setCarForm((f) => ({ ...f, customer_phone: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Car Model</label>
+                  <input
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                    type="text"
+                    placeholder="Car model"
+                    value={carForm.car_model}
+                    onChange={(e) => setCarForm((f) => ({ ...f, car_model: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Remark</label>
+                  <input
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                    type="text"
+                    placeholder="Remark"
+                    value={carForm.remark}
+                    onChange={(e) => setCarForm((f) => ({ ...f, remark: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 mt-4">
+                <button
+                  type="button"
+                  className="btn btn-primary text-xs px-4 py-2"
+                  onClick={submitCarEnquiry}
+                  disabled={carSubmitLoading}
+                >
+                  {carSubmitLoading ? 'Submitting...' : 'Submit'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline text-xs px-4 py-2"
+                  onClick={() => {
+                    const next = !carViewOpen;
+                    setCarViewOpen(next);
+                    if (next && carEnquiries.length === 0) fetchCarEnquiries();
+                  }}
+                >
+                  {carViewOpen ? 'Hide' : 'View'}
+                </button>
+              </div>
+            </div>
+
+            {carViewOpen ? (
+              <div className="card">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-text-heading">Submitted Enquiries</h2>
+                    <div className="text-xs text-gray-500">
+                      Showing {carEnquiries.length} {carViewLoading ? '(loading...)' : ''}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline text-xs px-3 py-1.5"
+                    onClick={fetchCarEnquiries}
+                    disabled={carViewLoading}
+                  >
+                    Refresh
+                  </button>
+                </div>
+
+                {carViewError ? (
+                  <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg text-sm">
+                    {carViewError}
+                  </div>
+                ) : null}
+
+                {carEnquiries.length === 0 ? (
+                  <div className="text-sm text-gray-600 py-6 text-center">No enquiries found.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs sm:text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-600 border-b">
+                          <th className="py-2 pr-3">Created</th>
+                          <th className="py-2 pr-3">Name</th>
+                          <th className="py-2 pr-3">Phone</th>
+                          <th className="py-2 pr-3">Car Model</th>
+                          <th className="py-2 pr-3">Remark</th>
+                          <th className="py-2 pr-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {carEnquiries.map((row) => (
+                          <tr key={row.id} className="border-b last:border-b-0">
+                            <td className="py-2 pr-3">{formatDateTimeISTLocal(row.created_at)}</td>
+                            <td className="py-2 pr-3 font-semibold">{row.customer_name || '—'}</td>
+                            <td className="py-2 pr-3">{row.customer_phone_raw || row.customer_phone_norm || '—'}</td>
+                            <td className="py-2 pr-3">{row.car_model || '—'}</td>
+                            <td className="py-2 pr-3">{row.remark || '—'}</td>
+                            <td className="py-2 pr-3">
+                              {row.external_error ? (
+                                <span className="text-red-700">Failed</span>
+                              ) : row.external_status ? (
+                                <span className="text-green-700">Success</span>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
         ) : tab === 'call_report' ? (
           <div className="space-y-4">
             {callError ? (
@@ -753,6 +1018,7 @@ export default function TelecallerRSAPage() {
                         <th className="py-2 pr-3">Disposition</th>
                         <th className="py-2 pr-3">Summary</th>
                         <th className="py-2 pr-3">Recording</th>
+                        <th className="py-2 pr-3">Audit</th>
                         <th className="py-2 pr-3">Actions</th>
                       </tr>
                     </thead>
@@ -762,6 +1028,7 @@ export default function TelecallerRSAPage() {
                         const latest = group.calls[0];
                         if (group.calls.length === 1) {
                           const call = latest;
+                          const audit = auditByCallId[call.id] ?? null;
                           return (
                             <tr key={call.id} className="border-b last:border-b-0 align-top">
                               <td className="py-2 pr-3 whitespace-nowrap">
@@ -801,6 +1068,29 @@ export default function TelecallerRSAPage() {
                                 ) : (
                                   '—'
                                 )}
+                              </td>
+                              <td className="py-2 pr-3">
+                                <div className="flex flex-col gap-1">
+                                  <div className="text-[10px] text-gray-600">
+                                    {audit?.audit_status ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5">
+                                        <span className="font-semibold text-emerald-700">{audit.audit_status}</span>
+                                        {audit.audit_score != null ? (
+                                          <span className="text-emerald-700">({audit.audit_score}/5)</span>
+                                        ) : null}
+                                      </span>
+                                    ) : (
+                                      '—'
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="text-emerald-700 hover:text-emerald-800 font-semibold"
+                                    onClick={() => openAudit(call)}
+                                  >
+                                    View
+                                  </button>
+                                </div>
                               </td>
                               <td className="py-2 pr-3">
                                 <button
@@ -852,6 +1142,7 @@ export default function TelecallerRSAPage() {
                                 )}
                               </td>
                               <td className="py-2 pr-3"> </td>
+                              <td className="py-2 pr-3"> </td>
                               <td className="py-2 pr-3">
                                 <button
                                   type="button"
@@ -869,6 +1160,9 @@ export default function TelecallerRSAPage() {
                             </tr>
                             {isOpen
                               ? group.calls.map((call) => (
+                                  (() => {
+                                    const audit = auditByCallId[call.id] ?? null;
+                                    return (
                                   <tr key={call.id} className="border-b last:border-b-0 align-top">
                                     <td className="py-2 pr-3 whitespace-nowrap">
                                       {formatDateTime(
@@ -911,6 +1205,29 @@ export default function TelecallerRSAPage() {
                                       )}
                                     </td>
                                     <td className="py-2 pr-3">
+                                      <div className="flex flex-col gap-1">
+                                        <div className="text-[10px] text-gray-600">
+                                          {audit?.audit_status ? (
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5">
+                                              <span className="font-semibold text-emerald-700">{audit.audit_status}</span>
+                                              {audit.audit_score != null ? (
+                                                <span className="text-emerald-700">({audit.audit_score}/5)</span>
+                                              ) : null}
+                                            </span>
+                                          ) : (
+                                            '—'
+                                          )}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="text-emerald-700 hover:text-emerald-800 font-semibold"
+                                          onClick={() => openAudit(call)}
+                                        >
+                                          View
+                                        </button>
+                                      </div>
+                                    </td>
+                                    <td className="py-2 pr-3">
                                       <button
                                         type="button"
                                         className="text-blue-600 hover:text-blue-700 font-semibold"
@@ -920,6 +1237,8 @@ export default function TelecallerRSAPage() {
                                       </button>
                                     </td>
                                   </tr>
+                                    );
+                                  })()
                                 ))
                               : null}
                           </Fragment>
@@ -1388,23 +1707,87 @@ export default function TelecallerRSAPage() {
                             <summary className="cursor-pointer text-xs sm:text-sm font-semibold text-gray-700">
                               Full Transcription
                             </summary>
-                            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div className="rounded-lg border bg-gray-50 p-3">
-                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
-                                  Customer
+                            <div className="mt-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <div className="inline-flex rounded-lg border bg-gray-50 p-1 text-xs">
+                                  <button
+                                    type="button"
+                                    className={`px-2 py-1 rounded-md ${
+                                      transcriptionView === 'raw'
+                                        ? 'bg-white shadow-sm text-gray-900'
+                                        : 'text-gray-600 hover:text-gray-800'
+                                    }`}
+                                    onClick={() => setTranscriptionView('raw')}
+                                  >
+                                    Raw (from recording)
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`px-2 py-1 rounded-md ${
+                                      transcriptionView === 'split'
+                                        ? 'bg-white shadow-sm text-gray-900'
+                                        : 'text-gray-600 hover:text-gray-800'
+                                    }`}
+                                    onClick={() => setTranscriptionView('split')}
+                                  >
+                                    AI speaker split
+                                  </button>
                                 </div>
-                                <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
-                                  {parsed.transcriptionCustomer || '—'}
-                                </div>
+
+                                {transcriptionView === 'split' ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline text-xs px-3 py-1.5"
+                                    onClick={() => setSwapSpeakers((v) => !v)}
+                                  >
+                                    Swap Customer/Employee
+                                  </button>
+                                ) : null}
                               </div>
-                              <div className="rounded-lg border bg-gray-50 p-3">
-                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
-                                  Employee
+
+                              {transcriptionView === 'raw' ? (
+                                <div className="rounded-lg border bg-gray-50 p-3">
+                                  <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                    Transcription
+                                  </div>
+                                  <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                    {String(summaryCall?.transcription || '').trim() ||
+                                      (parsed.transcriptionCustomer || parsed.transcriptionEmployee
+                                        ? [parsed.transcriptionCustomer, parsed.transcriptionEmployee]
+                                            .filter(Boolean)
+                                            .join('\n\n')
+                                        : '—')}
+                                  </div>
+                                  <div className="text-[11px] text-gray-500 mt-2">
+                                    Note: this is the raw transcription generated directly from the recording.
+                                  </div>
                                 </div>
-                                <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
-                                  {parsed.transcriptionEmployee || '—'}
+                              ) : (
+                                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="rounded-lg border bg-gray-50 p-3">
+                                    <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                      Customer
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                      {(swapSpeakers ? parsed.transcriptionEmployee : parsed.transcriptionCustomer) ||
+                                        '—'}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg border bg-gray-50 p-3">
+                                    <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                      Employee
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                      {(swapSpeakers ? parsed.transcriptionCustomer : parsed.transcriptionEmployee) ||
+                                        '—'}
+                                    </div>
+                                  </div>
+                                  <div className="md:col-span-2 text-[11px] text-gray-500">
+                                    Note: speaker split is best-effort AI formatting; use “Raw” if speakers look
+                                    swapped or unclear.
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </div>
                           </details>
                         </div>
@@ -1463,6 +1846,74 @@ export default function TelecallerRSAPage() {
               ) : (
                 <div className="text-sm text-gray-600">Summary not available.</div>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {auditOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-lg overflow-hidden">
+            <div className="bg-emerald-700 text-white px-5 py-4 flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="text-lg font-semibold">Call Audit</div>
+                <div className="text-xs opacity-90 truncate">Call ID: {auditCall?.callid || auditCall?.id || '—'}</div>
+              </div>
+              <button type="button" className="text-white/80 hover:text-white text-xl" onClick={closeAudit}>
+                ×
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {auditError ? (
+                <div className="text-xs sm:text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {auditError}
+                </div>
+              ) : null}
+
+              <div className="rounded-lg border bg-emerald-50 p-4">
+                <div className="text-xs text-gray-600">Customer</div>
+                <div className="text-xl font-semibold text-gray-900">{auditCall?.cnumber || '—'}</div>
+              </div>
+
+              {(() => {
+                const audit = auditCall?.id ? auditByCallId[auditCall.id] : null;
+                if (auditLoading) {
+                  return <div className="text-sm text-gray-600">Loading audit…</div>;
+                }
+                if (!audit) {
+                  return <div className="text-sm text-gray-600">No audit found for this call yet.</div>;
+                }
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-gray-600">Audit Status</div>
+                        <div className="text-base font-semibold text-gray-900">{audit.audit_status || '—'}</div>
+                      </div>
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-gray-600">Score</div>
+                        <div className="text-base font-semibold text-gray-900">
+                          {audit.audit_score != null ? `${audit.audit_score}/5` : '—'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-4">
+                      <div className="text-xs text-gray-600">Feedback</div>
+                      <div className="text-sm text-gray-900 whitespace-pre-wrap">{audit.feedback || '—'}</div>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Audited at: {audit.audited_at ? formatDateTime(audit.audited_at) : '—'}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-end pt-2">
+                <button type="button" className="btn btn-outline text-sm px-5 py-2" onClick={closeAudit}>
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

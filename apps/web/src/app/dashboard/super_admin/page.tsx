@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { getBrowserClient } from '@/lib/supabase/browserClient';
 import {
   Users,
   Store,
@@ -10,7 +9,6 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  DollarSign,
   Phone,
   UserCheck,
   Shield,
@@ -18,7 +16,6 @@ import {
 } from 'lucide-react';
 
 export default function SuperAdminDashboard() {
-  const supabase = getBrowserClient();
   const [loading, setLoading] = useState(true);
   
   const [globalMetrics, setGlobalMetrics] = useState({
@@ -26,22 +23,21 @@ export default function SuperAdminDashboard() {
     acceptedLeads: 0,
     rejectedLeads: 0,
     slaBreaches: 0,
-    totalRevenue: 0,
     dailyRevenue: 0,
+    monthlyRevenue: 0,
     activeWorkshops: 0,
     totalCustomers: 0,
-    avgWorkshopRating: 0,
+    avgRating: 0,
     complaintVolume: 0,
-    rsaEmergencies: 0,
-    systemUptime: 99.9
+    rsaActive: 0
   });
 
   const [departmentMetrics, setDepartmentMetrics] = useState({
-    telecaller: { leads: 0, followUps: 0, conversion: 0 },
-    leadManager: { assigned: 0, avgTime: 0, accuracy: 0 },
-    workshops: { active: 0, busy: 0, avgCompletion: 0 },
-    rsa: { active: 0, avgDispatch: 0, completion: 0 },
-    auditors: { auditsToday: 0, fraudFound: 0, avgScore: 0 }
+    telecaller: { leads7d: 0, followUpsToday: 0, conversion7d: 0 },
+    leadManager: { assigned7d: 0, avgAssignMins7d: 0, accuracy7d: 0 },
+    workshops: { active: 0, busy: 0, avgCompletionHours7d: 0 },
+    rsa: { active: 0, avgDispatchMins7d: 0, completion7d: 0 },
+    auditors: { auditsToday: 0, fraudOpen: 0, avgScore10: 0 }
   });
 
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -52,90 +48,23 @@ export default function SuperAdminDashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const res = await fetch('/api/super_admin/dashboard');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load dashboard');
 
-      // Fetch Global Metrics
-      const [
-        totalLeadsResult,
-        acceptedResult,
-        rejectedResult,
-        slaBreachedResult,
-        workshopsResult,
-        customersResult
-      ] = await Promise.all([
-        supabase.from('service_leads').select('id', { count: 'exact', head: true })
-          .gte('created_at', `${today}T00:00:00`),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true })
-          .eq('status', 'ACCEPTED'),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true })
-          .eq('status', 'REJECTED'),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true })
-          .eq('sla_state', 'BREACHED')
-          .not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)'),
-        supabase.from('workshops').select('id', { count: 'exact', head: true })
-          .eq('is_verified', true),
-        supabase.from('users_login').select('id', { count: 'exact', head: true })
-      ]);
+      const gm = json?.globalMetrics || {};
+      const dm = json?.departmentMetrics || {};
+      setGlobalMetrics((prev) => ({ ...prev, ...gm }));
+      setDepartmentMetrics((prev) => ({ ...prev, ...dm }));
 
-      setGlobalMetrics({
-        totalLeadsToday: totalLeadsResult.count || 0,
-        acceptedLeads: acceptedResult.count || 0,
-        rejectedLeads: rejectedResult.count || 0,
-        slaBreaches: slaBreachedResult.count || 0,
-        totalRevenue: 2450000,
-        dailyRevenue: 125000,
-        activeWorkshops: workshopsResult.count || 0,
-        totalCustomers: customersResult.count || 0,
-        avgWorkshopRating: 4.5,
-        complaintVolume: 0,
-        rsaEmergencies: 3,
-        systemUptime: 99.9
-      });
-
-      // Fetch Department Metrics
-      const [telecallerLeads, assignedLeads] = await Promise.all([
-        supabase.from('service_leads').select('id', { count: 'exact', head: true })
-          .not('assigned_telecaller_id', 'is', null),
-        supabase.from('service_leads').select('id', { count: 'exact', head: true })
-          .not('workshop_id', 'is', null)
-      ]);
-
-      setDepartmentMetrics({
-        telecaller: {
-          leads: telecallerLeads.count || 0,
-          followUps: 45,
-          conversion: 72
-        },
-        leadManager: {
-          assigned: assignedLeads.count || 0,
-          avgTime: 12,
-          accuracy: 94
-        },
-        workshops: {
-          active: workshopsResult.count || 0,
-          busy: 8,
-          avgCompletion: 4.5
-        },
-        rsa: {
-          active: 12,
-          avgDispatch: 18,
-          completion: 89
-        },
-        auditors: {
-          auditsToday: 5,
-          fraudFound: 1,
-          avgScore: 8.2
-        }
-      });
-
-      // Generate Critical Alerts
-      const criticalAlerts = [];
-      if (slaBreachedResult.count && slaBreachedResult.count > 0) {
+      // Generate Critical Alerts (derived from real metrics)
+      const criticalAlerts: any[] = [];
+      if (gm?.slaBreaches && gm.slaBreaches > 0) {
         criticalAlerts.push({
           id: 'sla',
           type: 'CRITICAL',
           title: 'SLA Breaches',
-          message: `${slaBreachedResult.count} leads have breached SLA`,
+          message: `${gm.slaBreaches} leads have breached SLA`,
           color: 'text-red-600',
           bg: 'bg-red-50',
           border: 'border-red-200'
@@ -170,17 +99,6 @@ export default function SuperAdminDashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5 md:space-y-6">
-        {/* System Status */}
-        <div className={`${globalMetrics.systemUptime > 99 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} border rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0`}>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${globalMetrics.systemUptime > 99 ? 'bg-green-500' : 'bg-red-500'} animate-pulse flex-shrink-0`}></div>
-            <span className={`font-semibold text-xs sm:text-sm md:text-base ${globalMetrics.systemUptime > 99 ? 'text-green-700' : 'text-red-700'}`}>
-              System Operational
-            </span>
-          </div>
-          <span className="text-xs sm:text-sm text-gray-600">{globalMetrics.systemUptime}% Uptime</span>
-        </div>
-
         {/* Critical Alerts */}
         {alerts.length > 0 && (
           <div className="space-y-2 sm:space-y-3">
@@ -246,7 +164,7 @@ export default function SuperAdminDashboard() {
             <MetricCard
               icon={<CarFront className="w-6 h-6 text-red-600" />}
               label="RSA Active"
-              value={globalMetrics.rsaEmergencies}
+              value={globalMetrics.rsaActive}
               color="bg-red-50 border-red-200"
             />
           </div>
@@ -263,15 +181,15 @@ export default function SuperAdminDashboard() {
               </p>
             </div>
             <div className="text-center border-x border-gray-200">
-              <p className="text-xs sm:text-sm text-text-body mb-1">Total Revenue</p>
+              <p className="text-xs sm:text-sm text-text-body mb-1">This Month</p>
               <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-brand-primary">
-                ₹{(globalMetrics.totalRevenue / 100000).toFixed(1)}L
+                ₹{(globalMetrics.monthlyRevenue / 100000).toFixed(1)}L
               </p>
             </div>
             <div className="text-center">
-              <p className="text-xs sm:text-sm text-text-body mb-1">Avg Rating</p>
+              <p className="text-xs sm:text-sm text-text-body mb-1">Avg Rating (30d)</p>
               <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-orange-600">
-                {globalMetrics.avgWorkshopRating}⭐
+                {globalMetrics.avgRating}⭐
               </p>
             </div>
           </div>
@@ -285,18 +203,18 @@ export default function SuperAdminDashboard() {
               icon={<Phone className="w-6 h-6 text-brand-primary" />}
               title="Telecaller"
               metrics={[
-                { label: 'Leads', value: departmentMetrics.telecaller.leads },
-                { label: 'Follow-ups', value: departmentMetrics.telecaller.followUps },
-                { label: 'Conversion', value: `${departmentMetrics.telecaller.conversion}%`, highlight: true }
+                { label: 'Leads (7d)', value: departmentMetrics.telecaller.leads7d },
+                { label: 'Follow-ups', value: departmentMetrics.telecaller.followUpsToday },
+                { label: 'Conversion (7d)', value: `${departmentMetrics.telecaller.conversion7d}%`, highlight: true }
               ]}
             />
             <DepartmentCard
               icon={<UserCheck className="w-6 h-6 text-brand-secondary" />}
               title="Lead Manager"
               metrics={[
-                { label: 'Assigned', value: departmentMetrics.leadManager.assigned },
-                { label: 'Avg Time', value: `${departmentMetrics.leadManager.avgTime}m` },
-                { label: 'Accuracy', value: `${departmentMetrics.leadManager.accuracy}%`, highlight: true }
+                { label: 'Assigned (7d)', value: departmentMetrics.leadManager.assigned7d },
+                { label: 'Avg Time', value: `${departmentMetrics.leadManager.avgAssignMins7d}m` },
+                { label: 'Accuracy', value: `${departmentMetrics.leadManager.accuracy7d}%`, highlight: true }
               ]}
             />
             <DepartmentCard
@@ -305,7 +223,7 @@ export default function SuperAdminDashboard() {
               metrics={[
                 { label: 'Active', value: departmentMetrics.workshops.active },
                 { label: 'Busy', value: departmentMetrics.workshops.busy },
-                { label: 'Avg Time', value: `${departmentMetrics.workshops.avgCompletion}h` }
+                { label: 'Avg Time', value: `${departmentMetrics.workshops.avgCompletionHours7d}h` }
               ]}
             />
             <DepartmentCard
@@ -313,8 +231,8 @@ export default function SuperAdminDashboard() {
               title="RSA"
               metrics={[
                 { label: 'Active', value: departmentMetrics.rsa.active },
-                { label: 'Dispatch', value: `${departmentMetrics.rsa.avgDispatch}m` },
-                { label: 'Complete', value: `${departmentMetrics.rsa.completion}%`, highlight: true }
+                { label: 'Dispatch', value: `${departmentMetrics.rsa.avgDispatchMins7d}m` },
+                { label: 'Complete (7d)', value: `${departmentMetrics.rsa.completion7d}%`, highlight: true }
               ]}
             />
             <DepartmentCard
@@ -322,23 +240,10 @@ export default function SuperAdminDashboard() {
               title="Quality Auditors"
               metrics={[
                 { label: 'Audits', value: departmentMetrics.auditors.auditsToday },
-                { label: 'Fraud', value: departmentMetrics.auditors.fraudFound },
-                { label: 'Avg Score', value: `${departmentMetrics.auditors.avgScore}/10` }
+                { label: 'Fraud', value: departmentMetrics.auditors.fraudOpen },
+                { label: 'Avg Score', value: `${departmentMetrics.auditors.avgScore10}/10` }
               ]}
             />
-          </div>
-        </div>
-
-        {/* Quick Admin Actions */}
-        <div>
-          <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">⚡ Super Admin Actions</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-            <ActionButton href="/dashboard/super_admin/workshops" icon="🏪" label="Workshops" color="bg-brand-primary" />
-            <ActionButton href="/dashboard/super_admin/users" icon="👥" label="Users" color="bg-brand-secondary" />
-            <ActionButton href="/dashboard/super_admin/finance" icon="💰" label="Finance" color="bg-green-500" />
-            <ActionButton href="/dashboard/super_admin/settings" icon="⚙️" label="Settings" color="bg-brand-primary" />
-            <ActionButton href="/dashboard/super_admin/fraud" icon="🚨" label="Fraud" color="bg-red-500" />
-            <ActionButton href="/dashboard/super_admin/reports" icon="📊" label="Reports" color="bg-brand-secondary" />
           </div>
         </div>
       </div>
@@ -381,14 +286,4 @@ function DepartmentCard({ icon, title, metrics }: any) {
   );
 }
 
-function ActionButton({ href, icon, label, color }: any) {
-  return (
-    <a
-      href={href}
-      className={`${color} hover:bg-brand-primary-hover text-white rounded-lg p-3 sm:p-4 flex flex-col items-center justify-center gap-1.5 sm:gap-2 transition-all hover:scale-105 shadow-lg`}
-    >
-      <span className="text-2xl sm:text-3xl">{icon}</span>
-      <span className="font-semibold text-xs sm:text-sm text-center">{label}</span>
-    </a>
-  );
-}
+// (Super Admin Actions section removed)

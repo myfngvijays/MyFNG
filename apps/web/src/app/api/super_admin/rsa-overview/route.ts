@@ -54,6 +54,16 @@ function toNumber(value: any) {
   return Number.isFinite(num) ? num : 0;
 }
 
+function parseAmount(value: any) {
+  if (value === null || value === undefined) return 0;
+  const raw = String(value).trim();
+  if (!raw) return 0;
+  const cleaned = raw.replace(/[^\d.]/g, '');
+  if (!cleaned) return 0;
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : 0;
+}
+
 function isResolved(lead: any) {
   const leadStatus = String(lead?.lead_status || '').toLowerCase();
   const complaintStatus = String(lead?.complaint_status || '').toLowerCase();
@@ -66,27 +76,38 @@ function addToBreakdown(map: Map<string, any>, key: string, name: string, lead: 
     name,
     total: 0,
     resolved: 0,
-    revenue: 0,
+    revenue: 0, // quoted total
     mechanic_payment: 0,
     company_profit: 0,
+    advance_amount: 0,
   };
   entry.total += 1;
   if (isResolved(lead)) entry.resolved += 1;
-  const revenue = toNumber(lead.payment_received || lead.customer_quoted_amount || 0);
+  const quoted = toNumber(lead.customer_quoted_amount || 0);
   const mechanicPayment = toNumber(lead.payment_to_mechanic || 0);
-  entry.revenue += revenue;
+  const advance = parseAmount(lead.advance_payment);
+  entry.revenue += quoted;
   entry.mechanic_payment += mechanicPayment;
-  entry.company_profit += revenue - mechanicPayment;
+  entry.company_profit += quoted - mechanicPayment;
+  entry.advance_amount += advance;
   map.set(key, entry);
 }
 
-function finalizeBreakdown(map: Map<string, any>) {
-  return Array.from(map.values())
-    .map((row) => ({
-      ...row,
-      rate: row.total ? (row.resolved / row.total) * 100 : 0,
-    }))
-    .sort((a, b) => b.total - a.total);
+function finalizeBreakdown(map: Map<string, any>, sortBy: 'total' | 'profit' = 'total') {
+  const rows = Array.from(map.values()).map((row) => ({
+    ...row,
+    rate: row.total ? (row.resolved / row.total) * 100 : 0,
+  }));
+
+  if (sortBy === 'profit') {
+    return rows.sort((a, b) => {
+      const diff = (b.company_profit || 0) - (a.company_profit || 0);
+      if (diff !== 0) return diff;
+      return (b.total || 0) - (a.total || 0);
+    });
+  }
+
+  return rows.sort((a, b) => (b.total || 0) - (a.total || 0));
 }
 
 export async function GET(request: NextRequest) {
@@ -122,8 +143,11 @@ export async function GET(request: NextRequest) {
         requested_at,
         mechanic_completed_datetime,
         customer_quoted_amount,
+        advance_payment,
         payment_received,
         payment_to_mechanic,
+        assigned_mechanic_id,
+        assigned_mechanic_name,
         assigned_manager_id,
         assigned_manager_name,
         registered_by_id,
@@ -166,20 +190,24 @@ export async function GET(request: NextRequest) {
     const totalRequests = rows.length;
     let resolved = 0;
     let totalQuoted = 0;
+    let advanceAmount = 0;
     let paymentReceived = 0;
     let paymentToMechanic = 0;
     let resolutionSumHours = 0;
     let resolutionCount = 0;
+    // Total mechanics should represent master DB count, not "used in this range".
 
     const deptMap = new Map<string, any>();
     const districtMap = new Map<string, any>();
     const stateMap = new Map<string, any>();
     const employeeMap = new Map<string, any>();
+    const mechanicMap = new Map<string, any>();
 
     for (const lead of rows) {
       const resolvedLead = isResolved(lead);
       if (resolvedLead) resolved += 1;
       totalQuoted += toNumber(lead.customer_quoted_amount || 0);
+      advanceAmount += parseAmount((lead as any).advance_payment);
       paymentReceived += toNumber(lead.payment_received || 0);
       paymentToMechanic += toNumber(lead.payment_to_mechanic || 0);
 
@@ -206,11 +234,25 @@ export async function GET(request: NextRequest) {
 
       const employeeId = normalizeKey(lead.assigned_manager_id || lead.registered_by_id, 'Unassigned');
       const employeeName = normalizeKey(lead.assigned_manager_name || lead.registered_by_name, 'Unassigned');
-      const employeeLabel = `${employeeName} (${employeeId === 'Unassigned' ? '—' : employeeId.slice(0, 6)})`;
-      addToBreakdown(employeeMap, employeeId, employeeLabel, lead);
+      // Show only name in UI (no id suffix)
+      addToBreakdown(employeeMap, employeeId, employeeName, lead);
+
+      const mechanicId = normalizeKey((lead as any).assigned_mechanic_id, 'Unassigned');
+      const mechanicName = normalizeKey((lead as any).assigned_mechanic_name, 'Unassigned');
+      addToBreakdown(mechanicMap, mechanicId, mechanicName, lead);
     }
 
     const avgResolution = resolutionCount ? resolutionSumHours / resolutionCount : null;
+
+    // Master mechanics count (company database)
+    const { count: totalMechanicsCount, error: mechCountError } = await db
+      .from('company_mechanic_rsa')
+      .select('id', { count: 'exact', head: true });
+    if (mechCountError) {
+      // Non-fatal: keep it 0 if schema differs
+      // eslint-disable-next-line no-console
+      console.warn('Failed to count company mechanics:', mechCountError?.message);
+    }
 
     return NextResponse.json({
       range: { from, to },
@@ -220,15 +262,19 @@ export async function GET(request: NextRequest) {
         pending: Math.max(totalRequests - resolved, 0),
         avg_resolution_hours: avgResolution,
         total_quoted: totalQuoted,
+        total_mechanics: totalMechanicsCount || 0,
+        advance_amount: advanceAmount,
         payment_received: paymentReceived,
         payment_to_mechanic: paymentToMechanic,
-        company_profit: paymentReceived - paymentToMechanic,
+        // Business rule: profit = quoted - mechanic payment
+        company_profit: totalQuoted - paymentToMechanic,
       },
       breakdowns: {
         department: finalizeBreakdown(deptMap),
         district: finalizeBreakdown(districtMap),
         state: finalizeBreakdown(stateMap),
         employee: finalizeBreakdown(employeeMap),
+        mechanic: finalizeBreakdown(mechanicMap, 'profit'),
       },
     });
   } catch (error: any) {

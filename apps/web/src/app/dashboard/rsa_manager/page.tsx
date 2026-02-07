@@ -37,6 +37,15 @@ type SarvCallRow = {
   created_at: string;
 };
 
+type SarvCallAudit = {
+  id: string;
+  sarv_call_id: string;
+  audit_status: string | null;
+  audit_score: number | null;
+  feedback: string | null;
+  audited_at: string | null;
+};
+
 const DISPOSITION_OPTIONS = [
   'Completed / Service Provided',
   'Not Linked (No Complaint)',
@@ -198,7 +207,7 @@ export default function RSAManagerDashboard() {
     unassigned_leads: 0
   });
   
-  const [filter, setFilter] = useState<'all' | 'assigned' | 'unassigned' | 'pending' | 'completed'>('all');
+  const [filter, setFilter] = useState<'assigned' | 'pending' | 'completed' | 'cancelled'>('assigned');
   const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState<any>(null);
   const [callLoading, setCallLoading] = useState(false);
@@ -230,7 +239,14 @@ export default function RSAManagerDashboard() {
   const [citySuggestOpen, setCitySuggestOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryCall, setSummaryCall] = useState<SarvCallRow | null>(null);
+  const [transcriptionView, setTranscriptionView] = useState<'raw' | 'split'>('raw');
+  const [swapSpeakers, setSwapSpeakers] = useState(false);
   const [expandedCustomers, setExpandedCustomers] = useState<Record<string, boolean>>({});
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditCall, setAuditCall] = useState<SarvCallRow | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState('');
+  const [auditByCallId, setAuditByCallId] = useState<Record<string, SarvCallAudit | null>>({});
 
   const groupedCalls = useMemo(() => groupCallsByCustomer(calls), [calls]);
 
@@ -286,16 +302,38 @@ export default function RSAManagerDashboard() {
     setLoading(true);
     try {
       const managerId = user?.id;
-      const status = filter === 'all' ? '' : filter === 'assigned' ? 'assigned' : filter;
-      const showAll = filter === 'all' || filter === 'unassigned';
-      
-      const [leadsData, statsData] = await Promise.all([
-        RSAManagerService.getAllLeads(managerId, status, showAll),
-        managerId ? RSAManagerService.getManagerStatistics(managerId) : Promise.resolve(stats)
-      ]);
-      
-      setLeads(leadsData);
-      setStats(statsData);
+
+      // Always enforce "only my assigned complaints" on RSA manager dashboard.
+      const leadsData = await RSAManagerService.getAllLeads(managerId, '', false);
+      const assignedOnly = (Array.isArray(leadsData) ? leadsData : []).filter(
+        (lead: any) => lead?.assigned_manager_id && lead.assigned_manager_id === managerId
+      );
+
+      const normalizeStatus = (lead: any) =>
+        String(lead?.lead_status || lead?.complaint_status || '').toLowerCase();
+
+      const isCompleted = (s: string) => s === 'completed' || s === 'closed';
+      const isCancelled = (s: string) => s === 'cancelled';
+      const isPending = (s: string) => !isCompleted(s) && !isCancelled(s);
+
+      const filteredByStatus = assignedOnly.filter((lead: any) => {
+        const s = normalizeStatus(lead);
+        if (filter === 'assigned') return true;
+        if (filter === 'pending') return isPending(s);
+        if (filter === 'completed') return isCompleted(s);
+        if (filter === 'cancelled') return isCancelled(s);
+        return true;
+      });
+
+      setLeads(filteredByStatus);
+      setStats({
+        total_leads: assignedOnly.length,
+        pending_leads: assignedOnly.filter((l: any) => isPending(normalizeStatus(l))).length,
+        completed_leads: assignedOnly.filter((l: any) => isCompleted(normalizeStatus(l))).length,
+        cancelled_leads: assignedOnly.filter((l: any) => isCancelled(normalizeStatus(l))).length,
+        assigned_to_me: assignedOnly.length,
+        unassigned_leads: 0,
+      });
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -353,11 +391,44 @@ export default function RSAManagerDashboard() {
   const openSummary = (call: SarvCallRow) => {
     setSummaryCall(call);
     setSummaryOpen(true);
+    setTranscriptionView('raw');
+    setSwapSpeakers(false);
   };
 
   const closeSummary = () => {
     setSummaryOpen(false);
     setSummaryCall(null);
+    setTranscriptionView('raw');
+    setSwapSpeakers(false);
+  };
+
+  const openAudit = async (call: SarvCallRow) => {
+    setAuditCall(call);
+    setAuditOpen(true);
+    setAuditError('');
+    if (!call?.id) return;
+
+    // Use cached audit if present (still load fresh).
+    setAuditLoading(true);
+    try {
+      const res = await fetch(`/api/sarv-calls/${encodeURIComponent(String(call.id))}/audit`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load audit');
+      const audit = (json?.audit || null) as SarvCallAudit | null;
+      setAuditByCallId((prev) => ({ ...prev, [call.id]: audit }));
+    } catch (e: any) {
+      setAuditError(e?.message || 'Failed to load audit');
+      setAuditByCallId((prev) => ({ ...prev, [call.id]: null }));
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const closeAudit = () => {
+    setAuditOpen(false);
+    setAuditCall(null);
+    setAuditLoading(false);
+    setAuditError('');
   };
 
   const closeDisposition = () => {
@@ -552,6 +623,7 @@ export default function RSAManagerDashboard() {
                           <th className="py-2 pr-3">Disposition</th>
                           <th className="py-2 pr-3">Summary</th>
                           <th className="py-2 pr-3">Recording</th>
+                          <th className="py-2 pr-3">Audit</th>
                           <th className="py-2 pr-3">Actions</th>
                         </tr>
                       </thead>
@@ -561,6 +633,7 @@ export default function RSAManagerDashboard() {
                           const latest = group.calls[0];
                           if (group.calls.length === 1) {
                             const call = latest;
+                            const audit = auditByCallId[call.id] ?? null;
                             return (
                               <tr key={call.id} className="border-b last:border-b-0 align-top">
                                 <td className="py-2 pr-3 whitespace-nowrap">
@@ -600,6 +673,29 @@ export default function RSAManagerDashboard() {
                                   ) : (
                                     '—'
                                   )}
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <div className="flex flex-col gap-1">
+                                    <div className="text-[10px] text-gray-600">
+                                      {audit?.audit_status ? (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5">
+                                          <span className="font-semibold text-emerald-700">{audit.audit_status}</span>
+                                          {audit.audit_score != null ? (
+                                            <span className="text-emerald-700">({audit.audit_score}/5)</span>
+                                          ) : null}
+                                        </span>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="text-emerald-700 hover:text-emerald-800 font-semibold"
+                                      onClick={() => openAudit(call)}
+                                    >
+                                      View
+                                    </button>
+                                  </div>
                                 </td>
                                 <td className="py-2 pr-3">
                                   <button
@@ -651,6 +747,7 @@ export default function RSAManagerDashboard() {
                                   )}
                                 </td>
                                 <td className="py-2 pr-3"> </td>
+                                <td className="py-2 pr-3"> </td>
                                 <td className="py-2 pr-3">
                                   <button
                                     type="button"
@@ -668,6 +765,9 @@ export default function RSAManagerDashboard() {
                               </tr>
                               {isOpen
                                 ? group.calls.map((call) => (
+                                    (() => {
+                                      const audit = auditByCallId[call.id] ?? null;
+                                      return (
                                     <tr key={call.id} className="border-b last:border-b-0 align-top">
                                       <td className="py-2 pr-3 whitespace-nowrap">
                                         {formatDateTime(
@@ -710,6 +810,29 @@ export default function RSAManagerDashboard() {
                                         )}
                                       </td>
                                       <td className="py-2 pr-3">
+                                        <div className="flex flex-col gap-1">
+                                          <div className="text-[10px] text-gray-600">
+                                            {audit?.audit_status ? (
+                                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5">
+                                                <span className="font-semibold text-emerald-700">{audit.audit_status}</span>
+                                                {audit.audit_score != null ? (
+                                                  <span className="text-emerald-700">({audit.audit_score}/5)</span>
+                                                ) : null}
+                                              </span>
+                                            ) : (
+                                              '—'
+                                            )}
+                                          </div>
+                                          <button
+                                            type="button"
+                                            className="text-emerald-700 hover:text-emerald-800 font-semibold"
+                                            onClick={() => openAudit(call)}
+                                          >
+                                            View
+                                          </button>
+                                        </div>
+                                      </td>
+                                      <td className="py-2 pr-3">
                                         <button
                                           type="button"
                                           className="text-blue-600 hover:text-blue-700 font-semibold"
@@ -719,6 +842,8 @@ export default function RSAManagerDashboard() {
                                         </button>
                                       </td>
                                     </tr>
+                                      );
+                                    })()
                                   ))
                                 : null}
                             </Fragment>
@@ -756,12 +881,12 @@ export default function RSAManagerDashboard() {
         {tab === 'overview' ? (
         <div className="space-y-4">
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-7 md:mb-8">
-          <Link href="/dashboard/rsa_manager/leads?status=all">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-7 md:mb-8">
+          <Link href="/dashboard/rsa_manager/leads?status=assigned">
             <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs sm:text-sm text-gray-600">Total Leads</p>
+                  <p className="text-xs sm:text-sm text-gray-600">My Complaints</p>
                   <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_leads}</p>
                 </div>
                 <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-blue-500 flex-shrink-0" />
@@ -781,30 +906,6 @@ export default function RSAManagerDashboard() {
             </div>
           </Link>
 
-          <Link href="/dashboard/rsa_manager/leads?status=assigned">
-            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs sm:text-sm text-gray-600">Assigned to Me</p>
-                  <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.assigned_to_me}</p>
-                </div>
-                <Users className="w-7 h-7 sm:w-8 sm:h-8 text-purple-500 flex-shrink-0" />
-              </div>
-            </div>
-          </Link>
-
-          <Link href="/dashboard/rsa_manager/leads?status=unassigned">
-            <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs sm:text-sm text-gray-600">Unassigned</p>
-                  <p className="text-xl sm:text-2xl font-bold text-orange-600">{stats.unassigned_leads}</p>
-                </div>
-                <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-orange-500 flex-shrink-0" />
-              </div>
-            </div>
-          </Link>
-
           <Link href="/dashboard/rsa_manager/leads?status=completed">
             <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
               <div className="flex items-center justify-between">
@@ -817,7 +918,7 @@ export default function RSAManagerDashboard() {
             </div>
           </Link>
 
-          <Link href="/dashboard/rsa_manager/leads?status=cancelled" className="sm:col-span-2 lg:col-span-1">
+          <Link href="/dashboard/rsa_manager/leads?status=cancelled">
             <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6 hover:shadow-md transition-shadow cursor-pointer h-full">
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
@@ -846,7 +947,7 @@ export default function RSAManagerDashboard() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {(['all', 'assigned', 'unassigned', 'pending', 'completed'] as const).map((f) => (
+              {(['assigned', 'pending', 'completed', 'cancelled'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
@@ -856,7 +957,7 @@ export default function RSAManagerDashboard() {
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                  {f === 'assigned' ? 'My Complaints' : f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
             </div>
@@ -1301,23 +1402,87 @@ export default function RSAManagerDashboard() {
                             <summary className="cursor-pointer text-xs sm:text-sm font-semibold text-gray-700">
                               Full Transcription
                             </summary>
-                            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div className="rounded-lg border bg-gray-50 p-3">
-                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
-                                  Customer
+                            <div className="mt-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <div className="inline-flex rounded-lg border bg-gray-50 p-1 text-xs">
+                                  <button
+                                    type="button"
+                                    className={`px-2 py-1 rounded-md ${
+                                      transcriptionView === 'raw'
+                                        ? 'bg-white shadow-sm text-gray-900'
+                                        : 'text-gray-600 hover:text-gray-800'
+                                    }`}
+                                    onClick={() => setTranscriptionView('raw')}
+                                  >
+                                    Raw (from recording)
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`px-2 py-1 rounded-md ${
+                                      transcriptionView === 'split'
+                                        ? 'bg-white shadow-sm text-gray-900'
+                                        : 'text-gray-600 hover:text-gray-800'
+                                    }`}
+                                    onClick={() => setTranscriptionView('split')}
+                                  >
+                                    AI speaker split
+                                  </button>
                                 </div>
-                                <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
-                                  {parsed.transcriptionCustomer || '—'}
-                                </div>
+
+                                {transcriptionView === 'split' ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline text-xs px-3 py-1.5"
+                                    onClick={() => setSwapSpeakers((v) => !v)}
+                                  >
+                                    Swap Customer/Employee
+                                  </button>
+                                ) : null}
                               </div>
-                              <div className="rounded-lg border bg-gray-50 p-3">
-                                <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
-                                  Employee
+
+                              {transcriptionView === 'raw' ? (
+                                <div className="rounded-lg border bg-gray-50 p-3">
+                                  <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                    Transcription
+                                  </div>
+                                  <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                    {String(summaryCall?.transcription || '').trim() ||
+                                      (parsed.transcriptionCustomer || parsed.transcriptionEmployee
+                                        ? [parsed.transcriptionCustomer, parsed.transcriptionEmployee]
+                                            .filter(Boolean)
+                                            .join('\n\n')
+                                        : '—')}
+                                  </div>
+                                  <div className="text-[11px] text-gray-500 mt-2">
+                                    Note: this is the raw transcription generated directly from the recording.
+                                  </div>
                                 </div>
-                                <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
-                                  {parsed.transcriptionEmployee || '—'}
+                              ) : (
+                                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="rounded-lg border bg-gray-50 p-3">
+                                    <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                      Customer
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                      {(swapSpeakers ? parsed.transcriptionEmployee : parsed.transcriptionCustomer) ||
+                                        '—'}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg border bg-gray-50 p-3">
+                                    <div className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1">
+                                      Employee
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-gray-900 whitespace-pre-wrap">
+                                      {(swapSpeakers ? parsed.transcriptionCustomer : parsed.transcriptionEmployee) ||
+                                        '—'}
+                                    </div>
+                                  </div>
+                                  <div className="md:col-span-2 text-[11px] text-gray-500">
+                                    Note: speaker split is best-effort AI formatting; use “Raw” if speakers look
+                                    swapped or unclear.
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </div>
                           </details>
                         </div>
@@ -1376,6 +1541,74 @@ export default function RSAManagerDashboard() {
               ) : (
                 <div className="text-sm text-gray-600">Summary not available.</div>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {auditOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-lg overflow-hidden">
+            <div className="bg-emerald-700 text-white px-5 py-4 flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="text-lg font-semibold">Call Audit</div>
+                <div className="text-xs opacity-90 truncate">Call ID: {auditCall?.callid || auditCall?.id || '—'}</div>
+              </div>
+              <button type="button" className="text-white/80 hover:text-white text-xl" onClick={closeAudit}>
+                ×
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {auditError ? (
+                <div className="text-xs sm:text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {auditError}
+                </div>
+              ) : null}
+
+              <div className="rounded-lg border bg-emerald-50 p-4">
+                <div className="text-xs text-gray-600">Customer</div>
+                <div className="text-xl font-semibold text-gray-900">{auditCall?.cnumber || '—'}</div>
+              </div>
+
+              {(() => {
+                const audit = auditCall?.id ? auditByCallId[auditCall.id] : null;
+                if (auditLoading) {
+                  return <div className="text-sm text-gray-600">Loading audit…</div>;
+                }
+                if (!audit) {
+                  return <div className="text-sm text-gray-600">No audit found for this call yet.</div>;
+                }
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-gray-600">Audit Status</div>
+                        <div className="text-base font-semibold text-gray-900">{audit.audit_status || '—'}</div>
+                      </div>
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-gray-600">Score</div>
+                        <div className="text-base font-semibold text-gray-900">
+                          {audit.audit_score != null ? `${audit.audit_score}/5` : '—'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-4">
+                      <div className="text-xs text-gray-600">Feedback</div>
+                      <div className="text-sm text-gray-900 whitespace-pre-wrap">{audit.feedback || '—'}</div>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Audited at: {audit.audited_at ? formatDateTime(audit.audited_at) : '—'}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-end pt-2">
+                <button type="button" className="btn btn-outline text-sm px-5 py-2" onClick={closeAudit}>
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -198,38 +198,57 @@ async function generateTranscriptionAndSummary(recordingUrl: string) {
     return 'mp3';
   })();
 
-  const formData = new FormData();
-  formData.append('model', OPENAI_TRANSCRIBE_MODEL);
-  // Bias toward Hindi/Hinglish (common for RSA calls in India).
-  // If the audio is pure English, the model will still generally handle it.
-  formData.append('language', 'hi');
-  formData.append('temperature', '0');
-  formData.append(
-    'prompt',
-    [
-      'This is a MyFNG Roadside Assistance (RSA) phone call in Hinglish/Hindi and English.',
-      'Two speakers: Customer and MyFNG employee/agent.',
-      'Common words: RSA, roadside assistance, towing, battery, puncture, tyre, jump start, fuel delivery, mechanic, location, landmark, pincode, vehicle number, model, ETA, charges, payment.',
-      'Transcribe accurately, keep proper nouns and numbers (vehicle number, phone, pincode) if spoken.',
-    ].join(' ')
+  const prompt = [
+    'This is a MyFNG Roadside Assistance (RSA) phone call in Hinglish/Hindi and English.',
+    'Two speakers: Customer and MyFNG employee/agent.',
+    'Common words: RSA, roadside assistance, towing, battery, puncture, tyre, jump start, fuel delivery, mechanic, location, landmark, pincode, vehicle number, model, ETA, charges, payment.',
+    'Transcribe accurately with punctuation. Keep proper nouns and numbers (vehicle no, phone, pincode) if spoken.',
+  ].join(' ');
+
+  const candidateModels = Array.from(
+    new Set([OPENAI_TRANSCRIBE_MODEL, 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe', 'whisper-1'].filter(Boolean))
   );
-  formData.append('file', audioBlob, `call.${extFromType}`);
 
-  const transcribeRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: formData,
-  });
+  let transcription: string | null = null;
+  let lastErr: string | null = null;
+  for (const model of candidateModels) {
+    try {
+      const formData = new FormData();
+      formData.append('model', model);
+      // Leave language detection automatic (calls may be Hinglish/Hindi/English).
+      formData.append('temperature', '0');
+      formData.append('prompt', prompt);
+      formData.append('file', audioBlob, `call.${extFromType}`);
 
-  if (!transcribeRes.ok) {
-    const errText = await transcribeRes.text().catch(() => '');
-    throw new Error(`Transcription failed: ${transcribeRes.status} ${errText}`);
+      const transcribeRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: formData,
+      });
+
+      if (!transcribeRes.ok) {
+        const errText = await transcribeRes.text().catch(() => '');
+        lastErr = `Transcription failed (${model}): ${transcribeRes.status} ${errText}`;
+        continue;
+      }
+
+      const transcribeJson = await transcribeRes.json();
+      const text = String(transcribeJson?.text || '').trim();
+      if (text) {
+        transcription = text;
+        break;
+      }
+      lastErr = `Transcription returned empty text (${model})`;
+    } catch (e: any) {
+      lastErr = `Transcription error (${model}): ${e?.message || 'unknown error'}`;
+    }
   }
 
-  const transcribeJson = await transcribeRes.json();
-  const transcription = String(transcribeJson?.text || '').trim() || null;
+  if (!transcription) {
+    throw new Error(lastErr || 'Transcription failed');
+  }
 
   if (!transcription) {
     return { transcription: null, summary: null };
