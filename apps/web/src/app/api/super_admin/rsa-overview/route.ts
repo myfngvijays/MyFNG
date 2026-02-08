@@ -130,6 +130,7 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get('from') || defaultFrom.toISOString();
     const to = searchParams.get('to') || now.toISOString();
 
+    const dateFilter = `and(lead_registered_at.gte.${from},lead_registered_at.lte.${to}),and(requested_at.gte.${from},requested_at.lte.${to})`;
     const { data: leads, error } = await db
       .from('rsa_leads')
       .select(
@@ -157,8 +158,7 @@ export async function GET(request: NextRequest) {
       `
       )
       .eq('delete_status', false)
-      .gte('lead_registered_at', from)
-      .lte('lead_registered_at', to);
+      .or(dateFilter);
 
     if (error) {
       return NextResponse.json({ error: 'Failed to fetch RSA overview data' }, { status: 500 });
@@ -211,7 +211,8 @@ export async function GET(request: NextRequest) {
       paymentReceived += toNumber(lead.payment_received || 0);
       paymentToMechanic += toNumber(lead.payment_to_mechanic || 0);
 
-      const started = lead.lead_registered_at ? new Date(lead.lead_registered_at) : null;
+      const startedRaw = lead.lead_registered_at || lead.requested_at;
+      const started = startedRaw ? new Date(startedRaw) : null;
       const ended = lead.mechanic_completed_datetime ? new Date(lead.mechanic_completed_datetime) : null;
       if (resolvedLead && started && ended && !Number.isNaN(started.getTime()) && !Number.isNaN(ended.getTime())) {
         const diffHours = (ended.getTime() - started.getTime()) / 36e5;

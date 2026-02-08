@@ -1,100 +1,145 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
-import { Settings, Save, AlertTriangle } from 'lucide-react';
+import { Settings, Save, AlertTriangle, RefreshCw } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+
+const SLA_KEYS = [
+  'sla_lead_assignment_minutes',
+  'sla_workshop_acceptance_minutes',
+  'sla_pickup_arrival_minutes',
+  'sla_service_completion_minutes',
+];
+const SLA_MIN = 1;
+const SLA_MAX = 99999;
 
 export default function SystemSettingsPage() {
   const supabase = getBrowserClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Record<string, any>>({});
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
+    setError(null);
+    setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error: err } = await supabase
         .from('system_settings')
         .select('*')
         .order('category', { ascending: true });
 
-      if (error) throw error;
+      if (err) throw err;
 
       const settingsMap: Record<string, any> = {};
       (data || []).forEach((setting: any) => {
         settingsMap[setting.setting_key] = {
           ...setting,
-          value: setting.setting_type === 'BOOLEAN' 
+          value: setting.setting_type === 'BOOLEAN'
             ? setting.setting_value === 'true'
-            : setting.setting_value
+            : setting.setting_value,
         };
       });
       setSettings(settingsMap);
-    } catch (error) {
-      console.error('Error fetching settings:', error);
+    } catch (e: any) {
+      console.error('Error fetching settings:', e);
+      const msg = e?.message || 'Failed to load settings';
+      setError(msg);
+      toast.error(msg);
+      setSettings({});
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   const handleToggle = (key: string) => {
-    setSettings({
-      ...settings,
+    setSettings((prev) => ({
+      ...prev,
       [key]: {
-        ...settings[key],
-        value: !settings[key].value
-      }
-    });
+        ...prev[key],
+        value: !prev[key]?.value,
+      },
+    }));
+    setError(null);
   };
 
   const handleChange = (key: string, value: string) => {
-    setSettings({
-      ...settings,
+    setSettings((prev) => ({
+      ...prev,
       [key]: {
-        ...settings[key],
-        value
+        ...prev[key],
+        value,
+      },
+    }));
+    setError(null);
+  };
+
+  const validateSla = (): boolean => {
+    for (const key of SLA_KEYS) {
+      const v = settings[key]?.value;
+      if (v === undefined || v === '') continue;
+      const n = parseInt(String(v), 10);
+      if (Number.isNaN(n) || n < SLA_MIN || n > SLA_MAX) {
+        toast.error(`${key.replace(/_/g, ' ')} must be between ${SLA_MIN} and ${SLA_MAX}`);
+        return false;
       }
-    });
+    }
+    return true;
   };
 
   const handleSave = async () => {
-    if (!confirm('Save all changes?')) return;
-    
+    if (Object.keys(settings).length === 0) {
+      toast.error('No settings to save');
+      return;
+    }
+    if (!validateSla()) return;
+
     setSaving(true);
+    setError(null);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const updatedAt = new Date().toISOString();
       const updates = Object.entries(settings).map(([key, data]) => ({
         setting_key: key,
         setting_value: String(data.value),
-        updated_at: new Date().toISOString()
+        updated_at: updatedAt,
+        updated_by: user?.id ?? null,
       }));
 
       for (const update of updates) {
-        await supabase
+        const { error: updateErr } = await supabase
           .from('system_settings')
-          .update({ 
+          .update({
             setting_value: update.setting_value,
-            updated_at: update.updated_at
+            updated_at: update.updated_at,
+            ...(update.updated_by && { updated_by: update.updated_by }),
           })
           .eq('setting_key', update.setting_key);
+
+        if (updateErr) throw updateErr;
       }
 
-      alert('Settings saved successfully!');
+      toast.success('Settings saved successfully');
       fetchSettings();
-    } catch (error) {
-      alert('Failed to save settings');
+    } catch (e: any) {
+      const msg = e?.message || 'Failed to save settings';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
+  if (loading && Object.keys(settings).length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-blue-600 mx-auto mb-3 sm:mb-4"></div>
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-blue-600 mx-auto mb-3 sm:mb-4" />
           <p className="text-gray-600 text-xs sm:text-sm md:text-base">Loading settings...</p>
         </div>
       </div>
@@ -116,18 +161,55 @@ export default function SystemSettingsPage() {
                 Configure global system parameters and rules
               </p>
             </div>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="btn btn-primary flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm w-full sm:w-auto justify-center"
-            >
-              <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">{saving ? 'Saving...' : 'Save All Changes'}</span>
-              <span className="sm:hidden">{saving ? 'Saving...' : 'Save'}</span>
-            </button>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => fetchSettings()}
+                disabled={loading}
+                className="btn-secondary flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm w-full sm:w-auto justify-center"
+                title="Refresh settings"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving || loading || Object.keys(settings).length === 0}
+                className="btn-primary flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm w-full sm:w-auto justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">{saving ? 'Saving...' : 'Save All Changes'}</span>
+                <span className="sm:hidden">{saving ? 'Saving...' : 'Save'}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {error && (
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 pt-3 sm:pt-4">
+          <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 flex flex-wrap items-center gap-2">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+            <span className="text-sm flex-1 min-w-0">{error}</span>
+            <button
+              type="button"
+              onClick={() => fetchSettings()}
+              disabled={loading}
+              className="text-sm font-medium text-red-700 hover:text-red-900 underline"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              className="text-sm font-medium text-red-600 hover:text-red-800"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-5 md:py-6 space-y-4 sm:space-y-5 md:space-y-6">
         {/* System Status */}
@@ -226,49 +308,57 @@ export default function SystemSettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                  Lead Assignment to Manager
+                  Lead Assignment to Manager (minutes)
                 </label>
                 <input
                   type="number"
-                  value={settings.sla_lead_assignment_minutes?.value || '15'}
+                  min={SLA_MIN}
+                  max={SLA_MAX}
+                  value={settings.sla_lead_assignment_minutes?.value ?? '15'}
                   onChange={(e) => handleChange('sla_lead_assignment_minutes', e.target.value)}
-                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                  Workshop Acceptance
+                  Workshop Acceptance (minutes)
                 </label>
                 <input
                   type="number"
-                  value={settings.sla_workshop_acceptance_minutes?.value || '30'}
+                  min={SLA_MIN}
+                  max={SLA_MAX}
+                  value={settings.sla_workshop_acceptance_minutes?.value ?? '30'}
                   onChange={(e) => handleChange('sla_workshop_acceptance_minutes', e.target.value)}
-                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                  Pickup Boy Arrival
+                  Pickup Boy Arrival (minutes)
                 </label>
                 <input
                   type="number"
-                  value={settings.sla_pickup_arrival_minutes?.value || '60'}
+                  min={SLA_MIN}
+                  max={SLA_MAX}
+                  value={settings.sla_pickup_arrival_minutes?.value ?? '60'}
                   onChange={(e) => handleChange('sla_pickup_arrival_minutes', e.target.value)}
-                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                  Service Completion
+                  Service Completion (minutes)
                 </label>
                 <input
                   type="number"
-                  value={settings.sla_service_completion_minutes?.value || '240'}
+                  min={SLA_MIN}
+                  max={SLA_MAX}
+                  value={settings.sla_service_completion_minutes?.value ?? '240'}
                   onChange={(e) => handleChange('sla_service_completion_minutes', e.target.value)}
-                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
             </div>
@@ -342,9 +432,10 @@ export default function SystemSettingsPage() {
         {/* Save Button */}
         <div className="flex justify-end">
           <button
+            type="button"
             onClick={handleSave}
-            disabled={saving}
-            className="btn btn-primary flex items-center gap-1.5 sm:gap-2 px-4 sm:px-6 md:px-8 py-1.5 sm:py-2 text-xs sm:text-sm"
+            disabled={saving || loading || Object.keys(settings).length === 0}
+            className="btn-primary flex items-center gap-1.5 sm:gap-2 px-4 sm:px-6 md:px-8 py-1.5 sm:py-2 text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5" />
             <span className="hidden sm:inline">{saving ? 'Saving Changes...' : 'Save All Changes'}</span>

@@ -27,6 +27,19 @@ export type ServiceExplorerItem = {
   highlights: string[];
 };
 
+/** Internal slug → marketing URL slug (same as /car-services/ and Navbar) */
+const INTERNAL_SLUG_TO_CAR_SERVICES: Record<string, string> = {
+  'periodic-service': 'periodic-car-service',
+  'engine-service': 'car-engine-service',
+  'ac-service': 'car-ac-service',
+  'battery-service': 'car-battery',
+  'brake-service': 'car-brake-service',
+  'clutch-service': 'car-clutch-service',
+  'tyre-wheel-care': 'tyre-wheel-care',
+  'detailing-service': 'car-detailing-service',
+  'denting-painting': 'car-denting-painting',
+};
+
 function cx(...classes: Array<string | undefined | false | null>) {
   return classes.filter(Boolean).join(' ');
 }
@@ -299,7 +312,7 @@ export default function ServiceExplorer({
                               Quick Book <ArrowRight className="w-5 h-5" />
                             </button>
                             <Link
-                              href={`/services/${active.slug}`}
+                              href={`/car-services/${INTERNAL_SLUG_TO_CAR_SERVICES[active.slug] ?? active.slug}`}
                               className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 py-3 text-gray-900 font-semibold"
                             >
                               Know More
@@ -437,7 +450,7 @@ export default function ServiceExplorer({
                 Quick Book <ArrowRight className="w-5 h-5" />
               </button>
               <Link
-                href={`/services/${sheetService.slug}`}
+                href={`/car-services/${INTERNAL_SLUG_TO_CAR_SERVICES[sheetService.slug] ?? sheetService.slug}`}
                 onClick={() => setSheetOpen(false)}
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 py-3 text-gray-900 font-semibold"
               >

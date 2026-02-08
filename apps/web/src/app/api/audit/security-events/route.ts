@@ -2,6 +2,7 @@
  * Security Events API
  * GET /api/audit/security-events - Fetch security events
  * POST /api/audit/security-events - Create a security event
+ * PATCH /api/audit/security-events/[id] - Update event (see [id]/route.ts)
  */
 
 export const dynamic = 'force-dynamic';
@@ -27,24 +28,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify user is Super Admin
+    // Verify user is Super Admin or Sub Admin
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, roles!inner(role_code)')
+      .select('id, role_id, roles(role_code)')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (profileError || !userProfile) {
+    if (profileError) {
+      console.error('Security events profile error:', profileError);
+      return NextResponse.json(
+        { error: 'Failed to verify access', details: profileError.message },
+        { status: 500 }
+      );
+    }
+    if (!userProfile) {
       return NextResponse.json(
         { error: 'User profile not found' },
         { status: 404 }
       );
     }
 
-    const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'SUPER_ADMIN') {
+    const roleCode = (userProfile as any)?.roles?.role_code ?? null;
+    if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
       return NextResponse.json(
-        { error: 'Forbidden: Super Admin access required' },
+        { error: 'Forbidden: Super Admin or Sub Admin access required' },
         { status: 403 }
       );
     }
@@ -97,16 +105,17 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('Error fetching security events:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch security events' },
+        { error: 'Failed to fetch security events', details: error.message },
         { status: 500 }
       );
     }
 
-    const totalPages = count ? Math.ceil(count / limit) : 0;
+    const total = count ?? (Array.isArray(events) ? events.length : 0);
+    const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
 
     return NextResponse.json({
-      events: events || [],
-      total: count || 0,
+      events: Array.isArray(events) ? events : [],
+      total,
       page,
       limit,
       totalPages,
@@ -155,9 +164,10 @@ export async function POST(request: NextRequest) {
     
     const user_agent = request.headers.get('user-agent') || body.user_agent || null;
 
-    // Insert security event
+    // Insert security event (security_events may be missing from generated DB types)
     const { data: event, error } = await supabase
       .from('security_events')
+      // @ts-expect-error - security_events table may not be in generated types
       .insert({
         event_type: body.event_type,
         user_id: body.user_id || user.id,
@@ -183,92 +193,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error('Error in POST /api/audit/security-events:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * PATCH /api/audit/security-events/[id]
- * Update security event (e.g., mark as resolved)
- */
-export async function PATCH(
-  request: NextRequest,
-  { params: paramsPromise }: { params: Promise<{ id: string }> }
-) {
-  const params = await paramsPromise;
-  try {
-    const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Verify user is Super Admin
-    const { data: userProfile, error: profileError } = await supabase
-      .from('users_login')
-      .select('id, roles!inner(role_code)')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || !userProfile) {
-      return NextResponse.json(
-        { error: 'User profile not found' },
-        { status: 404 }
-      );
-    }
-
-    const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'SUPER_ADMIN') {
-      return NextResponse.json(
-        { error: 'Forbidden: Super Admin access required' },
-        { status: 403 }
-      );
-    }
-
-    const body = await request.json();
-    const { resolved, resolved_by } = body;
-
-    const updateData: any = {};
-    if (resolved !== undefined) {
-      updateData.resolved = resolved;
-      if (resolved) {
-        updateData.resolved_at = new Date().toISOString();
-        updateData.resolved_by = resolved_by || user.id;
-      } else {
-        updateData.resolved_at = null;
-        updateData.resolved_by = null;
-      }
-    }
-
-    const { data: event, error } = await supabase
-      .from('security_events')
-      .update(updateData)
-      .eq('id', params.id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error updating security event:', error);
-      return NextResponse.json(
-        { error: 'Failed to update security event' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(
-      { success: true, event },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('Error in PATCH /api/audit/security-events/[id]:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

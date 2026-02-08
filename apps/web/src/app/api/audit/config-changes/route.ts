@@ -29,24 +29,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify user is Super Admin
+    // Verify user is Super Admin or Sub Admin (same pattern as audit logs)
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, roles!inner(role_code)')
+      .select('id, role_id, roles(role_code)')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (profileError || !userProfile) {
+    if (profileError) {
+      console.error('Config changes profile error:', profileError);
+      return NextResponse.json(
+        { error: 'Failed to verify access', details: profileError.message },
+        { status: 500 }
+      );
+    }
+    if (!userProfile) {
       return NextResponse.json(
         { error: 'User profile not found' },
         { status: 404 }
       );
     }
 
-    const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'SUPER_ADMIN') {
+    const roleCode = (userProfile as { roles?: { role_code: string } })?.roles?.role_code ?? null;
+    if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
       return NextResponse.json(
-        { error: 'Forbidden: Super Admin access required' },
+        { error: 'Forbidden: Super Admin or Sub Admin access required' },
         { status: 403 }
       );
     }
@@ -89,7 +96,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('Error fetching config changes:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch config changes' },
+        { error: 'Failed to fetch config changes', details: error.message },
         { status: 500 }
       );
     }

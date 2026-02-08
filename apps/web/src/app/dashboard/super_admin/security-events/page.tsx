@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { SecurityEvent } from '@/shared/types/audit';
-import { Loader2, Shield, AlertTriangle, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { Loader2, Shield, AlertTriangle, CheckCircle, XCircle, Filter, ChevronLeft, ChevronRight, Eye, Download, RefreshCw } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { formatDateTime } from "@/lib/utils";
+
+const DEBOUNCE_MS = 400;
 
 interface SecurityEventsResponse {
   events: SecurityEvent[];
@@ -15,6 +17,24 @@ interface SecurityEventsResponse {
   totalPages: number;
 }
 
+type FiltersState = {
+  event_type: string;
+  user_id: string;
+  severity: string;
+  resolved: string;
+  start_date: string;
+  end_date: string;
+};
+
+const emptyFilters: FiltersState = {
+  event_type: '',
+  user_id: '',
+  severity: '',
+  resolved: '',
+  start_date: '',
+  end_date: '',
+};
+
 export default function SecurityEventsPage() {
   const [events, setEvents] = useState<SecurityEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,56 +43,68 @@ export default function SecurityEventsPage() {
   const [limit] = useState(50);
   const [totalPages, setTotalPages] = useState(0);
 
-  // Filters
-  const [filters, setFilters] = useState({
-    event_type: '',
-    user_id: '',
-    severity: '',
-    resolved: '',
-    start_date: '',
-    end_date: '',
-  });
+  const [filters, setFilters] = useState<FiltersState>(emptyFilters);
+  const [filtersApplied, setFiltersApplied] = useState<FiltersState>(emptyFilters);
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [showFilters, setShowFilters] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null);
   const [resolving, setResolving] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchSecurityEvents();
-  }, [page, filters]);
-
-  const fetchSecurityEvents = async () => {
+  const fetchSecurityEvents = useCallback(async (pageNum: number, filterValues: FiltersState) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        page: page.toString(),
+        page: pageNum.toString(),
         limit: limit.toString(),
       });
-
-      if (filters.event_type) params.append('event_type', filters.event_type);
-      if (filters.user_id) params.append('user_id', filters.user_id);
-      if (filters.severity) params.append('severity', filters.severity);
-      if (filters.resolved) params.append('resolved', filters.resolved);
-      if (filters.start_date) params.append('start_date', filters.start_date);
-      if (filters.end_date) params.append('end_date', filters.end_date);
+      if (filterValues.event_type) params.append('event_type', filterValues.event_type);
+      if (filterValues.user_id) params.append('user_id', filterValues.user_id);
+      if (filterValues.severity) params.append('severity', filterValues.severity);
+      if (filterValues.resolved) params.append('resolved', filterValues.resolved);
+      if (filterValues.start_date) params.append('start_date', filterValues.start_date);
+      if (filterValues.end_date) params.append('end_date', filterValues.end_date);
 
       const response = await fetch(`/api/audit/security-events?${params.toString()}`);
       const data: SecurityEventsResponse = await response.json();
 
-      if (response.ok) {
-        setEvents(data.events);
-        setTotal(data.total);
-        setTotalPages(data.totalPages);
-      } else {
-        toast.error('Failed to fetch security events');
+      if (!response.ok) {
+        const msg = (data as any).details ? `${(data as any).error}: ${(data as any).details}` : ((data as any).error || 'Failed to fetch security events');
+        toast.error(msg);
+        setEvents([]);
+        setTotal(0);
+        setTotalPages(0);
+        return;
       }
-    } catch (error) {
-      console.error('Error fetching security events:', error);
-      toast.error('An error occurred');
+
+      setEvents(data.events ?? []);
+      setTotal(data.total ?? 0);
+      setTotalPages(data.totalPages ?? 0);
+    } catch {
+      toast.error('An error occurred while fetching security events');
+      setEvents([]);
+      setTotal(0);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
-  };
+  }, [limit]);
+
+  useEffect(() => {
+    fetchSecurityEvents(page, filtersApplied);
+  }, [page, filtersApplied, fetchSecurityEvents]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      setFiltersApplied(filtersRef.current);
+      setPage(1);
+    }, DEBOUNCE_MS);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [filters]);
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -80,15 +112,43 @@ export default function SecurityEventsPage() {
   };
 
   const clearFilters = () => {
-    setFilters({
-      event_type: '',
-      user_id: '',
-      severity: '',
-      resolved: '',
-      start_date: '',
-      end_date: '',
-    });
+    setFilters(emptyFilters);
     setPage(1);
+  };
+
+  const handleRefresh = () => {
+    fetchSecurityEvents(page, filtersApplied);
+    toast.success('Refreshed');
+  };
+
+  const exportEvents = () => {
+    if (events.length === 0) {
+      toast.error('No events to export');
+      return;
+    }
+    const csv = [
+      ['ID', 'Event Type', 'Severity', 'User ID', 'IP Address', 'Resolved', 'Resolved At', 'Created At'].join(','),
+      ...events.map((e) =>
+        [
+          e.id,
+          e.event_type,
+          e.severity ?? '',
+          e.user_id ?? '',
+          e.ip_address ?? '',
+          e.resolved ? 'Yes' : 'No',
+          e.resolved_at ? formatDateTime(e.resolved_at) : '',
+          formatDateTime(e.created_at),
+        ].join(',')
+      ),
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `security-events-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Events exported');
   };
 
   const handleResolve = async (eventId: string, resolved: boolean) => {
@@ -102,15 +162,16 @@ export default function SecurityEventsPage() {
 
       if (response.ok) {
         toast.success(resolved ? 'Event marked as resolved' : 'Event marked as unresolved');
-        fetchSecurityEvents();
+        fetchSecurityEvents(page, filtersApplied);
         if (selectedEvent?.id === eventId) {
           setSelectedEvent(null);
         }
       } else {
-        toast.error('Failed to update event');
+        const err = await response.json().catch(() => ({}));
+        const msg = err.details ? `${err.error ?? 'Failed to update event'}: ${err.details}` : (err.error ?? 'Failed to update event');
+        toast.error(msg);
       }
-    } catch (error) {
-      console.error('Error resolving event:', error);
+    } catch {
       toast.error('An error occurred');
     } finally {
       setResolving(null);
@@ -157,22 +218,41 @@ export default function SecurityEventsPage() {
 
       {/* Filters & Actions */}
       <div className="card p-3 sm:p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-            >
-              <Filter className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              {showFilters ? 'Hide Filters' : 'Show Filters'}
-            </button>
-            {Object.values(filters).some((v) => v) && (
-              <button onClick={clearFilters} className="text-xs sm:text-sm text-brand-primary hover:underline">
-                Clear All Filters
+          <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+              >
+                <Filter className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                {showFilters ? 'Hide Filters' : 'Show Filters'}
               </button>
-            )}
+              {Object.values(filters).some((v) => v) && (
+                <button onClick={clearFilters} className="text-xs sm:text-sm text-brand-primary hover:underline">
+                  Clear All Filters
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRefresh}
+                disabled={loading}
+                className="btn-secondary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                title="Refresh events"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+              <button
+                onClick={exportEvents}
+                disabled={events.length === 0}
+                className="btn-primary flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                Export CSV
+              </button>
+            </div>
           </div>
-        </div>
 
         {showFilters && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-200">

@@ -18,8 +18,8 @@ const MARKETING_SLUG_TO_INTERNAL: Record<string, string> = {
   'car-denting-painting': 'denting-painting',
 };
 
-export default function CarServiceDetailPage({ params }: { params: { slug: string } }) {
-  const marketingSlug = params?.slug;
+export default async function CarServiceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug: marketingSlug } = await params;
   const internalSlug = MARKETING_SLUG_TO_INTERNAL[marketingSlug];
   const service = internalSlug ? findServiceBySlug(internalSlug) : null;
   const IconComponent = service?.icon;

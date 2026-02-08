@@ -423,6 +423,13 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
               {transformed.title}
             </h1>
 
+            {/* Author Name - at top */}
+            {transformed.author?.full_name ? (
+              <div className="mt-2 text-sm sm:text-base font-semibold text-gray-800">
+                Author: {transformed.author.full_name}
+              </div>
+            ) : null}
+
             {/* Meta */}
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm text-gray-600">
               {dateText ? (
@@ -431,7 +438,6 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   {dateText}
                 </div>
               ) : null}
-              {transformed.author?.full_name ? <div>By {transformed.author.full_name}</div> : null}
               {readTimeText ? (
                 <div className="flex items-center gap-1.5">
                   <Clock className="w-4 h-4" />
@@ -447,66 +453,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         </div>
       </section>
 
-      {/* Featured Image */}
-      {transformed.featured_image ? (
-        <section className="pb-6 sm:pb-7 md:pb-8">
-          <div className="container mx-auto px-3 sm:px-4">
-            <div className="max-w-6xl mx-auto">
-              <div className="relative aspect-[16/9] rounded-xl sm:rounded-2xl overflow-hidden shadow-xl bg-gray-200">
-                <Image src={transformed.featured_image} alt={transformed.title} fill className="object-cover" priority />
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {/* Follow / Quote / Layout */}
+      {/* Main content + sidebar layout */}
       <section className="pb-10 sm:pb-12 md:pb-14">
         <div className="container mx-auto px-3 sm:px-4">
           <div className="max-w-6xl mx-auto">
-            {/* Follow us strip */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-6">
-              <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700">
-                <div className="font-semibold text-gray-900">Follow Us</div>
-                <a
-                  href={followFacebook || '#'}
-                  target={followFacebook ? '_blank' : undefined}
-                  rel={followFacebook ? 'noopener noreferrer' : undefined}
-                  aria-disabled={!followFacebook}
-                  className={`inline-flex items-center gap-2 ${followFacebook ? 'hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
-                >
-                  <Facebook className="w-4 h-4" /> Facebook
-                </a>
-                <a
-                  href={followInstagram || '#'}
-                  target={followInstagram ? '_blank' : undefined}
-                  rel={followInstagram ? 'noopener noreferrer' : undefined}
-                  aria-disabled={!followInstagram}
-                  className={`inline-flex items-center gap-2 ${followInstagram ? 'hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
-                >
-                  <Instagram className="w-4 h-4" /> Instagram
-                </a>
-                <a
-                  href={followYoutube || '#'}
-                  target={followYoutube ? '_blank' : undefined}
-                  rel={followYoutube ? 'noopener noreferrer' : undefined}
-                  aria-disabled={!followYoutube}
-                  className={`inline-flex items-center gap-2 ${followYoutube ? 'hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
-                >
-                  <Youtube className="w-4 h-4" /> YouTube
-                </a>
-                <a
-                  href={followLinkedin || '#'}
-                  target={followLinkedin ? '_blank' : undefined}
-                  rel={followLinkedin ? 'noopener noreferrer' : undefined}
-                  aria-disabled={!followLinkedin}
-                  className={`inline-flex items-center gap-2 ${followLinkedin ? 'hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
-                >
-                  <Linkedin className="w-4 h-4" /> LinkedIn
-                </a>
-              </div>
-            </div>
-
             {highlightQuote ? (
               <div className="bg-gray-900 text-white rounded-xl p-5 sm:p-6 mb-6">
                 <div className="text-sm sm:text-base leading-relaxed italic">
@@ -516,11 +466,30 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             ) : null}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-              {/* Main content */}
-              <div className="lg:col-span-8">
+              {/* Left column: featured image (smaller, left) + article */}
+              <div className="lg:col-span-8 space-y-6">
+                {/* Featured image - left side, smaller */}
+                {transformed.featured_image ? (
+                  <div className="relative w-full max-w-lg aspect-[16/10] sm:aspect-[2/1] rounded-xl overflow-hidden shadow-lg bg-gray-200">
+                    <Image src={transformed.featured_image} alt={transformed.title} fill className="object-cover" priority />
+                  </div>
+                ) : null}
+
                 <article className="bg-white rounded-xl shadow-lg p-4 sm:p-6 md:p-8">
-                  {/* Tags + Share */}
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+                  {transformed.excerpt ? (
+                    <p className="text-gray-700 text-sm sm:text-base leading-relaxed mb-6">
+                      {transformed.excerpt}
+                    </p>
+                  ) : null}
+
+                  {/* Content (HTML supported as per dashboard editor helper text) */}
+                  <div
+                    className="prose prose-sm sm:prose-base md:prose-lg max-w-none"
+                    dangerouslySetInnerHTML={{ __html: transformed.content }}
+                  />
+
+                  {/* Tags & Share - after blog content */}
+                  <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex flex-wrap gap-2">
                       {transformed.tags && transformed.tags.length > 0
                         ? transformed.tags.map((tag) =>
@@ -535,14 +504,15 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                             ) : null
                           )
                         : null}
+                      {(!transformed.tags || transformed.tags.length === 0) ? <span className="text-sm text-gray-500">No tags</span> : null}
                     </div>
-
                     <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-700 mr-1">Share:</span>
                       <a
                         href={fbHref}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg transition text-blue-800 text-xs sm:text-sm font-semibold"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg transition text-blue-800 text-xs sm:text-sm font-semibold"
                         title="Share on Facebook"
                       >
                         <Facebook className="w-4 h-4" />
@@ -552,7 +522,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                         href={waHref}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-3 py-2 bg-green-50 hover:bg-green-100 rounded-lg transition text-green-800 text-xs sm:text-sm font-semibold"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-green-50 hover:bg-green-100 rounded-lg transition text-green-800 text-xs sm:text-sm font-semibold"
                         title="Share on WhatsApp"
                       >
                         <MessageCircle className="w-4 h-4" />
@@ -562,7 +532,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                         href={liHref}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-3 py-2 bg-sky-50 hover:bg-sky-100 rounded-lg transition text-sky-800 text-xs sm:text-sm font-semibold"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-sky-50 hover:bg-sky-100 rounded-lg transition text-sky-800 text-xs sm:text-sm font-semibold"
                         title="Share on LinkedIn"
                       >
                         <Linkedin className="w-4 h-4" />
@@ -571,18 +541,6 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                       <CopyLinkButton url={shareUrl} />
                     </div>
                   </div>
-
-                  {transformed.excerpt ? (
-                    <p className="text-gray-700 text-sm sm:text-base leading-relaxed mb-6">
-                      {transformed.excerpt}
-                    </p>
-                  ) : null}
-
-                  {/* Content (HTML supported as per dashboard editor helper text) */}
-                  <div
-                    className="prose prose-sm sm:prose-base md:prose-lg max-w-none"
-                    dangerouslySetInnerHTML={{ __html: transformed.content }}
-                  />
 
                   {/* FAQs (editable + schema source) */}
                   {transformed.faqs && transformed.faqs.length ? (
@@ -603,8 +561,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 </article>
               </div>
 
-              {/* Sidebar */}
-              <aside className="lg:col-span-4 space-y-5">
+              {/* Sidebar - sticky, only blog content scrolls */}
+              <aside className="lg:col-span-4 space-y-5 lg:sticky lg:top-24 lg:self-start">
                 {/* Search */}
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="font-semibold text-gray-900 mb-3">Search</div>
@@ -634,9 +592,52 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   </a>
                 </div>
 
-                {/* Recent posts */}
+                {/* Follow Us - in sidebar, not inside blog content */}
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="font-semibold text-gray-900 mb-3">Recent Posts</div>
+                  <div className="font-semibold text-gray-900 mb-3">Follow Us</div>
+                  <div className="flex flex-wrap gap-3 text-sm">
+                    <a
+                      href={followFacebook || '#'}
+                      target={followFacebook ? '_blank' : undefined}
+                      rel={followFacebook ? 'noopener noreferrer' : undefined}
+                      aria-disabled={!followFacebook}
+                      className={`inline-flex items-center gap-2 ${followFacebook ? 'text-gray-700 hover:text-blue-600 hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
+                    >
+                      <Facebook className="w-4 h-4" /> Facebook
+                    </a>
+                    <a
+                      href={followInstagram || '#'}
+                      target={followInstagram ? '_blank' : undefined}
+                      rel={followInstagram ? 'noopener noreferrer' : undefined}
+                      aria-disabled={!followInstagram}
+                      className={`inline-flex items-center gap-2 ${followInstagram ? 'text-gray-700 hover:text-pink-600 hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
+                    >
+                      <Instagram className="w-4 h-4" /> Instagram
+                    </a>
+                    <a
+                      href={followYoutube || '#'}
+                      target={followYoutube ? '_blank' : undefined}
+                      rel={followYoutube ? 'noopener noreferrer' : undefined}
+                      aria-disabled={!followYoutube}
+                      className={`inline-flex items-center gap-2 ${followYoutube ? 'text-gray-700 hover:text-red-600 hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
+                    >
+                      <Youtube className="w-4 h-4" /> YouTube
+                    </a>
+                    <a
+                      href={followLinkedin || '#'}
+                      target={followLinkedin ? '_blank' : undefined}
+                      rel={followLinkedin ? 'noopener noreferrer' : undefined}
+                      aria-disabled={!followLinkedin}
+                      className={`inline-flex items-center gap-2 ${followLinkedin ? 'text-gray-700 hover:text-sky-600 hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
+                    >
+                      <Linkedin className="w-4 h-4" /> LinkedIn
+                    </a>
+                  </div>
+                </div>
+
+                {/* Related Blog Articles - always in sidebar */}
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="font-semibold text-gray-900 mb-3">Related Blog Articles</div>
                   <div className="space-y-3">
                     {(recentPosts || []).map((p: any) => (
                       <Link key={p.id} href={`/blogs/${p.slug}`} className="flex gap-3 hover:bg-gray-50 rounded-lg p-2 transition">
@@ -651,7 +652,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                         </div>
                       </Link>
                     ))}
-                    {(recentPosts || []).length === 0 ? <div className="text-sm text-gray-600">No recent posts.</div> : null}
+                    {(recentPosts || []).length === 0 ? <div className="text-sm text-gray-600">No related posts yet.</div> : null}
                   </div>
                 </div>
 

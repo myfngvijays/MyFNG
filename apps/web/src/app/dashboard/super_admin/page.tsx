@@ -183,7 +183,7 @@ export default function SuperAdminDashboard() {
             <div className="text-center border-x border-gray-200">
               <p className="text-xs sm:text-sm text-text-body mb-1">This Month</p>
               <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-brand-primary">
-                ₹{(globalMetrics.monthlyRevenue / 100000).toFixed(1)}L
+                ₹{(globalMetrics.monthlyRevenue / 1000).toFixed(1)}K
               </p>
             </div>
             <div className="text-center">

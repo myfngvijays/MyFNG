@@ -55,15 +55,23 @@ export default function ConfigChangesPage() {
       const data: ConfigChangesResponse = await response.json();
 
       if (response.ok) {
-        setChanges(data.changes);
-        setTotal(data.total);
-        setTotalPages(data.totalPages);
+        setChanges(data.changes ?? []);
+        setTotal(data.total ?? 0);
+        setTotalPages(data.totalPages ?? 0);
       } else {
-        toast.error('Failed to fetch config changes');
+        const err = data as { error?: string; details?: string };
+        const msg = err.details ? `${err.error ?? 'Failed to fetch'}: ${err.details}` : (err.error ?? 'Failed to fetch config changes');
+        toast.error(msg);
+        setChanges([]);
+        setTotal(0);
+        setTotalPages(0);
       }
     } catch (error) {
       console.error('Error fetching config changes:', error);
       toast.error('An error occurred');
+      setChanges([]);
+      setTotal(0);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }

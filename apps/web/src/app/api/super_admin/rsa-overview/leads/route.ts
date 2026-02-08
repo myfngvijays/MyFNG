@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'type and value are required' }, { status: 400 });
     }
 
+    const dateFilter = `and(lead_registered_at.gte.${from},lead_registered_at.lte.${to}),and(requested_at.gte.${from},requested_at.lte.${to})`;
     const { data: leads, error } = await db
       .from('rsa_leads')
       .select(
@@ -92,6 +93,7 @@ export async function GET(request: NextRequest) {
         lead_status,
         complaint_status,
         lead_registered_at,
+        requested_at,
         address,
         pincode,
         assigned_mechanic_id,
@@ -103,8 +105,7 @@ export async function GET(request: NextRequest) {
       `
       )
       .eq('delete_status', false)
-      .gte('lead_registered_at', from)
-      .lte('lead_registered_at', to);
+      .or(dateFilter);
 
     if (error) {
       return NextResponse.json({ error: 'Failed to fetch RSA leads' }, { status: 500 });

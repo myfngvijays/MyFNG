@@ -25,24 +25,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify user is Super Admin
+    // Verify user is Super Admin or Sub Admin (same pattern as audit logs / config-changes)
     const { data: userProfile, error: profileError } = await supabase
       .from('users_login')
-      .select('id, roles!inner(role_code)')
+      .select('id, role_id, roles(role_code)')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (profileError || !userProfile) {
+    if (profileError) {
+      console.error('Compliance report profile error:', profileError);
+      return NextResponse.json(
+        { error: 'Failed to verify access', details: profileError.message },
+        { status: 500 }
+      );
+    }
+    if (!userProfile) {
       return NextResponse.json(
         { error: 'User profile not found' },
         { status: 404 }
       );
     }
 
-    const roleCode = (userProfile.roles as any)?.role_code;
-    if (roleCode !== 'SUPER_ADMIN') {
+    const roleCode = (userProfile as { roles?: { role_code: string } })?.roles?.role_code ?? null;
+    if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
       return NextResponse.json(
-        { error: 'Forbidden: Super Admin access required' },
+        { error: 'Forbidden: Super Admin or Sub Admin access required' },
         { status: 403 }
       );
     }
@@ -53,6 +60,19 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
     const format = searchParams.get('format') || 'json'; // json, csv
+
+    if (!startDate || !endDate) {
+      return NextResponse.json(
+        { error: 'Start date and end date are required' },
+        { status: 400 }
+      );
+    }
+    if (startDate > endDate) {
+      return NextResponse.json(
+        { error: 'Start date must be before or equal to end date' },
+        { status: 400 }
+      );
+    }
 
     // Build date filter
     const dateFilter: any = {};
@@ -118,6 +138,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * Generate GDPR Compliance Report
+ * Tolerates missing tables (data_deletion_requests, user_consents)
  */
 async function generateGDPRReport(supabase: any, dateFilter: any) {
   const report: any = {
@@ -125,47 +146,53 @@ async function generateGDPRReport(supabase: any, dateFilter: any) {
     sections: {},
   };
 
-  // Data Access Requests
-  const { data: accessLogs } = await supabase
+  const gte = dateFilter.gte || '1970-01-01';
+  const lte = dateFilter.lte || new Date().toISOString();
+
+  const { data: auditData } = await supabase
     .from('audit_logs')
     .select('*')
-    .eq('compliance_flags->>gdpr_relevant', 'true')
-    .gte('created_at', dateFilter.gte || '1970-01-01')
-    .lte('created_at', dateFilter.lte || new Date().toISOString())
+    .gte('created_at', gte)
+    .lte('created_at', lte)
     .order('created_at', { ascending: false });
+  const accessLogs = (Array.isArray(auditData) ? auditData : []).filter(
+    (r: any) => r.compliance_flags?.gdpr_relevant === true
+  );
 
-  // Data Deletion Requests
-  const { data: deletionRequests } = await supabase
+  let deletionRequests: any[] = [];
+  const delRes = await supabase
     .from('data_deletion_requests')
     .select('*')
-    .gte('requested_at', dateFilter.gte || '1970-01-01')
-    .lte('requested_at', dateFilter.lte || new Date().toISOString())
+    .gte('requested_at', gte)
+    .lte('requested_at', lte)
     .order('requested_at', { ascending: false });
+  if (!delRes.error) deletionRequests = Array.isArray(delRes.data) ? delRes.data : [];
 
-  // User Consents
-  const { data: consents } = await supabase
+  let consents: any[] = [];
+  const consentRes = await supabase
     .from('user_consents')
     .select('*')
-    .gte('created_at', dateFilter.gte || '1970-01-01')
-    .lte('created_at', dateFilter.lte || new Date().toISOString())
+    .gte('created_at', gte)
+    .lte('created_at', lte)
     .order('created_at', { ascending: false });
+  if (!consentRes.error) consents = Array.isArray(consentRes.data) ? consentRes.data : [];
 
   report.sections = {
     data_access_logs: {
-      total: accessLogs?.length || 0,
-      logs: accessLogs || [],
+      total: accessLogs.length,
+      logs: accessLogs,
     },
     deletion_requests: {
-      total: deletionRequests?.length || 0,
-      pending: deletionRequests?.filter((r: any) => r.status === 'PENDING').length || 0,
-      processed: deletionRequests?.filter((r: any) => r.status !== 'PENDING').length || 0,
-      requests: deletionRequests || [],
+      total: deletionRequests.length,
+      pending: deletionRequests.filter((r: any) => r.status === 'PENDING').length,
+      processed: deletionRequests.filter((r: any) => r.status !== 'PENDING').length,
+      requests: deletionRequests,
     },
     user_consents: {
-      total: consents?.length || 0,
-      granted: consents?.filter((c: any) => c.consent_given).length || 0,
-      denied: consents?.filter((c: any) => !c.consent_given).length || 0,
-      consents: consents || [],
+      total: consents.length,
+      granted: consents.filter((c: any) => c.consent_given).length,
+      denied: consents.filter((c: any) => !c.consent_given).length,
+      consents,
     },
   };
 
@@ -256,12 +283,14 @@ async function generateISO27001Report(supabase: any, dateFilter: any) {
     .lte('created_at', dateFilter.lte || new Date().toISOString())
     .order('created_at', { ascending: false });
 
-  // Data Integrity Check
-  const { data: integrityResults } = await supabase.rpc('verify_audit_log_integrity', {
+  // Data Integrity Check (RPC may not exist in all envs)
+  let integrityResults: any[] = [];
+  const rpcRes = await supabase.rpc('verify_audit_log_integrity', {
     p_log_id: null,
     p_start_date: dateFilter.gte || null,
     p_end_date: dateFilter.lte || null,
   });
+  if (!rpcRes.error && Array.isArray(rpcRes.data)) integrityResults = rpcRes.data;
 
   report.sections = {
     information_security_events: {
@@ -279,10 +308,10 @@ async function generateISO27001Report(supabase: any, dateFilter: any) {
       logs: auditLogs || [],
     },
     data_integrity: {
-      total_checked: integrityResults?.length || 0,
-      valid: integrityResults?.filter((r: any) => r.is_valid).length || 0,
-      tampered: integrityResults?.filter((r: any) => r.tampered).length || 0,
-      results: integrityResults || [],
+      total_checked: integrityResults.length,
+      valid: integrityResults.filter((r: any) => r.is_valid).length,
+      tampered: integrityResults.filter((r: any) => r.tampered).length,
+      results: integrityResults,
     },
   };
 

@@ -89,14 +89,14 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get('to') || now.toISOString();
 
     // Leads
+    const dateFilter = `and(lead_registered_at.gte.${from},lead_registered_at.lte.${to}),and(requested_at.gte.${from},requested_at.lte.${to})`;
     const { data: leads, error: leadErr } = await db
       .from('rsa_leads')
       .select(
         'id, lead_status, complaint_status, assigned_manager_id, registered_by_id, customer_quoted_amount, payment_to_mechanic, advance_payment'
       )
       .eq('delete_status', false)
-      .gte('lead_registered_at', from)
-      .lte('lead_registered_at', to);
+      .or(dateFilter);
     if (leadErr) {
       return NextResponse.json({ error: 'Failed to load RSA leads' }, { status: 500 });
     }

@@ -1,174 +1,187 @@
+'use client';
+
+import React from 'react';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
-import { Phone, Mail, MapPin, Clock, Send } from 'lucide-react';
+import { Phone, Mail, MapPin, Clock, Send, Truck } from 'lucide-react';
+
+const MAP_EMBED_URL =
+  'https://www.google.com/maps/embed?pb=!1m16!1m12!1m3!1d120646.4!2d73.0679487!3d19.1220139!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!2m1!1sMY%20FNG!5e0!3m2!1sen!2sin';
+const MAP_OPEN_URL =
+  'https://www.google.com/maps/search/MY+FNG/@19.1220139,73.0679487,10z?hl=en&entry=ttu';
 
 export default function ContactPage() {
   return (
-    <div className="min-h-screen bg-white font-poppins">
-      <Navbar />
-      
-      <main className="pt-16 sm:pt-20 md:pt-24 pb-12 sm:pb-16 md:pb-20">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6">
-          {/* Header */}
-          <div className="text-center mb-10 sm:mb-12 md:mb-16">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4 text-brand-secondary">
-              Your Car Needs Help? We're On It
-            </h1>
-            <p className="text-sm sm:text-base md:text-lg text-gray-600 max-w-2xl mx-auto px-4">
-              We're here to help with car service queries, feedback, or partnership discussions. Reach out to our team and get
-              clear, timely assistance.
-            </p>
-          </div>
+    <>
+      <style dangerouslySetInnerHTML={{ __html: `
+        .contact-page * { box-sizing: border-box; }
+        .contact-page { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; color: #334155; line-height: 1.6; padding-top: 5.5rem; }
+        @media (min-width: 640px) { .contact-page { padding-top: 6rem; } }
+        .contact-page .contact-container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+        .contact-page .contact-header { text-align: center; margin-bottom: 40px; padding: 0 10px; }
+        .contact-page .contact-header h1 { color: #00338d; font-size: clamp(1.8rem, 5vw, 2.5rem); margin-bottom: 10px; }
+        .contact-page .contact-header p { margin: 0; color: #334155; }
+        .contact-page .contact-wrapper { display: grid; grid-template-columns: 1fr 2fr; gap: 30px; margin-bottom: 30px; }
+        @media (max-width: 992px) { .contact-page .contact-wrapper { grid-template-columns: 1fr; } }
+        .contact-page .info-sidebar { background: #00338d; color: white; padding: 10px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); height: fit-content; }
+        .contact-page .info-card { margin-bottom: 25px; display: flex; align-items: flex-start; }
+        .contact-page .info-card .info-icon { font-size: 1.2rem; margin-right: 15px; background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .contact-page .info-card h3 { margin: 0 0 5px 0; font-size: 1.1rem; color: #fff; }
+        .contact-page .info-card p { margin: 0; font-size: 0.95rem; opacity: 0.9; word-break: break-word; color: rgba(255,255,255,0.9); }
+        .contact-page .info-card a { color: rgba(255,255,255,0.95); text-decoration: none; }
+        .contact-page .info-card a:hover { text-decoration: underline; }
+        .contact-page .emergency-box { background: #dc2626; padding: 20px; border-radius: 8px; margin-top: 30px; border-right: 2px solid #fff; border-bottom: 2px solid #fff; }
+        .contact-page .emergency-box h3 { color: #fff; margin: 0 0 8px 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
+        .contact-page .emergency-box p { margin: 0; color: rgba(255,255,255,0.95); font-size: 0.95rem; }
+        .contact-page .emergency-box a { color: #fff; text-decoration: none; }
+        .contact-page .emergency-box a:hover { text-decoration: underline; }
+        .contact-page .rsa-banner a { color: #d90429; text-decoration: none; font-weight: 800; }
+        .contact-page .rsa-banner a:hover { text-decoration: underline; }
+        .contact-page .service-box { background: rgba(2,61,149,0.59); padding: 20px; border-radius: 8px; margin-top: 0; }
+        .contact-page .form-container { background: white; padding: clamp(20px, 5vw, 40px); border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .contact-page .form-container h3 { margin-top: 0; margin-bottom: 25px; color: #00338d; font-size: 1.25rem; }
+        .contact-page .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 600px) { .contact-page .form-row { grid-template-columns: 1fr; } }
+        .contact-page .form-group { margin-bottom: 20px; }
+        .contact-page .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #334155; }
+        .contact-page .form-container input, .contact-page .form-container select, .contact-page .form-container textarea { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; font-size: 1rem; color: #334155; }
+        .contact-page .btn-submit { background: #0091ff; color: white; padding: 15px; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; transition: background 0.3s; }
+        .contact-page .btn-submit:hover { background: #0076d1; }
+        .contact-page .rsa-banner { border: 2px solid #d90429; border-radius: 10px; padding: 15px; margin-bottom: 30px; text-align: center; background-color: #fff; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; color: #d90429; font-size: clamp(1rem, 4vw, 1.5rem); font-weight: 800; }
+        .contact-page .map-container { border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .contact-page .map-container iframe { display: block; width: 100%; height: 400px; border: 0; }
+        .contact-page .map-link { display: block; text-align: center; margin-top: 10px; color: #0091ff; font-weight: 600; text-decoration: none; }
+        .contact-page .map-link:hover { text-decoration: underline; }
+      ` }} />
+      <div className="min-h-screen bg-[#f8fafc]">
+        <Navbar />
+        <div className="contact-page">
+          <div className="contact-container">
+            <header className="contact-header">
+              <h1>Your Car Needs Help? We&apos;re On It</h1>
+              <p>We&apos;re here to help with car service queries, feedback, or partnership discussions. Reach out to our team and get clear, timely assistance.</p>
+            </header>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 md:gap-10 lg:gap-12 max-w-6xl mx-auto">
-            {/* Contact Info */}
-            <div>
-              <div className="bg-brand-secondary text-white p-6 sm:p-8 md:p-10 rounded-xl sm:rounded-2xl shadow-xl h-full">
-                <h2 className="text-xl sm:text-2xl font-bold mb-6 sm:mb-7 md:mb-8">Contact Information</h2>
-                
-                <div className="space-y-6 sm:space-y-7 md:space-y-8">
-                  <div className="flex items-start gap-3 sm:gap-4">
-                    <div className="bg-white/10 p-2 sm:p-2.5 md:p-3 rounded-lg flex-shrink-0">
-                      <Phone className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1 text-white">Customer Support</h3>
-                      <a
-                        href="tel:+919167779696"
-                        className="block text-blue-100 mb-0.5 sm:mb-1 text-sm sm:text-base hover:text-white transition"
-                      >
-                        +91 9167779696
-                      </a>
-                      <a
-                        href="tel:+919152307030"
-                        className="block text-blue-100 mb-0.5 sm:mb-1 text-sm sm:text-base hover:text-white transition"
-                      >
-                        +91 9152307030
-                      </a>
-                      <p className="text-xs sm:text-sm text-blue-200">Call us for support, bookings, or inquiries</p>
+            <div className="contact-wrapper">
+              <aside className="info-sidebar">
+                <div className="service-box">
+                  <div className="info-card">
+                    <div className="info-icon"><Phone className="w-5 h-5" /></div>
+                    <div>
+                      <h3>Customer Support</h3>
+                      <p><a href="tel:+919167779696">+91 9167779696</a></p>
+                      <p><a href="mailto:info@myfng.in">info@myfng.in</a></p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 sm:gap-4">
-                    <div className="bg-white/10 p-2 sm:p-2.5 md:p-3 rounded-lg flex-shrink-0">
-                      <Mail className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1 text-white">Support / Inquiry</h3>
-                      <a
-                        href="mailto:info@myfng.in"
-                        className="block text-blue-100 text-sm sm:text-base break-all hover:text-white transition"
-                      >
-                        info@myfng.in
-                      </a>
-                      <p className="text-xs sm:text-sm text-blue-200 mb-2">General inquiries</p>
-                      <a
-                        href="mailto:support@myfng.in"
-                        className="block text-blue-100 text-sm sm:text-base break-all hover:text-white transition"
-                      >
-                        support@myfng.in
-                      </a>
-                      <p className="text-xs sm:text-sm text-blue-200">Service support</p>
+                  <div className="info-card">
+                    <div className="info-icon"><Mail className="w-5 h-5" /></div>
+                    <div>
+                      <h3>Support / Inquiry</h3>
+                      <p>Service - <a href="tel:+919152307030">+91-9152307030</a></p>
+                      <p>RSA - <a href="tel:+919610448949">+91-9610448949</a></p>
+                      <p><a href="mailto:support@myfng.in">support@myfng.in</a></p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 sm:gap-4">
-                    <div className="bg-white/10 p-2 sm:p-2.5 md:p-3 rounded-lg flex-shrink-0">
-                      <MapPin className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1 text-white">Address</h3>
-                      <p className="text-blue-100 text-sm sm:text-base">
-                        A/309, Centrum Business Square, Road No 16, Wagle Industrial Estate, Thane (W), Thane-400604, Maharashtra
-                      </p>
+                  <div className="info-card">
+                    <div className="info-icon"><MapPin className="w-5 h-5" /></div>
+                    <div>
+                      <h3>Head Office</h3>
+                      <p>A/309, Centrum Business Square, Road No 16, Wagle Industrial Estate, Thane (W), Thane-400604</p>
                     </div>
                   </div>
-                  
-                  <div className="flex items-start gap-3 sm:gap-4">
-                    <div className="bg-white/10 p-2 sm:p-2.5 md:p-3 rounded-lg flex-shrink-0">
-                      <Clock className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6" />
+
+                  <div className="info-card">
+                    <div className="info-icon"><Clock className="w-5 h-5" /></div>
+                    <div>
+                      <h3>Office Hours</h3>
+                      <p>Mon - Sat: 9 am - 6 pm</p>
+                      <p>Sunday: Closed</p>
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg mb-0.5 sm:mb-1 text-white">Office Hours</h3>
-                      <div className="text-blue-100 text-sm sm:text-base space-y-1">
-                        <div className="flex items-center justify-between gap-4">
-                          <span>Monday - Saturday</span>
-                          <span className="font-semibold">9 am - 6 pm</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span>Sunday</span>
-                          <span className="font-semibold">Closed</span>
-                        </div>
-                      </div>
-                    </div>
+                  </div>
+
+                  <div className="emergency-box">
+                    <h3><Truck className="w-5 h-5 inline" /> 24/7 Roadside</h3>
+                    <p>Stranded? Call our emergency dispatch: <strong><br /><a href="tel:18003093431">1800-309-3431</a></strong></p>
                   </div>
                 </div>
-              </div>
+              </aside>
+
+              <main className="form-container">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    // Optional: wire to API later
+                  }}
+                >
+                  <h3>Send us a Message</h3>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>First Name</label>
+                      <input type="text" placeholder="John" required />
+                    </div>
+                    <div className="form-group">
+                      <label>Last Name</label>
+                      <input type="text" placeholder="Doe" required />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Email Address</label>
+                    <input type="email" placeholder="john@example.com" required />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Mobile Number <span style={{ color: 'red' }}>*</span></label>
+                    <input type="tel" placeholder="9167779696" required />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Subject</label>
+                    <select>
+                      <option>General Inquiry</option>
+                      <option>Service Support</option>
+                      <option>Feedback</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Message</label>
+                    <textarea rows={4} placeholder="How can we help you?" />
+                  </div>
+
+                  <button type="submit" className="btn-submit">
+                    Send Message <Send className="w-5 h-5" />
+                  </button>
+                </form>
+              </main>
             </div>
 
-            {/* Contact Form */}
-            <div className="bg-white p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl shadow-lg border border-gray-100">
-              <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-5 md:mb-6 text-brand-secondary">Send us a Message</h2>
-              <form className="space-y-4 sm:space-y-5 md:space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
-                  <div>
-                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">First Name</label>
-                    <input type="text" className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none" placeholder="John" />
-                  </div>
-                  <div>
-                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Last Name</label>
-                    <input type="text" className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none" placeholder="Doe" />
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Email Address</label>
-                  <input type="email" className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none" placeholder="john@example.com" />
-                </div>
+            <div className="rsa-banner">
+              <Truck className="w-6 h-6 flex-shrink-0" />
+              RSA Helpline: <a href="tel:18003093431">1800-309-3431</a>
+            </div>
 
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    Mobile Number <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    name="mobile"
-                    required
-                    inputMode="numeric"
-                    autoComplete="tel"
-                    pattern="^\\+?[0-9]{10,15}$"
-                    title="Please enter a valid mobile number (10-15 digits)."
-                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none"
-                    placeholder="9167779696"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Subject</label>
-                  <select className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none bg-white">
-                    <option>General Inquiry</option>
-                    <option>Service Support</option>
-                    <option>Partner Program</option>
-                    <option>Feedback</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Message</label>
-                  <textarea rows={4} className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-sm rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none resize-none" placeholder="How can we help you?"></textarea>
-                </div>
-
-                <button type="submit" className="w-full btn btn-primary py-2.5 sm:py-3 md:py-4 flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-base">
-                  Send Message
-                  <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                </button>
-              </form>
+            <div className="map-container">
+              <iframe
+                src={MAP_EMBED_URL}
+                width="100%"
+                height="400"
+                style={{ border: 0 }}
+                allowFullScreen
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                title="MY FNG on Google Maps"
+              />
+              <a href={MAP_OPEN_URL} target="_blank" rel="noopener noreferrer" className="map-link">
+                Open MY FNG on Google Maps
+              </a>
             </div>
           </div>
         </div>
-      </main>
-      <Footer />
-    </div>
+        <Footer />
+      </div>
+    </>
   );
 }
-

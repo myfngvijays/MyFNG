@@ -8,6 +8,19 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { DEFAULT_SERVICES, Service, canonicalCategoryName, makeShortDescription, normalizeSpaces } from '@/lib/services/catalog';
 
+/** Internal slug (catalog) → marketing URL slug (same as Navbar /car-services/ links) */
+const INTERNAL_SLUG_TO_CAR_SERVICES: Record<string, string> = {
+  'periodic-service': 'periodic-car-service',
+  'engine-service': 'car-engine-service',
+  'ac-service': 'car-ac-service',
+  'battery-service': 'car-battery',
+  'brake-service': 'car-brake-service',
+  'clutch-service': 'car-clutch-service',
+  'tyre-wheel-care': 'tyre-wheel-care',
+  'detailing-service': 'car-detailing-service',
+  'denting-painting': 'car-denting-painting',
+};
+
 type CategoryRow = { uuid: string; category: string; description: string | null; sequence: number };
 
 export default function ServicesClient({ categories }: { categories: CategoryRow[] }) {
@@ -258,7 +271,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                         </Link>
 
                         <Link
-                          href={`/services/${selectedService.slug}`}
+                          href={`/car-services/${INTERNAL_SLUG_TO_CAR_SERVICES[selectedService.slug] ?? selectedService.slug}`}
                           className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-4 border-2 border-blue-600 text-blue-600 font-semibold rounded-xl hover:bg-blue-50 transition-all"
                         >
                           Know More

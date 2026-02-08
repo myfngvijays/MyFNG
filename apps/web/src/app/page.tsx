@@ -720,8 +720,8 @@ export default function HomePage() {
         <div className="container mx-auto px-4 sm:px-6 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-12 lg:gap-14">
             
-            {/* Left Content */}
-            <div className="lg:col-span-6 text-center lg:text-left w-full">
+            {/* Left Content – higher z so buttons are never covered by right visual */}
+            <div className="lg:col-span-6 text-center lg:text-left w-full relative z-20">
               {/* AI Badge */}
               <div className="mb-6 flex justify-center lg:justify-start">
                 <AIFeatureBadge text="Powered by Advanced AI Technology" />
@@ -780,7 +780,7 @@ export default function HomePage() {
             </div>
 
             {/* Right Visual */}
-            <div className="lg:col-span-6 relative w-full mt-10 lg:mt-0">
+            <div className="lg:col-span-6 relative w-full mt-10 lg:mt-0 min-w-0">
               <div className="relative z-10 perspective-1000">
                 {/* Main Image - Using the clean futuristic car image */}
                 <div className="relative z-10 rounded-3xl overflow-hidden shadow-2xl shadow-blue-500/20 bg-white p-2 border border-white/50 backdrop-blur-sm">
@@ -796,8 +796,8 @@ export default function HomePage() {
                   </div>
                 </div>
                 
-                {/* Floating Card 1: AI Recommendation */}
-                <div className="absolute -top-6 -left-6 md:top-8 md:-left-12 bg-white p-4 rounded-2xl shadow-xl shadow-blue-900/5 border border-blue-50 animate-float z-20 max-w-[240px]">
+                {/* Floating Card 1: AI Recommendation – keep inside right column to avoid overlapping left */}
+                <div className="absolute -top-6 left-2 md:top-8 md:left-0 bg-white p-4 rounded-2xl shadow-xl shadow-blue-900/5 border border-blue-50 animate-float z-20 max-w-[240px]">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-600/20">
                       <Bot className="w-5 h-5 text-white" />
@@ -825,8 +825,8 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Floating Card 3: Nearest Workshop */}
-                <div className="absolute -bottom-8 left-10 md:bottom-8 md:left-0 bg-white p-4 rounded-2xl shadow-xl shadow-purple-900/5 border border-purple-50 animate-float z-20" style={{animationDelay: '2s'}}>
+                {/* Floating Card 3: Nearest Workshop – keep inside right column */}
+                <div className="absolute -bottom-8 left-4 md:bottom-8 md:left-2 bg-white p-4 rounded-2xl shadow-xl shadow-purple-900/5 border border-purple-50 animate-float z-20" style={{animationDelay: '2s'}}>
                    <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center shadow-lg shadow-purple-600/20">
                       <MapPin className="w-5 h-5 text-white" />
@@ -1761,9 +1761,9 @@ export default function HomePage() {
 
 
 
-      {/* Floating Quick Book (like Ask MY FNG AI) */}
+      {/* Floating Quick Book – above mobile bottom bar when visible (lg:hidden) */}
       {!isChatOpen && (
-        <div className="fixed bottom-36 sm:bottom-24 right-4 sm:right-6 z-50">
+        <div className="fixed bottom-44 right-4 z-50 lg:bottom-24 lg:right-6">
           <button
             type="button"
             onClick={() => setIsBookingFormOpen(true)}
@@ -1776,8 +1776,8 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Floating Chatbot (Always Visible) */}
-      <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50 flex flex-col items-end gap-2">
+      {/* Floating Chatbot – above mobile bottom bar when visible (lg:hidden) */}
+      <div className="fixed bottom-28 right-4 z-50 flex flex-col items-end gap-2 lg:bottom-6 lg:right-6">
         <Link
           href="/ai-booking"
           className="bg-brand-primary hover:bg-brand-primary-hover text-white px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2 sm:gap-3 group border-2 sm:border-4 border-white/20 animate-bounce-slow"
@@ -2090,9 +2090,9 @@ export default function HomePage() {
 
       <Footer />
 
-      {/* Mobile Bottom Bar (app-style) */}
+      {/* Mobile Bottom Bar (app-style) – safe-area so not cut off on notched screens */}
       <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
-        <div className="mx-auto max-w-md px-3 pb-3">
+        <div className="mx-auto max-w-md px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="rounded-2xl border border-gray-200 bg-white/90 backdrop-blur shadow-2xl overflow-hidden">
             <div className="flex overflow-x-auto">
               <Link
@@ -2158,8 +2158,8 @@ export default function HomePage() {
         <BookingForm onClose={() => setIsBookingFormOpen(false)} />
       )}
 
-      {/* Spacer so content isn't hidden behind bottom bar on mobile */}
-      <div className="h-24 lg:hidden" aria-hidden="true" />
+      {/* Spacer so content isn't hidden behind bottom bar + floating buttons on mobile */}
+      <div className="h-32 lg:h-0 lg:hidden" aria-hidden="true" />
 
     </div>
   );

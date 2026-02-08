@@ -202,12 +202,14 @@ export async function GET(request: NextRequest) {
     const rangeDay = buildDateRangeIST(from, to);
     const isSingleDay = rangeDay.fromKey === rangeDay.toKey;
 
+    const dateFilter = `and(lead_registered_at.gte.${from},lead_registered_at.lte.${to}),and(requested_at.gte.${from},requested_at.lte.${to})`;
     const { data: leads, error } = await db
       .from('rsa_leads')
       .select(
         `
         id,
         lead_registered_at,
+        requested_at,
         lead_status,
         complaint_status,
         customer_quoted_amount,
@@ -216,8 +218,7 @@ export async function GET(request: NextRequest) {
       `
       )
       .eq('delete_status', false)
-      .gte('lead_registered_at', from)
-      .lte('lead_registered_at', to);
+      .or(dateFilter);
 
     if (error) {
       return NextResponse.json({ error: 'Failed to load trend data' }, { status: 500 });
@@ -227,7 +228,8 @@ export async function GET(request: NextRequest) {
     const agg = new Map<string, any>();
 
     for (const lead of rows) {
-      const key = isSingleDay ? hourKeyIST(lead?.lead_registered_at) : dateKeyIST(lead?.lead_registered_at);
+      const stamp = lead?.lead_registered_at || lead?.requested_at;
+      const key = isSingleDay ? hourKeyIST(stamp) : dateKeyIST(stamp);
       if (!key) continue;
       const entry = agg.get(key) || {
         date: key, // day key OR hour key

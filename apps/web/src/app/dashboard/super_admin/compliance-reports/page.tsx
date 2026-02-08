@@ -16,6 +16,10 @@ export default function ComplianceReportsPage() {
       toast.error('Please select start and end dates');
       return;
     }
+    if (startDate > endDate) {
+      toast.error('Start date must be before or equal to end date');
+      return;
+    }
 
     setGenerating(true);
     try {
@@ -28,6 +32,13 @@ export default function ComplianceReportsPage() {
 
       const response = await fetch(`/api/audit/compliance-report?${params.toString()}`);
 
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({})) as { error?: string; details?: string };
+        const msg = err.details ? `${err.error ?? 'Failed to generate report'}: ${err.details}` : (err.error ?? 'Failed to generate report');
+        toast.error(msg);
+        return;
+      }
+
       if (format === 'csv') {
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
@@ -39,19 +50,14 @@ export default function ComplianceReportsPage() {
         toast.success('Report downloaded successfully');
       } else {
         const data = await response.json();
-        if (response.ok) {
-          // Download as JSON file
-          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `compliance-report-${reportType}-${startDate}-to-${endDate}.json`;
-          a.click();
-          URL.revokeObjectURL(url);
-          toast.success('Report downloaded successfully');
-        } else {
-          toast.error(data.error || 'Failed to generate report');
-        }
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `compliance-report-${reportType}-${startDate}-to-${endDate}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success('Report downloaded successfully');
       }
     } catch (error) {
       console.error('Error generating report:', error);

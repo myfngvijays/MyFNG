@@ -1,100 +1,131 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { getBrowserClient } from '@/lib/supabase/browserClient';
-import { BarChart3, Download, TrendingUp, Users, DollarSign, Award } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { BarChart3, Download, TrendingUp, Users, DollarSign, Award, RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+
+function formatInK(value: number): string {
+  const k = value / 1000;
+  if (k === 0) return '0K';
+  return k >= 1 ? `${k.toFixed(1)}K` : `${k.toFixed(2)}K`;
+}
+
+type Period = 'today' | 'week' | 'month' | 'year';
+
+interface ReportStats {
+  totalLeads: number;
+  convertedLeads: number;
+  conversionRate: number;
+  totalRevenue: number;
+  avgOrderValue: number;
+  activeWorkshops: number;
+  avgRating: number;
+  slaCompliance: number;
+  totalComplaints: number;
+}
+
+interface DepartmentRow {
+  name: string;
+  leads: number;
+  converted: number;
+  score: number;
+}
+
+const DEFAULT_STATS: ReportStats = {
+  totalLeads: 0,
+  convertedLeads: 0,
+  conversionRate: 0,
+  totalRevenue: 0,
+  avgOrderValue: 0,
+  activeWorkshops: 0,
+  avgRating: 0,
+  slaCompliance: 0,
+  totalComplaints: 0,
+};
 
 export default function ReportsAnalyticsPage() {
-  const supabase = getBrowserClient();
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'year'>('month');
-  
-  const [stats, setStats] = useState({
-    totalLeads: 0,
-    convertedLeads: 0,
-    conversionRate: 0,
-    totalRevenue: 0,
-    avgOrderValue: 0,
-    activeWorkshops: 0,
-    avgRating: 0,
-    totalComplaints: 0
-  });
+  const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState<Period>('month');
+  const [stats, setStats] = useState<ReportStats>(DEFAULT_STATS);
+  const [departments, setDepartments] = useState<DepartmentRow[]>([]);
 
-  useEffect(() => {
-    fetchReportData();
-  }, [period]);
-
-  const fetchReportData = async () => {
+  const fetchReportData = useCallback(async () => {
+    setError(null);
+    setLoading(true);
     try {
-      const dateFilter = getDateFilter(period);
+      const response = await fetch(`/api/super_admin/reports?period=${period}`);
+      const data = await response.json();
 
-      const [leadsResult, completedResult, workshopsResult, complaintsResult] = await Promise.all([
-        supabase
-          .from('service_leads')
-          .select('id, invoice_amount', { count: 'exact' })
-          .gte('created_at', dateFilter),
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'COMPLETED')
-          .gte('created_at', dateFilter),
-        supabase
-          .from('workshops')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_active', true),
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'COMPLAINT')
-          .gte('created_at', dateFilter)
-      ]);
+      if (!response.ok) {
+        const msg = data.details ? `${data.error}: ${data.details}` : (data.error || 'Failed to load reports');
+        setError(msg);
+        toast.error(msg);
+        setStats(DEFAULT_STATS);
+        setDepartments([]);
+        return;
+      }
 
-      const totalLeads = leadsResult.count || 0;
-      const convertedLeads = completedResult.count || 0;
-      const totalRevenue = leadsResult.data?.reduce((sum, l) => sum + (l.invoice_amount || 0), 0) || 0;
-
-      setStats({
-        totalLeads,
-        convertedLeads,
-        conversionRate: totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0,
-        totalRevenue,
-        avgOrderValue: convertedLeads > 0 ? totalRevenue / convertedLeads : 0,
-        activeWorkshops: workshopsResult.count || 0,
-        avgRating: 4.5,
-        totalComplaints: complaintsResult.count || 0
-      });
-    } catch (error) {
-      console.error('Error fetching report data:', error);
+      setStats(data.stats ?? DEFAULT_STATS);
+      setDepartments(data.departments ?? []);
+    } catch (e) {
+      const msg = 'Failed to load reports';
+      setError(msg);
+      toast.error(msg);
+      setStats(DEFAULT_STATS);
+      setDepartments([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [period]);
 
-  const getDateFilter = (p: string) => {
-    const now = new Date();
-    switch (p) {
-      case 'today':
-        return now.toISOString().split('T')[0];
-      case 'week':
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      case 'month':
-        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      case 'year':
-        return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString();
-      default:
-        return now.toISOString();
+  useEffect(() => {
+    fetchReportData();
+  }, [fetchReportData]);
+
+  const handleExport = (format: string) => {
+    if (format === 'csv') {
+      const rows = [
+        ['Period', period],
+        ['Generated', new Date().toISOString()],
+        [],
+        ['Operational', ''],
+        ['Total Leads', stats.totalLeads],
+        ['Converted', stats.convertedLeads],
+        ['Conversion Rate %', stats.conversionRate.toFixed(1)],
+        ['Active Workshops', stats.activeWorkshops],
+        [],
+        ['Financial', ''],
+        ['Total Revenue (₹)', stats.totalRevenue],
+        ['Avg Order Value (₹)', stats.avgOrderValue.toFixed(0)],
+        [],
+        ['Quality', ''],
+        ['Avg Rating', stats.avgRating],
+        ['SLA Compliance %', stats.slaCompliance],
+        ['Total Complaints', stats.totalComplaints],
+        [],
+        ['Department', 'Leads', 'Converted', 'Score %'],
+        ...departments.map((d) => [d.name, d.leads, d.converted, d.score]),
+      ];
+      const csv = rows.map((r) => r.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reports-${period}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Report exported as CSV');
+    } else {
+      toast.error(format.toUpperCase() + ' export coming soon');
     }
   };
 
-  const handleExport = (format: string) => {
-    alert(`Exporting ${period} report as ${format.toUpperCase()}...`);
-  };
-
-  if (loading) {
+  if (loading && stats.totalLeads === 0 && !error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-blue-600 mx-auto mb-3 sm:mb-4"></div>
+          <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 animate-spin text-blue-600 mx-auto mb-3 sm:mb-4" />
           <p className="text-gray-600 text-xs sm:text-sm md:text-base">Loading reports...</p>
         </div>
       </div>
@@ -103,7 +134,6 @@ export default function ReportsAnalyticsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
@@ -116,10 +146,18 @@ export default function ReportsAnalyticsPage() {
                 Comprehensive performance and financial reports
               </p>
             </div>
-
-            {/* Export Buttons */}
-            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <button
+                type="button"
+                onClick={() => fetchReportData()}
+                disabled={loading}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+              <button
+                type="button"
                 onClick={() => handleExport('csv')}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm flex-1 sm:flex-none justify-center"
               >
@@ -127,6 +165,7 @@ export default function ReportsAnalyticsPage() {
                 CSV
               </button>
               <button
+                type="button"
                 onClick={() => handleExport('pdf')}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm flex-1 sm:flex-none justify-center"
               >
@@ -134,6 +173,7 @@ export default function ReportsAnalyticsPage() {
                 PDF
               </button>
               <button
+                type="button"
                 onClick={() => handleExport('excel')}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm flex-1 sm:flex-none justify-center"
               >
@@ -145,18 +185,26 @@ export default function ReportsAnalyticsPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 pt-3 sm:pt-4">
+          <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+            <span className="text-sm">{error}</span>
+            <button type="button" onClick={() => setError(null)} className="ml-auto text-red-600 hover:text-red-800 text-sm font-medium">Dismiss</button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-5 md:py-6 space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Period Selector */}
         <div className="bg-white rounded-lg shadow p-3 sm:p-4">
           <div className="flex flex-wrap gap-2">
-            {['today', 'week', 'month', 'year'].map((p) => (
+            {(['today', 'week', 'month', 'year'] as const).map((p) => (
               <button
                 key={p}
-                onClick={() => setPeriod(p as any)}
+                type="button"
+                onClick={() => setPeriod(p)}
                 className={`px-4 sm:px-5 md:px-6 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-                  period === p
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  period === p ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 {p.charAt(0).toUpperCase() + p.slice(1)}
@@ -165,28 +213,24 @@ export default function ReportsAnalyticsPage() {
           </div>
         </div>
 
-        {/* Operational Metrics */}
         <div>
-          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">📊 Operational Performance</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">Operational Performance</h2>
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
               <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-blue-600 mb-1.5 sm:mb-2" />
               <p className="text-xs sm:text-sm text-gray-600">Total Leads</p>
               <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{stats.totalLeads}</p>
             </div>
-
             <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
               <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-600 mb-1.5 sm:mb-2" />
               <p className="text-xs sm:text-sm text-gray-600">Converted</p>
               <p className="text-xl sm:text-2xl md:text-3xl font-bold text-green-600">{stats.convertedLeads}</p>
             </div>
-
             <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
               <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-600 mb-1.5 sm:mb-2" />
               <p className="text-xs sm:text-sm text-gray-600">Conversion Rate</p>
               <p className="text-xl sm:text-2xl md:text-3xl font-bold text-purple-600">{stats.conversionRate.toFixed(1)}%</p>
             </div>
-
             <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
               <Users className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-600 mb-1.5 sm:mb-2" />
               <p className="text-xs sm:text-sm text-gray-600">Active Workshops</p>
@@ -195,47 +239,41 @@ export default function ReportsAnalyticsPage() {
           </div>
         </div>
 
-        {/* Financial Metrics */}
         <div>
-          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">💰 Financial Performance</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">Financial Performance</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow p-4 sm:p-5 md:p-6 text-white">
               <DollarSign className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 mb-1.5 sm:mb-2" />
               <p className="text-xs sm:text-sm opacity-90">Total Revenue</p>
-              <p className="text-2xl sm:text-3xl md:text-4xl font-bold">₹{(stats.totalRevenue / 100000).toFixed(1)}L</p>
+              <p className="text-2xl sm:text-3xl md:text-4xl font-bold">₹{formatInK(stats.totalRevenue)}</p>
             </div>
-
             <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-4 sm:p-5 md:p-6 text-white">
               <DollarSign className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 mb-1.5 sm:mb-2" />
               <p className="text-xs sm:text-sm opacity-90">Avg Order Value</p>
-              <p className="text-2xl sm:text-3xl md:text-4xl font-bold">₹{stats.avgOrderValue.toFixed(0)}</p>
+              <p className="text-2xl sm:text-3xl md:text-4xl font-bold">₹{formatInK(stats.avgOrderValue)}</p>
             </div>
-
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow p-4 sm:p-5 md:p-6 text-white sm:col-span-2 lg:col-span-1">
               <Award className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 mb-1.5 sm:mb-2" />
               <p className="text-xs sm:text-sm opacity-90">Avg Rating</p>
-              <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{stats.avgRating}⭐</p>
+              <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{stats.avgRating ? `${stats.avgRating}⭐` : '—'}</p>
             </div>
           </div>
         </div>
 
-        {/* Quality Metrics */}
         <div>
-          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">⭐ Quality Metrics</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">Quality Metrics</h2>
           <div className="bg-white rounded-lg shadow p-4 sm:p-5 md:p-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
               <div className="text-center">
                 <Award className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-orange-500 mx-auto mb-1.5 sm:mb-2" />
-                <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-gray-900">{stats.avgRating}⭐</p>
+                <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-gray-900">{stats.avgRating ? `${stats.avgRating}⭐` : '—'}</p>
                 <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Average Rating</p>
               </div>
-
               <div className="text-center">
                 <TrendingUp className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-blue-500 mx-auto mb-1.5 sm:mb-2" />
-                <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-gray-900">94%</p>
+                <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-gray-900">{stats.slaCompliance}%</p>
                 <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">SLA Compliance</p>
               </div>
-
               <div className="text-center">
                 <Users className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-red-500 mx-auto mb-1.5 sm:mb-2" />
                 <p className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-gray-900">{stats.totalComplaints}</p>
@@ -245,30 +283,30 @@ export default function ReportsAnalyticsPage() {
           </div>
         </div>
 
-        {/* Department Performance */}
         <div>
-          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">👥 Department Performance</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">Department Performance</h2>
           <div className="bg-white rounded-lg shadow divide-y">
-            {[
-              { name: 'Telecaller', score: 85, color: 'blue' },
-              { name: 'Lead Manager', score: 92, color: 'purple' },
-              { name: 'Workshops', score: 88, color: 'orange' },
-              { name: 'RSA', score: 91, color: 'red' },
-              { name: 'Auditors', score: 90, color: 'indigo' }
-            ].map((dept) => (
-              <div key={dept.name} className="p-4 sm:p-5 md:p-6">
-                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-                  <h3 className="font-semibold text-sm sm:text-base text-gray-900">{dept.name}</h3>
-                  <span className="text-xl sm:text-2xl font-bold text-gray-900">{dept.score}/100</span>
+            {departments.length === 0 ? (
+              <div className="p-6 text-center text-gray-500 text-sm">No department data for this period.</div>
+            ) : (
+              departments.map((dept) => (
+                <div key={dept.name} className="p-4 sm:p-5 md:p-6">
+                  <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                    <h3 className="font-semibold text-sm sm:text-base text-gray-900">{dept.name}</h3>
+                    <span className="text-lg sm:text-xl font-bold text-gray-900">{dept.score}/100</span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-gray-600 mb-2">
+                    {dept.leads} leads · {dept.converted} converted
+                  </p>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      style={{ width: `${Math.min(100, dept.score)}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
-                  <div
-                    className={`bg-${dept.color}-600 h-1.5 sm:h-2 rounded-full transition-all`}
-                    style={{ width: `${dept.score}%` }}
-                  ></div>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

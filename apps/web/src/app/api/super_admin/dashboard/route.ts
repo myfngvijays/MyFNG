@@ -29,23 +29,27 @@ async function assertSuperAdmin(supabase: any) {
   return { ok: true, status: 200, error: null, user };
 }
 
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
 function startOfTodayISO() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+  const now = new Date();
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  const utcMs = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate(), 0, 0, 0);
+  return new Date(utcMs - IST_OFFSET_MS).toISOString();
 }
 
 function endOfTodayISO() {
-  const d = new Date();
-  d.setHours(23, 59, 59, 999);
-  return d.toISOString();
+  const now = new Date();
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  const utcMs = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate(), 23, 59, 59, 999);
+  return new Date(utcMs - IST_OFFSET_MS).toISOString();
 }
 
 function startOfMonthISO() {
   const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth(), 1);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  const utcMs = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), 1, 0, 0, 0);
+  return new Date(utcMs - IST_OFFSET_MS).toISOString();
 }
 
 function startOfNDaysAgoISO(days: number) {
