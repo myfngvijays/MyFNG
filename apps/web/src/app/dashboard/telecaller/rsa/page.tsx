@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSALeadCreateForm } from '@/components/telecaller/RSALeadCreateForm';
 import { formatDateTimeIST } from '@/lib/utils';
-import { CheckCircle, Clock, FileText, RefreshCw } from 'lucide-react';
+import { CheckCircle, Clock, FileText, Pencil, RefreshCw } from 'lucide-react';
 
 type TabKey = 'overview' | 'create' | 'created' | 'call_report' | 'car_service';
 
@@ -43,25 +43,22 @@ type SarvCallAudit = {
 };
 
 const DISPOSITION_OPTIONS = [
-  'Completed / Service Provided',
-  'Not Linked (No Complaint)',
+  'Registered',
   'Wrong Number',
   'Cancelled by Customer',
   'Follow-up Required',
-  'No Service Needed',
+  // keep only the allowed dispositions for telecaller
   'Out of Service Area',
   'Spam/Unwanted',
   'Test Call',
-  'Other',
 ];
 
 const SERVICE_TYPE_OPTIONS = [
-  'Battery',
   'Flat Tyre',
   'Towing',
   'Fuel Delivery',
   'Jump Start',
-  'Emergency Roadside',
+  'Car Service',
   'Other',
 ];
 
@@ -274,6 +271,8 @@ export default function TelecallerRSAPage() {
   const [carViewLoading, setCarViewLoading] = useState(false);
   const [carViewError, setCarViewError] = useState('');
   const [carEnquiries, setCarEnquiries] = useState<any[]>([]);
+  const [editLead, setEditLead] = useState<any | null>(null);
+  const [editLeadLoading, setEditLeadLoading] = useState(false);
 
   const stats = useMemo(() => {
     const total = leads.length;
@@ -538,6 +537,32 @@ export default function TelecallerRSAPage() {
     setSarvError('');
   };
 
+  const openEditLead = async (lead: any) => {
+    if (!lead?.id) return;
+    setEditLeadLoading(true);
+    setEditLead(null);
+    try {
+      const res = await fetch(`/api/telecaller/rsa-complaints/${encodeURIComponent(lead.id)}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load lead');
+      setEditLead(json?.lead || null);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load lead');
+    } finally {
+      setEditLeadLoading(false);
+    }
+  };
+
+  const closeEditLead = () => {
+    setEditLead(null);
+  };
+
+  const onLeadUpdated = () => {
+    setEditLead(null);
+    fetchLeads();
+    fetchCreatedLeads();
+  };
+
   useEffect(() => {
     fetchLeads();
     fetchCities();
@@ -674,6 +699,7 @@ export default function TelecallerRSAPage() {
                         <th className="py-2 pr-3">Status</th>
                         <th className="py-2 pr-3">Registered</th>
                         <th className="py-2 pr-3">Calls</th>
+                        <th className="py-2 pr-3">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -705,6 +731,21 @@ export default function TelecallerRSAPage() {
                             >
                               View calls
                             </button>
+                          </td>
+                          <td className="py-2 pr-3">
+                            {!l.assigned_mechanic_id ? (
+                              <button
+                                type="button"
+                                className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
+                                onClick={() => openEditLead(l)}
+                                title="Edit lead (allowed until mechanic is assigned)"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                Edit
+                              </button>
+                            ) : (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -744,6 +785,7 @@ export default function TelecallerRSAPage() {
                         <th className="py-2 pr-3">Status</th>
                         <th className="py-2 pr-3">Registered</th>
                         <th className="py-2 pr-3">Calls</th>
+                        <th className="py-2 pr-3">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -775,6 +817,21 @@ export default function TelecallerRSAPage() {
                             >
                               View calls
                             </button>
+                          </td>
+                          <td className="py-2 pr-3">
+                            {!l.assigned_mechanic_id ? (
+                              <button
+                                type="button"
+                                className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
+                                onClick={() => openEditLead(l)}
+                                title="Edit lead (allowed until mechanic is assigned)"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                Edit
+                              </button>
+                            ) : (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1349,6 +1406,34 @@ export default function TelecallerRSAPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {editLeadLoading || editLead ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-3 py-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-2xl rounded-xl shadow-lg p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h3 className="text-lg font-bold text-text-heading">Edit RSA lead</h3>
+              <button
+                type="button"
+                className="text-gray-600 hover:text-gray-800 font-semibold"
+                onClick={closeEditLead}
+                disabled={editLeadLoading}
+              >
+                Close
+              </button>
+            </div>
+            {editLeadLoading ? (
+              <div className="text-sm text-gray-600 py-6">Loading lead...</div>
+            ) : editLead ? (
+              <RSALeadCreateForm
+                embedded
+                initialLead={editLead}
+                onUpdated={onLeadUpdated}
+                onCancel={closeEditLead}
+              />
+            ) : null}
           </div>
         </div>
       ) : null}

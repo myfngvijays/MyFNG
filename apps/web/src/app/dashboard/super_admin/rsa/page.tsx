@@ -3054,9 +3054,6 @@ export default function SuperAdminRSASettingsPage() {
                     <option value="PASS">PASS</option>
                     <option value="FAIL">FAIL</option>
                     <option value="NEEDS_IMPROVEMENT">NEEDS_IMPROVEMENT</option>
-                    <option value="FOLLOW_UP">FOLLOW_UP</option>
-                    <option value="INVALID_CALL">INVALID_CALL</option>
-                    <option value="OTHER">OTHER</option>
                   </select>
                 </div>
                 <div>

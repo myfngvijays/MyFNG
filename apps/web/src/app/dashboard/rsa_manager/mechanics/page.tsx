@@ -4,10 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
-import { RSAManagerService } from '@/lib/services/rsaManagerService';
 import { 
   Search, Wrench, MapPin, Phone, Clock, 
-  CheckCircle, XCircle, Star, TrendingUp, Plus, AlertTriangle, X
+  CheckCircle, XCircle, Star, TrendingUp, Plus, AlertTriangle, X, Pencil
 } from 'lucide-react';
 
 function normalizePhone10(value: string) {
@@ -37,6 +36,9 @@ export default function RSAMechanicsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
+  const [editingMechanic, setEditingMechanic] = useState<any | null>(null);
+  const [editError, setEditError] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
   const [addForm, setAddForm] = useState({
     mechanic_name: '',
     number: '',
@@ -52,23 +54,30 @@ export default function RSAMechanicsPage() {
   const fetchMechanics = async () => {
     setLoading(true);
     try {
-      const mechanicsData = await RSAManagerService.searchMechanics({
-        pincode: pincodeFilter || undefined,
-        serviceTag: serviceTagFilter || undefined,
-        searchTerm: searchTerm || undefined
-      });
-      
-      // Apply availability filter
-      let filtered = mechanicsData;
+      const params = new URLSearchParams();
+      if (pincodeFilter?.trim()) params.set('pincode', pincodeFilter.trim());
+      if (serviceTagFilter?.trim()) params.set('serviceTag', serviceTagFilter.trim());
+      if (searchTerm?.trim()) params.set('searchTerm', searchTerm.trim());
+      const res = await fetch(`/api/rsa/mechanics?${params.toString()}`);
+      const mechanicsData = await res.json();
+      if (!res.ok) throw new Error(Array.isArray(mechanicsData) ? 'Failed to load' : (mechanicsData?.error || 'Failed to load mechanics'));
+
+      const list = Array.isArray(mechanicsData) ? mechanicsData : [];
+      // Normalize service_areas (in case API returns string)
+      const normalized = list.map((m: any) => ({
+        ...m,
+        service_areas: Array.isArray(m.service_areas) ? m.service_areas : (typeof m.service_areas === 'string' ? (() => { try { return JSON.parse(m.service_areas); } catch { return []; } })() : []),
+      }));
+
+      let filtered = normalized;
       if (availabilityFilter === 'available') {
-        filtered = mechanicsData.filter(m => m.is_available);
+        filtered = normalized.filter((m: any) => m.is_available);
       } else if (availabilityFilter === 'busy') {
-        filtered = mechanicsData.filter(m => !m.is_available);
+        filtered = normalized.filter((m: any) => !m.is_available);
       }
-      
       setMechanics(filtered);
-    } catch (error) {
-      console.error('Error fetching mechanics:', error);
+    } catch (error: any) {
+      console.error('Error fetching mechanics:', error?.message || error);
     } finally {
       setLoading(false);
     }
@@ -77,6 +86,96 @@ export default function RSAMechanicsPage() {
   const handleSearch = () => {
     setHasSearched(true);
     fetchMechanics();
+  };
+
+  const openEdit = (mechanic: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setEditError('');
+    const areas = Array.isArray(mechanic.service_areas) ? mechanic.service_areas : [];
+    const service_areas = areas.map((a: any) => {
+      if (typeof a === 'string' || typeof a === 'number') {
+        const pincode = String(a).replace(/\D/g, '').slice(0, 6);
+        return { area: '', pincode: pincode.length === 6 ? pincode : '', state: '' };
+      }
+      return {
+        area: String(a?.area ?? '').trim(),
+        pincode: String(a?.pincode ?? '').replace(/\D/g, '').slice(0, 6),
+        state: String(a?.state ?? '').trim(),
+      };
+    });
+    setEditingMechanic({
+      ...mechanic,
+      service_areas: service_areas.length ? service_areas : [{ area: '', pincode: '', state: '' }],
+    });
+  };
+
+  const closeEdit = () => {
+    setEditingMechanic(null);
+    setEditError('');
+  };
+
+  const getEditForm = () => {
+    if (!editingMechanic) return null;
+    return {
+      mechanic_name: String(editingMechanic.mechanic_name ?? '').trim(),
+      number: String(editingMechanic.number ?? '').replace(/\D/g, '').slice(-10),
+      alternate_number1: String(editingMechanic.alternate_number1 ?? '').replace(/\D/g, '').slice(-10),
+      alternate_number2: String(editingMechanic.alternate_number2 ?? '').replace(/\D/g, '').slice(-10),
+      service_tag: String(editingMechanic.service_tag ?? '').trim(),
+      service_tag2: String(editingMechanic.service_tag2 ?? '').trim(),
+      service_tag3: String(editingMechanic.service_tag3 ?? '').trim(),
+      timing: String(editingMechanic.timing ?? '').trim(),
+      active: editingMechanic.active !== false,
+      service_areas: Array.isArray(editingMechanic.service_areas) ? editingMechanic.service_areas : [{ area: '', pincode: '', state: '' }],
+    };
+  };
+
+  const saveEdit = async () => {
+    if (!editingMechanic?.id) return;
+    const form = getEditForm();
+    if (!form) return;
+    setEditError('');
+    const name = form.mechanic_name.trim();
+    const num = normalizePhone10(form.number);
+    if (!name) return setEditError('Mechanic name is required');
+    if (!num || num.length !== 10) return setEditError('Valid 10-digit number is required');
+    for (const row of form.service_areas) {
+      const any = Boolean(row.area.trim() || row.pincode.trim() || row.state.trim());
+      if (!any) continue;
+      if (!row.area.trim() || !row.state.trim() || row.pincode.trim().length !== 6) {
+        return setEditError('Service Areas: Please fill Area + 6-digit Pincode + State for each added row');
+      }
+    }
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/rsa/mechanics/${encodeURIComponent(editingMechanic.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mechanic_name: form.mechanic_name,
+          number: num,
+          alternate_number1: normalizePhone10(form.alternate_number1) || null,
+          alternate_number2: normalizePhone10(form.alternate_number2) || null,
+          service_tag: form.service_tag || null,
+          service_tag2: form.service_tag2 || null,
+          service_tag3: form.service_tag3 || null,
+          timing: form.timing || null,
+          active: form.active,
+          service_areas: form.service_areas
+            .filter((r) => r.area.trim() && r.state.trim() && r.pincode.trim().length === 6)
+            .map((r) => ({ area: r.area.trim(), pincode: r.pincode.trim(), state: r.state.trim() })),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to update mechanic');
+      closeEdit();
+      fetchMechanics();
+    } catch (e: any) {
+      setEditError(e?.message || 'Failed to update mechanic');
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   return (
@@ -195,17 +294,28 @@ export default function RSAMechanicsPage() {
                         </h3>
                         <p className="text-xs sm:text-sm text-gray-600">Code: {mechanic.code || mechanic.mechanic_code}</p>
                       </div>
-                      {mechanic.is_available ? (
-                        <div className="flex items-center gap-1 text-green-600 flex-shrink-0">
-                          <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                          <span className="text-[10px] sm:text-xs font-medium">Available</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1 text-red-600 flex-shrink-0">
-                          <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                          <span className="text-[10px] sm:text-xs font-medium">Busy</span>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => openEdit(mechanic, e)}
+                          className="p-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700"
+                          title="Edit mechanic"
+                          aria-label="Edit"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        {mechanic.is_available ? (
+                          <div className="flex items-center gap-1 text-green-600">
+                            <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                            <span className="text-[10px] sm:text-xs font-medium">Available</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 text-red-600">
+                            <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                            <span className="text-[10px] sm:text-xs font-medium">Busy</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
@@ -285,7 +395,7 @@ export default function RSAMechanicsPage() {
                         <div className="flex items-center gap-1 text-gray-600">
                           <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                           <span className="text-xs sm:text-sm">
-                            {mechanic.total_jobs_completed || 0} jobs
+                            {(mechanic.completed_cases ?? mechanic.total_jobs_completed ?? 0) as any} cases done
                           </span>
                         </div>
                       </div>
@@ -548,10 +658,9 @@ export default function RSAMechanicsPage() {
                           number: num,
                           alternate_number1: normalizePhone10(addForm.alternate_number1),
                           alternate_number2: normalizePhone10(addForm.alternate_number2),
-                          // Send only pincodes to backend (keeps existing pincode-based matching)
                           service_areas: addForm.service_areas
                             .filter((r) => r.area.trim() && r.state.trim() && r.pincode.trim().length === 6)
-                            .map((r) => r.pincode.trim()),
+                            .map((r) => ({ area: r.area.trim(), pincode: r.pincode.trim(), state: r.state.trim() })),
                         }),
                       });
                       const json = await res.json().catch(() => ({}));
@@ -582,6 +691,257 @@ export default function RSAMechanicsPage() {
               </div>
             </div>
           </div>
+          </div>
+        )}
+
+        {/* Edit Mechanic Modal */}
+        {editingMechanic && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl">
+              <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 bg-teal-600 text-white">
+                <h2 className="text-lg sm:text-xl font-bold">Edit Mechanic</h2>
+                <button
+                  type="button"
+                  className="p-1 rounded hover:bg-white/10"
+                  onClick={closeEdit}
+                  disabled={editSaving}
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 sm:p-6 max-h-[calc(90vh-64px)] overflow-auto">
+                {editError ? (
+                  <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg text-xs sm:text-sm flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>{editError}</span>
+                  </div>
+                ) : null}
+
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-800 mb-2">Mechanic Name *</label>
+                    <input
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      value={editingMechanic.mechanic_name ?? ''}
+                      onChange={(e) => setEditingMechanic((p: any) => ({ ...p, mechanic_name: e.target.value }))}
+                      placeholder="e.g. Ravi Kumar"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-2">Phone *</label>
+                      <input
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        value={(editingMechanic.number ?? '').replace(/\D/g, '').slice(-10)}
+                        onChange={(e) => setEditingMechanic((p: any) => ({ ...p, number: normalizePhone10(e.target.value) }))}
+                        onPaste={(e) => {
+                          e.preventDefault();
+                          const text = e.clipboardData?.getData('text') || '';
+                          setEditingMechanic((p: any) => ({ ...p, number: normalizePhone10(text) }));
+                        }}
+                        inputMode="numeric"
+                        maxLength={10}
+                        placeholder="10 digit number"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-2">Timing</label>
+                      <input
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        value={editingMechanic.timing ?? ''}
+                        onChange={(e) => setEditingMechanic((p: any) => ({ ...p, timing: e.target.value }))}
+                        placeholder="e.g. 9am-9pm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-2">Alt Number 1</label>
+                      <input
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        value={(editingMechanic.alternate_number1 ?? '').replace(/\D/g, '').slice(-10)}
+                        onChange={(e) => setEditingMechanic((p: any) => ({ ...p, alternate_number1: normalizePhone10(e.target.value) }))}
+                        onPaste={(e) => {
+                          e.preventDefault();
+                          const text = e.clipboardData?.getData('text') || '';
+                          setEditingMechanic((p: any) => ({ ...p, alternate_number1: normalizePhone10(text) }));
+                        }}
+                        inputMode="numeric"
+                        maxLength={10}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-2">Alt Number 2</label>
+                      <input
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        value={(editingMechanic.alternate_number2 ?? '').replace(/\D/g, '').slice(-10)}
+                        onChange={(e) => setEditingMechanic((p: any) => ({ ...p, alternate_number2: normalizePhone10(e.target.value) }))}
+                        onPaste={(e) => {
+                          e.preventDefault();
+                          const text = e.clipboardData?.getData('text') || '';
+                          setEditingMechanic((p: any) => ({ ...p, alternate_number2: normalizePhone10(text) }));
+                        }}
+                        inputMode="numeric"
+                        maxLength={10}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-2">Service Tag</label>
+                      <input
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        value={editingMechanic.service_tag ?? ''}
+                        onChange={(e) => setEditingMechanic((p: any) => ({ ...p, service_tag: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-2">Service Tag 2</label>
+                      <input
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        value={editingMechanic.service_tag2 ?? ''}
+                        onChange={(e) => setEditingMechanic((p: any) => ({ ...p, service_tag2: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-800 mb-2">Service Tag 3</label>
+                    <input
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      value={editingMechanic.service_tag3 ?? ''}
+                      onChange={(e) => setEditingMechanic((p: any) => ({ ...p, service_tag3: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="edit-active"
+                      checked={editingMechanic.active !== false}
+                      onChange={(e) => setEditingMechanic((p: any) => ({ ...p, active: e.target.checked }))}
+                      className="rounded border-gray-300"
+                    />
+                    <label htmlFor="edit-active" className="text-sm font-semibold text-gray-800">Active</label>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <label className="block text-sm font-semibold text-gray-800">Service Areas (max 20)</label>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-semibold text-gray-800 disabled:opacity-50"
+                        disabled={(editingMechanic.service_areas?.length ?? 0) >= 20}
+                        onClick={() => {
+                          setEditingMechanic((p: any) => ({
+                            ...p,
+                            service_areas: [
+                              ...(Array.isArray(p.service_areas) ? p.service_areas : []),
+                              { area: '', pincode: '', state: '' },
+                            ],
+                          }));
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Area
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      {(Array.isArray(editingMechanic.service_areas) ? editingMechanic.service_areas : []).map((row: any, idx: number) => (
+                        <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                          <input
+                            className="sm:col-span-5 w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                            placeholder="Area"
+                            value={row.area ?? ''}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setEditingMechanic((p: any) => ({
+                                ...p,
+                                service_areas: (p.service_areas || []).map((r: any, i: number) => (i === idx ? { ...r, area: v } : r)),
+                              }));
+                            }}
+                          />
+                          <input
+                            className="sm:col-span-3 w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                            placeholder="Pincode"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={row.pincode ?? ''}
+                            onChange={(e) => {
+                              const v = normalizePincode6(e.target.value);
+                              setEditingMechanic((p: any) => ({
+                                ...p,
+                                service_areas: (p.service_areas || []).map((r: any, i: number) => (i === idx ? { ...r, pincode: v } : r)),
+                              }));
+                            }}
+                            onPaste={(e) => {
+                              e.preventDefault();
+                              const text = e.clipboardData?.getData('text') || '';
+                              const v = normalizePincode6(text);
+                              setEditingMechanic((p: any) => ({
+                                ...p,
+                                service_areas: (p.service_areas || []).map((r: any, i: number) => (i === idx ? { ...r, pincode: v } : r)),
+                              }));
+                            }}
+                          />
+                          <input
+                            className="sm:col-span-3 w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                            placeholder="State"
+                            value={row.state ?? ''}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setEditingMechanic((p: any) => ({
+                                ...p,
+                                service_areas: (p.service_areas || []).map((r: any, i: number) => (i === idx ? { ...r, state: v } : r)),
+                              }));
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="sm:col-span-1 inline-flex items-center justify-center w-full sm:w-11 h-11 rounded-xl border border-gray-300 hover:bg-gray-50 text-gray-700"
+                            aria-label="Remove area"
+                            onClick={() => {
+                              setEditingMechanic((p: any) => ({
+                                ...p,
+                                service_areas: (p.service_areas || []).filter((_: any, i: number) => i !== idx),
+                              }));
+                            }}
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-sm text-gray-500">
+                      Note: kisi area ko valid banane ke liye <span className="font-semibold">Area + Pincode + State</span> teeno fill karo.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 mt-8 justify-end">
+                  <button
+                    type="button"
+                    className="px-6 py-3 border border-gray-300 rounded-xl hover:bg-gray-50 text-sm font-semibold"
+                    onClick={closeEdit}
+                    disabled={editSaving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="px-6 py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 disabled:opacity-50 text-sm font-semibold"
+                    disabled={editSaving}
+                    onClick={saveEdit}
+                  >
+                    {editSaving ? 'Saving…' : 'Update Mechanic'}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

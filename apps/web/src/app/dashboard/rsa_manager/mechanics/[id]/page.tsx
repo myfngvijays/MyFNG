@@ -24,8 +24,37 @@ export default function RSAMechanicDetailPage() {
   
   const [mechanic, setMechanic] = useState<any>(null);
   const [assignments, setAssignments] = useState<any[]>([]);
+  const [ongoingCases, setOngoingCases] = useState<any[]>([]);
+  const [completedCases, setCompletedCases] = useState<any[]>([]);
+  const [completedLoading, setCompletedLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const hasOngoing = ongoingCases.length > 0;
+  const uiIsAvailable = !hasOngoing;
+
+  const normalizeServiceAreasForUi = (value: any): any[] => {
+    if (value == null) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  const formatServiceAreaLabel = (area: any) => {
+    if (area == null) return '—';
+    if (typeof area === 'string' || typeof area === 'number') return String(area);
+    const pincode = String(area?.pincode ?? '').trim();
+    const name = String(area?.area ?? '').trim();
+    const state = String(area?.state ?? '').trim();
+    const left = name || pincode || '—';
+    return state ? `${left} • ${state}` : left;
+  };
 
   useEffect(() => {
     if (mechanicId) {
@@ -44,7 +73,10 @@ export default function RSAMechanicDetailPage() {
         .single();
 
       if (error) throw error;
-      setMechanic(data);
+      setMechanic({
+        ...data,
+        service_areas: normalizeServiceAreasForUi((data as any)?.service_areas),
+      });
     } catch (error: any) {
       console.error('Error fetching mechanic:', error);
       toast.error('Failed to load mechanic details');
@@ -54,18 +86,47 @@ export default function RSAMechanicDetailPage() {
   };
 
   const fetchAssignments = async () => {
+    setCompletedLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('rsa_leads')
-        .select('id, customer_name, contact_number, vehicle_number, lead_status, requested_at, service_type')
-        .eq('assigned_mechanic_id', mechanicId)
-        .order('requested_at', { ascending: false })
-        .limit(20);
+      const res = await fetch(`/api/rsa/mechanics/${encodeURIComponent(mechanicId)}/cases?limit=200`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to fetch cases');
+      const rows = Array.isArray(json?.leads) ? json.leads : [];
+      // Keep a small list for "Recent Assignments" cards
+      setAssignments(rows.slice(0, 20));
 
-      if (error) throw error;
-      setAssignments(data || []);
+      const completed = rows.filter((r: any) => {
+        const ls = String(r?.lead_status || '').toLowerCase();
+        const cs = String(r?.complaint_status || '').toLowerCase();
+        return (
+          ls === 'completed' ||
+          cs === 'completed' ||
+          cs === 'closed' ||
+          Boolean(r?.mechanic_completed_datetime)
+        );
+      });
+      const ongoing = rows.filter((r: any) => {
+        const ls = String(r?.lead_status || '').toLowerCase();
+        const cs = String(r?.complaint_status || '').toLowerCase();
+        const isCancelled =
+          ls === 'cancelled' || cs === 'cancelled' || Boolean(r?.mechanic_cancelled_datetime);
+        const isCompleted =
+          ls === 'completed' ||
+          cs === 'completed' ||
+          cs === 'closed' ||
+          Boolean(r?.mechanic_completed_datetime);
+        return !isCancelled && !isCompleted;
+      });
+
+      setCompletedCases(completed.slice(0, 50));
+      setOngoingCases(ongoing.slice(0, 50));
     } catch (error) {
       console.error('Error fetching assignments:', error);
+      setAssignments([]);
+      setCompletedCases([]);
+      setOngoingCases([]);
+    } finally {
+      setCompletedLoading(false);
     }
   };
 
@@ -152,18 +213,18 @@ export default function RSAMechanicDetailPage() {
               </div>
               <div
                 className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm ${
-                  mechanic.is_available
+                  uiIsAvailable
                     ? 'bg-green-500/20 text-green-100'
                     : 'bg-red-500/20 text-red-100'
                 }`}
               >
-                {mechanic.is_available ? (
+                {uiIsAvailable ? (
                   <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 ) : (
                   <XCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 )}
                 <span className="font-semibold">
-                  {mechanic.is_available ? 'Available' : 'Busy'}
+                  {uiIsAvailable ? 'Available' : 'Busy'}
                 </span>
               </div>
             </div>
@@ -277,12 +338,12 @@ export default function RSAMechanicDetailPage() {
                   <div className="py-2">
                     <span className="text-xs sm:text-sm font-medium text-text-secondary block mb-1.5 sm:mb-2">Service Areas</span>
                     <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                      {mechanic.service_areas.map((area: string, idx: number) => (
+                      {normalizeServiceAreasForUi(mechanic.service_areas).map((area: any, idx: number) => (
                         <span
                           key={idx}
                           className="px-2 sm:px-3 py-0.5 sm:py-1 bg-gray-100 text-gray-700 rounded-full text-[10px] sm:text-xs"
                         >
-                          {area}
+                          {formatServiceAreaLabel(area)}
                         </span>
                       ))}
                     </div>
@@ -344,6 +405,125 @@ export default function RSAMechanicDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* Ongoing Cases with Customer Details (non-completed) */}
+            <div className="bg-white rounded-lg shadow p-3 sm:p-4 md:p-5 lg:p-6">
+              <div className="flex items-center justify-between gap-3 mb-3 sm:mb-4">
+                <h2 className="text-lg sm:text-xl font-bold text-text-heading">Ongoing Cases</h2>
+                <button
+                  type="button"
+                  className="text-xs sm:text-sm font-semibold text-brand-primary hover:underline"
+                  onClick={fetchAssignments}
+                  disabled={completedLoading}
+                >
+                  {completedLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+
+              {completedLoading ? (
+                <div className="text-sm text-gray-600">Loading ongoing cases...</div>
+              ) : ongoingCases.length === 0 ? (
+                <div className="text-sm text-gray-600">No ongoing cases found for this mechanic.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs sm:text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-600 border-b">
+                        <th className="py-2 pr-3">Customer</th>
+                        <th className="py-2 pr-3">Phone</th>
+                        <th className="py-2 pr-3">Vehicle</th>
+                        <th className="py-2 pr-3">Service</th>
+                        <th className="py-2 pr-3">Status</th>
+                        <th className="py-2 pr-3">Requested</th>
+                        <th className="py-2 pr-3">Lead</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ongoingCases.map((c) => (
+                          <tr key={c.id} className="border-b last:border-b-0">
+                            <td className="py-2 pr-3 font-semibold">{c.customer_name || '—'}</td>
+                            <td className="py-2 pr-3">{c.contact_number || '—'}</td>
+                            <td className="py-2 pr-3">
+                              {c.vehicle_number ? <span className="font-mono">{c.vehicle_number}</span> : '—'}
+                            </td>
+                            <td className="py-2 pr-3">{c.service_type || '—'}</td>
+                            <td className="py-2 pr-3">
+                              <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                                {c.lead_status || c.complaint_status || '—'}
+                              </span>
+                            </td>
+                            <td className="py-2 pr-3">{formatDateTime(c.requested_at)}</td>
+                            <td className="py-2 pr-3">
+                              <Link
+                                className="text-brand-primary font-semibold hover:underline"
+                                href={`/dashboard/rsa_manager/leads/${c.id}`}
+                              >
+                                View
+                              </Link>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Completed Cases with Customer Details */}
+            <div className="bg-white rounded-lg shadow p-3 sm:p-4 md:p-5 lg:p-6">
+              <div className="flex items-center justify-between gap-3 mb-3 sm:mb-4">
+                <h2 className="text-lg sm:text-xl font-bold text-text-heading">Completed Cases</h2>
+                <button
+                  type="button"
+                  className="text-xs sm:text-sm font-semibold text-brand-primary hover:underline disabled:opacity-50"
+                  onClick={fetchAssignments}
+                  disabled={completedLoading}
+                >
+                  {completedLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+
+              {completedLoading ? (
+                <div className="text-sm text-gray-600">Loading completed cases...</div>
+              ) : completedCases.length === 0 ? (
+                <div className="text-sm text-gray-600">No completed cases found for this mechanic.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs sm:text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-600 border-b">
+                        <th className="py-2 pr-3">Customer</th>
+                        <th className="py-2 pr-3">Phone</th>
+                        <th className="py-2 pr-3">Vehicle</th>
+                        <th className="py-2 pr-3">Service</th>
+                        <th className="py-2 pr-3">Completed</th>
+                        <th className="py-2 pr-3">Lead</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {completedCases.map((c) => (
+                        <tr key={c.id} className="border-b last:border-b-0">
+                          <td className="py-2 pr-3 font-semibold">{c.customer_name || '—'}</td>
+                          <td className="py-2 pr-3">{c.contact_number || '—'}</td>
+                          <td className="py-2 pr-3">
+                            {c.vehicle_number ? <span className="font-mono">{c.vehicle_number}</span> : '—'}
+                          </td>
+                          <td className="py-2 pr-3">{c.service_type || '—'}</td>
+                          <td className="py-2 pr-3">
+                            {formatDateTime(c.mechanic_completed_datetime || c.requested_at)}
+                          </td>
+                          <td className="py-2 pr-3">
+                            <Link className="text-brand-primary font-semibold hover:underline" href={`/dashboard/rsa_manager/leads/${c.id}`}>
+                              View
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Column - Stats & Actions */}
@@ -373,35 +553,30 @@ export default function RSAMechanicDetailPage() {
             <div className="bg-white rounded-lg shadow p-3 sm:p-4 md:p-5 lg:p-6">
               <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">Actions</h2>
               <button
-                onClick={handleToggleAvailability}
-                disabled={updating}
+                type="button"
+                onClick={() => {
+                  toast('Availability is auto-managed based on ongoing cases.');
+                }}
+                disabled
                 className={`w-full flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold transition-colors text-xs sm:text-sm ${
-                  mechanic.is_available
-                    ? 'bg-red-600 text-white hover:bg-red-700'
-                    : 'bg-green-600 text-white hover:bg-green-700'
+                  uiIsAvailable ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
-                {updating ? (
+                {uiIsAvailable ? (
                   <>
-                    <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
-                    <span>Updating...</span>
+                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span>Available (no ongoing cases)</span>
                   </>
                 ) : (
                   <>
-                    {mechanic.is_available ? (
-                      <>
-                        <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                        <span>Mark as Busy</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                        <span>Mark as Available</span>
-                      </>
-                    )}
+                    <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span>Busy (ongoing case)</span>
                   </>
                 )}
               </button>
+              <p className="mt-2 text-xs text-gray-600">
+                Status auto-updates: Busy until all ongoing cases are completed/cancelled.
+              </p>
             </div>
           </div>
         </div>

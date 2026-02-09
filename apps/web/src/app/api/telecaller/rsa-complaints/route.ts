@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
     const { data: leads, error } = await db
       .from('rsa_leads')
       .select(
-        'id, customer_name, contact_number, vehicle_number, vehicle_model, service_type, lead_status, complaint_status, source, location_link, media_upload, lead_registered_at, requested_at'
+        'id, customer_name, contact_number, vehicle_number, vehicle_model, service_type, lead_status, complaint_status, source, location_link, media_upload, lead_registered_at, requested_at, assigned_mechanic_id'
       )
       .eq('registered_by_id', profile.id)
       .order('lead_registered_at', { ascending: false })

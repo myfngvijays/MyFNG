@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientFromRequest } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
@@ -69,9 +69,176 @@ async function generateMechanicCode(supabaseAdmin: any) {
   return `RS_MECH_${String(n).padStart(3, '0')}`;
 }
 
+/** Normalize service_areas so it's always an array of objects (parse if string from DB) */
+function normalizeServiceAreasForResponse(value: any): any[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
+ * GET /api/rsa/mechanics
+ * Search/list mechanics (RSA_MANAGER, SUPER_ADMIN, SUB_ADMIN). Uses table directly so it works even if RPC fails.
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const userProfile = await resolveUserProfile(supabase as any, user as any);
+    const roleCode = String((userProfile?.roles as any)?.role_code || '');
+    const allowed = new Set(['RSA_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN']);
+    if (!allowed.has(roleCode)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+    const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: 'Server configuration: SUPABASE_SERVICE_ROLE_KEY required for mechanics list', details: adminError ?? '' },
+        { status: 503 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const pincode = searchParams.get('pincode')?.trim() || undefined;
+    const serviceTag = searchParams.get('serviceTag')?.trim() || undefined;
+    const searchTerm = searchParams.get('searchTerm')?.trim() || undefined;
+
+    const db = supabaseAdmin as any;
+
+    const { data: rows, error } = await db
+      .from('company_mechanic_rsa')
+      // NOTE: In this project DB uses `code` (not `mechanic_code`)
+      .select('id, code, mechanic_name, number, alternate_number1, alternate_number2, service_tag, service_tag2, service_tag3, timing, active, service_areas, is_available, rating, total_jobs_completed')
+      .eq('active', true)
+      .order('mechanic_name');
+
+    if (error) {
+      console.error('GET /api/rsa/mechanics query error:', error.message, error.details);
+      return NextResponse.json(
+        { error: 'Failed to fetch mechanics', details: error.message || String(error) },
+        { status: 500 }
+      );
+    }
+
+    let mechanics = (rows || []).map((m: any) => ({
+      ...m,
+      code: m.code ?? m.mechanic_code,
+      service_areas: normalizeServiceAreasForResponse(m.service_areas),
+    }));
+
+    if (serviceTag) {
+      const tag = String(serviceTag).toLowerCase();
+      mechanics = mechanics.filter(
+        (m: any) =>
+          (m.service_tag && String(m.service_tag).toLowerCase() === tag) ||
+          (m.service_tag2 && String(m.service_tag2).toLowerCase() === tag) ||
+          (m.service_tag3 && String(m.service_tag3).toLowerCase() === tag)
+      );
+    }
+    if (searchTerm) {
+      const term = String(searchTerm).toLowerCase().trim();
+      mechanics = mechanics.filter(
+        (m: any) =>
+          (m.mechanic_name && String(m.mechanic_name).toLowerCase().includes(term)) ||
+          (m.code && String(m.code).toLowerCase().includes(term)) ||
+          (m.number && String(m.number).includes(term)) ||
+          (m.alternate_number1 && String(m.alternate_number1).includes(term)) ||
+          (m.alternate_number2 && String(m.alternate_number2).includes(term))
+      );
+    }
+    if (pincode) {
+      const p = pincode.replace(/\D/g, '');
+      mechanics = mechanics.filter((m: any) => {
+        const areas = normalizeServiceAreasForResponse(m.service_areas);
+        if (areas.length === 0) return true;
+        return areas.some((a: any) => String(a?.pincode ?? '').replace(/\D/g, '') === p);
+      });
+    }
+
+    // Attach completed RSA cases count per mechanic (based on rsa_leads)
+    try {
+      const ids = mechanics.map((m: any) => m?.id).filter(Boolean);
+      if (ids.length > 0) {
+        const { data: completed, error: completedErr } = await db
+          .from('rsa_leads')
+          .select('assigned_mechanic_id')
+          .in('assigned_mechanic_id', ids)
+          .eq('lead_status', 'completed');
+
+        if (completedErr) {
+          console.warn('Failed to compute completed cases:', completedErr.message);
+        } else {
+          const counts = new Map<string, number>();
+          for (const row of completed || []) {
+            const mid = String((row as any)?.assigned_mechanic_id || '');
+            if (!mid) continue;
+            counts.set(mid, (counts.get(mid) || 0) + 1);
+          }
+          mechanics = mechanics.map((m: any) => ({
+            ...m,
+            completed_cases: counts.get(String(m.id)) || 0,
+          }));
+        }
+      }
+    } catch (e: any) {
+      console.warn('Completed cases aggregation error:', e?.message || e);
+    }
+
+    // Derive availability: Busy if any ongoing case exists, else Available
+    try {
+      const ids = mechanics.map((m: any) => m?.id).filter(Boolean);
+      if (ids.length > 0) {
+        const { data: ongoing, error: ongoingErr } = await db
+          .from('rsa_leads')
+          .select('assigned_mechanic_id, lead_status, mechanic_completed_datetime, mechanic_cancelled_datetime')
+          .in('assigned_mechanic_id', ids)
+          .is('mechanic_completed_datetime', null)
+          .is('mechanic_cancelled_datetime', null)
+          .not('lead_status', 'in', '(completed,cancelled)');
+
+        if (ongoingErr) {
+          console.warn('Failed to compute ongoing cases:', ongoingErr.message);
+        } else {
+          const ongoingCounts = new Map<string, number>();
+          for (const row of ongoing || []) {
+            const mid = String((row as any)?.assigned_mechanic_id || '');
+            if (!mid) continue;
+            ongoingCounts.set(mid, (ongoingCounts.get(mid) || 0) + 1);
+          }
+          mechanics = mechanics.map((m: any) => {
+            const oc = ongoingCounts.get(String(m.id)) || 0;
+            return {
+              ...m,
+              ongoing_cases: oc,
+              // override UI availability to match ongoing cases
+              is_available: oc === 0,
+            };
+          });
+        }
+      }
+    } catch (e: any) {
+      console.warn('Ongoing cases aggregation error:', e?.message || e);
+    }
+
+    return NextResponse.json(mechanics, { status: 200 });
+  } catch (e: any) {
+    console.error('GET /api/rsa/mechanics error:', e?.message ?? e);
+    return NextResponse.json({ error: 'Internal server error', details: e?.message ?? String(e) }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClientFromRequest(request);
+    const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

@@ -72,13 +72,32 @@ function normalizePhone10(value: string) {
 export function RSALeadCreateForm({
   embedded = false,
   onCreated,
+  onUpdated,
   onCancel,
+  initialLead,
 }: {
   embedded?: boolean;
   onCreated?: (id: string) => void;
+  onUpdated?: (id: string) => void;
   onCancel?: () => void;
+  initialLead?: {
+    id: string;
+    customer_name?: string;
+    contact_number?: string;
+    alternate_number?: string;
+    vehicle_number?: string;
+    vehicle_model?: string;
+    source?: string;
+    location_link?: string;
+    drop_location?: string;
+    customer_quoted_amount?: number | string;
+    advance_payment?: string;
+    problem?: string;
+    service_type?: string;
+  } | null;
 }) {
   const router = useRouter();
+  const isEditMode = Boolean(initialLead?.id);
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -106,6 +125,28 @@ export function RSALeadCreateForm({
 
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const previews = useMemo(() => mediaFiles.map((f) => URL.createObjectURL(f)), [mediaFiles]);
+
+  useEffect(() => {
+    if (initialLead?.id) {
+      const L = initialLead;
+      setForm({
+        customer_name: String(L.customer_name ?? '').trim(),
+        contact_number: String(L.contact_number ?? '').replace(/\D/g, '').slice(-10),
+        vehicle_number: String(L.vehicle_number ?? '').trim(),
+        vehicle_model: String(L.vehicle_model ?? '').trim(),
+        vehicle_details: '',
+        source: String(L.source ?? '').trim(),
+        location_link: String(L.location_link ?? '').trim(),
+        drop_location: String(L.drop_location ?? '').trim(),
+        customer_quoted_amount: L.customer_quoted_amount != null ? String(L.customer_quoted_amount) : '',
+        advance_payment: String(L.advance_payment ?? '').trim(),
+        problem: String(L.problem ?? '').trim(),
+        alternate_number: String(L.alternate_number ?? '').replace(/\D/g, '').slice(-10),
+        service_type: String(L.service_type ?? '').trim(),
+      });
+      setCarModelQuery(String(L.vehicle_model ?? '').trim());
+    }
+  }, [initialLead?.id]);
 
   useEffect(() => {
     return () => {
@@ -187,54 +228,83 @@ export function RSALeadCreateForm({
 
     setLoading(true);
     try {
-      const fd = new FormData();
-      fd.append('customer_name', form.customer_name);
-      fd.append('contact_number', form.contact_number);
-      fd.append('vehicle_number', form.vehicle_number);
-      fd.append('vehicle_model', form.vehicle_model);
-      fd.append('vehicle_details', form.vehicle_details);
-      fd.append('source', form.source);
-      fd.append('location_link', form.location_link);
-      fd.append('drop_location', form.drop_location);
-      fd.append('customer_quoted_amount', form.customer_quoted_amount);
-      fd.append('advance_payment', form.advance_payment);
-      fd.append('problem', form.problem);
-      fd.append('alternate_number', form.alternate_number);
-      fd.append('service_type', form.service_type);
+      if (isEditMode && initialLead?.id) {
+        const res = await fetch(`/api/telecaller/rsa-complaints/${encodeURIComponent(initialLead.id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_name: form.customer_name,
+            contact_number: form.contact_number,
+            vehicle_number: form.vehicle_number,
+            vehicle_model: form.vehicle_model,
+            vehicle_details: form.vehicle_details,
+            source: form.source,
+            location_link: form.location_link,
+            drop_location: form.drop_location,
+            customer_quoted_amount: form.customer_quoted_amount || null,
+            advance_payment: form.advance_payment || null,
+            problem: form.problem || null,
+            description: form.problem || null,
+            alternate_number: form.alternate_number || null,
+            service_type: form.service_type,
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json?.error || 'Failed to update RSA lead');
+        }
+        setSuccessMessage('RSA lead updated successfully.');
+        if (json?.id) onUpdated?.(String(json.id));
+      } else {
+        const fd = new FormData();
+        fd.append('customer_name', form.customer_name);
+        fd.append('contact_number', form.contact_number);
+        fd.append('vehicle_number', form.vehicle_number);
+        fd.append('vehicle_model', form.vehicle_model);
+        fd.append('vehicle_details', form.vehicle_details);
+        fd.append('source', form.source);
+        fd.append('location_link', form.location_link);
+        fd.append('drop_location', form.drop_location);
+        fd.append('customer_quoted_amount', form.customer_quoted_amount);
+        fd.append('advance_payment', form.advance_payment);
+        fd.append('problem', form.problem);
+        fd.append('alternate_number', form.alternate_number);
+        fd.append('service_type', form.service_type);
 
-      mediaFiles.forEach((f) => fd.append('media', f));
+        mediaFiles.forEach((f) => fd.append('media', f));
 
-      const res = await fetch('/api/telecaller/rsa-complaints', {
-        method: 'POST',
-        body: fd,
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json?.error || 'Failed to create RSA lead');
+        const res = await fetch('/api/telecaller/rsa-complaints', {
+          method: 'POST',
+          body: fd,
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json?.error || 'Failed to create RSA lead');
+        }
+
+        setSuccessMessage(`RSA lead created successfully. ID: ${json?.id}`);
+        setForm({
+          customer_name: '',
+          contact_number: '',
+          vehicle_number: '',
+          vehicle_model: '',
+          vehicle_details: '',
+          source: '',
+          location_link: '',
+          drop_location: '',
+          customer_quoted_amount: '',
+          advance_payment: '',
+          problem: '',
+          alternate_number: '',
+          service_type: '',
+        });
+        setCarModelQuery('');
+        setCarModelSuggestions([]);
+        setCarModelOpen(false);
+        setMediaFiles([]);
+
+        if (json?.id) onCreated?.(String(json.id));
       }
-
-      setSuccessMessage(`RSA lead created successfully. ID: ${json?.id}`);
-      setForm({
-        customer_name: '',
-        contact_number: '',
-        vehicle_number: '',
-        vehicle_model: '',
-        vehicle_details: '',
-        source: '',
-        location_link: '',
-        drop_location: '',
-        customer_quoted_amount: '',
-        advance_payment: '',
-        problem: '',
-        alternate_number: '',
-        service_type: '',
-      });
-      setCarModelQuery('');
-      setCarModelSuggestions([]);
-      setCarModelOpen(false);
-      setMediaFiles([]);
-
-      if (json?.id) onCreated?.(String(json.id));
     } catch (err: any) {
       setErrorMessage(err?.message || 'Something went wrong');
     } finally {
@@ -436,6 +506,7 @@ export function RSALeadCreateForm({
             </div>
           </div>
 
+          {!isEditMode ? (
           <div>
             <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">Upload Media</label>
             <div className="border-2 border-dashed rounded-lg p-4 sm:p-5 bg-white">
@@ -471,6 +542,7 @@ export function RSALeadCreateForm({
               ) : null}
             </div>
           </div>
+          ) : null}
 
           <div>
             <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">Description</label>
@@ -540,7 +612,7 @@ export function RSALeadCreateForm({
             Cancel
           </button>
           <button type="submit" className="btn btn-primary text-xs sm:text-sm px-4 py-2 flex items-center gap-2" disabled={loading}>
-            {loading ? 'Creating...' : 'Create RSA lead'}
+            {loading ? (isEditMode ? 'Updating...' : 'Creating...') : isEditMode ? 'Update lead' : 'Create RSA lead'}
           </button>
         </div>
       </form>
