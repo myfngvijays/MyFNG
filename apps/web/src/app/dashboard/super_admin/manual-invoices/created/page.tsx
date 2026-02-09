@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileDown, FileText, Loader2, Download, Pencil } from 'lucide-react';
+import { ArrowLeft, FileDown, FileText, Loader2, Download, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type ManualInvoice = {
   id: string;
@@ -19,21 +19,15 @@ type ManualInvoice = {
   car_model?: string | null;
 };
 
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 500];
 
 export default function CreatedManualInvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [invoices, setInvoices] = useState<ManualInvoice[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalPages, setTotalPages] = useState(1);
   const [message, setMessage] = useState<string | null>(null);
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
@@ -41,43 +35,36 @@ export default function CreatedManualInvoicesPage() {
   const [downloading, setDownloading] = useState(false);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    fetchInvoices();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function fetchInvoices() {
+  const fetchInvoices = useCallback(async (pageNum = page, size = pageSize) => {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch('/api/admin/manual-invoices');
+      const params = new URLSearchParams();
+      params.set('page', String(pageNum));
+      params.set('pageSize', String(size));
+      if (fromDate) params.set('fromDate', fromDate);
+      if (toDate) params.set('toDate', toDate);
+      const res = await fetch(`/api/admin/manual-invoices?${params.toString()}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Failed to load invoices');
       setInvoices(json.invoices || []);
+      setTotal(json.total ?? 0);
+      setPage(json.page ?? 1);
+      setPageSize(json.pageSize ?? 25);
+      setTotalPages(json.totalPages ?? 1);
     } catch (e: any) {
       setMessage(e?.message || 'Failed to load invoices');
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, pageSize, fromDate, toDate]);
 
-  const filteredInvoices = useMemo(() => {
-    const hasFrom = Boolean(fromDate);
-    const hasTo = Boolean(toDate);
-    if (!hasFrom && !hasTo) return invoices;
+  useEffect(() => {
+    fetchInvoices(page, pageSize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, fromDate, toDate]);
 
-    const from = hasFrom ? startOfDay(new Date(fromDate)) : null;
-    const to = hasTo ? endOfDay(new Date(toDate)) : null;
-
-    return invoices.filter((inv) => {
-      if (!inv.created_at) return false;
-      const d = new Date(inv.created_at);
-      if (Number.isNaN(d.getTime())) return false;
-      if (from && d < from) return false;
-      if (to && d > to) return false;
-      return true;
-    });
-  }, [fromDate, invoices, toDate]);
+  const filteredInvoices = invoices;
 
   const selectedIds = useMemo(() => Object.keys(selected).filter((id) => selected[id]), [selected]);
 
@@ -185,7 +172,10 @@ export default function CreatedManualInvoicesPage() {
                 className="border rounded-md px-2 py-2 text-sm"
                 type="date"
                 value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  setPage(1);
+                }}
               />
             </label>
             <label className="text-xs text-gray-600 flex flex-col gap-1">
@@ -194,7 +184,10 @@ export default function CreatedManualInvoicesPage() {
                 className="border rounded-md px-2 py-2 text-sm"
                 type="date"
                 value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  setPage(1);
+                }}
               />
             </label>
             <div className="flex items-end">
@@ -203,6 +196,7 @@ export default function CreatedManualInvoicesPage() {
                 onClick={() => {
                   setFromDate('');
                   setToDate('');
+                  setPage(1);
                 }}
                 disabled={!fromDate && !toDate}
               >
@@ -211,9 +205,31 @@ export default function CreatedManualInvoicesPage() {
             </div>
           </div>
 
-          <div className="text-xs text-gray-600">
-            Showing <span className="font-semibold text-gray-900">{filteredInvoices.length}</span> of{' '}
-            <span className="font-semibold text-gray-900">{invoices.length}</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-xs text-gray-600">
+              Showing{' '}
+              <span className="font-semibold text-gray-900">
+                {total === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)}
+              </span>{' '}
+              of <span className="font-semibold text-gray-900">{total}</span>
+            </div>
+            <label className="text-xs text-gray-600 flex items-center gap-1">
+              Per page
+              <select
+                className="border rounded-md px-2 py-1.5 text-sm"
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
       </div>
@@ -258,21 +274,21 @@ export default function CreatedManualInvoicesPage() {
                 </td>
               </tr>
             )}
-            {!loading && invoices.length === 0 && (
+            {!loading && total === 0 && !fromDate && !toDate && (
               <tr>
                 <td colSpan={10} className="px-4 py-6 text-center text-gray-500">
                   No manual invoices yet.
                 </td>
               </tr>
             )}
-            {!loading && invoices.length > 0 && filteredInvoices.length === 0 && (
+            {!loading && total === 0 && (fromDate || toDate) && (
               <tr>
                 <td colSpan={10} className="px-4 py-6 text-center text-gray-500">
                   No invoices match the selected date range.
                 </td>
               </tr>
             )}
-            {filteredInvoices.map((inv) => (
+            {!loading && filteredInvoices.map((inv) => (
               <tr key={inv.id} className="border-t">
                 <td className="px-4 py-3">
                   <input
@@ -334,6 +350,57 @@ export default function CreatedManualInvoicesPage() {
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="bg-white rounded-lg border px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs text-gray-600">
+            Page <span className="font-semibold text-gray-900">{page}</span> of{' '}
+            <span className="font-semibold text-gray-900">{totalPages}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="btn btn-secondary text-sm px-2 py-1.5 disabled:opacity-50"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let p: number;
+              if (totalPages <= 5) p = i + 1;
+              else if (page <= 3) p = i + 1;
+              else if (page >= totalPages - 2) p = totalPages - 4 + i;
+              else p = page - 2 + i;
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  className={`min-w-[2rem] px-2 py-1.5 text-sm rounded border ${
+                    p === page
+                      ? 'bg-brand-primary text-white border-brand-primary'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                  onClick={() => setPage(p)}
+                  disabled={loading}
+                >
+                  {p}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              className="btn btn-secondary text-sm px-2 py-1.5 disabled:opacity-50"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              aria-label="Next page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
