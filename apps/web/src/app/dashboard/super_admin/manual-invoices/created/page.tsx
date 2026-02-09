@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileDown, FileText, Loader2, Download } from 'lucide-react';
+import { ArrowLeft, FileDown, FileText, Loader2, Download, Pencil } from 'lucide-react';
 
 type ManualInvoice = {
   id: string;
@@ -301,7 +301,14 @@ export default function CreatedManualInvoicesPage() {
                 </td>
                 <td className="px-4 py-3">{inv.status || 'CREATED'}</td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <Link
+                      href={`/dashboard/super_admin/manual-invoices/${inv.id}/edit`}
+                      className="inline-flex items-center gap-1 text-brand-primary hover:underline"
+                    >
+                      <Pencil className="w-4 h-4" />
+                      Edit
+                    </Link>
                     <a
                       className="inline-flex items-center gap-1 text-brand-primary hover:underline"
                       href={`/api/manual-invoices/${inv.id}/generate-pdf`}

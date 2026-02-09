@@ -22,7 +22,9 @@ export async function GET(request: Request, context: any) {
 
     const url = new URL(request.url);
     const autoPrint = url.searchParams.get('print') === '1';
-    const htmlContent = renderManualInvoiceHtml(invoice, { autoPrint, appUrl: url.origin });
+    // Prefer NEXT_PUBLIC_APP_URL so logo loads on production (e.g. https://myfng.cloud)
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || url.origin).replace(/\/$/, '');
+    const htmlContent = renderManualInvoiceHtml(invoice, { autoPrint, appUrl });
     return new NextResponse(htmlContent, {
       headers: {
         'Content-Type': 'text/html',
