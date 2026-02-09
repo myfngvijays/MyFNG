@@ -280,19 +280,37 @@ export class RSAManagerService {
     searchTerm?: string;
   }): Promise<CompanyMechanicRSA[]> {
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase.rpc('rsa_manager_search_mechanics', {
-        p_pincode: searchParams.pincode || null,
-        p_service_tag: searchParams.serviceTag || null,
-        p_search_term: searchParams.searchTerm || null
-      });
+      // Prefer server API (uses service role; avoids RPC/schema mismatch in DB)
+      const params = new URLSearchParams();
+      if (searchParams.pincode) params.set('pincode', String(searchParams.pincode));
+      if (searchParams.serviceTag) params.set('serviceTag', String(searchParams.serviceTag));
+      if (searchParams.searchTerm) params.set('searchTerm', String(searchParams.searchTerm));
 
-      if (error) {
-        console.error('Error searching mechanics:', error);
+      const res = await fetch(`/api/rsa/mechanics?${params.toString()}`);
+      const json = await res.json().catch(() => []);
+      if (!res.ok) {
+        const msg = (json as any)?.error || 'Failed to search mechanics';
+        console.error('Error searching mechanics via API:', msg, (json as any)?.details);
         return [];
       }
 
-      return data || [];
+      const rows = Array.isArray(json) ? json : [];
+      return rows.map((m: any) => ({
+        ...m,
+        // normalize service_areas: may come as string or array
+        service_areas: Array.isArray(m.service_areas)
+          ? m.service_areas
+          : typeof m.service_areas === 'string'
+            ? (() => {
+                try {
+                  const parsed = JSON.parse(m.service_areas);
+                  return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                  return [];
+                }
+              })()
+            : [],
+      })) as any;
     } catch (error) {
       console.error('Error in searchMechanics:', error);
       return [];

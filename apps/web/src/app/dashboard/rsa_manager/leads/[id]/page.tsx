@@ -62,6 +62,23 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
   const leadStatus = String(lead?.lead_status || lead?.complaint_status || '').toLowerCase();
   const canTransferManager = leadStatus !== 'completed' && leadStatus !== 'cancelled' && leadStatus !== 'closed';
 
+  const formatServiceAreasLabel = (areas: any[]) => {
+    if (!Array.isArray(areas) || areas.length === 0) return '';
+    const labels = areas
+      .map((a: any) => {
+        if (a == null) return '';
+        if (typeof a === 'string' || typeof a === 'number') return String(a).trim();
+        const pincode = String(a?.pincode ?? '').trim();
+        const area = String(a?.area ?? '').trim();
+        const state = String(a?.state ?? '').trim();
+        const left = area || pincode;
+        if (!left && !state) return '';
+        return state ? `${left} • ${state}` : left;
+      })
+      .filter(Boolean);
+    return labels.join(', ');
+  };
+
   useEffect(() => {
     fetchUser();
   }, []);
@@ -1089,7 +1106,7 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
                             </div>
                             {Array.isArray(m.service_areas) && m.service_areas.length > 0 ? (
                               <div className="mt-1 text-[10px] sm:text-xs text-gray-500 truncate">
-                                Areas: {m.service_areas.join(', ')}
+                                Areas: {formatServiceAreasLabel(m.service_areas)}
                               </div>
                             ) : null}
                           </button>
