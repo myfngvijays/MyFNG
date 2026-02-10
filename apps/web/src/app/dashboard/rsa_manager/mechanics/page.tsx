@@ -28,14 +28,14 @@ export default function RSAMechanicsPage() {
   const [mechanics, setMechanics] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [pincodeFilter, setPincodeFilter] = useState('');
-  const [serviceTagFilter, setServiceTagFilter] = useState('');
+  const [query, setQuery] = useState('');
   const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'busy'>('all');
 
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
+  const [addPhoneError, setAddPhoneError] = useState('');
+  const [checkingPhone, setCheckingPhone] = useState(false);
   const [editingMechanic, setEditingMechanic] = useState<any | null>(null);
   const [editError, setEditError] = useState('');
   const [editSaving, setEditSaving] = useState(false);
@@ -46,18 +46,55 @@ export default function RSAMechanicsPage() {
     alternate_number2: '',
     service_tag: '',
     service_tag2: '',
-    service_areas: [] as Array<{ area: string; pincode: string; state: string }>,
+    service_areas: [{ area: '', pincode: '', state: '' }] as Array<{ area: string; pincode: string; state: string }>,
     timing: '',
     active: true,
   });
+
+  // Live duplicate number check (Add modal)
+  useEffect(() => {
+    if (!showAdd) return;
+    const num = normalizePhone10(addForm.number);
+    if (!num || num.length !== 10) {
+      setAddPhoneError('');
+      setCheckingPhone(false);
+      return;
+    }
+
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setCheckingPhone(true);
+      try {
+        const res = await fetch(`/api/rsa/mechanics/check-number?number=${encodeURIComponent(num)}`);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Failed to check number');
+        if (cancelled) return;
+
+        if (json?.exists) {
+          const label = json?.mechanic_name || json?.code || 'this mechanic';
+          setAddPhoneError(`This number is already registered (${label})`);
+        } else {
+          setAddPhoneError('');
+        }
+      } catch {
+        // If check fails, don't block user; keep error empty
+        if (!cancelled) setAddPhoneError('');
+      } finally {
+        if (!cancelled) setCheckingPhone(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [addForm.number, showAdd]);
 
   const fetchMechanics = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (pincodeFilter?.trim()) params.set('pincode', pincodeFilter.trim());
-      if (serviceTagFilter?.trim()) params.set('serviceTag', serviceTagFilter.trim());
-      if (searchTerm?.trim()) params.set('searchTerm', searchTerm.trim());
+      if (query?.trim()) params.set('q', query.trim());
       const res = await fetch(`/api/rsa/mechanics?${params.toString()}`);
       const mechanicsData = await res.json();
       if (!res.ok) throw new Error(Array.isArray(mechanicsData) ? 'Failed to load' : (mechanicsData?.error || 'Failed to load mechanics'));
@@ -192,7 +229,12 @@ export default function RSAMechanicsPage() {
               type="button"
               onClick={() => {
                 setAddError('');
+                setAddPhoneError('');
                 setShowAdd(true);
+                setAddForm((p) => ({
+                  ...p,
+                  service_areas: Array.isArray(p.service_areas) && p.service_areas.length ? p.service_areas : [{ area: '', pincode: '', state: '' }],
+                }));
               }}
               className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white/15 hover:bg-white/20 text-white rounded-lg text-xs sm:text-sm font-semibold"
             >
@@ -205,32 +247,17 @@ export default function RSAMechanicsPage() {
         {/* Search and Filters */}
         <div className="bg-white rounded-lg shadow p-3 sm:p-4 md:p-6 mb-4 sm:mb-5 md:mb-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-3 sm:mb-4">
-            <div className="relative sm:col-span-2 lg:col-span-1">
+            <div className="relative sm:col-span-2 lg:col-span-3">
               <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
               <input
                 type="text"
-                placeholder="Search by name, code, or number..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by name, code, number, service tag, or 6-digit pincode..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSearch();
+                }}
                 className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              />
-            </div>
-            <div>
-              <input
-                type="text"
-                placeholder="Filter by pincode..."
-                value={pincodeFilter}
-                onChange={(e) => setPincodeFilter(e.target.value)}
-                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              />
-            </div>
-            <div>
-              <input
-                type="text"
-                placeholder="Filter by service tag..."
-                value={serviceTagFilter}
-                onChange={(e) => setServiceTagFilter(e.target.value)}
-                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
               />
             </div>
             <div>
@@ -460,6 +487,11 @@ export default function RSAMechanicsPage() {
                       maxLength={10}
                       placeholder="10 digit number"
                     />
+                    {addPhoneError ? (
+                      <p className="mt-2 text-sm text-red-600 font-semibold">{addPhoneError}</p>
+                    ) : checkingPhone && normalizePhone10(addForm.number).length === 10 ? (
+                      <p className="mt-2 text-sm text-gray-500">Checking number…</p>
+                    ) : null}
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-800 mb-2">Timing</label>
@@ -507,7 +539,7 @@ export default function RSAMechanicsPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-800 mb-2">Service Tag</label>
+                    <label className="block text-sm font-semibold text-gray-800 mb-2">Service Tag *</label>
                     <input
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                       value={addForm.service_tag}
@@ -526,7 +558,7 @@ export default function RSAMechanicsPage() {
 
                 <div>
                   <div className="flex items-center justify-between gap-3 mb-2">
-                    <label className="block text-sm font-semibold text-gray-800">Service Areas (max 20)</label>
+                    <label className="block text-sm font-semibold text-gray-800">Service Areas * (max 20)</label>
                     <button
                       type="button"
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-semibold text-gray-800 disabled:opacity-50"
@@ -638,6 +670,13 @@ export default function RSAMechanicsPage() {
                     const num = normalizePhone10(addForm.number);
                     if (!name) return setAddError('Mechanic name is required');
                     if (!num || num.length !== 10) return setAddError('Valid 10-digit number is required');
+                    if (addPhoneError) return setAddError(addPhoneError);
+                    if (!String(addForm.service_tag || '').trim()) return setAddError('At least 1 Service Tag is required');
+
+                    const validAreas = addForm.service_areas
+                      .filter((r) => r.area.trim() && r.state.trim() && r.pincode.trim().length === 6)
+                      .map((r) => ({ area: r.area.trim(), pincode: r.pincode.trim(), state: r.state.trim() }));
+                    if (validAreas.length === 0) return setAddError('At least 1 Service Area (Area + 6-digit Pincode + State) is required');
 
                     // Validate service areas rows (if any field filled, require all 3)
                     for (const row of addForm.service_areas) {
@@ -658,9 +697,7 @@ export default function RSAMechanicsPage() {
                           number: num,
                           alternate_number1: normalizePhone10(addForm.alternate_number1),
                           alternate_number2: normalizePhone10(addForm.alternate_number2),
-                          service_areas: addForm.service_areas
-                            .filter((r) => r.area.trim() && r.state.trim() && r.pincode.trim().length === 6)
-                            .map((r) => ({ area: r.area.trim(), pincode: r.pincode.trim(), state: r.state.trim() })),
+                          service_areas: validAreas,
                         }),
                       });
                       const json = await res.json().catch(() => ({}));
@@ -674,10 +711,11 @@ export default function RSAMechanicsPage() {
                         alternate_number2: '',
                         service_tag: '',
                         service_tag2: '',
-                        service_areas: [],
+                        service_areas: [{ area: '', pincode: '', state: '' }],
                         timing: '',
                         active: true,
                       });
+                      setAddPhoneError('');
                       fetchMechanics();
                     } catch (e: any) {
                       setAddError(e?.message || 'Failed to add mechanic');

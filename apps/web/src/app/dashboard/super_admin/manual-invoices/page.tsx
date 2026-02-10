@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Upload, Loader2, FileText } from 'lucide-react';
 import Link from 'next/link';
 
@@ -8,6 +8,7 @@ export default function ManualInvoicesPage() {
   const [csvText, setCsvText] = useState('');
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [autoLoading, setAutoLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState<any>({
     invoice_number: '',
@@ -30,6 +31,32 @@ export default function ManualInvoicesPage() {
     payment_notes: '',
     items: [{ item_name: '', item_description: '', hsn_sac_code: '', qty: 1, unit_price: 0, tax_percent: 0, discount: 0 }],
   });
+
+  async function fillNextInvoiceNumber(force = false) {
+    // Don't overwrite user-entered invoice numbers unless forced
+    if (!force && String(form.invoice_number || '').trim()) return;
+    setAutoLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (form.invoice_date) params.set('invoice_date', form.invoice_date);
+      params.set('prefix', 'RA');
+      const res = await fetch(`/api/admin/manual-invoices/next-invoice-number?${params.toString()}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to get next invoice number');
+      const nextNo = String(json?.invoice_number || '').trim();
+      if (nextNo) setForm((prev: any) => ({ ...prev, invoice_number: nextNo }));
+    } catch (e: any) {
+      // Non-blocking; user can still type manually
+      setMessage(e?.message || 'Failed to auto-generate invoice number');
+    } finally {
+      setAutoLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fillNextInvoiceNumber(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // This page is focused on creating/importing invoices.
   // Use the "View Created Invoice" button to see all created invoices.
@@ -100,6 +127,10 @@ export default function ManualInvoicesPage() {
   async function handleSingleCreate() {
     setMessage(null);
     try {
+      // If invoice_number is empty, auto-fill before create (best effort)
+      if (!String(form.invoice_number || '').trim()) {
+        await fillNextInvoiceNumber(true);
+      }
       const res = await fetch('/api/admin/manual-invoices/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,6 +142,9 @@ export default function ManualInvoicesPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Create failed');
       setMessage('Manual invoice created.');
+      // Move to next number for the next invoice
+      setForm((prev: any) => ({ ...prev, invoice_number: '' }));
+      await fillNextInvoiceNumber(true);
     } catch (e: any) {
       setMessage(e?.message || 'Create failed');
     }
@@ -146,7 +180,15 @@ export default function ManualInvoicesPage() {
           <label className="text-xs text-gray-600 flex flex-col gap-1">
             Invoice Date
             <input className="border rounded-md px-2 py-2 text-sm" placeholder="YYYY-MM-DD"
-              value={form.invoice_date} onChange={(e) => setForm({ ...form, invoice_date: e.target.value })} />
+              value={form.invoice_date} onChange={(e) => {
+                const v = e.target.value;
+                setForm({ ...form, invoice_date: v });
+                // If user hasn't typed invoice number, refresh auto number for that FY
+                if (!String(form.invoice_number || '').trim()) {
+                  setTimeout(() => fillNextInvoiceNumber(true), 0);
+                }
+              }} />
+            {autoLoading ? <span className="text-[11px] text-gray-500 mt-1">Generating…</span> : null}
           </label>
           <label className="text-xs text-gray-600 flex flex-col gap-1">
             Due Date

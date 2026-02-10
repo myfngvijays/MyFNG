@@ -108,23 +108,50 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const pincode = searchParams.get('pincode')?.trim() || undefined;
+    const q = searchParams.get('q')?.trim() || '';
+    const pincodeParamRaw = searchParams.get('pincode')?.trim() || '';
+    const qTrim = q.trim();
+    const qIsPincode = /^\d{6}$/.test(qTrim);
+    const pincodeRaw = pincodeParamRaw || (qIsPincode ? qTrim : '');
+    const pincode = pincodeRaw ? normalizePincode6(pincodeRaw) : '';
     const serviceTag = searchParams.get('serviceTag')?.trim() || undefined;
-    const searchTerm = searchParams.get('searchTerm')?.trim() || undefined;
+    const searchTerm = (searchParams.get('searchTerm')?.trim() || '') || q;
 
     const db = supabaseAdmin as any;
 
-    const { data: rows, error } = await db
-      .from('company_mechanic_rsa')
-      // NOTE: In this project DB uses `code` (not `mechanic_code`)
-      .select('id, code, mechanic_name, number, alternate_number1, alternate_number2, service_tag, service_tag2, service_tag3, timing, active, service_areas, is_available, rating, total_jobs_completed')
-      .eq('active', true)
-      .order('mechanic_name');
+    async function fetchActiveMechanicsPages(): Promise<any[]> {
+      const pageSize = 1000;
+      const out: any[] = [];
+      for (let page = 0; page < 25; page++) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+        const { data, error } = await db
+          .from('company_mechanic_rsa')
+          .select('id, code, mechanic_name, number, alternate_number1, alternate_number2, service_tag, service_tag2, service_tag3, timing, active, service_areas, is_available, rating, total_jobs_completed')
+          .eq('active', true)
+          .order('mechanic_name')
+          .range(from, to);
+        if (error) throw error;
+        const rows = Array.isArray(data) ? data : [];
+        out.push(...rows);
+        if (rows.length < pageSize) break;
+      }
+      return out;
+    }
 
-    if (error) {
-      console.error('GET /api/rsa/mechanics query error:', error.message, error.details);
+    // If pincode filter is explicitly provided (or q is a 6-digit pincode) but invalid, return no results.
+    if ((pincodeParamRaw || qIsPincode) && pincodeRaw && !pincode) {
+      return NextResponse.json([], { status: 200 });
+    }
+
+    // Always page through rows to avoid PostgREST 1000-row cap and json/jsonb operator mismatches.
+    let rows: any[] = [];
+    try {
+      rows = await fetchActiveMechanicsPages();
+    } catch (e: any) {
+      console.error('GET /api/rsa/mechanics query error:', e?.message || e);
       return NextResponse.json(
-        { error: 'Failed to fetch mechanics', details: error.message || String(error) },
+        { error: 'Failed to fetch mechanics', details: e?.message || 'Failed to fetch mechanics' },
         { status: 500 }
       );
     }
@@ -135,6 +162,44 @@ export async function GET(request: NextRequest) {
       service_areas: normalizeServiceAreasForResponse(m.service_areas),
     }));
 
+    // Strict pincode match (after response normalization) to ensure we don't show mismatches.
+    if (pincode) {
+      mechanics = mechanics.filter((m: any) => {
+        const areas = normalizeServiceAreasForResponse(m.service_areas);
+        if (areas.length === 0) return false;
+        return areas.some((a: any) => normalizePincode6(a?.pincode) === pincode);
+      });
+    }
+
+    if (searchTerm) {
+      const term = String(searchTerm).toLowerCase().trim();
+      if (term) {
+        mechanics = mechanics.filter((m: any) => {
+          const areas = normalizeServiceAreasForResponse(m.service_areas);
+          const areaText = areas
+            .map((a: any) => {
+              if (a == null) return '';
+              if (typeof a === 'string' || typeof a === 'number') return String(a);
+              return [a?.area, a?.pincode, a?.state].filter(Boolean).join(' ');
+            })
+            .join(' ')
+            .toLowerCase();
+
+          return (
+            (m.mechanic_name && String(m.mechanic_name).toLowerCase().includes(term)) ||
+            (m.code && String(m.code).toLowerCase().includes(term)) ||
+            (m.number && String(m.number).includes(term)) ||
+            (m.alternate_number1 && String(m.alternate_number1).includes(term)) ||
+            (m.alternate_number2 && String(m.alternate_number2).includes(term)) ||
+            (m.service_tag && String(m.service_tag).toLowerCase().includes(term)) ||
+            (m.service_tag2 && String(m.service_tag2).toLowerCase().includes(term)) ||
+            (m.service_tag3 && String(m.service_tag3).toLowerCase().includes(term)) ||
+            (areaText && areaText.includes(term))
+          );
+        });
+      }
+    }
+
     if (serviceTag) {
       const tag = String(serviceTag).toLowerCase();
       mechanics = mechanics.filter(
@@ -143,25 +208,6 @@ export async function GET(request: NextRequest) {
           (m.service_tag2 && String(m.service_tag2).toLowerCase() === tag) ||
           (m.service_tag3 && String(m.service_tag3).toLowerCase() === tag)
       );
-    }
-    if (searchTerm) {
-      const term = String(searchTerm).toLowerCase().trim();
-      mechanics = mechanics.filter(
-        (m: any) =>
-          (m.mechanic_name && String(m.mechanic_name).toLowerCase().includes(term)) ||
-          (m.code && String(m.code).toLowerCase().includes(term)) ||
-          (m.number && String(m.number).includes(term)) ||
-          (m.alternate_number1 && String(m.alternate_number1).includes(term)) ||
-          (m.alternate_number2 && String(m.alternate_number2).includes(term))
-      );
-    }
-    if (pincode) {
-      const p = pincode.replace(/\D/g, '');
-      mechanics = mechanics.filter((m: any) => {
-        const areas = normalizeServiceAreasForResponse(m.service_areas);
-        if (areas.length === 0) return true;
-        return areas.some((a: any) => String(a?.pincode ?? '').replace(/\D/g, '') === p);
-      });
     }
 
     // Attach completed RSA cases count per mechanic (based on rsa_leads)

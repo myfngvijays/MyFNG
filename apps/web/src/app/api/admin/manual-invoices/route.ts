@@ -2,6 +2,54 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
+function extractInvoiceSequence(invoiceNumber: string | null | undefined): number {
+  const s = String(invoiceNumber || '').trim();
+  if (!s) return -1;
+
+  // Prefer number just before first "/" (e.g. "RA-549/25-26" -> 549)
+  const m1 = s.match(/(\d+)\s*(?=\/)/);
+  if (m1?.[1]) return Number(m1[1]) || -1;
+
+  // Fallback: first number group in the string
+  const m2 = s.match(/(\d+)/);
+  if (m2?.[1]) return Number(m2[1]) || -1;
+
+  return -1;
+}
+
+function normalizeDigits(value: string | null | undefined) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function matchesSearch(row: any, q: string) {
+  const raw = String(q || '').trim();
+  if (!raw) return true;
+  const qLower = raw.toLowerCase();
+  const qDigits = normalizeDigits(raw);
+
+  const inv = String(row?.invoice_number || '').toLowerCase();
+  const name = String(row?.customer_name || '').toLowerCase();
+  const phone = String(row?.customer_phone || '');
+  const phoneDigits = normalizeDigits(phone);
+
+  // If user typed a full 10-digit number, treat it as mobile search only.
+  if (/^\d{10}$/.test(qDigits)) {
+    return phoneDigits.includes(qDigits);
+  }
+
+  // If user typed a short number (e.g. 610), treat it as invoice sequence match.
+  if (qDigits && /^\d{1,6}$/.test(qDigits) && !/[a-z]/i.test(raw)) {
+    const seq = extractInvoiceSequence(row?.invoice_number);
+    return seq === Number(qDigits);
+  }
+
+  // Otherwise: general search (invoice number / name / partial phone)
+  if (inv.includes(qLower)) return true;
+  if (name.includes(qLower)) return true;
+  if (qDigits && phoneDigits.includes(qDigits)) return true;
+  return false;
+}
+
 async function requireSuperAdmin(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -34,29 +82,60 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(500, Math.max(10, parseInt(String(url.searchParams.get('pageSize') || '25'), 10) || 25));
     const fromDate = url.searchParams.get('fromDate')?.trim() || null;
     const toDate = url.searchParams.get('toDate')?.trim() || null;
+    const q = url.searchParams.get('q')?.trim() || '';
 
     const from = fromDate ? `${fromDate}T00:00:00.000Z` : null;
     const to = toDate ? `${toDate}T23:59:59.999Z` : null;
 
-    let query = supabaseAdmin
-      .from('manual_create_invoice')
-      .select('id, invoice_number, customer_name, customer_phone, total_amount, currency, status, created_at, payment_mode, payment_reference, paid_at, customer_gstin, car_number, car_model', { count: 'exact' })
-      .order('created_at', { ascending: false });
+    // Fetch all matching invoices (then sort by invoice_number sequence desc).
+    // We do this because invoice_number is a string like "RA-549/25-26" and we want 614, 613, 612... at top,
+    // which is not reliably achievable with a plain text order in PostgREST.
+    const take = 1000; // PostgREST default page cap
+    const all: any[] = [];
+    let total: number | null = null;
 
-    if (from) query = query.gte('created_at', from);
-    if (to) query = query.lte('created_at', to);
+    for (let offset = 0; offset < 100000; offset += take) {
+      let query = supabaseAdmin
+        .from('manual_create_invoice')
+        .select(
+          'id, invoice_number, customer_name, customer_phone, total_amount, currency, status, created_at, payment_mode, payment_reference, paid_at, customer_gstin, car_number, car_model',
+          { count: 'exact' }
+        )
+        .order('created_at', { ascending: false })
+        .range(offset, offset + take - 1);
 
-    const offset = (page - 1) * pageSize;
-    const { data, error, count } = await query.range(offset, offset + pageSize - 1);
+      if (from) query = query.gte('created_at', from);
+      if (to) query = query.lte('created_at', to);
 
-    if (error) throw error;
-    const total = count ?? (data?.length ?? 0);
+      const { data, error, count } = await query;
+      if (error) throw error;
+      if (total == null && typeof count === 'number') total = count;
+
+      const rows = Array.isArray(data) ? data : [];
+      all.push(...rows);
+      if (rows.length < take) break;
+    }
+
+    const sorted = all.sort((a, b) => {
+      const sa = extractInvoiceSequence(a?.invoice_number);
+      const sb = extractInvoiceSequence(b?.invoice_number);
+      if (sa !== sb) return sb - sa;
+      const ta = a?.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b?.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+
+    const searched = q ? sorted.filter((r) => matchesSearch(r, q)) : sorted;
+    const effectiveTotal = q ? searched.length : (total ?? searched.length);
+    const sliceOffset = (page - 1) * pageSize;
+    const pageRows = searched.slice(sliceOffset, sliceOffset + pageSize);
+
     return NextResponse.json({
-      invoices: data || [],
-      total,
+      invoices: pageRows,
+      total: effectiveTotal,
       page,
       pageSize,
-      totalPages: Math.ceil(total / pageSize) || 1,
+      totalPages: Math.ceil(effectiveTotal / pageSize) || 1,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });

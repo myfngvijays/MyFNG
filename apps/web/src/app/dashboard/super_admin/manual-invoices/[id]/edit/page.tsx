@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 
 const emptyForm = {
@@ -66,7 +66,10 @@ function invoiceToForm(inv: any): typeof emptyForm {
 export default function EditManualInvoicePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = String(params?.id ?? '');
+  const returnTo = searchParams.get('returnTo') || '/dashboard/super_admin/manual-invoices/created';
+  const safeReturnTo = returnTo.startsWith('/dashboard/') ? returnTo : '/dashboard/super_admin/manual-invoices/created';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -136,7 +139,7 @@ export default function EditManualInvoicePage() {
     <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-5 sm:py-6 md:py-8 space-y-4">
       <div className="flex items-center gap-2">
         <Link
-          href="/dashboard/super_admin/manual-invoices/created"
+          href={safeReturnTo}
           className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"
         >
           <ArrowLeft className="w-4 h-4" />

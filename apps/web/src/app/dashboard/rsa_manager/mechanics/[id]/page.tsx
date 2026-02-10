@@ -52,8 +52,11 @@ export default function RSAMechanicDetailPage() {
     const pincode = String(area?.pincode ?? '').trim();
     const name = String(area?.area ?? '').trim();
     const state = String(area?.state ?? '').trim();
-    const left = name || pincode || '—';
-    return state ? `${left} • ${state}` : left;
+    const parts: string[] = [];
+    if (name) parts.push(name);
+    if (pincode) parts.push(pincode);
+    if (state) parts.push(state);
+    return parts.length ? parts.join(' • ') : '—';
   };
 
   useEffect(() => {
