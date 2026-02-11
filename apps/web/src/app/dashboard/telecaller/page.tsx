@@ -8,6 +8,7 @@ import {
   AlertCircle, TrendingUp, Calendar, Users 
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import Link from 'next/link';
 
 export default function TelecallerDashboard() {
@@ -36,15 +37,25 @@ export default function TelecallerDashboard() {
     try {
       // Get current telecaller
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setStats(prev => ({ ...prev, loading: false }));
+        return;
+      }
 
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
+      const userProfile = await resolveUserProfile(supabase as any, {
+        id: String(user.id || ''),
+        email: user.email,
+        phone: user.phone,
+      });
 
-      const teleCallerId = userProfile?.id;
+      const teleCallerId = String((userProfile as any)?.id || '').trim();
+      if (!teleCallerId) {
+        // Prevent malformed queries like eq.undefined when profile mapping is missing.
+        setRecentLeads([]);
+        setUpcomingFollowUps([]);
+        setStats(prev => ({ ...prev, loading: false }));
+        return;
+      }
 
       // Fetch stats
       const today = new Date().toISOString().split('T')[0];

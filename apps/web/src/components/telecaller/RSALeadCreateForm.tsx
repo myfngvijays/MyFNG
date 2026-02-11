@@ -94,6 +94,7 @@ export function RSALeadCreateForm({
     advance_payment?: string;
     problem?: string;
     service_type?: string;
+    media_upload?: string[] | null;
   } | null;
 }) {
   const router = useRouter();
@@ -124,7 +125,9 @@ export function RSALeadCreateForm({
   const [carModelOpen, setCarModelOpen] = useState(false);
 
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [existingMediaUrls, setExistingMediaUrls] = useState<string[]>([]);
   const previews = useMemo(() => mediaFiles.map((f) => URL.createObjectURL(f)), [mediaFiles]);
+  const remainingMediaSlots = Math.max(0, 5 - existingMediaUrls.length);
 
   useEffect(() => {
     if (initialLead?.id) {
@@ -145,7 +148,11 @@ export function RSALeadCreateForm({
         service_type: String(L.service_type ?? '').trim(),
       });
       setCarModelQuery(String(L.vehicle_model ?? '').trim());
+      setExistingMediaUrls(Array.isArray(L.media_upload) ? L.media_upload.filter(Boolean) : []);
+    } else {
+      setExistingMediaUrls([]);
     }
+    setMediaFiles([]);
   }, [initialLead?.id]);
 
   useEffect(() => {
@@ -165,7 +172,8 @@ export function RSALeadCreateForm({
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const next = [...mediaFiles, ...files].slice(0, 5);
+    const maxSelectable = Math.max(0, remainingMediaSlots);
+    const next = [...mediaFiles, ...files].slice(0, maxSelectable);
     setMediaFiles(next);
     e.target.value = '';
   };
@@ -186,7 +194,7 @@ export function RSALeadCreateForm({
     if (service.toLowerCase() === 'towing' && !form.drop_location.trim()) {
       return 'Drop Location is required for Towing';
     }
-    if (mediaFiles.length > 5) return 'Maximum 5 images allowed';
+    if (existingMediaUrls.length + mediaFiles.length > 5) return 'Maximum 5 images allowed';
     return '';
   };
 
@@ -229,30 +237,32 @@ export function RSALeadCreateForm({
     setLoading(true);
     try {
       if (isEditMode && initialLead?.id) {
+        const fd = new FormData();
+        fd.append('customer_name', form.customer_name);
+        fd.append('contact_number', form.contact_number);
+        fd.append('vehicle_number', form.vehicle_number);
+        fd.append('vehicle_model', form.vehicle_model);
+        fd.append('vehicle_details', form.vehicle_details);
+        fd.append('source', form.source);
+        fd.append('location_link', form.location_link);
+        fd.append('drop_location', form.drop_location);
+        fd.append('customer_quoted_amount', form.customer_quoted_amount || '');
+        fd.append('advance_payment', form.advance_payment || '');
+        fd.append('problem', form.problem || '');
+        fd.append('description', form.problem || '');
+        fd.append('alternate_number', form.alternate_number || '');
+        fd.append('service_type', form.service_type || '');
+        mediaFiles.forEach((f) => fd.append('media', f));
+
         const res = await fetch(`/api/telecaller/rsa-complaints/${encodeURIComponent(initialLead.id)}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customer_name: form.customer_name,
-            contact_number: form.contact_number,
-            vehicle_number: form.vehicle_number,
-            vehicle_model: form.vehicle_model,
-            vehicle_details: form.vehicle_details,
-            source: form.source,
-            location_link: form.location_link,
-            drop_location: form.drop_location,
-            customer_quoted_amount: form.customer_quoted_amount || null,
-            advance_payment: form.advance_payment || null,
-            problem: form.problem || null,
-            description: form.problem || null,
-            alternate_number: form.alternate_number || null,
-            service_type: form.service_type,
-          }),
+          body: fd,
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(json?.error || 'Failed to update RSA lead');
         }
+        setMediaFiles([]);
         setSuccessMessage('RSA lead updated successfully.');
         if (json?.id) onUpdated?.(String(json.id));
       } else {
@@ -506,19 +516,42 @@ export function RSALeadCreateForm({
             </div>
           </div>
 
-          {!isEditMode ? (
           <div>
             <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">Upload Media</label>
             <div className="border-2 border-dashed rounded-lg p-4 sm:p-5 bg-white">
+              {isEditMode && existingMediaUrls.length > 0 ? (
+                <div className="mb-3">
+                  <div className="text-xs text-gray-600 mb-2">Already uploaded ({existingMediaUrls.length}/5)</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                    {existingMediaUrls.map((url, idx) => (
+                      <a
+                        key={`${url}-${idx}`}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="relative border rounded-lg overflow-hidden block"
+                        title="Open media"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt={`Existing media ${idx + 1}`} className="w-full h-24 object-cover" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="flex flex-col items-center justify-center gap-2 text-center">
                 <UploadCloud className="w-6 h-6 text-gray-500" />
-                <div className="text-xs sm:text-sm text-gray-600">Click to upload images (Max 5 files)</div>
+                <div className="text-xs sm:text-sm text-gray-600">
+                  Click to upload images (Max 5 files)
+                  {isEditMode ? ` • Remaining: ${Math.max(0, remainingMediaSlots - mediaFiles.length)}` : ''}
+                </div>
                 <input
                   type="file"
                   accept="image/*"
                   multiple
                   onChange={onPickMedia}
-                  disabled={mediaFiles.length >= 5}
+                  disabled={remainingMediaSlots <= 0 || mediaFiles.length >= remainingMediaSlots}
                 />
               </div>
 
@@ -542,7 +575,6 @@ export function RSALeadCreateForm({
               ) : null}
             </div>
           </div>
-          ) : null}
 
           <div>
             <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">Description</label>

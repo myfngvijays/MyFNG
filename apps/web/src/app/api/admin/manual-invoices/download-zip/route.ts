@@ -49,6 +49,10 @@ function getPuppeteerCacheDir() {
   );
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+
 async function ensurePuppeteerChromeExecutable(puppeteer: any) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const browsers = require('@puppeteer/browsers') as any;
@@ -93,13 +97,42 @@ async function ensurePuppeteerChromeExecutable(puppeteer: any) {
   return executablePath;
 }
 
+async function parseInvoiceIds(request: NextRequest) {
+  const contentType = (request.headers.get('content-type') || '').toLowerCase();
+
+  if (contentType.includes('application/json')) {
+    const body = await request.json().catch(() => ({}));
+    const ids = Array.isArray(body?.ids) ? body.ids : [];
+    return ids.map((x: any) => String(x || '').trim()).filter(Boolean);
+  }
+
+  if (
+    contentType.includes('application/x-www-form-urlencoded') ||
+    contentType.includes('multipart/form-data')
+  ) {
+    const formData = await request.formData();
+    const raw = String(formData.get('ids') || '');
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((x: any) => String(x || '').trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const ids = Array.isArray(body?.ids) ? body.ids : [];
+  return ids.map((x: any) => String(x || '').trim()).filter(Boolean);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const gate = await requireSuperAdmin(request);
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
-    const body = await request.json().catch(() => ({}));
-    const ids = Array.isArray(body?.ids) ? body.ids.map((x: any) => String(x || '').trim()).filter(Boolean) : [];
+    const ids = await parseInvoiceIds(request);
 
     if (ids.length === 0) {
       return NextResponse.json({ error: 'No invoice IDs provided' }, { status: 400 });
@@ -127,8 +160,10 @@ export async function POST(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const archiver = require('archiver') as any;
     const out = new PassThrough();
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    // PDFs are already compressed; low zip level drastically reduces CPU time.
+    const archive = archiver('zip', { zlib: { level: 1 } });
     archive.pipe(out);
+    archive.on('error', (err: Error) => out.destroy(err));
 
     const missing = ids.filter((id) => !invoiceById.has(id));
     if (missing.length > 0) {
@@ -154,42 +189,72 @@ export async function POST(request: NextRequest) {
       executablePath,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
-
-    try {
-      const page = await browser.newPage();
-      // Avoid 30s default navigation timeout (PDF generation may take longer)
-      page.setDefaultNavigationTimeout(120_000);
-      page.setDefaultTimeout(120_000);
-      await page.setViewport({ width: 1240, height: 1754 });
-
-      // Generate PDFs sequentially (stable, lower memory). If needed, we can add concurrency later.
-      for (const id of ids) {
+    const invoiceJobs = ids
+      .map((id) => {
         const invoice = invoiceById.get(id);
-        if (!invoice) continue;
-
+        if (!invoice) return null;
         const invoiceNo = sanitizeFileComponent(String(invoice.invoice_number || id));
         const customerName = sanitizeFileComponent(String(invoice.customer_name || 'Customer'));
         const filename = `${invoiceNo} - ${customerName}.pdf`;
-
         const html = renderManualInvoiceHtml(invoice, { autoPrint: false, appUrl: originForHtml });
-        // networkidle0 can hang on slow/long-polling resources; load is enough for static HTML.
-        await page.setContent(html, { waitUntil: 'load', timeout: 120_000 });
-        const pdfBytes = await page.pdf({
-          format: 'A4',
-          printBackground: true,
-          margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' },
-        });
-        // Puppeteer returns Uint8Array in some setups; Archiver needs a Node Buffer or Stream.
-        const pdfBuffer = Buffer.isBuffer(pdfBytes) ? pdfBytes : Buffer.from(pdfBytes);
-        archive.append(pdfBuffer, { name: filename });
+        return { filename, html };
+      })
+      .filter(Boolean) as Array<{ filename: string; html: string }>;
+
+    const renderConcurrency = clamp(
+      Number(process.env.MANUAL_INVOICE_ZIP_CONCURRENCY || 3),
+      1,
+      6
+    );
+
+    // Start rendering/archiving in background so download can begin streaming immediately.
+    void (async () => {
+      try {
+        let nextIndex = 0;
+
+        const worker = async () => {
+          const page = await browser.newPage();
+          page.setDefaultNavigationTimeout(120_000);
+          page.setDefaultTimeout(120_000);
+          await page.setViewport({ width: 1240, height: 1754 });
+
+          try {
+            while (true) {
+              const idx = nextIndex++;
+              if (idx >= invoiceJobs.length) break;
+              const job = invoiceJobs[idx];
+
+              // load is enough for this static HTML and is faster than networkidle strategies.
+              await page.setContent(job.html, { waitUntil: 'load', timeout: 120_000 });
+              const pdfBytes = await page.pdf({
+                format: 'A4',
+                printBackground: true,
+                margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' },
+              });
+              const pdfBuffer = Buffer.isBuffer(pdfBytes) ? pdfBytes : Buffer.from(pdfBytes);
+              archive.append(pdfBuffer, { name: job.filename });
+            }
+          } finally {
+            await page.close();
+          }
+        };
+
+        const workers = Array.from(
+          { length: Math.min(renderConcurrency, Math.max(invoiceJobs.length, 1)) },
+          () => worker()
+        );
+        await Promise.all(workers);
+        await browser.close();
+        await archive.finalize();
+      } catch (err) {
+        try {
+          await browser.close();
+        } catch {
+          // ignore close errors
+        }
+        out.destroy(err as Error);
       }
-
-      await page.close();
-    } finally {
-      await browser.close();
-    }
-
-    await archive.finalize();
+    })();
 
     const now = new Date();
     const y = now.getFullYear();

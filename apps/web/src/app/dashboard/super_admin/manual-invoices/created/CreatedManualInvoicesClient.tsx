@@ -144,30 +144,38 @@ export default function CreatedManualInvoicesClient() {
     setDownloading(true);
     setMessage(null);
     try {
-      const res = await fetch('/api/admin/manual-invoices/download-zip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      });
-
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json?.error || 'Failed to download ZIP');
+      // Use native browser download flow instead of fetch+blob so stream starts immediately.
+      const iframeName = 'manual-invoice-download-frame';
+      let iframe = document.getElementById(iframeName) as HTMLIFrameElement | null;
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = iframeName;
+        iframe.name = iframeName;
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
       }
 
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'manual-invoices.zip';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/api/admin/manual-invoices/download-zip';
+      form.target = iframeName;
+      form.style.display = 'none';
+
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'ids';
+      input.value = JSON.stringify(ids);
+      form.appendChild(input);
+
+      document.body.appendChild(form);
+      form.submit();
+      form.remove();
+
+      setMessage(`Download started for ${ids.length} invoice${ids.length > 1 ? 's' : ''}.`);
     } catch (e: any) {
       setMessage(e?.message || 'Failed to download ZIP');
     } finally {
-      setDownloading(false);
+      window.setTimeout(() => setDownloading(false), 1500);
     }
   }
 

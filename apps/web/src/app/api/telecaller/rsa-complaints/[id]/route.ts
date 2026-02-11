@@ -6,6 +6,9 @@ import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const MAX_FILES = 5;
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per image
+
 function digits10(input: unknown): string {
   const raw = String(input ?? '');
   const d = raw.replace(/\D/g, '');
@@ -118,7 +121,39 @@ export async function PATCH(
       return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
     }
 
-    const body = await request.json().catch(() => ({}));
+    const contentType = (request.headers.get('content-type') || '').toLowerCase();
+    const isFormData =
+      contentType.includes('multipart/form-data') || contentType.includes('application/x-www-form-urlencoded');
+
+    let body: Record<string, unknown> = {};
+    let mediaFiles: File[] = [];
+
+    if (isFormData) {
+      const fd = await request.formData();
+      const keyMap = [
+        'customer_name',
+        'contact_number',
+        'alternate_number',
+        'vehicle_number',
+        'vehicle_model',
+        'vehicle_details',
+        'source',
+        'location_link',
+        'drop_location',
+        'service_type',
+        'customer_quoted_amount',
+        'advance_payment',
+        'problem',
+        'description',
+      ] as const;
+      for (const key of keyMap) {
+        if (fd.has(key)) body[key] = String(fd.get(key) ?? '');
+      }
+      mediaFiles = (fd.getAll('media') || []).filter((f): f is File => f instanceof File);
+    } else {
+      body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    }
+
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
@@ -128,7 +163,7 @@ export async function PATCH(
 
     const { data: existing, error: fetchErr } = await db
       .from('rsa_leads')
-      .select('id, registered_by_id, assigned_mechanic_id')
+      .select('id, registered_by_id, assigned_mechanic_id, media_upload')
       .eq('id', leadId)
       .maybeSingle();
 
@@ -145,6 +180,29 @@ export async function PATCH(
         { error: 'Lead cannot be edited after a mechanic has been assigned.' },
         { status: 403 }
       );
+    }
+
+    const existingMediaUrls: string[] = Array.isArray(existing.media_upload)
+      ? existing.media_upload.filter((u: unknown) => typeof u === 'string' && Boolean(String(u).trim()))
+      : [];
+
+    if (mediaFiles.length > MAX_FILES) {
+      return NextResponse.json({ error: `Maximum ${MAX_FILES} images allowed` }, { status: 400 });
+    }
+    if (existingMediaUrls.length + mediaFiles.length > MAX_FILES) {
+      return NextResponse.json(
+        { error: `Only ${Math.max(0, MAX_FILES - existingMediaUrls.length)} additional image(s) can be uploaded` },
+        { status: 400 }
+      );
+    }
+    for (const f of mediaFiles) {
+      if (f.size > MAX_FILE_SIZE) {
+        return NextResponse.json({ error: `File too large: ${f.name}. Max 10MB` }, { status: 413 });
+      }
+      const mime = String(f.type || '').toLowerCase();
+      if (!mime.startsWith('image/')) {
+        return NextResponse.json({ error: `Only image files allowed: ${f.name}` }, { status: 400 });
+      }
     }
 
     const contact_number = body.contact_number != null ? digits10(body.contact_number) : undefined;
@@ -171,6 +229,41 @@ export async function PATCH(
     if (body.advance_payment !== undefined) payload.advance_payment = String(body.advance_payment).trim() || null;
     if (body.problem !== undefined) payload.problem = String(body.problem).trim() || null;
     if (body.description !== undefined) payload.description = String(body.description).trim() || null;
+
+    if (mediaFiles.length > 0) {
+      const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+      if (!supabaseAdmin) {
+        return NextResponse.json({ error: adminError || 'Admin client not configured' }, { status: 500 });
+      }
+
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < mediaFiles.length; i++) {
+        const file = mediaFiles[i];
+        const ext = (file.name || 'jpg').split('.').pop() || 'jpg';
+        const safeExt = ext.toLowerCase().slice(0, 8);
+        const filePath = `rsa-complaints/${leadId}/${Date.now()}_edit_${i + 1}.${safeExt}`;
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        const { error: uploadError } = await (supabaseAdmin as any).storage.from('service-media').upload(filePath, buffer, {
+          contentType: file.type || 'application/octet-stream',
+          upsert: false,
+        });
+        if (uploadError) {
+          return NextResponse.json(
+            { error: 'Failed to upload media', details: uploadError.message, file: file.name },
+            { status: 500 }
+          );
+        }
+
+        const { data: publicUrlData } = (supabaseAdmin as any).storage.from('service-media').getPublicUrl(filePath);
+        if (publicUrlData?.publicUrl) uploadedUrls.push(publicUrlData.publicUrl);
+      }
+
+      if (uploadedUrls.length > 0) {
+        payload.media_upload = [...existingMediaUrls, ...uploadedUrls];
+      }
+    }
 
     if (Object.keys(payload).length === 0) {
       return NextResponse.json({ success: true, id: leadId }, { status: 200 });
