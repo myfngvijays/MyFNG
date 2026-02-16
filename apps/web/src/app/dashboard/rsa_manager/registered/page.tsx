@@ -6,7 +6,7 @@ import { RSAManagerService } from '@/lib/services/rsaManagerService';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import Link from 'next/link';
 import { AlertCircle, ChevronRight, MapPin, Search } from 'lucide-react';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTimeIST } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -152,7 +152,7 @@ export default function RSAManagerRegisteredPage() {
                       ) : null}
 
                       <div className="mt-2 text-[10px] sm:text-xs text-gray-500">
-                        Registered: {formatDateTime(lead.lead_registered_at || lead.requested_at)}
+                        Registered: {formatDateTimeIST(lead.lead_registered_at || lead.requested_at)}
                       </div>
                     </div>
                     <ChevronRight className="w-6 h-6 text-gray-400 flex-shrink-0" />

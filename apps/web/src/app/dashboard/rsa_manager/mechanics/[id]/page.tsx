@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTimeIST } from '@/lib/utils';
 import {
   ArrowLeft, Phone, Wrench, MapPin, Clock,
   CheckCircle, XCircle, Star, TrendingUp,
@@ -394,7 +394,7 @@ export default function RSAMechanicDetailPage() {
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-4 text-[10px] sm:text-xs text-text-secondary mt-1.5 sm:mt-2">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{formatDateTime(assignment.requested_at)}</span>
+                          <span className="truncate">{formatDateTimeIST(assignment.requested_at)}</span>
                         </span>
                         {assignment.service_type && (
                           <span className="flex items-center gap-1">
@@ -455,7 +455,7 @@ export default function RSAMechanicDetailPage() {
                                 {c.lead_status || c.complaint_status || '—'}
                               </span>
                             </td>
-                            <td className="py-2 pr-3">{formatDateTime(c.requested_at)}</td>
+                            <td className="py-2 pr-3">{formatDateTimeIST(c.requested_at)}</td>
                             <td className="py-2 pr-3">
                               <Link
                                 className="text-brand-primary font-semibold hover:underline"
@@ -513,7 +513,7 @@ export default function RSAMechanicDetailPage() {
                           </td>
                           <td className="py-2 pr-3">{c.service_type || '—'}</td>
                           <td className="py-2 pr-3">
-                            {formatDateTime(c.mechanic_completed_datetime || c.requested_at)}
+                            {formatDateTimeIST(c.mechanic_completed_datetime || c.requested_at)}
                           </td>
                           <td className="py-2 pr-3">
                             <Link className="text-brand-primary font-semibold hover:underline" href={`/dashboard/rsa_manager/leads/${c.id}`}>

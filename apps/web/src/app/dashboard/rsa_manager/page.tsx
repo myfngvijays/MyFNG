@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useEffect } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTimeISTAssumeUTC } from '@/lib/utils';
 import {
   AlertCircle, Clock, CheckCircle, XCircle, Users,
   Search, Filter, Eye, ChevronRight, Wrench, MapPin
@@ -100,7 +100,28 @@ function groupCallsByCustomer(calls: SarvCallRow[]) {
 }
 
 function formatDateInput(value: Date) {
-  return value.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+function toISTBoundaryISO(dateText: string, endOfDay: boolean): string | null {
+  const match = String(dateText || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const hours = endOfDay ? 23 : 0;
+  const minutes = endOfDay ? 59 : 0;
+  const seconds = endOfDay ? 59 : 0;
+  const istOffsetMs = 330 * 60 * 1000;
+  const utcMs = Date.UTC(year, monthIndex, day, hours, minutes, seconds) - istOffsetMs;
+  return new Date(utcMs).toISOString();
 }
 
 function addDays(value: Date, days: number) {
@@ -347,10 +368,12 @@ export default function RSAManagerDashboard() {
     try {
       const params = new URLSearchParams();
       if (callFilters.from) {
-        params.set('from', new Date(`${callFilters.from}T00:00:00`).toISOString());
+        const fromISO = toISTBoundaryISO(callFilters.from, false);
+        if (fromISO) params.set('from', fromISO);
       }
       if (callFilters.to) {
-        params.set('to', new Date(`${callFilters.to}T23:59:59`).toISOString());
+        const toISO = toISTBoundaryISO(callFilters.to, true);
+        if (toISO) params.set('to', toISO);
       }
       if (callFilters.q.trim()) {
         params.set('q', callFilters.q.trim());
@@ -637,7 +660,7 @@ export default function RSAManagerDashboard() {
                             return (
                               <tr key={call.id} className="border-b last:border-b-0 align-top">
                                 <td className="py-2 pr-3 whitespace-nowrap">
-                                  {formatDateTime(call.custanswerstime || call.sarv_created_at || call.created_at)}
+                                  {formatDateTimeISTAssumeUTC(call.custanswerstime || call.sarv_created_at || call.created_at)}
                                 </td>
                                 <td className="py-2 pr-3">{call.cnumber || '—'}</td>
                                 <td className="py-2 pr-3">{formatDuration(call.talkduration)}</td>
@@ -713,7 +736,7 @@ export default function RSAManagerDashboard() {
                             <Fragment key={group.customer}>
                               <tr key={`${group.customer}-header`} className="border-b bg-gray-50">
                                 <td className="py-2 pr-3 whitespace-nowrap">
-                                  {formatDateTime(latest.custanswerstime || latest.sarv_created_at || latest.created_at)}
+                                  {formatDateTimeISTAssumeUTC(latest.custanswerstime || latest.sarv_created_at || latest.created_at)}
                                 </td>
                                 <td className="py-2 pr-3 font-semibold">
                                   <button
@@ -770,7 +793,7 @@ export default function RSAManagerDashboard() {
                                       return (
                                     <tr key={call.id} className="border-b last:border-b-0 align-top">
                                       <td className="py-2 pr-3 whitespace-nowrap">
-                                        {formatDateTime(
+                                        {formatDateTimeISTAssumeUTC(
                                           call.custanswerstime || call.sarv_created_at || call.created_at
                                         )}
                                       </td>
@@ -1032,7 +1055,7 @@ export default function RSAManagerDashboard() {
                         )}
 
                         <div className="mt-2 sm:mt-3 text-[10px] sm:text-xs text-gray-500">
-                          Registered: {formatDateTime(lead.lead_registered_at || lead.requested_at)}
+                          Registered: {formatDateTimeISTAssumeUTC(lead.lead_registered_at || lead.requested_at)}
                         </div>
                       </div>
                       
@@ -1598,7 +1621,7 @@ export default function RSAManagerDashboard() {
                       <div className="text-sm text-gray-900 whitespace-pre-wrap">{audit.feedback || '—'}</div>
                     </div>
                     <div className="text-xs text-gray-500">
-                      Audited at: {audit.audited_at ? formatDateTime(audit.audited_at) : '—'}
+                      Audited at: {audit.audited_at ? formatDateTimeISTAssumeUTC(audit.audited_at) : '—'}
                     </div>
                   </div>
                 );

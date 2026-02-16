@@ -5,7 +5,7 @@ import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTimeISTAssumeUTC } from '@/lib/utils';
 import {
   AlertCircle, Clock, CheckCircle, XCircle, Users,
   Search, Filter, Eye, ChevronRight, Wrench, MapPin 
@@ -277,7 +277,7 @@ function RSALeadsListContent() {
                         )}
 
                         <div className="mt-2 sm:mt-3 text-[10px] sm:text-xs text-gray-500">
-                          Registered: {formatDateTime(lead.lead_registered_at || lead.requested_at)}
+                          Registered: {formatDateTimeISTAssumeUTC(lead.lead_registered_at || lead.requested_at)}
                         </div>
                       </div>
                       

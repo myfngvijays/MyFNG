@@ -5,7 +5,7 @@ import { useParams, useRouter, usePathname } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
-import { formatDateTime, formatDateTimeIST } from '@/lib/utils';
+import { formatDateTimeIST } from '@/lib/utils';
 import {
   ArrowLeft, MapPin, Phone, Mail, Car, Wrench,
   Clock, User, AlertCircle, CheckCircle, XCircle,
@@ -963,7 +963,7 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-2">
                     <h4 className="font-semibold text-gray-900 text-sm sm:text-base">{entry.status}</h4>
                     <span className="text-[10px] sm:text-xs text-gray-500">
-                      {formatDateTime(entry.updated_at)}
+                      {formatDateTimeIST(entry.updated_at)}
                     </span>
                   </div>
                   {entry.status_description && (

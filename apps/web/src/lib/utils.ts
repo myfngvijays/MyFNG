@@ -71,6 +71,30 @@ export function formatDateTimeIST(
   return `${day}-${month}-${year} ${hour}:${minute} ${dayPeriod.toUpperCase()}`;
 }
 
+function normalizeTimestampAssumeUTC(
+  value: string | number | Date | null | undefined
+): string | number | Date | null | undefined {
+  if (typeof value !== 'string') return value;
+  const raw = value.trim();
+  if (!raw) return raw;
+
+  const hasTimezone = /([zZ]|[+\-]\d{2}:?\d{2})$/.test(raw);
+  if (hasTimezone) return raw;
+
+  const looksLikeDateTime =
+    /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?$/.test(raw);
+  if (!looksLikeDateTime) return raw;
+
+  return `${raw.replace(' ', 'T')}Z`;
+}
+
+export function formatDateTimeISTAssumeUTC(
+  date: string | number | Date | null | undefined,
+  timeZone: string = 'Asia/Kolkata'
+): string {
+  return formatDateTimeIST(normalizeTimestampAssumeUTC(date), timeZone);
+}
+
 // Backward-compatible alias used across the app
 export function formatDate(date: string | number | Date | null | undefined): string {
   return formatDateTime(date);
