@@ -6,6 +6,12 @@ import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function digits10(input: unknown) {
+  const raw = String(input ?? '');
+  const d = raw.replace(/\D/g, '');
+  return d.length <= 10 ? d : d.slice(-10);
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -40,7 +46,7 @@ export async function GET(
 
     const { data: lead } = await db
       .from('rsa_leads')
-      .select('id, registered_by_id')
+      .select('id, registered_by_id, contact_number, alternate_number, lead_registered_at, requested_at')
       .eq('id', leadId)
       .maybeSingle();
 
@@ -99,7 +105,77 @@ export async function GET(
       }))
       .filter((row: any) => row.callid);
 
-    return NextResponse.json({ success: true, calls }, { status: 200 });
+    if (calls.length > 0) {
+      return NextResponse.json({ success: true, calls }, { status: 200 });
+    }
+
+    // Fallback: for older/unlinked records, match by lead phone numbers directly.
+    const phones = Array.from(
+      new Set(
+        [digits10((lead as any)?.contact_number), digits10((lead as any)?.alternate_number)].filter(Boolean)
+      )
+    );
+    if (phones.length === 0) {
+      return NextResponse.json({ success: true, calls: [] }, { status: 200 });
+    }
+
+    const leadStart = (lead as any)?.lead_registered_at || (lead as any)?.requested_at || null;
+    let fallbackQuery = db
+      .from('sarv_calls')
+      .select(
+        `
+        id,
+        callid,
+        cnumber,
+        callstatus,
+        ctype,
+        ivrstime,
+        ivretime,
+        ivrduration,
+        talkduration,
+        agentoncallduration,
+        custanswerstime,
+        custansweretime,
+        custanswerduration,
+        recording_url,
+        transcription,
+        summary,
+        disposition,
+        disposition_category,
+        disposition_note,
+        disposition_updated_at,
+        sarv_created_at,
+        created_at
+      `
+      )
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (leadStart) {
+      // Keep a small back window to include pre-registration call attempts.
+      const start = new Date(leadStart);
+      if (!Number.isNaN(start.getTime())) {
+        start.setDate(start.getDate() - 2);
+        fallbackQuery = fallbackQuery.gte('created_at', start.toISOString());
+      }
+    }
+
+    const phoneOr = phones.map((p) => `cnumber.ilike.%${p}`).join(',');
+    const { data: fallbackCalls, error: fallbackError } = await fallbackQuery.or(phoneOr);
+    if (fallbackError) {
+      return NextResponse.json({ error: 'Failed to fetch SARV calls' }, { status: 500 });
+    }
+
+    const normalizedSet = new Set(phones);
+    const deduped = Array.from(
+      new Map(
+        (fallbackCalls || [])
+          .filter((row: any) => normalizedSet.has(digits10(row?.cnumber)))
+          .map((row: any) => [String(row?.id || row?.callid || Math.random()), row])
+      ).values()
+    );
+
+    return NextResponse.json({ success: true, calls: deduped }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: 'Internal server error', details: e?.message }, { status: 500 });
   }

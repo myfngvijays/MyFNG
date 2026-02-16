@@ -31,6 +31,7 @@ type SarvCallRow = {
   disposition_updated_at: string | null;
   sarv_created_at: string | null;
   created_at: string;
+  has_audit?: boolean;
 };
 
 type SarvCallAudit = {
@@ -206,6 +207,35 @@ function TabButton({
   );
 }
 
+function statusLabel(value: string) {
+  return String(value || '')
+    .replace(/[_\-]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function statusBadgeClass(value: string) {
+  const s = String(value || '').trim().toLowerCase();
+  if (s === 'cancelled' || s === 'canceled') return 'bg-red-100 text-red-700 border-red-200';
+  if (s === 'completed' || s === 'closed') return 'bg-green-100 text-green-700 border-green-200';
+  if (s === 'pending' || s === 'registered') return 'bg-amber-100 text-amber-700 border-amber-200';
+  if (s === 'in_progress' || s === 'in progress') return 'bg-blue-100 text-blue-700 border-blue-200';
+  if (s.includes('assigned')) return 'bg-purple-100 text-purple-700 border-purple-200';
+  return 'bg-gray-100 text-gray-700 border-gray-200';
+}
+
+function leadRowClass(value: string) {
+  const s = String(value || '').trim().toLowerCase();
+  if (s === 'cancelled' || s === 'canceled') return 'bg-red-50';
+  if (s === 'completed' || s === 'closed') return 'bg-green-50';
+  if (s === 'pending' || s === 'registered') return 'bg-amber-50';
+  if (s === 'in_progress' || s === 'in progress') return 'bg-blue-50';
+  if (s.includes('assigned')) return 'bg-purple-50';
+  return '';
+}
+
 export default function TelecallerRSAPage() {
   const [tab, setTab] = useState<TabKey>('overview');
   const [loading, setLoading] = useState(false);
@@ -227,6 +257,7 @@ export default function TelecallerRSAPage() {
       to: formatDateInput(today),
       q: '',
       has_recording: false,
+      has_audit: '',
       limit: 50,
     };
   });
@@ -273,6 +304,12 @@ export default function TelecallerRSAPage() {
   const [carEnquiries, setCarEnquiries] = useState<any[]>([]);
   const [editLead, setEditLead] = useState<any | null>(null);
   const [editLeadLoading, setEditLeadLoading] = useState(false);
+  const [leadStatusFilter, setLeadStatusFilter] = useState('');
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelLead, setCancelLead] = useState<any | null>(null);
+  const [cancelRemark, setCancelRemark] = useState('');
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   const stats = useMemo(() => {
     const total = leads.length;
@@ -280,6 +317,30 @@ export default function TelecallerRSAPage() {
     const completed = leads.filter((l) => String(l?.lead_status || '').toLowerCase() === 'completed').length;
     return { total, pending, completed };
   }, [leads]);
+
+  const getLeadStatusKey = (lead: any) =>
+    String(lead?.lead_status || lead?.complaint_status || '')
+      .trim()
+      .toLowerCase();
+
+  const statusFilterOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of [...leads, ...createdLeads]) {
+      const key = getLeadStatusKey(row);
+      if (key) set.add(key);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [leads, createdLeads]);
+
+  const filteredLeads = useMemo(() => {
+    if (!leadStatusFilter) return leads;
+    return leads.filter((row) => getLeadStatusKey(row) === leadStatusFilter);
+  }, [leads, leadStatusFilter]);
+
+  const filteredCreatedLeads = useMemo(() => {
+    if (!leadStatusFilter) return createdLeads;
+    return createdLeads.filter((row) => getLeadStatusKey(row) === leadStatusFilter);
+  }, [createdLeads, leadStatusFilter]);
 
   const fetchLeads = async () => {
     setLoading(true);
@@ -394,6 +455,9 @@ export default function TelecallerRSAPage() {
       }
       if (callFilters.has_recording) {
         params.set('has_recording', 'true');
+      }
+      if (callFilters.has_audit === 'true' || callFilters.has_audit === 'false') {
+        params.set('has_audit', callFilters.has_audit);
       }
       params.set('limit', String(callFilters.limit));
       params.set('page', String(callPage));
@@ -511,6 +575,16 @@ export default function TelecallerRSAPage() {
     return formatDateTimeIST(value);
   };
 
+  const isPendingComplaint = (lead: any) => {
+    const leadStatus = String(lead?.lead_status || '').trim().toLowerCase();
+    const complaintStatus = String(lead?.complaint_status || '').trim().toLowerCase();
+    return (
+      leadStatus === 'pending' ||
+      complaintStatus === 'pending' ||
+      complaintStatus === 'registered'
+    );
+  };
+
   const openSarvCalls = async (lead: any) => {
     if (!lead?.id) return;
     setSarvLead(lead);
@@ -535,6 +609,47 @@ export default function TelecallerRSAPage() {
     setSarvLead(null);
     setSarvCalls([]);
     setSarvError('');
+  };
+
+  const openCancelLead = (lead: any) => {
+    setCancelLead(lead);
+    setCancelRemark('');
+    setCancelError('');
+    setCancelOpen(true);
+  };
+
+  const closeCancelLead = () => {
+    setCancelOpen(false);
+    setCancelLead(null);
+    setCancelRemark('');
+    setCancelError('');
+    setCancelLoading(false);
+  };
+
+  const submitCancelLead = async () => {
+    if (!cancelLead?.id) return;
+    setCancelLoading(true);
+    setCancelError('');
+    try {
+      const res = await fetch(`/api/telecaller/rsa-complaints/${encodeURIComponent(String(cancelLead.id))}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_status: 'cancelled',
+          complaint_status: 'cancelled',
+          cancelled_remark: cancelRemark.trim() || null,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to cancel complaint');
+      closeCancelLead();
+      fetchLeads();
+      fetchCreatedLeads();
+    } catch (e: any) {
+      setCancelError(e?.message || 'Failed to cancel complaint');
+    } finally {
+      setCancelLoading(false);
+    }
   };
 
   const openEditLead = async (lead: any) => {
@@ -678,12 +793,29 @@ export default function TelecallerRSAPage() {
             <div className="card">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm sm:text-base font-bold text-text-heading">Recent RSA leads</h2>
-                <div className="text-xs text-gray-500">
-                  Showing {leads.length} {loading ? '(loading...)' : ''}
+                <div className="flex items-center gap-3">
+                  <div className="text-xs text-gray-500">
+                    Showing {filteredLeads.length}
+                    {leadStatusFilter ? ` / ${leads.length}` : ''} {loading ? '(loading...)' : ''}
+                  </div>
+                  <div className="min-w-[170px]">
+                    <select
+                      className="w-full border rounded-md px-2 py-1.5 text-xs"
+                      value={leadStatusFilter}
+                      onChange={(e) => setLeadStatusFilter(e.target.value)}
+                    >
+                      <option value="">All Status</option>
+                      {statusFilterOptions.map((s) => (
+                        <option key={s} value={s}>
+                          {statusLabel(s)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              {leads.length === 0 ? (
+              {filteredLeads.length === 0 ? (
                 <div className="text-sm text-gray-600 py-6 text-center">
                   No RSA leads found.
                 </div>
@@ -703,8 +835,11 @@ export default function TelecallerRSAPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {leads.map((l) => (
-                        <tr key={l.id} className="border-b last:border-b-0">
+                      {filteredLeads.map((l) => (
+                        <tr
+                          key={l.id}
+                          className={`border-b last:border-b-0 ${leadRowClass(l.lead_status || l.complaint_status || '')}`}
+                        >
                           <td className="py-2 pr-3 font-semibold">{l.customer_name || '—'}</td>
                           <td className="py-2 pr-3">{l.contact_number || '—'}</td>
                           <td className="py-2 pr-3">
@@ -716,8 +851,12 @@ export default function TelecallerRSAPage() {
                           </td>
                           <td className="py-2 pr-3">{l.service_type || '—'}</td>
                           <td className="py-2 pr-3">
-                            <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                              {l.lead_status || l.complaint_status || '—'}
+                            <span
+                              className={`px-2 py-1 rounded-full border ${statusBadgeClass(
+                                l.lead_status || l.complaint_status || ''
+                              )}`}
+                            >
+                              {statusLabel(l.lead_status || l.complaint_status || '—')}
                             </span>
                           </td>
                           <td className="py-2 pr-3">
@@ -734,15 +873,27 @@ export default function TelecallerRSAPage() {
                           </td>
                           <td className="py-2 pr-3">
                             {!l.assigned_mechanic_id ? (
-                              <button
-                                type="button"
-                                className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
-                                onClick={() => openEditLead(l)}
-                                title="Edit lead (allowed until mechanic is assigned)"
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                                Edit
-                              </button>
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
+                                  onClick={() => openEditLead(l)}
+                                  title="Edit lead (allowed until mechanic is assigned)"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                  Edit
+                                </button>
+                                {isPendingComplaint(l) ? (
+                                  <button
+                                    type="button"
+                                    className="text-red-600 hover:text-red-700 font-semibold"
+                                    onClick={() => openCancelLead(l)}
+                                    title="Cancel this pending complaint"
+                                  >
+                                    Cancel
+                                  </button>
+                                ) : null}
+                              </div>
                             ) : (
                               <span className="text-gray-400 text-xs">—</span>
                             )}
@@ -766,12 +917,29 @@ export default function TelecallerRSAPage() {
             <div className="card">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm sm:text-base font-bold text-text-heading">RSA leads created by you</h2>
-                <div className="text-xs text-gray-500">
-                  Showing {createdLeads.length} {createdLoading ? '(loading...)' : ''}
+                <div className="flex items-center gap-3">
+                  <div className="text-xs text-gray-500">
+                    Showing {filteredCreatedLeads.length}
+                    {leadStatusFilter ? ` / ${createdLeads.length}` : ''} {createdLoading ? '(loading...)' : ''}
+                  </div>
+                  <div className="min-w-[170px]">
+                    <select
+                      className="w-full border rounded-md px-2 py-1.5 text-xs"
+                      value={leadStatusFilter}
+                      onChange={(e) => setLeadStatusFilter(e.target.value)}
+                    >
+                      <option value="">All Status</option>
+                      {statusFilterOptions.map((s) => (
+                        <option key={s} value={s}>
+                          {statusLabel(s)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              {createdLeads.length === 0 ? (
+              {filteredCreatedLeads.length === 0 ? (
                 <div className="text-sm text-gray-600 py-6 text-center">No created leads found.</div>
               ) : (
                 <div className="overflow-x-auto">
@@ -789,8 +957,11 @@ export default function TelecallerRSAPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {createdLeads.map((l) => (
-                        <tr key={l.id} className="border-b last:border-b-0">
+                      {filteredCreatedLeads.map((l) => (
+                        <tr
+                          key={l.id}
+                          className={`border-b last:border-b-0 ${leadRowClass(l.lead_status || l.complaint_status || '')}`}
+                        >
                           <td className="py-2 pr-3 font-semibold">{l.customer_name || '—'}</td>
                           <td className="py-2 pr-3">{l.contact_number || '—'}</td>
                           <td className="py-2 pr-3">
@@ -802,8 +973,12 @@ export default function TelecallerRSAPage() {
                           </td>
                           <td className="py-2 pr-3">{l.service_type || '—'}</td>
                           <td className="py-2 pr-3">
-                            <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                              {l.lead_status || l.complaint_status || '—'}
+                            <span
+                              className={`px-2 py-1 rounded-full border ${statusBadgeClass(
+                                l.lead_status || l.complaint_status || ''
+                              )}`}
+                            >
+                              {statusLabel(l.lead_status || l.complaint_status || '—')}
                             </span>
                           </td>
                           <td className="py-2 pr-3">
@@ -820,15 +995,27 @@ export default function TelecallerRSAPage() {
                           </td>
                           <td className="py-2 pr-3">
                             {!l.assigned_mechanic_id ? (
-                              <button
-                                type="button"
-                                className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
-                                onClick={() => openEditLead(l)}
-                                title="Edit lead (allowed until mechanic is assigned)"
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                                Edit
-                              </button>
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
+                                  onClick={() => openEditLead(l)}
+                                  title="Edit lead (allowed until mechanic is assigned)"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                  Edit
+                                </button>
+                                {isPendingComplaint(l) ? (
+                                  <button
+                                    type="button"
+                                    className="text-red-600 hover:text-red-700 font-semibold"
+                                    onClick={() => openCancelLead(l)}
+                                    title="Cancel this pending complaint"
+                                  >
+                                    Cancel
+                                  </button>
+                                ) : null}
+                              </div>
                             ) : (
                               <span className="text-gray-400 text-xs">—</span>
                             )}
@@ -1000,7 +1187,7 @@ export default function TelecallerRSAPage() {
             ) : null}
 
             <div className="card p-3 sm:p-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                 <div>
                   <label className="text-xs text-gray-600">From</label>
                   <input
@@ -1050,6 +1237,21 @@ export default function TelecallerRSAPage() {
                     />
                     Has recording
                   </label>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Audit</label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                    value={callFilters.has_audit}
+                    onChange={(e) => {
+                      setCallPage(1);
+                      setCallFilters((f) => ({ ...f, has_audit: e.target.value }));
+                    }}
+                  >
+                    <option value="">All</option>
+                    <option value="true">Audited</option>
+                    <option value="false">Not Audited</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -1135,6 +1337,10 @@ export default function TelecallerRSAPage() {
                                         {audit.audit_score != null ? (
                                           <span className="text-emerald-700">({audit.audit_score}/5)</span>
                                         ) : null}
+                                      </span>
+                                    ) : call?.has_audit ? (
+                                      <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-blue-700 font-semibold">
+                                        Audited
                                       </span>
                                     ) : (
                                       '—'
@@ -1270,6 +1476,10 @@ export default function TelecallerRSAPage() {
                                               {audit.audit_score != null ? (
                                                 <span className="text-emerald-700">({audit.audit_score}/5)</span>
                                               ) : null}
+                                            </span>
+                                          ) : call?.has_audit ? (
+                                            <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-blue-700 font-semibold">
+                                              Audited
                                             </span>
                                           ) : (
                                             '—'
@@ -1434,6 +1644,61 @@ export default function TelecallerRSAPage() {
                 onCancel={closeEditLead}
               />
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {cancelOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-3">
+          <div className="bg-white w-full max-w-lg rounded-xl shadow-lg p-4 sm:p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-text-heading">Cancel Complaint</h3>
+                <p className="text-xs text-gray-500">
+                  {cancelLead?.customer_name || 'Customer'} • {cancelLead?.contact_number || '—'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-gray-600 hover:text-gray-800 font-semibold"
+                onClick={closeCancelLead}
+                disabled={cancelLoading}
+              >
+                Close
+              </button>
+            </div>
+
+            {cancelError ? <div className="text-sm text-red-600">{cancelError}</div> : null}
+
+            <div>
+              <label className="text-xs text-gray-600">Cancel Remark (optional)</label>
+              <textarea
+                className="w-full border rounded-md px-3 py-2 text-sm min-h-[90px]"
+                placeholder="Reason for cancellation (optional)"
+                value={cancelRemark}
+                onChange={(e) => setCancelRemark(e.target.value)}
+                disabled={cancelLoading}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="btn btn-outline text-sm px-4 py-2"
+                onClick={closeCancelLead}
+                disabled={cancelLoading}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="btn text-sm px-4 py-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                onClick={submitCancelLead}
+                disabled={cancelLoading}
+              >
+                {cancelLoading ? 'Cancelling...' : 'Confirm Cancel'}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

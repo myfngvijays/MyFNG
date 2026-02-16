@@ -70,6 +70,33 @@ function isResolved(lead: any) {
   return ['completed', 'closed'].includes(leadStatus) || ['completed', 'closed'].includes(complaintStatus);
 }
 
+function matchesStatusFilter(lead: any, statusFilter: string) {
+  const normalized = String(statusFilter || '').trim().toLowerCase();
+  if (!normalized || normalized === 'all') return true;
+  const leadStatus = String(lead?.lead_status || '').trim().toLowerCase();
+  const complaintStatus = String(lead?.complaint_status || '').trim().toLowerCase();
+  if (normalized === 'unknown') {
+    return (!leadStatus && !complaintStatus) || leadStatus === 'unknown' || complaintStatus === 'unknown';
+  }
+  if (normalized === 'resolved') return isResolved(lead);
+  if (normalized === 'pending') return !isResolved(lead);
+  return leadStatus === normalized || complaintStatus === normalized;
+}
+
+function collectStatusOptions(leads: any[]) {
+  const set = new Set<string>();
+  let hasUnknown = false;
+  for (const lead of leads || []) {
+    const leadStatus = String(lead?.lead_status || '').trim().toLowerCase();
+    const complaintStatus = String(lead?.complaint_status || '').trim().toLowerCase();
+    if (leadStatus) set.add(leadStatus);
+    if (complaintStatus) set.add(complaintStatus);
+    if (!leadStatus && !complaintStatus) hasUnknown = true;
+  }
+  if (hasUnknown) set.add('unknown');
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
 function addToBreakdown(map: Map<string, any>, key: string, name: string, lead: any) {
   const entry = map.get(key) || {
     key,
@@ -129,6 +156,7 @@ export async function GET(request: NextRequest) {
     const defaultFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const from = searchParams.get('from') || defaultFrom.toISOString();
     const to = searchParams.get('to') || now.toISOString();
+    const statusFilter = String(searchParams.get('status') || '').trim().toLowerCase();
 
     const dateFilter = `and(lead_registered_at.gte.${from},lead_registered_at.lte.${to}),and(requested_at.gte.${from},requested_at.lte.${to})`;
     const { data: leads, error } = await db
@@ -164,7 +192,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch RSA overview data' }, { status: 500 });
     }
 
-    const rows = Array.isArray(leads) ? leads : [];
+    const allRows = Array.isArray(leads) ? leads : [];
+    const statusOptions = collectStatusOptions(allRows);
+    const rows = allRows.filter((lead: any) => matchesStatusFilter(lead, statusFilter));
     const pincodes = Array.from(
       new Set(
         rows
@@ -257,6 +287,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       range: { from, to },
+      status_options: statusOptions,
       kpis: {
         total_requests: totalRequests,
         resolved,

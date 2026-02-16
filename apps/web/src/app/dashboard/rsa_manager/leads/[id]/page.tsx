@@ -5,7 +5,7 @@ import { useParams, useRouter, usePathname } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, formatDateTimeIST } from '@/lib/utils';
 import {
   ArrowLeft, MapPin, Phone, Mail, Car, Wrench,
   Clock, User, AlertCircle, CheckCircle, XCircle,
@@ -15,6 +15,16 @@ import Link from 'next/link';
 
 function normalizePincode(value: string) {
   return String(value || '').replace(/\D/g, '').slice(0, 6);
+}
+
+function formatAssignmentDateTime(value: string | null | undefined) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const hasTimezone = /([zZ]|[+\-]\d{2}:?\d{2})$/.test(raw);
+  // These assignment fields are often stored as naive UTC timestamps.
+  // When timezone is missing, treat them as UTC to avoid GMT/IST drift in UI.
+  const normalized = hasTimezone ? raw : `${raw}Z`;
+  return formatDateTimeIST(normalized);
 }
 
 export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean }) {
@@ -740,7 +750,7 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
                   <span className="font-medium text-gray-600">Registered By:</span>
                   <p className="text-gray-900">{lead.registered_by_name}</p>
                   <p className="text-gray-500 text-[10px] sm:text-xs">
-                    {formatDateTime(lead.lead_registered_at)}
+                    {formatAssignmentDateTime(lead.lead_registered_at)}
                   </p>
                 </div>
               )}
@@ -750,7 +760,7 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
                   <p className="text-gray-900">{lead.assigned_manager_name}</p>
                   {lead.assigned_to_manager_at && (
                     <p className="text-gray-500 text-[10px] sm:text-xs">
-                      {formatDateTime(lead.assigned_to_manager_at)}
+                      {formatAssignmentDateTime(lead.assigned_to_manager_at)}
                     </p>
                   )}
                 </div>
@@ -764,7 +774,7 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
                   )}
                   {lead.mechanic_assigned_datetime && (
                     <p className="text-gray-500 text-[10px] sm:text-xs">
-                      Assigned: {formatDateTime(lead.mechanic_assigned_datetime)}
+                      Assigned: {formatAssignmentDateTime(lead.mechanic_assigned_datetime)}
                     </p>
                   )}
                 </div>

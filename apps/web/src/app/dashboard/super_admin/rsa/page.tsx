@@ -103,6 +103,12 @@ type OverviewLeadRow = {
   lead_registered_at: string | null;
   address: string | null;
   pincode: string | null;
+  registered_by_name?: string | null;
+  assigned_manager_name?: string | null;
+  customer_quoted_amount?: number | null;
+  advance_payment?: string | null;
+  payment_to_mechanic?: number | null;
+  payment_received?: number | null;
 };
 
 type OverviewSelection = {
@@ -112,6 +118,7 @@ type OverviewSelection = {
 };
 
 type OverviewData = {
+  status_options?: string[];
   kpis: {
     total_requests: number;
     resolved: number;
@@ -132,6 +139,31 @@ type OverviewData = {
     mechanic?: OverviewBreakdownRow[];
   };
 };
+
+function formatStatusLabel(value?: string | null) {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Unknown';
+  return raw
+    .replace(/[_\-]+/g, ' ')
+    .split(/\s+/)
+    .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : part))
+    .join(' ');
+}
+
+function normalizeAmountInput(value: any) {
+  if (value === null || value === undefined) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+  const cleaned = raw.replace(/[^\d.]/g, '');
+  return cleaned;
+}
+
+function toNullableNumberFromInput(value: string) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : NaN;
+}
 
 type OverviewTrendPoint = {
   date: string; // YYYY-MM-DD (UTC)
@@ -278,16 +310,28 @@ function addDaysYMD(ymd: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
-function toISTBoundaryISO(ymd: string, which: 'start' | 'end') {
-  // ymd: YYYY-MM-DD (interpreted as India date, convert to UTC ISO)
-  const [y, m, d] = String(ymd || '')
-    .split('-')
-    .map((n) => Number(n));
+function toISTBoundaryISO(value: string, which: 'start' | 'end') {
+  // value supports YYYY-MM-DD or YYYY-MM-DDTHH:mm (interpreted as IST).
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const [datePart, timePart = ''] = raw.split('T');
+  const [y, m, d] = datePart.split('-').map((n) => Number(n));
   if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  let hh = which === 'start' ? 0 : 23;
+  let mm = which === 'start' ? 0 : 59;
+  if (timePart) {
+    const [hStr, minStr] = timePart.split(':');
+    const h = Number(hStr);
+    const mins = Number(minStr);
+    if (Number.isFinite(h) && Number.isFinite(mins)) {
+      hh = Math.min(23, Math.max(0, h));
+      mm = Math.min(59, Math.max(0, mins));
+    }
+  }
   const baseUtc =
     which === 'start'
-      ? Date.UTC(y, m - 1, d, 0, 0, 0, 0)
-      : Date.UTC(y, m - 1, d, 23, 59, 59, 999);
+      ? Date.UTC(y, m - 1, d, hh, mm, 0, 0)
+      : Date.UTC(y, m - 1, d, hh, mm, 59, 999);
   // Convert IST -> UTC by subtracting offset.
   return new Date(baseUtc - IST_OFFSET_MS).toISOString();
 }
@@ -295,6 +339,7 @@ function toISTBoundaryISO(ymd: string, which: 'start' | 'end') {
 function formatYMD(value?: string | null) {
   const raw = String(value || '').trim();
   if (!raw) return '—';
+  if (raw.includes('T')) return raw.replace('T', ' ').slice(0, 16);
   return raw.slice(0, 10);
 }
 
@@ -448,6 +493,20 @@ export default function SuperAdminRSASettingsPage() {
   const [overviewLeads, setOverviewLeads] = useState<OverviewLeadRow[]>([]);
   const [overviewLeadsLoading, setOverviewLeadsLoading] = useState(false);
   const [overviewLeadsError, setOverviewLeadsError] = useState('');
+  const [overviewFinanceDrafts, setOverviewFinanceDrafts] = useState<
+    Record<
+      string,
+      {
+        customer_quoted_amount: string;
+        advance_payment: string;
+        payment_to_mechanic: string;
+        saving?: boolean;
+        error?: string;
+      }
+    >
+  >({});
+  const [overviewStatusOptions, setOverviewStatusOptions] = useState<string[]>([]);
+  const [overviewExportLoading, setOverviewExportLoading] = useState(false);
   const [districtOpen, setDistrictOpen] = useState(false);
   const [mechanicOpen, setMechanicOpen] = useState(false);
   const [showProfit, setShowProfit] = useState(false);
@@ -484,8 +543,9 @@ export default function SuperAdminRSASettingsPage() {
     const today = todayISTYMD();
     const from = addDaysYMD(today, -7);
     return {
-      from,
-      to: today,
+      from: `${from}T00:00`,
+      to: `${today}T23:59`,
+      status: '',
     };
   });
   const [reportFilters, setReportFilters] = useState(() => {
@@ -752,13 +812,18 @@ export default function SuperAdminRSASettingsPage() {
         const iso = toISTBoundaryISO(overviewFilters.to, 'end');
         if (iso) params.set('to', iso);
       }
+      if (overviewFilters.status) {
+        params.set('status', overviewFilters.status);
+      }
       const res = await fetch(`/api/super_admin/rsa-overview?${params.toString()}`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to load overview');
       setOverviewData(json || null);
+      setOverviewStatusOptions(Array.isArray(json?.status_options) ? json.status_options : []);
     } catch (e: any) {
       setOverviewError(e?.message || 'Failed to load overview');
       setOverviewData(null);
+      setOverviewStatusOptions([]);
     } finally {
       setOverviewLoading(false);
     }
@@ -776,6 +841,9 @@ export default function SuperAdminRSASettingsPage() {
       if (overviewFilters.to) {
         const iso = toISTBoundaryISO(overviewFilters.to, 'end');
         if (iso) params.set('to', iso);
+      }
+      if (overviewFilters.status) {
+        params.set('status', overviewFilters.status);
       }
       const res = await fetch(`/api/super_admin/rsa-overview/trends?${params.toString()}`);
       const json = await res.json().catch(() => ({}));
@@ -803,6 +871,9 @@ export default function SuperAdminRSASettingsPage() {
         const iso = toISTBoundaryISO(overviewFilters.to, 'end');
         if (iso) params.set('to', iso);
       }
+      if (overviewFilters.status) {
+        params.set('status', overviewFilters.status);
+      }
       const res = await fetch(`/api/super_admin/rsa-overview/employee-report?${params.toString()}`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to load employee report');
@@ -829,6 +900,9 @@ export default function SuperAdminRSASettingsPage() {
         const iso = toISTBoundaryISO(overviewFilters.to, 'end');
         if (iso) params.set('to', iso);
       }
+      if (overviewFilters.status) {
+        params.set('status', overviewFilters.status);
+      }
       params.set('type', selection.type);
       params.set('value', selection.value);
       const res = await fetch(`/api/super_admin/rsa-overview/leads?${params.toString()}`);
@@ -840,6 +914,139 @@ export default function SuperAdminRSASettingsPage() {
       setOverviewLeads([]);
     } finally {
       setOverviewLeadsLoading(false);
+    }
+  };
+
+  const setOverviewFinanceField = (
+    leadId: string,
+    field: 'customer_quoted_amount' | 'advance_payment' | 'payment_to_mechanic',
+    value: string
+  ) => {
+    setOverviewFinanceDrafts((prev) => ({
+      ...prev,
+      [leadId]: {
+        customer_quoted_amount: prev[leadId]?.customer_quoted_amount ?? '',
+        advance_payment: prev[leadId]?.advance_payment ?? '',
+        payment_to_mechanic: prev[leadId]?.payment_to_mechanic ?? '',
+        saving: prev[leadId]?.saving ?? false,
+        error: '',
+        [field]: value,
+      },
+    }));
+  };
+
+  const saveOverviewLeadFinance = async (leadId: string) => {
+    const draft = overviewFinanceDrafts[leadId];
+    if (!draft) return;
+
+    const quoted = toNullableNumberFromInput(draft.customer_quoted_amount);
+    const mechanic = toNullableNumberFromInput(draft.payment_to_mechanic);
+    const advanceRaw = String(draft.advance_payment || '').trim();
+    const advance = advanceRaw ? advanceRaw : null;
+
+    if (Number.isNaN(quoted) || Number.isNaN(mechanic)) {
+      setOverviewFinanceDrafts((prev) => ({
+        ...prev,
+        [leadId]: {
+          ...prev[leadId],
+          saving: false,
+          error: 'Quoted/Mechanic amount invalid.',
+        },
+      }));
+      return;
+    }
+
+    setOverviewFinanceDrafts((prev) => ({
+      ...prev,
+      [leadId]: { ...prev[leadId], saving: true, error: '' },
+    }));
+
+    try {
+      const res = await fetch(`/api/super_admin/rsa-overview/leads/${encodeURIComponent(leadId)}/finance`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_quoted_amount: quoted,
+          advance_payment: advance,
+          payment_to_mechanic: mechanic,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to update finance values');
+
+      const updated = (json?.lead || {}) as Partial<OverviewLeadRow>;
+      setOverviewLeads((prev) =>
+        Array.isArray(prev)
+          ? prev.map((lead) =>
+              lead.id === leadId
+                ? {
+                    ...lead,
+                    customer_quoted_amount: (updated as any).customer_quoted_amount ?? null,
+                    advance_payment: (updated as any).advance_payment ?? null,
+                    payment_to_mechanic: (updated as any).payment_to_mechanic ?? null,
+                  }
+                : lead
+            )
+          : prev
+      );
+
+      setOverviewFinanceDrafts((prev) => ({
+        ...prev,
+        [leadId]: {
+          customer_quoted_amount: normalizeAmountInput((updated as any).customer_quoted_amount),
+          advance_payment: normalizeAmountInput((updated as any).advance_payment),
+          payment_to_mechanic: normalizeAmountInput((updated as any).payment_to_mechanic),
+          saving: false,
+          error: '',
+        },
+      }));
+    } catch (e: any) {
+      setOverviewFinanceDrafts((prev) => ({
+        ...prev,
+        [leadId]: {
+          ...prev[leadId],
+          saving: false,
+          error: e?.message || 'Failed to save',
+        },
+      }));
+    }
+  };
+
+  const exportOverviewCSV = async () => {
+    setOverviewExportLoading(true);
+    setOverviewError('');
+    try {
+      const params = new URLSearchParams();
+      if (overviewFilters.from) {
+        const iso = toISTBoundaryISO(overviewFilters.from, 'start');
+        if (iso) params.set('from', iso);
+      }
+      if (overviewFilters.to) {
+        const iso = toISTBoundaryISO(overviewFilters.to, 'end');
+        if (iso) params.set('to', iso);
+      }
+      if (overviewFilters.status) {
+        params.set('status', overviewFilters.status);
+      }
+
+      const res = await fetch(`/api/super_admin/rsa-overview/export?${params.toString()}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.error || 'Failed to export CSV');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rsa-overview-customers-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setOverviewError(e?.message || 'Failed to export CSV');
+    } finally {
+      setOverviewExportLoading(false);
     }
   };
 
@@ -908,6 +1115,29 @@ export default function SuperAdminRSASettingsPage() {
     loadOverviewTrends();
     loadEmployeeReport();
   }, [tab, overviewFilters]);
+
+  useEffect(() => {
+    const next: Record<
+      string,
+      {
+        customer_quoted_amount: string;
+        advance_payment: string;
+        payment_to_mechanic: string;
+        saving?: boolean;
+        error?: string;
+      }
+    > = {};
+    for (const lead of overviewLeads) {
+      next[lead.id] = {
+        customer_quoted_amount: normalizeAmountInput((lead as any).customer_quoted_amount),
+        advance_payment: normalizeAmountInput((lead as any).advance_payment),
+        payment_to_mechanic: normalizeAmountInput((lead as any).payment_to_mechanic),
+        saving: false,
+        error: '',
+      };
+    }
+    setOverviewFinanceDrafts(next);
+  }, [overviewLeads]);
 
   const stateRows = useMemo(() => overviewData?.breakdowns.state || [], [overviewData]);
 
@@ -1676,7 +1906,16 @@ export default function SuperAdminRSASettingsPage() {
           {overviewError ? <div className="text-sm text-red-600">{overviewError}</div> : null}
           {trendError ? <div className="text-sm text-red-600">{trendError}</div> : null}
 
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              className="btn btn-outline text-xs px-3 py-1.5"
+              onClick={exportOverviewCSV}
+              disabled={overviewLoading || overviewExportLoading}
+              title="Export filtered customers CSV"
+            >
+              {overviewExportLoading ? 'Exporting...' : 'Export CSV'}
+            </button>
             <button
               type="button"
               className="btn btn-outline text-xs px-3 py-1.5"
@@ -1689,35 +1928,59 @@ export default function SuperAdminRSASettingsPage() {
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="text-xs text-gray-600">From</label>
+                <label className="text-xs text-gray-600">From (Date & Time)</label>
                 <input
                   className="w-full border rounded-md px-3 py-2 text-sm"
-                  type="date"
+                  type="datetime-local"
+                  step={60}
                   value={overviewFilters.from}
                   onChange={(e) => setOverviewFilters((f) => ({ ...f, from: e.target.value }))}
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-600">To</label>
+                <label className="text-xs text-gray-600">To (Date & Time)</label>
                 <input
                   className="w-full border rounded-md px-3 py-2 text-sm"
-                  type="date"
+                  type="datetime-local"
+                  step={60}
                   value={overviewFilters.to}
                   onChange={(e) => setOverviewFilters((f) => ({ ...f, to: e.target.value }))}
                 />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Status</label>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                  value={overviewFilters.status}
+                  onChange={(e) => setOverviewFilters((f) => ({ ...f, status: e.target.value }))}
+                >
+                  <option value="">All Status</option>
+                  {overviewStatusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {formatStatusLabel(status)}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-lg shadow-sm p-4">
+            <button
+              type="button"
+              className="bg-white rounded-lg shadow-sm p-4 text-left hover:shadow-md transition disabled:opacity-70"
+              onClick={() => loadOverviewLeads({ type: 'all', value: 'all', label: 'All' })}
+              disabled={overviewLoading}
+              title="Open customers list for total requests"
+            >
               <div className="text-xs text-gray-500">Total Requests</div>
               <div className="text-2xl font-bold">
                 {overviewLoading ? '—' : overviewData?.kpis.total_requests ?? 0}
               </div>
-            </div>
+              <div className="text-[11px] text-blue-600 font-semibold mt-1">Open customers</div>
+            </button>
             <div className="bg-white rounded-lg shadow-sm p-4">
               <div className="text-xs text-gray-500">Resolved</div>
               <div className="text-2xl font-bold text-green-600">
@@ -2424,43 +2687,99 @@ export default function SuperAdminRSASettingsPage() {
                       <tr className="text-left text-gray-600 border-b">
                         <th className="py-2 px-4">Customer</th>
                         <th className="py-2 px-4">Contact</th>
+                        <th className="py-2 px-4">Executive</th>
+                        <th className="py-2 px-4">Advisor</th>
+                        <th className="py-2 px-4">Quoted</th>
+                        <th className="py-2 px-4">Advance</th>
+                        <th className="py-2 px-4">Mechanic</th>
                         <th className="py-2 px-4">Vehicle</th>
                         <th className="py-2 px-4">Service</th>
                         <th className="py-2 px-4">Status</th>
                         <th className="py-2 px-4">Registered</th>
                         <th className="py-2 px-4">Address</th>
+                        <th className="py-2 px-4">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {overviewLeads.length === 0 ? (
                         <tr>
-                          <td className="py-3 text-gray-500 px-4" colSpan={7}>
+                          <td className="py-3 text-gray-500 px-4" colSpan={13}>
                             No customers found.
                           </td>
                         </tr>
                       ) : (
-                        overviewLeads.map((lead) => (
-                          <tr key={lead.id} className="border-b last:border-b-0">
-                          <td className="py-2 px-4 font-semibold">
-                            {lead.id ? (
-                              <a
-                                className="text-blue-600 hover:text-blue-700"
-                                href={`/dashboard/super_admin/rsa/leads/${lead.id}`}
-                              >
-                                {lead.customer_name || '—'}
-                              </a>
-                            ) : (
-                              lead.customer_name || '—'
-                            )}
-                          </td>
-                            <td className="py-2 px-4">{lead.contact_number || '—'}</td>
-                            <td className="py-2 px-4">{lead.vehicle_number || '—'}</td>
-                            <td className="py-2 px-4">{lead.service_type || lead.service_tag || '—'}</td>
-                            <td className="py-2 px-4">{lead.lead_status || lead.complaint_status || '—'}</td>
-                            <td className="py-2 px-4">{formatDateTime(lead.lead_registered_at)}</td>
-                            <td className="py-2 px-4">{lead.address || lead.pincode || '—'}</td>
-                          </tr>
-                        ))
+                        overviewLeads.map((lead) => {
+                          const draft = overviewFinanceDrafts[lead.id] || {
+                            customer_quoted_amount: normalizeAmountInput((lead as any).customer_quoted_amount),
+                            advance_payment: normalizeAmountInput((lead as any).advance_payment),
+                            payment_to_mechanic: normalizeAmountInput((lead as any).payment_to_mechanic),
+                            saving: false,
+                            error: '',
+                          };
+                          return (
+                            <tr key={lead.id} className="border-b last:border-b-0">
+                              <td className="py-2 px-4 font-semibold">
+                                {lead.id ? (
+                                  <a
+                                    className="text-blue-600 hover:text-blue-700"
+                                    href={`/dashboard/super_admin/rsa/leads/${lead.id}`}
+                                  >
+                                    {lead.customer_name || '—'}
+                                  </a>
+                                ) : (
+                                  lead.customer_name || '—'
+                                )}
+                              </td>
+                              <td className="py-2 px-4">{lead.contact_number || '—'}</td>
+                              <td className="py-2 px-4">{lead.registered_by_name || '—'}</td>
+                              <td className="py-2 px-4">{lead.assigned_manager_name || '—'}</td>
+                              <td className="py-2 px-4">
+                                <input
+                                  className="w-24 border rounded px-2 py-1"
+                                  value={draft.customer_quoted_amount}
+                                  onChange={(e) =>
+                                    setOverviewFinanceField(lead.id, 'customer_quoted_amount', e.target.value)
+                                  }
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td className="py-2 px-4">
+                                <input
+                                  className="w-24 border rounded px-2 py-1"
+                                  value={draft.advance_payment}
+                                  onChange={(e) => setOverviewFinanceField(lead.id, 'advance_payment', e.target.value)}
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td className="py-2 px-4">
+                                <input
+                                  className="w-24 border rounded px-2 py-1"
+                                  value={draft.payment_to_mechanic}
+                                  onChange={(e) =>
+                                    setOverviewFinanceField(lead.id, 'payment_to_mechanic', e.target.value)
+                                  }
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td className="py-2 px-4">{lead.vehicle_number || '—'}</td>
+                              <td className="py-2 px-4">{lead.service_type || lead.service_tag || '—'}</td>
+                              <td className="py-2 px-4">{lead.lead_status || lead.complaint_status || '—'}</td>
+                              <td className="py-2 px-4">{formatDateTime(lead.lead_registered_at)}</td>
+                              <td className="py-2 px-4">{lead.address || lead.pincode || '—'}</td>
+                              <td className="py-2 px-4">
+                                <button
+                                  type="button"
+                                  className="btn btn-outline text-xs px-2 py-1"
+                                  disabled={Boolean(draft.saving)}
+                                  onClick={() => saveOverviewLeadFinance(lead.id)}
+                                >
+                                  {draft.saving ? 'Saving...' : 'Save'}
+                                </button>
+                                {draft.error ? <div className="text-[10px] text-red-600 mt-1">{draft.error}</div> : null}
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>

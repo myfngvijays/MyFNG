@@ -214,6 +214,11 @@ export async function PATCH(
       (vehicle_details ? extractVehicleNumber(vehicle_details) : undefined);
     const vehicle_model = body.vehicle_model != null ? String(body.vehicle_model).trim() || null : undefined;
     const customer_quoted_amount = body.customer_quoted_amount != null ? parseAmount(body.customer_quoted_amount) : undefined;
+    const lead_status = body.lead_status != null ? String(body.lead_status).trim().toLowerCase() || null : undefined;
+    const complaint_status =
+      body.complaint_status != null ? String(body.complaint_status).trim().toLowerCase() || null : undefined;
+    const cancelled_remark =
+      body.cancelled_remark != null ? String(body.cancelled_remark).trim() || null : undefined;
 
     const payload: Record<string, unknown> = {};
     if (body.customer_name !== undefined) payload.customer_name = String(body.customer_name).trim();
@@ -229,6 +234,9 @@ export async function PATCH(
     if (body.advance_payment !== undefined) payload.advance_payment = String(body.advance_payment).trim() || null;
     if (body.problem !== undefined) payload.problem = String(body.problem).trim() || null;
     if (body.description !== undefined) payload.description = String(body.description).trim() || null;
+    if (lead_status !== undefined) payload.lead_status = lead_status;
+    if (complaint_status !== undefined) payload.complaint_status = complaint_status;
+    if (cancelled_remark !== undefined) payload.cancelled_remark = cancelled_remark;
 
     if (mediaFiles.length > 0) {
       const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
@@ -269,6 +277,13 @@ export async function PATCH(
       return NextResponse.json({ success: true, id: leadId }, { status: 200 });
     }
 
+    const isCancelledNow = String(payload.lead_status || payload.complaint_status || '')
+      .toLowerCase()
+      .includes('cancelled');
+    if (isCancelledNow) {
+      payload.cancelled_at = new Date().toISOString();
+    }
+
     payload.updated_at = new Date().toISOString();
 
     const { error: updateErr } = await db
@@ -278,6 +293,41 @@ export async function PATCH(
 
     if (updateErr) {
       return NextResponse.json({ error: 'Failed to update lead', details: updateErr.message }, { status: 500 });
+    }
+
+    // Best-effort timeline/history on status changes.
+    if (lead_status !== undefined || complaint_status !== undefined) {
+      const statusForLogs = String((payload.complaint_status || payload.lead_status || '') as string).trim() || 'updated';
+      const changedByName = String((profile as any)?.full_name || (profile as any)?.email || 'Telecaller');
+      const notes =
+        String(cancelled_remark || '').trim() ||
+        (statusForLogs === 'cancelled' ? 'Cancelled by telecaller' : `Status updated to ${statusForLogs}`);
+      const now = new Date().toISOString();
+      try {
+        await db.from('rsa_lead_timeline').insert({
+          lead_id: leadId,
+          status: statusForLogs,
+          status_description: notes,
+          updated_by_id: profile.id,
+          updated_by_name: changedByName,
+          updated_at: now,
+          created_at: now,
+        });
+      } catch {
+        // ignore
+      }
+      try {
+        await db.from('rsa_lead_status_history').insert({
+          rsa_lead_id: leadId,
+          status: statusForLogs,
+          changed_at: now,
+          changed_by: profile.id,
+          changed_by_name: changedByName,
+          notes,
+        });
+      } catch {
+        // ignore
+      }
     }
 
     return NextResponse.json({ success: true, id: leadId }, { status: 200 });

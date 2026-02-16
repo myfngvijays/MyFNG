@@ -49,6 +49,25 @@ function parseLocation(address?: string | null, pincode?: string | null) {
   return { state, district };
 }
 
+function isResolved(lead: any) {
+  const leadStatus = String(lead?.lead_status || '').toLowerCase();
+  const complaintStatus = String(lead?.complaint_status || '').toLowerCase();
+  return ['completed', 'closed'].includes(leadStatus) || ['completed', 'closed'].includes(complaintStatus);
+}
+
+function matchesStatusFilter(lead: any, statusFilter: string) {
+  const normalized = String(statusFilter || '').trim().toLowerCase();
+  if (!normalized || normalized === 'all') return true;
+  const leadStatus = String(lead?.lead_status || '').trim().toLowerCase();
+  const complaintStatus = String(lead?.complaint_status || '').trim().toLowerCase();
+  if (normalized === 'unknown') {
+    return (!leadStatus && !complaintStatus) || leadStatus === 'unknown' || complaintStatus === 'unknown';
+  }
+  if (normalized === 'resolved') return isResolved(lead);
+  if (normalized === 'pending') return !isResolved(lead);
+  return leadStatus === normalized || complaintStatus === normalized;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -68,6 +87,7 @@ export async function GET(request: NextRequest) {
     const defaultFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const from = searchParams.get('from') || defaultFrom.toISOString();
     const to = searchParams.get('to') || now.toISOString();
+    const statusFilter = String(searchParams.get('status') || '').trim().toLowerCase();
     const filterType = String(searchParams.get('type') || '').trim();
     const filterValue = String(searchParams.get('value') || '').trim();
 
@@ -96,6 +116,10 @@ export async function GET(request: NextRequest) {
         requested_at,
         address,
         pincode,
+        customer_quoted_amount,
+        advance_payment,
+        payment_received,
+        payment_to_mechanic,
         assigned_mechanic_id,
         assigned_mechanic_name,
         assigned_manager_id,
@@ -136,6 +160,7 @@ export async function GET(request: NextRequest) {
     }
 
     const filtered = rows.filter((lead: any) => {
+      if (!matchesStatusFilter(lead, statusFilter)) return false;
       if (filterType === 'all') return true;
       if (filterType === 'department') {
         const department = normalizeKey(lead.service_type || lead.service_tag, 'Unknown');

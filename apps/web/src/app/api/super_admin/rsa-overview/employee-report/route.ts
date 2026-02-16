@@ -40,6 +40,19 @@ function isResolved(lead: any) {
   return ['completed', 'closed'].includes(leadStatus) || ['completed', 'closed'].includes(complaintStatus);
 }
 
+function matchesStatusFilter(lead: any, statusFilter: string) {
+  const normalized = String(statusFilter || '').trim().toLowerCase();
+  if (!normalized || normalized === 'all') return true;
+  const leadStatus = String(lead?.lead_status || '').trim().toLowerCase();
+  const complaintStatus = String(lead?.complaint_status || '').trim().toLowerCase();
+  if (normalized === 'unknown') {
+    return (!leadStatus && !complaintStatus) || leadStatus === 'unknown' || complaintStatus === 'unknown';
+  }
+  if (normalized === 'resolved') return isResolved(lead);
+  if (normalized === 'pending') return !isResolved(lead);
+  return leadStatus === normalized || complaintStatus === normalized;
+}
+
 function toNumber(value: any) {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
@@ -87,6 +100,7 @@ export async function GET(request: NextRequest) {
     const defaultFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const from = searchParams.get('from') || defaultFrom.toISOString();
     const to = searchParams.get('to') || now.toISOString();
+    const statusFilter = String(searchParams.get('status') || '').trim().toLowerCase();
 
     // Leads
     const dateFilter = `and(lead_registered_at.gte.${from},lead_registered_at.lte.${to}),and(requested_at.gte.${from},requested_at.lte.${to})`;
@@ -111,7 +125,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to load SARV calls' }, { status: 500 });
     }
 
-    const leadRows = Array.isArray(leads) ? leads : [];
+    const leadRows = (Array.isArray(leads) ? leads : []).filter((lead: any) => matchesStatusFilter(lead, statusFilter));
     const callRows = Array.isArray(calls) ? calls : [];
 
     const emp = new Map<

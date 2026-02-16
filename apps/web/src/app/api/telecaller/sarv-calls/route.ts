@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get('to') || now.toISOString();
 
     const hasRecording = searchParams.get('has_recording');
+    const hasAudit = (searchParams.get('has_audit') || '').trim().toLowerCase();
     const q = (searchParams.get('q') || '').trim();
     const limit = clamp(Number(searchParams.get('limit') || 50), 1, 200);
     const page = clamp(Number(searchParams.get('page') || 1), 1, 100000);
@@ -77,14 +78,12 @@ export async function GET(request: NextRequest) {
         created_at,
         assigned_user_id,
         assigned_role
-      `,
-        { count: 'exact' }
+      `
       )
       .eq('assigned_user_id', profile.id)
       .gte('created_at', from)
       .lte('created_at', to)
-      .order('created_at', { ascending: false })
-      .range(fromIndex, toIndex);
+      .order('created_at', { ascending: false });
 
     if (hasRecording === 'true') {
       query = query.not('recording_url', 'is', null);
@@ -96,17 +95,46 @@ export async function GET(request: NextRequest) {
       query = query.or(`callid.ilike.%${q}%,cnumber.ilike.%${q}%`);
     }
 
-    const { data: calls, error, count } = await query;
+    const { data: baseCalls, error } = await query;
     if (error) {
       return NextResponse.json({ error: 'Failed to fetch SARV calls' }, { status: 500 });
     }
 
+    const allCalls = Array.isArray(baseCalls) ? baseCalls : [];
+    const callIds = allCalls.map((c: any) => String(c?.id || '')).filter(Boolean);
+    const auditedCallIds = new Set<string>();
+    if (callIds.length > 0) {
+      const { data: audits } = await db
+        .from('sarv_call_audits')
+        .select('sarv_call_id')
+        .in('sarv_call_id', Array.from(new Set(callIds)));
+      for (const row of audits || []) {
+        const id = String((row as any)?.sarv_call_id || '').trim();
+        if (id) auditedCallIds.add(id);
+      }
+    }
+
+    const withAuditFlag = allCalls.map((call: any) => ({
+      ...call,
+      has_audit: auditedCallIds.has(String(call?.id || '')),
+    }));
+
+    let filtered = withAuditFlag;
+    if (hasAudit === 'true') {
+      filtered = withAuditFlag.filter((call: any) => Boolean(call?.has_audit));
+    } else if (hasAudit === 'false') {
+      filtered = withAuditFlag.filter((call: any) => !call?.has_audit);
+    }
+
+    const total = filtered.length;
+    const paged = filtered.slice(fromIndex, toIndex + 1);
+
     return NextResponse.json({
-      calls: calls || [],
+      calls: paged,
       pagination: {
         page,
         limit,
-        total: count ?? (calls?.length || 0),
+        total,
       },
     });
   } catch (error: any) {

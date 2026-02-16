@@ -50,6 +50,19 @@ function isResolved(lead: any) {
   return ['completed', 'closed'].includes(leadStatus) || ['completed', 'closed'].includes(complaintStatus);
 }
 
+function matchesStatusFilter(lead: any, statusFilter: string) {
+  const normalized = String(statusFilter || '').trim().toLowerCase();
+  if (!normalized || normalized === 'all') return true;
+  const leadStatus = String(lead?.lead_status || '').trim().toLowerCase();
+  const complaintStatus = String(lead?.complaint_status || '').trim().toLowerCase();
+  if (normalized === 'unknown') {
+    return (!leadStatus && !complaintStatus) || leadStatus === 'unknown' || complaintStatus === 'unknown';
+  }
+  if (normalized === 'resolved') return isResolved(lead);
+  if (normalized === 'pending') return !isResolved(lead);
+  return leadStatus === normalized || complaintStatus === normalized;
+}
+
 function dateKeyUTC(value: string | null | undefined) {
   if (!value) return null;
   const d = new Date(value);
@@ -198,6 +211,7 @@ export async function GET(request: NextRequest) {
     const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const from = searchParams.get('from') || defaultFrom.toISOString();
     const to = searchParams.get('to') || now.toISOString();
+    const statusFilter = String(searchParams.get('status') || '').trim().toLowerCase();
 
     const rangeDay = buildDateRangeIST(from, to);
     const isSingleDay = rangeDay.fromKey === rangeDay.toKey;
@@ -224,7 +238,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to load trend data' }, { status: 500 });
     }
 
-    const rows = Array.isArray(leads) ? leads : [];
+    const rows = (Array.isArray(leads) ? leads : []).filter((lead: any) => matchesStatusFilter(lead, statusFilter));
     const agg = new Map<string, any>();
 
     for (const lead of rows) {
