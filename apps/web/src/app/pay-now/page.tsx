@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { loadRazorpayScript, initializeRazorpayCheckout } from '@/lib/services/paymentService';
@@ -23,11 +25,14 @@ type PaymentSummary = {
   customerPhone: string;
 };
 
-export default function PayNowPage() {
+function PayNowPageContent() {
+  const searchParams = useSearchParams();
   const [amount, setAmount] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [linkRef, setLinkRef] = useState('');
+  const [lockedFields, setLockedFields] = useState({ amount: false, name: false, phone: false });
   const [loading, setLoading] = useState(false);
   const [razorpayReady, setRazorpayReady] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -38,6 +43,34 @@ export default function PayNowPage() {
   useEffect(() => {
     loadRazorpayScript().then((ok) => setRazorpayReady(ok));
   }, []);
+
+  useEffect(() => {
+    const prefillAmountRaw = searchParams.get('amount') || '';
+    const prefillName = (searchParams.get('name') || '').trim();
+    const prefillPhone = (searchParams.get('phone') || '').trim();
+    const prefillEmail = (searchParams.get('email') || '').trim();
+    const prefillRef = (searchParams.get('ref') || '').trim();
+
+    const nextLockState = { amount: false, name: false, phone: false };
+    const parsedAmount = Number(prefillAmountRaw);
+    if (prefillAmountRaw && Number.isFinite(parsedAmount) && parsedAmount > 0) {
+      setAmount(String(parsedAmount));
+      nextLockState.amount = true;
+    }
+    if (prefillName) {
+      setName(prefillName);
+      nextLockState.name = true;
+    }
+    if (prefillPhone) {
+      setPhone(prefillPhone);
+      nextLockState.phone = true;
+    }
+    if (prefillEmail) {
+      setEmail(prefillEmail);
+    }
+    setLinkRef(prefillRef);
+    setLockedFields(nextLockState);
+  }, [searchParams]);
 
   async function handlePay() {
     const amt = Number(amount);
@@ -75,6 +108,7 @@ export default function PayNowPage() {
           customerName: name.trim(),
           customerEmail: email.trim() || null,
           customerPhone: phone.trim(),
+          linkRef: linkRef || null,
         }),
       });
       const json = await res.json();
@@ -149,7 +183,6 @@ export default function PayNowPage() {
             <p className="text-sm text-gray-600 mb-6">
               Enter the amount and complete payment securely with Razorpay.
             </p>
-
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹)</label>
@@ -158,6 +191,7 @@ export default function PayNowPage() {
                   min="1"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
+                  disabled={lockedFields.amount}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-primary"
                   placeholder="Enter amount"
                 />
@@ -168,6 +202,7 @@ export default function PayNowPage() {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  disabled={lockedFields.name}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-primary"
                   placeholder="Your name"
                 />
@@ -188,6 +223,7 @@ export default function PayNowPage() {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
+                  disabled={lockedFields.phone}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-primary"
                   placeholder="9876543210"
                 />
@@ -228,6 +264,14 @@ export default function PayNowPage() {
       </main>
       <Footer />
     </div>
+  );
+}
+
+export default function PayNowPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <PayNowPageContent />
+    </Suspense>
   );
 }
 

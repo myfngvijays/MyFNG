@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
     const customerName = String(body?.customerName || '').trim();
     const customerEmail = body?.customerEmail ? String(body.customerEmail).trim() : null;
     const customerPhone = String(body?.customerPhone || '').trim();
+    const linkRef = String(body?.linkRef || '').trim();
 
     if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
@@ -20,6 +21,13 @@ export async function POST(request: NextRequest) {
     }
     if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
       return NextResponse.json({ error: 'Payment gateway not configured' }, { status: 500 });
+    }
+
+    const notes: Record<string, string> = {
+      purpose: 'PAY_NOW',
+    };
+    if (linkRef) {
+      notes.link_ref = linkRef;
     }
 
     const amountInPaise = Math.round(amount * 100);
@@ -32,6 +40,7 @@ export async function POST(request: NextRequest) {
         customer_name: customerName,
         customer_email: customerEmail || '',
         customer_phone: customerPhone,
+        link_ref: linkRef || '',
       },
     };
 
@@ -56,22 +65,68 @@ export async function POST(request: NextRequest) {
 
     const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
     if (supabaseAdmin) {
-      await supabaseAdmin
-        .from('Razorpay_Direct_pay_RSA')
-        .insert({
-          order_id: order.id,
-          amount: amount,
-          amount_paise: amountInPaise,
-          currency: order.currency || 'INR',
-          status: 'CREATED',
-          customer_name: customerName,
-          customer_email: customerEmail,
-          customer_phone: customerPhone,
-          notes: { purpose: 'PAY_NOW' },
-          razorpay_payload: order,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+      const now = new Date().toISOString();
+      let saved = false;
+
+      // If telecaller pre-generated this link, convert that placeholder row into a CREATED order row.
+      if (linkRef) {
+        const placeholderOrderId = `LINK_${linkRef}`;
+        const { data: existing } = await supabaseAdmin
+          .from('Razorpay_Direct_pay_RSA')
+          .select('order_id, notes')
+          .eq('order_id', placeholderOrderId)
+          .maybeSingle();
+
+        if (existing?.order_id) {
+          const existingNotes =
+            existing.notes && typeof existing.notes === 'object'
+              ? existing.notes
+              : {};
+          const mergedNotes = {
+            ...existingNotes,
+            purpose: 'PAY_NOW',
+            link_ref: linkRef,
+          };
+          const { error: updateErr } = await supabaseAdmin
+            .from('Razorpay_Direct_pay_RSA')
+            .update({
+              order_id: order.id,
+              amount: amount,
+              amount_paise: amountInPaise,
+              currency: order.currency || 'INR',
+              status: 'CREATED',
+              customer_name: customerName,
+              customer_email: customerEmail,
+              customer_phone: customerPhone,
+              notes: mergedNotes,
+              razorpay_payload: order,
+              updated_at: now,
+            })
+            .eq('order_id', placeholderOrderId);
+          if (!updateErr) {
+            saved = true;
+          }
+        }
+      }
+
+      if (!saved) {
+        await supabaseAdmin
+          .from('Razorpay_Direct_pay_RSA')
+          .insert({
+            order_id: order.id,
+            amount: amount,
+            amount_paise: amountInPaise,
+            currency: order.currency || 'INR',
+            status: 'CREATED',
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_phone: customerPhone,
+            notes,
+            razorpay_payload: order,
+            created_at: now,
+            updated_at: now,
+          });
+      }
     } else {
       console.warn('[create-direct-order] Supabase admin missing:', adminErr);
     }
