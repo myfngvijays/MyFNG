@@ -5,6 +5,27 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
+
+async function fetchCapturedPaymentForOrder(orderId: string) {
+  if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET || !orderId) return null;
+
+  const response = await fetch(`https://api.razorpay.com/v1/orders/${orderId}/payments`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64')}`,
+    },
+  });
+  if (!response.ok) return null;
+  const json = await response.json().catch(() => ({}));
+  const items = Array.isArray(json?.items) ? json.items : [];
+  const captured = items.find((item: any) => {
+    const status = String(item?.status || '').toLowerCase();
+    return status === 'captured' || status === 'authorized';
+  });
+  return captured || null;
+}
 
 async function resolveUserProfile(supabase: any, user: any) {
   const email = (user?.email || '').trim();
@@ -60,6 +81,7 @@ export async function POST(request: NextRequest) {
 
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = (supabaseAdmin ?? supabase) as any;
+    const nowIso = new Date().toISOString();
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: rows, error } = await db
@@ -72,11 +94,61 @@ export async function POST(request: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message || 'Failed to fetch payment links' }, { status: 500 });
     }
+    let workingRows: any[] = Array.isArray(rows) ? [...rows] : [];
+
+    // Reconcile stale CREATED rows from Razorpay in case webhook/client verify was missed.
+    const staleRows = workingRows.filter((row: any) => {
+      const notes = row?.notes && typeof row.notes === 'object' ? row.notes : {};
+      const ownerProfileId = String((notes as any)?.generated_by_profile_id || '').trim();
+      if (ownerProfileId && ownerProfileId !== String(profile.id || '')) return false;
+      const linkRef = String((notes as any)?.link_ref || '').trim();
+      if (!linkRef || !refs.includes(linkRef)) return false;
+      const status = String(row?.status || '').toUpperCase();
+      return (status === 'CREATED' || status === 'LINK_GENERATED') && String(row?.order_id || '').startsWith('order_');
+    });
+
+    if (staleRows.length > 0) {
+      await Promise.all(
+        staleRows.map(async (row: any) => {
+          const orderId = String(row?.order_id || '').trim();
+          if (!orderId) return;
+          try {
+            const captured = await fetchCapturedPaymentForOrder(orderId);
+            if (!captured?.id) return;
+            await db
+              .from('Razorpay_Direct_pay_RSA')
+              .update({
+                payment_id: String(captured.id),
+                amount: Number.isFinite(Number(captured.amount)) ? Number(captured.amount) / 100 : row?.amount ?? null,
+                amount_paise: Number.isFinite(Number(captured.amount)) ? Number(captured.amount) : row?.amount_paise ?? null,
+                currency: String(captured.currency || row?.currency || 'INR'),
+                status: 'SUCCESS',
+                razorpay_payload: captured,
+                updated_at: nowIso,
+              })
+              .eq('order_id', orderId);
+          } catch {
+            // Ignore reconciliation failures per row; return best-effort status.
+          }
+        })
+      );
+
+      // Reload latest rows after best-effort reconciliation.
+      const refreshed = await db
+        .from('Razorpay_Direct_pay_RSA')
+        .select('order_id, payment_id, status, notes, created_at, updated_at')
+        .gte('created_at', since)
+        .order('updated_at', { ascending: false })
+        .limit(1000);
+      if (!refreshed.error && Array.isArray(refreshed.data)) {
+        workingRows = refreshed.data;
+      }
+    }
 
     const refSet = new Set(refs);
     const latestByRef = new Map<string, any>();
 
-    for (const row of rows || []) {
+    for (const row of workingRows) {
       const notes = row?.notes && typeof row.notes === 'object' ? row.notes : {};
       const ownerProfileId = String((notes as any)?.generated_by_profile_id || '').trim();
       if (ownerProfileId && ownerProfileId !== String(profile.id || '')) continue;

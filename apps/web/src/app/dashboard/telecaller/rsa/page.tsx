@@ -1,9 +1,10 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSALeadCreateForm } from '@/components/telecaller/RSALeadCreateForm';
-import { formatDateTimeIST } from '@/lib/utils';
+import { formatDateTimeIST, formatDateTimeISTAssumeUTC } from '@/lib/utils';
 import { CheckCircle, Clock, Copy, ExternalLink, FileText, Pencil, RefreshCw } from 'lucide-react';
 
 type TabKey = 'overview' | 'create' | 'created' | 'call_report' | 'car_service' | 'collect_payment';
@@ -283,7 +284,38 @@ function createPaymentLinkRef() {
   return `ref_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function normalizePhone(value: unknown) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.length <= 10 ? digits : digits.slice(-10);
+}
+
 export default function TelecallerRSAPage() {
+  const formatNaiveDateTimeAsISTWallClock = (rawValue: string) => {
+    const raw = String(rawValue || '').trim();
+    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return '';
+    const day = m[3];
+    const month = m[2];
+    const year = m[1];
+    const h24 = Number(m[4]);
+    const min = m[5];
+    const ampm = h24 >= 12 ? 'PM' : 'AM';
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    return `${day}-${month}-${year} ${String(h12).padStart(2, '0')}:${min} ${ampm}`;
+  };
+
+  const formatDateTimeForPanel = (value: string | null | undefined) => {
+    if (!value) return '—';
+    const raw = String(value).trim();
+    if (!raw) return '—';
+    const hasTimezone = /([zZ]|[+\-]\d{2}(:?\d{2})?)$/.test(raw);
+    if (hasTimezone) return formatDateTimeIST(raw) || '—';
+    const naive = formatNaiveDateTimeAsISTWallClock(raw);
+    if (naive) return naive;
+    return formatDateTimeIST(raw) || '—';
+  };
+
+  const router = useRouter();
   const [tab, setTab] = useState<TabKey>('overview');
   const [loading, setLoading] = useState(false);
   const [leads, setLeads] = useState<any[]>([]);
@@ -663,6 +695,55 @@ export default function TelecallerRSAPage() {
     }
   };
 
+  const findLeadByPhone = (rows: any[], phoneValue: string) => {
+    const target = normalizePhone(phoneValue);
+    if (!target) return null;
+    return (
+      rows.find((row: any) => {
+        const primary = normalizePhone(row?.contact_number);
+        const alternate = normalizePhone(row?.alternate_number);
+        return primary === target || alternate === target;
+      }) || null
+    );
+  };
+
+  const viewComplaintByPhone = async (phoneValue: string) => {
+    const targetPhone = normalizePhone(phoneValue);
+    if (!targetPhone) {
+      setCollectError('Valid customer phone not available.');
+      return;
+    }
+
+    setCollectError('');
+    let matchedLead = findLeadByPhone(createdLeads, targetPhone) || findLeadByPhone(leads, targetPhone);
+
+    if (!matchedLead) {
+      try {
+        const res = await fetch('/api/telecaller/rsa-complaints?limit=200');
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Failed to load complaints');
+        const latestLeads = Array.isArray(json?.leads) ? json.leads : [];
+        setCreatedLeads(latestLeads);
+        matchedLead = findLeadByPhone(latestLeads, targetPhone);
+      } catch (e: any) {
+        setCollectError(e?.message || 'Failed to load complaints');
+        return;
+      }
+    }
+
+    if (!matchedLead?.id) {
+      setCollectError('Is number se koi complaint nahi mili.');
+      return;
+    }
+
+    router.push(`/dashboard/telecaller/rsa/complaints/${encodeURIComponent(String(matchedLead.id))}`);
+  };
+
+  const openComplaintDetails = (lead: any) => {
+    if (!lead?.id) return;
+    router.push(`/dashboard/telecaller/rsa/complaints/${encodeURIComponent(String(lead.id))}`);
+  };
+
   const fetchCalls = async () => {
     setCallLoading(true);
     setCallError('');
@@ -790,13 +871,16 @@ export default function TelecallerRSAPage() {
   };
 
   const formatDateTime = (value: string | null | undefined) => {
-    if (!value) return '—';
-    return String(value).replace('T', ' ').slice(0, 19);
+    return formatDateTimeForPanel(value);
   };
 
   const formatDateTimeISTLocal = (value: string | null | undefined) => {
+    return formatDateTimeForPanel(value);
+  };
+
+  const formatDateTimeISTFromUTC = (value: string | null | undefined) => {
     if (!value) return '—';
-    return formatDateTimeIST(value);
+    return formatDateTimeISTAssumeUTC(value) || '—';
   };
 
   const isPendingComplaint = (lead: any) => {
@@ -1087,7 +1171,8 @@ export default function TelecallerRSAPage() {
                       {filteredLeads.map((l) => (
                         <tr
                           key={l.id}
-                          className={`border-b last:border-b-0 ${leadRowClass(l.lead_status || l.complaint_status || '')}`}
+                          className={`border-b last:border-b-0 cursor-pointer ${leadRowClass(l.lead_status || l.complaint_status || '')}`}
+                          onClick={() => openComplaintDetails(l)}
                         >
                           <td className="py-2 pr-3 font-semibold">{l.customer_name || '—'}</td>
                           <td className="py-2 pr-3">{l.contact_number || '—'}</td>
@@ -1109,13 +1194,16 @@ export default function TelecallerRSAPage() {
                             </span>
                           </td>
                           <td className="py-2 pr-3">
-                            {formatDateTime(l.lead_registered_at || l.requested_at)}
+                            {formatDateTimeISTFromUTC(l.lead_registered_at || l.requested_at)}
                           </td>
                           <td className="py-2 pr-3">
                             <button
                               type="button"
                               className="text-blue-600 hover:text-blue-700 font-semibold"
-                              onClick={() => openSarvCalls(l)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openSarvCalls(l);
+                              }}
                             >
                               View calls
                             </button>
@@ -1126,7 +1214,10 @@ export default function TelecallerRSAPage() {
                                 <button
                                   type="button"
                                   className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
-                                  onClick={() => openEditLead(l)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEditLead(l);
+                                  }}
                                   title="Edit lead (allowed until mechanic is assigned)"
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
@@ -1136,7 +1227,10 @@ export default function TelecallerRSAPage() {
                                   <button
                                     type="button"
                                     className="text-red-600 hover:text-red-700 font-semibold"
-                                    onClick={() => openCancelLead(l)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openCancelLead(l);
+                                    }}
                                     title="Cancel this pending complaint"
                                   >
                                     Cancel
@@ -1209,7 +1303,8 @@ export default function TelecallerRSAPage() {
                       {filteredCreatedLeads.map((l) => (
                         <tr
                           key={l.id}
-                          className={`border-b last:border-b-0 ${leadRowClass(l.lead_status || l.complaint_status || '')}`}
+                          className={`border-b last:border-b-0 cursor-pointer ${leadRowClass(l.lead_status || l.complaint_status || '')}`}
+                          onClick={() => openComplaintDetails(l)}
                         >
                           <td className="py-2 pr-3 font-semibold">{l.customer_name || '—'}</td>
                           <td className="py-2 pr-3">{l.contact_number || '—'}</td>
@@ -1231,13 +1326,16 @@ export default function TelecallerRSAPage() {
                             </span>
                           </td>
                           <td className="py-2 pr-3">
-                            {formatDateTime(l.lead_registered_at || l.requested_at)}
+                            {formatDateTimeISTFromUTC(l.lead_registered_at || l.requested_at)}
                           </td>
                           <td className="py-2 pr-3">
                             <button
                               type="button"
                               className="text-blue-600 hover:text-blue-700 font-semibold"
-                              onClick={() => openSarvCalls(l)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openSarvCalls(l);
+                              }}
                             >
                               View calls
                             </button>
@@ -1248,7 +1346,10 @@ export default function TelecallerRSAPage() {
                                 <button
                                   type="button"
                                   className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
-                                  onClick={() => openEditLead(l)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEditLead(l);
+                                  }}
                                   title="Edit lead (allowed until mechanic is assigned)"
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
@@ -1258,7 +1359,10 @@ export default function TelecallerRSAPage() {
                                   <button
                                     type="button"
                                     className="text-red-600 hover:text-red-700 font-semibold"
-                                    onClick={() => openCancelLead(l)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openCancelLead(l);
+                                    }}
                                     title="Cancel this pending complaint"
                                   >
                                     Cancel
@@ -1607,6 +1711,13 @@ export default function TelecallerRSAPage() {
                               >
                                 Open
                               </a>
+                              <button
+                                type="button"
+                                className="text-blue-600 hover:text-blue-700 font-semibold"
+                                onClick={() => viewComplaintByPhone(row.customer_phone)}
+                              >
+                                View
+                              </button>
                             </div>
                           </td>
                         </tr>

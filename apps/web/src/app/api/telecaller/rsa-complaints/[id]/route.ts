@@ -68,9 +68,7 @@ export async function GET(
 
     const { data: lead, error } = await db
       .from('rsa_leads')
-      .select(
-        'id, customer_name, contact_number, alternate_number, vehicle_number, vehicle_model, service_type, source, location_link, drop_location, customer_quoted_amount, advance_payment, problem, description, lead_status, complaint_status, assigned_mechanic_id, registered_by_id, lead_registered_at, media_upload'
-      )
+      .select('*')
       .eq('id', leadId)
       .maybeSingle();
 
@@ -82,7 +80,53 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden: not your lead' }, { status: 403 });
     }
 
-    return NextResponse.json({ success: true, lead }, { status: 200 });
+    let timeline: any[] = [];
+    try {
+      const { data: timelineRows } = await db
+        .from('rsa_lead_timeline')
+        .select('id, status, status_description, updated_by_id, updated_by_name, updated_at, created_at')
+        .eq('lead_id', leadId)
+        .order('updated_at', { ascending: false })
+        .limit(100);
+      timeline = Array.isArray(timelineRows) ? timelineRows : [];
+    } catch {
+      timeline = [];
+    }
+
+    let payments: any[] = [];
+    try {
+      const leadPhone10 = digits10((lead as any)?.contact_number || '');
+      if (leadPhone10) {
+        const since = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: paymentRows } = await db
+          .from('Razorpay_Direct_pay_RSA')
+          .select('order_id, payment_id, amount, amount_paise, currency, status, customer_name, customer_phone, razorpay_payload, created_at, updated_at')
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+          .limit(1000);
+
+        payments = (paymentRows || [])
+          .filter((row: any) => digits10(row?.customer_phone || '') === leadPhone10)
+          .map((row: any) => {
+            const payload = row?.razorpay_payload && typeof row.razorpay_payload === 'object' ? row.razorpay_payload : {};
+            return {
+              order_id: row?.order_id || null,
+              payment_id: row?.payment_id || null,
+              amount: row?.amount ?? null,
+              amount_paise: row?.amount_paise ?? null,
+              currency: row?.currency || 'INR',
+              status: row?.status || null,
+              method: payload?.method || null,
+              created_at: row?.created_at || null,
+              updated_at: row?.updated_at || null,
+            };
+          });
+      }
+    } catch {
+      payments = [];
+    }
+
+    return NextResponse.json({ success: true, lead, timeline, payments }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: 'Internal server error', details: e?.message }, { status: 500 });
   }

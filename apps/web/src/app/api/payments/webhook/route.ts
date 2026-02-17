@@ -8,9 +8,54 @@ import { createClient } from '@/lib/supabase/server';
 import crypto from 'crypto';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';
+
+async function updateDirectPayStatus(params: {
+  orderId?: string | null;
+  paymentId?: string | null;
+  signature?: string | null;
+  status: 'SUCCESS' | 'FAILED';
+  amountPaise?: number | null;
+  currency?: string | null;
+  payload: any;
+}) {
+  const orderId = String(params.orderId || '').trim();
+  if (!orderId) return;
+
+  const now = new Date().toISOString();
+  const { supabaseAdmin } = getSupabaseAdmin();
+  const db = (supabaseAdmin ?? await createClient()) as any;
+
+  const { data: existingRow } = await db
+    .from('Razorpay_Direct_pay_RSA')
+    .select('customer_name, customer_email, customer_phone, signature, notes')
+    .eq('order_id', orderId)
+    .maybeSingle();
+
+  await db
+    .from('Razorpay_Direct_pay_RSA')
+    .upsert(
+      {
+        order_id: orderId,
+        payment_id: params.paymentId || null,
+        signature: params.signature || existingRow?.signature || null,
+        amount: Number.isFinite(params.amountPaise as number) ? Number(params.amountPaise) / 100 : null,
+        amount_paise: Number.isFinite(params.amountPaise as number) ? Number(params.amountPaise) : null,
+        currency: params.currency || 'INR',
+        status: params.status,
+        customer_name: existingRow?.customer_name || 'Customer',
+        customer_email: existingRow?.customer_email || null,
+        customer_phone: existingRow?.customer_phone || '',
+        notes: existingRow?.notes || { purpose: 'PAY_NOW' },
+        razorpay_payload: params.payload,
+        updated_at: now,
+      },
+      { onConflict: 'order_id' }
+    );
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,6 +122,16 @@ async function handlePaymentSuccess(payload: any, supabase: any) {
   const orderId = payment.order_id;
   const paymentId = payment.id;
   const amount = parseFloat(payment.amount) / 100; // Convert paise to rupees
+
+  // Keep telecaller direct-pay status in sync even if frontend verify callback is skipped.
+  await updateDirectPayStatus({
+    orderId,
+    paymentId,
+    status: 'SUCCESS',
+    amountPaise: Number(payment?.amount || 0),
+    currency: payment?.currency || 'INR',
+    payload,
+  });
 
   // Find transaction by order ID (preferred) or payment ID (idempotency)
   let { data: transaction } = await supabase
@@ -370,6 +425,15 @@ async function handlePaymentFailed(payload: any, supabase: any) {
   const failureReason = payment.error_description || payment.error_code || 'Payment failed';
 
   const now = new Date().toISOString();
+
+  await updateDirectPayStatus({
+    orderId,
+    paymentId,
+    status: 'FAILED',
+    amountPaise: Number(payment?.amount || 0),
+    currency: payment?.currency || 'INR',
+    payload,
+  });
 
   // Update payment_intents (best-effort)
   try {

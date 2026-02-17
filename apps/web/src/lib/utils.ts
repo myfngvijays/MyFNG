@@ -78,7 +78,8 @@ function normalizeTimestampAssumeUTC(
   const raw = value.trim();
   if (!raw) return raw;
 
-  const hasTimezone = /([zZ]|[+\-]\d{2}:?\d{2})$/.test(raw);
+  // Accept timezone suffixes like Z, +00, +0000, +00:00
+  const hasTimezone = /([zZ]|[+\-]\d{2}(:?\d{2})?)$/.test(raw);
   if (hasTimezone) return raw;
 
   const looksLikeDateTime =
