@@ -136,6 +136,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const callIds = rows.map((row: any) => String(row?.id || '')).filter(Boolean);
+    let latestAuditByCallId: Record<string, any> = {};
+    if (callIds.length) {
+      const { data: audits } = await db
+        .from('sarv_call_audits')
+        .select('id, sarv_call_id, audit_status, audit_score, feedback, audited_by_id, audited_at, updated_at, created_at')
+        .in('sarv_call_id', callIds)
+        .order('updated_at', { ascending: false });
+
+      if (Array.isArray(audits)) {
+        for (const audit of audits) {
+          const key = String((audit as any)?.sarv_call_id || '').trim();
+          if (!key || latestAuditByCallId[key]) continue;
+          latestAuditByCallId[key] = audit;
+        }
+      }
+    }
+
     const enriched = rows.map((row: any) => {
       const user = row.assigned_user_id ? assigneeMap.get(row.assigned_user_id) : null;
       return {
@@ -148,6 +166,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       calls: enriched,
+      audits: latestAuditByCallId,
       pagination: {
         page,
         limit,

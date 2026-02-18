@@ -431,6 +431,7 @@ export default function SuperAdminRSASettingsPage() {
   const [reportCalls, setReportCalls] = useState<SarvCallRow[]>([]);
   const [reportPage, setReportPage] = useState(1);
   const [reportTotal, setReportTotal] = useState(0);
+  const [reportJumpPage, setReportJumpPage] = useState('1');
   const [reportAssignees, setReportAssignees] = useState<Telecaller[]>([]);
   const [expandedCustomers, setExpandedCustomers] = useState<Record<string, boolean>>({});
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -664,6 +665,9 @@ export default function SuperAdminRSASettingsPage() {
       if (!res.ok) throw new Error(json?.error || 'Failed to load calls');
       setReportCalls(Array.isArray(json?.calls) ? json.calls : []);
       setReportTotal(Number(json?.pagination?.total || 0));
+      if (json?.audits && typeof json.audits === 'object') {
+        setAuditByCallId((prev) => ({ ...prev, ...(json.audits as Record<string, SarvCallAudit | null>) }));
+      }
     } catch (e: any) {
       setReportError(e?.message || 'Failed to load calls');
       setReportCalls([]);
@@ -704,6 +708,9 @@ export default function SuperAdminRSASettingsPage() {
     });
 
     if (!call?.id) return;
+    const hasCached = Object.prototype.hasOwnProperty.call(auditByCallId, call.id);
+    if (hasCached) return;
+
     setAuditLoading(true);
     try {
       const res = await fetch(`/api/super_admin/sarv-calls/${encodeURIComponent(String(call.id))}/audit`);
@@ -1108,6 +1115,10 @@ export default function SuperAdminRSASettingsPage() {
   }, [tab, reportFilters, reportPage]);
 
   useEffect(() => {
+    setReportJumpPage(String(reportPage));
+  }, [reportPage]);
+
+  useEffect(() => {
     if (tab !== 'overview') return;
     setOverviewSelection(null);
     setOverviewLeads([]);
@@ -1140,6 +1151,19 @@ export default function SuperAdminRSASettingsPage() {
   }, [overviewLeads]);
 
   const stateRows = useMemo(() => overviewData?.breakdowns.state || [], [overviewData]);
+  const reportTotalPages = Math.max(
+    1,
+    Math.ceil(reportTotal / Math.max(1, Number(reportFilters.limit) || 1))
+  );
+  const canGoNextReportPage = !reportLoading && reportPage < reportTotalPages;
+  const canGoPrevReportPage = !reportLoading && reportPage > 1;
+
+  const jumpToReportPage = () => {
+    const requested = Number(reportJumpPage);
+    if (!Number.isFinite(requested)) return;
+    const nextPage = Math.min(reportTotalPages, Math.max(1, Math.trunc(requested)));
+    setReportPage(nextPage);
+  };
 
   const activeStateRow = useMemo(() => {
     if (!activeStateId || activeStateId === '__ALL__') return null;
@@ -1883,16 +1907,41 @@ export default function SuperAdminRSASettingsPage() {
                 type="button"
                 className="btn btn-outline text-xs px-3 py-1.5"
                 onClick={() => setReportPage((p) => Math.max(1, p - 1))}
-                disabled={reportPage <= 1 || reportLoading}
+                disabled={!canGoPrevReportPage}
               >
                 Prev
               </button>
-              <div className="text-xs text-gray-500">Page {reportPage}</div>
+              <div className="text-xs text-gray-500 whitespace-nowrap">
+                Page {reportPage} of {reportTotalPages}
+              </div>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={reportTotalPages}
+                  value={reportJumpPage}
+                  onChange={(e) => setReportJumpPage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') jumpToReportPage();
+                  }}
+                  className="w-16 border rounded-md px-2 py-1 text-xs"
+                  disabled={reportLoading}
+                  title={`Enter page number (1-${reportTotalPages})`}
+                />
+                <button
+                  type="button"
+                  className="btn btn-outline text-xs px-2 py-1.5"
+                  onClick={jumpToReportPage}
+                  disabled={reportLoading}
+                >
+                  Go
+                </button>
+              </div>
               <button
                 type="button"
                 className="btn btn-outline text-xs px-3 py-1.5"
                 onClick={() => setReportPage((p) => p + 1)}
-                disabled={reportLoading || reportPage * reportFilters.limit >= reportTotal}
+                disabled={!canGoNextReportPage}
               >
                 Next
               </button>

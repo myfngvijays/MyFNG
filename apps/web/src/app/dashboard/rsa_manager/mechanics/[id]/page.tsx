@@ -21,6 +21,13 @@ export default function RSAMechanicDetailPage() {
   const supabase = getBrowserClient();
   
   const mechanicId = params?.id as string;
+  const [backHref, setBackHref] = useState('/dashboard/rsa_manager/mechanics');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const qs = window.location.search || '';
+    setBackHref(qs ? `/dashboard/rsa_manager/mechanics${qs}` : '/dashboard/rsa_manager/mechanics');
+  }, []);
   
   const [mechanic, setMechanic] = useState<any>(null);
   const [assignments, setAssignments] = useState<any[]>([]);
@@ -183,7 +190,7 @@ export default function RSAMechanicDetailPage() {
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1.5 sm:mb-2">Mechanic Not Found</h2>
             <p className="text-gray-600 mb-4 sm:mb-5 md:mb-6 text-xs sm:text-sm md:text-base">The mechanic you're looking for doesn't exist.</p>
             <Link
-              href="/dashboard/rsa_manager/mechanics"
+              href={backHref}
               className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-hover transition-colors text-xs sm:text-sm"
             >
               <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -201,7 +208,7 @@ export default function RSAMechanicDetailPage() {
         {/* Header */}
         <div className="mb-4 sm:mb-5 md:mb-6">
           <Link
-            href="/dashboard/rsa_manager/mechanics"
+            href={backHref}
             className="inline-flex items-center gap-1.5 sm:gap-2 text-brand-primary hover:text-brand-primary-hover mb-3 sm:mb-4 text-xs sm:text-sm md:text-base"
           >
             <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -24,6 +24,7 @@ function normalizePincode6(value: string) {
 export default function RSAMechanicsPage() {
   const supabase = getBrowserClient();
   const router = useRouter();
+  const initializedFromUrlRef = useRef(false);
   
   const [mechanics, setMechanics] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -90,11 +91,14 @@ export default function RSAMechanicsPage() {
     };
   }, [addForm.number, showAdd]);
 
-  const fetchMechanics = async () => {
+  const fetchMechanics = async (
+    nextQuery: string = query,
+    nextAvailability: 'all' | 'available' | 'busy' = availabilityFilter
+  ) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (query?.trim()) params.set('q', query.trim());
+      if (nextQuery?.trim()) params.set('q', nextQuery.trim());
       const res = await fetch(`/api/rsa/mechanics?${params.toString()}`);
       const mechanicsData = await res.json();
       if (!res.ok) throw new Error(Array.isArray(mechanicsData) ? 'Failed to load' : (mechanicsData?.error || 'Failed to load mechanics'));
@@ -107,9 +111,9 @@ export default function RSAMechanicsPage() {
       }));
 
       let filtered = normalized;
-      if (availabilityFilter === 'available') {
+      if (nextAvailability === 'available') {
         filtered = normalized.filter((m: any) => m.is_available);
-      } else if (availabilityFilter === 'busy') {
+      } else if (nextAvailability === 'busy') {
         filtered = normalized.filter((m: any) => !m.is_available);
       }
       setMechanics(filtered);
@@ -120,10 +124,47 @@ export default function RSAMechanicsPage() {
     }
   };
 
-  const handleSearch = () => {
-    setHasSearched(true);
-    fetchMechanics();
+  const persistSearchInUrl = (
+    nextQuery: string,
+    nextAvailability: 'all' | 'available' | 'busy',
+    nextSearched: boolean
+  ) => {
+    const params = new URLSearchParams();
+    if (nextQuery.trim()) params.set('q', nextQuery.trim());
+    if (nextAvailability !== 'all') params.set('availability', nextAvailability);
+    if (nextSearched) params.set('searched', '1');
+    const qs = params.toString();
+    router.replace(qs ? `/dashboard/rsa_manager/mechanics?${qs}` : '/dashboard/rsa_manager/mechanics');
   };
+
+  const handleSearch = () => {
+    const nextQuery = query;
+    const nextAvailability = availabilityFilter;
+    setHasSearched(true);
+    persistSearchInUrl(nextQuery, nextAvailability, true);
+    fetchMechanics(nextQuery, nextAvailability);
+  };
+
+  useEffect(() => {
+    if (initializedFromUrlRef.current) return;
+    initializedFromUrlRef.current = true;
+
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+    const q = String(params.get('q') || '');
+    const availabilityRaw = String(params.get('availability') || 'all');
+    const nextAvailability: 'all' | 'available' | 'busy' =
+      availabilityRaw === 'available' || availabilityRaw === 'busy' ? availabilityRaw : 'all';
+    const searchedParam = params.get('searched') === '1';
+    const shouldSearch = searchedParam || Boolean(q.trim()) || nextAvailability !== 'all';
+
+    setQuery(q);
+    setAvailabilityFilter(nextAvailability);
+    setHasSearched(shouldSearch);
+
+    if (shouldSearch) {
+      fetchMechanics(q, nextAvailability);
+    }
+  }, []);
 
   const openEdit = (mechanic: any, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -307,7 +348,18 @@ export default function RSAMechanicsPage() {
                 {mechanics.map((mechanic) => (
                   <div
                     key={mechanic.id}
-                    onClick={() => router.push(`/dashboard/rsa_manager/mechanics/${mechanic.id}`)}
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      if (query.trim()) params.set('q', query.trim());
+                      if (availabilityFilter !== 'all') params.set('availability', availabilityFilter);
+                      if (hasSearched) params.set('searched', '1');
+                      const qs = params.toString();
+                      router.push(
+                        qs
+                          ? `/dashboard/rsa_manager/mechanics/${mechanic.id}?${qs}`
+                          : `/dashboard/rsa_manager/mechanics/${mechanic.id}`
+                      );
+                    }}
                     className={`border rounded-lg p-3 sm:p-4 hover:shadow-md transition-all cursor-pointer ${
                       mechanic.is_available 
                         ? 'border-green-200 bg-green-50 hover:border-green-300' 
