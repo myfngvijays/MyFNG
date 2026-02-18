@@ -53,6 +53,8 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
   const [remark, setRemark] = useState('');
   const [newStatus, setNewStatus] = useState('');
   const [statusNotes, setStatusNotes] = useState('');
+  const [statusQuotedAmount, setStatusQuotedAmount] = useState('');
+  const [statusMechanicAmount, setStatusMechanicAmount] = useState('');
   const [mechanicSearchPincode, setMechanicSearchPincode] = useState('');
   const [mechanicSearchTerm, setMechanicSearchTerm] = useState('');
   const [mechanicSearching, setMechanicSearching] = useState(false);
@@ -70,6 +72,7 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
   const [rsaMediaUploading, setRsaMediaUploading] = useState(false);
   const [rsaMediaError, setRsaMediaError] = useState('');
   const leadStatus = String(lead?.lead_status || lead?.complaint_status || '').toLowerCase();
+  const showFinanceInStatusModal = newStatus === 'completed' || newStatus === 'cancelled';
   const canTransferManager = leadStatus !== 'completed' && leadStatus !== 'cancelled' && leadStatus !== 'closed';
 
   const formatServiceAreasLabel = (areas: any[]) => {
@@ -387,6 +390,21 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
     if (!newStatus) return;
     
     try {
+      if (showFinanceInStatusModal) {
+        const financeRes = await fetch(`/api/rsa/leads/${encodeURIComponent(String(params.id))}/finance`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            customer_quoted_amount: statusQuotedAmount,
+            payment_to_mechanic: statusMechanicAmount,
+          }),
+        });
+        const financeJson = await financeRes.json().catch(() => ({}));
+        if (!financeRes.ok) {
+          throw new Error(financeJson?.details ? `${financeJson?.error || 'Failed'}: ${financeJson.details}` : (financeJson?.error || 'Failed to update finance details'));
+        }
+      }
+
       const result = await RSAManagerService.updateLeadStatus(
         params.id as string,
         newStatus,
@@ -407,6 +425,22 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
       console.error('Error updating status:', error);
       alert('Failed to update status');
     }
+  };
+
+  const openUpdateStatusModal = () => {
+    setNewStatus('');
+    setStatusNotes('');
+    setStatusQuotedAmount(
+      lead?.customer_quoted_amount != null && lead?.customer_quoted_amount !== ''
+        ? String(lead.customer_quoted_amount)
+        : ''
+    );
+    setStatusMechanicAmount(
+      lead?.payment_to_mechanic != null && lead?.payment_to_mechanic !== ''
+        ? String(lead.payment_to_mechanic)
+        : ''
+    );
+    setShowUpdateStatus(true);
   };
 
   const handleSavePincode = async () => {
@@ -517,7 +551,7 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
           {lead.assigned_manager_id === user?.id && (
             <>
               <button
-                onClick={() => setShowUpdateStatus(true)}
+                onClick={openUpdateStatusModal}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-xs sm:text-sm flex-1 sm:flex-initial"
               >
                 Update Status
@@ -693,10 +727,6 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
               <div>
                 <span className="font-medium text-gray-600">Service Type:</span>
                 <p className="text-gray-900">{lead.service_type || '—'}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Service Tag:</span>
-                <p className="text-gray-900">{lead.service_tag || '—'}</p>
               </div>
               {lead.drop_location ? (
                 <div className="sm:col-span-2 lg:col-span-1">
@@ -1222,7 +1252,6 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
                   className="w-full px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm"
                 >
                   <option value="">Select Status</option>
-                  <option value="pending">Pending</option>
                   <option value="in_progress">Reached</option>
                   <option value="completed">Completed</option>
                   <option value="cancelled">Cancelled</option>
@@ -1241,6 +1270,41 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
                   className="w-full px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm"
                 />
               </div>
+              {showFinanceInStatusModal && (
+                <div className="mb-3 sm:mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                  <h4 className="text-xs sm:text-sm font-semibold text-gray-800 mb-2">Finance Details</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Quoted Amount
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={statusQuotedAmount}
+                        onChange={(e) => setStatusQuotedAmount(e.target.value)}
+                        placeholder="Enter quoted amount"
+                        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Mechanic Payment
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={statusMechanicAmount}
+                        onChange={(e) => setStatusMechanicAmount(e.target.value)}
+                        placeholder="Enter mechanic payment"
+                        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button
@@ -1248,6 +1312,8 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
                     setShowUpdateStatus(false);
                     setNewStatus('');
                     setStatusNotes('');
+                    setStatusQuotedAmount('');
+                    setStatusMechanicAmount('');
                   }}
                   className="flex-1 px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-xs sm:text-sm"
                 >

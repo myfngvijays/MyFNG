@@ -1872,7 +1872,7 @@ export default function TelecallerRSAPage() {
                                     >
                                       Download
                                     </a>
-                                    <audio controls preload="none" src={call.recording_url} className="w-56" />
+                                    <audio controls preload="none" src={call.recording_url} className="w-80 min-w-[20rem] max-w-full h-10" />
                                   </div>
                                 ) : (
                                   '—'
@@ -2011,7 +2011,7 @@ export default function TelecallerRSAPage() {
                                           >
                                             Download
                                           </a>
-                                          <audio controls preload="none" src={call.recording_url} className="w-56" />
+                                          <audio controls preload="none" src={call.recording_url} className="w-80 min-w-[20rem] max-w-full h-10" />
                                         </div>
                                       ) : (
                                         '—'

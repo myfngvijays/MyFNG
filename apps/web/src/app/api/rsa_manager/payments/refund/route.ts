@@ -75,15 +75,21 @@ export async function POST(request: NextRequest) {
       .eq('assigned_manager_id', profile.id)
       .limit(2000);
 
-    const assignedPhones = new Set(
-      (assignedLeads || [])
-        .map((lead: any) => digits10(lead?.contact_number))
-        .filter(Boolean)
-    );
+    const leadByPhone = new Map<string, any>();
+    const assignedPhones = new Set<string>();
+    for (const lead of assignedLeads || []) {
+      const phone = digits10(lead?.contact_number);
+      if (!phone) continue;
+      assignedPhones.add(phone);
+      if (!leadByPhone.has(phone)) {
+        leadByPhone.set(phone, lead);
+      }
+    }
     const paymentPhone = digits10(paymentRow.customer_phone);
     if (!paymentPhone || !assignedPhones.has(paymentPhone)) {
       return NextResponse.json({ error: 'You can refund only your assigned lead payments' }, { status: 403 });
     }
+    const linkedLead = leadByPhone.get(paymentPhone) || null;
 
     // Pull live payment details from Razorpay to enforce refundable amount.
     const paymentResp = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, {
@@ -159,14 +165,44 @@ export async function POST(request: NextRequest) {
       refund_updated_at: new Date().toISOString(),
     };
 
+    const nowIso = new Date().toISOString();
     await db
       .from('Razorpay_Direct_pay_RSA')
       .update({
         status: nextStatus,
         razorpay_payload: updatedPayload,
-        updated_at: new Date().toISOString(),
+        updated_at: nowIso,
       })
       .eq('payment_id', paymentId);
+
+    if (linkedLead?.id) {
+      const mappedLeadStatus = nextStatus === 'REFUNDED' ? 'cancelled' : 'completed';
+      const refundLabel = nextStatus === 'REFUNDED' ? 'full refund' : 'partial refund';
+      const refundNote = notes
+        ? `${refundLabel} processed via payment ${paymentId}. Note: ${notes}`
+        : `${refundLabel} processed via payment ${paymentId}.`;
+
+      await db
+        .from('rsa_leads')
+        .update({
+          lead_status: mappedLeadStatus,
+          complaint_status: mappedLeadStatus,
+          updated_at: nowIso,
+        })
+        .eq('id', linkedLead.id);
+
+      await db
+        .from('rsa_lead_timeline')
+        .insert({
+          lead_id: linkedLead.id,
+          status: nextStatus === 'REFUNDED' ? 'refund_full' : 'refund_partial',
+          status_description: refundNote,
+          updated_by_id: user.id,
+          updated_by_name: String(profile?.full_name || profile?.name || user.email || '').trim() || null,
+          updated_at: nowIso,
+          created_at: nowIso,
+        });
+    }
 
     return NextResponse.json(
       {
