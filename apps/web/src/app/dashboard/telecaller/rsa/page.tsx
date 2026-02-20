@@ -5,7 +5,30 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSALeadCreateForm } from '@/components/telecaller/RSALeadCreateForm';
 import { formatDateTimeIST, formatDateTimeISTAssumeUTC } from '@/lib/utils';
-import { CheckCircle, Clock, Copy, ExternalLink, FileText, Pencil, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
+import { Award, CheckCircle, Clock, Copy, ExternalLink, FileText, Pencil, PhoneCall, RefreshCw, Target, TrendingUp } from 'lucide-react';
+
+type TelecallerPerformanceData = {
+  callsReceived: number;
+  registeredCount: number;
+  totalQuotedAmount: number;
+  todayFollowUpsDue: number;
+  highPriorityPending: number;
+  noRecording: number;
+  noSummary: number;
+  noDisposition: number;
+  callTotal: number;
+  funnel: { registered: number; inProgress: number; completed: number; dropOffPercent: number };
+  avgTalkTimeSeconds: number | null;
+  bestWindow: { key: string; label: string; count: number; completionRate: number } | null;
+  personalQuality: {
+    auditedCount: number;
+    avgScore: number | null;
+    lastFeedbackHighlights: { sarv_call_id: string; audit_score: number; feedback: string }[];
+  };
+  needsAttention: { id: string; customer_name: string; contact_number: string; lead_status: string; lead_registered_at: string }[];
+  callsWithoutDisposition: { id: string; cnumber: string; created_at: string }[];
+};
 
 type TabKey = 'overview' | 'create' | 'created' | 'call_report' | 'car_service' | 'collect_payment';
 
@@ -399,18 +422,62 @@ export default function TelecallerRSAPage() {
   const [editLead, setEditLead] = useState<any | null>(null);
   const [editLeadLoading, setEditLeadLoading] = useState(false);
   const [leadStatusFilter, setLeadStatusFilter] = useState('');
+  const [overviewDateRange, setOverviewDateRange] = useState(() => {
+    const today = new Date();
+    const from = addDays(today, -6);
+    return {
+      from: formatDateInput(from),
+      to: formatDateInput(today),
+    };
+  });
+  const OVERVIEW_PAGE_SIZE = 10;
+  const [overviewPage, setOverviewPage] = useState(1);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelLead, setCancelLead] = useState<any | null>(null);
   const [cancelRemark, setCancelRemark] = useState('');
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState('');
+  const [performanceOverview, setPerformanceOverview] = useState<TelecallerPerformanceData | null>(null);
+  const [performanceOverviewLoading, setPerformanceOverviewLoading] = useState(false);
+  const [hoveredServicePie, setHoveredServicePie] = useState<{ name: string; count: number; percent: number } | null>(null);
+
+  const overviewLeadsInRange = useMemo(() => {
+    const fromTs = overviewDateRange.from ? new Date(`${overviewDateRange.from}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY;
+    const toTs = overviewDateRange.to ? new Date(`${overviewDateRange.to}T23:59:59.999`).getTime() : Number.POSITIVE_INFINITY;
+
+    if (!Number.isFinite(fromTs) || !Number.isFinite(toTs)) return leads;
+
+    return leads.filter((row) => {
+      const raw = row?.lead_registered_at || row?.requested_at;
+      if (!raw) return false;
+      const ts = new Date(raw).getTime();
+      if (!Number.isFinite(ts)) return false;
+      return ts >= fromTs && ts <= toTs;
+    });
+  }, [leads, overviewDateRange.from, overviewDateRange.to]);
 
   const stats = useMemo(() => {
-    const total = leads.length;
-    const pending = leads.filter((l) => String(l?.lead_status || '').toLowerCase() === 'pending').length;
-    const completed = leads.filter((l) => String(l?.lead_status || '').toLowerCase() === 'completed').length;
+    const total = overviewLeadsInRange.length;
+    const pending = overviewLeadsInRange.filter((l) => String(l?.lead_status || '').toLowerCase() === 'pending').length;
+    const completed = overviewLeadsInRange.filter((l) => String(l?.lead_status || '').toLowerCase() === 'completed').length;
     return { total, pending, completed };
-  }, [leads]);
+  }, [overviewLeadsInRange]);
+
+  const overviewServiceBreakdown = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const lead of overviewLeadsInRange) {
+      const s = String(lead?.service_type || 'Other').trim() || 'Other';
+      map[s] = (map[s] || 0) + 1;
+    }
+    const total = overviewLeadsInRange.length;
+    return Object.entries(map)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percent: total ? Math.round((count / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [overviewLeadsInRange]);
 
   const getLeadStatusKey = (lead: any) =>
     String(lead?.lead_status || lead?.complaint_status || '')
@@ -427,9 +494,49 @@ export default function TelecallerRSAPage() {
   }, [leads, createdLeads]);
 
   const filteredLeads = useMemo(() => {
-    if (!leadStatusFilter) return leads;
-    return leads.filter((row) => getLeadStatusKey(row) === leadStatusFilter);
-  }, [leads, leadStatusFilter]);
+    if (!leadStatusFilter) return overviewLeadsInRange;
+    return overviewLeadsInRange.filter((row) => getLeadStatusKey(row) === leadStatusFilter);
+  }, [overviewLeadsInRange, leadStatusFilter]);
+
+  const overviewTotalPages = Math.max(1, Math.ceil(filteredLeads.length / OVERVIEW_PAGE_SIZE));
+
+  const paginatedLeads = useMemo(() => {
+    const start = (overviewPage - 1) * OVERVIEW_PAGE_SIZE;
+    return filteredLeads.slice(start, start + OVERVIEW_PAGE_SIZE);
+  }, [filteredLeads, overviewPage]);
+
+  useEffect(() => {
+    if (overviewPage > overviewTotalPages) {
+      setOverviewPage(overviewTotalPages);
+    }
+  }, [overviewPage, overviewTotalPages]);
+
+  useEffect(() => {
+    setOverviewPage(1);
+  }, [overviewDateRange.from, overviewDateRange.to]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fromISO = new Date(`${overviewDateRange.from}T00:00:00`).toISOString();
+    const toISO = new Date(`${overviewDateRange.to}T23:59:59.999`).toISOString();
+    setPerformanceOverviewLoading(true);
+    fetch(
+      `/api/telecaller/performance-overview?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (mounted && !data.error) setPerformanceOverview(data);
+      })
+      .catch(() => {
+        if (mounted) setPerformanceOverview(null);
+      })
+      .finally(() => {
+        if (mounted) setPerformanceOverviewLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [overviewDateRange.from, overviewDateRange.to]);
 
   const filteredCreatedLeads = useMemo(() => {
     if (!leadStatusFilter) return createdLeads;
@@ -440,7 +547,7 @@ export default function TelecallerRSAPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/telecaller/rsa-complaints?limit=50');
+      const res = await fetch('/api/telecaller/rsa-complaints?limit=200');
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to load RSA leads');
       setLeads(Array.isArray(json?.leads) ? json.leads : []);
@@ -1144,10 +1251,76 @@ export default function TelecallerRSAPage() {
             ) : null}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-3 flex flex-wrap items-end justify-between gap-3">
+                <div className="text-xs text-gray-600">
+                  Overview stats and recent leads are filtered by selected date range (default: last 7 days).
+                </div>
+                <div className="flex items-end gap-2">
+                  <label className="text-xs text-gray-600">
+                    From
+                    <input
+                      type="date"
+                      className="block mt-1 border rounded-md px-2 py-1.5 text-xs"
+                      value={overviewDateRange.from}
+                      max={overviewDateRange.to || undefined}
+                      onChange={(e) =>
+                        setOverviewDateRange((prev) => ({
+                          ...prev,
+                          from: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="text-xs text-gray-600">
+                    To
+                    <input
+                      type="date"
+                      className="block mt-1 border rounded-md px-2 py-1.5 text-xs"
+                      value={overviewDateRange.to}
+                      min={overviewDateRange.from || undefined}
+                      onChange={(e) =>
+                        setOverviewDateRange((prev) => ({
+                          ...prev,
+                          to: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="card flex items-center gap-3">
+                <PhoneCall className="w-5 h-5 text-indigo-600" />
+                <div>
+                  <div className="text-xs text-gray-600">Calls received</div>
+                  <div className="text-lg font-bold text-indigo-600">
+                    {performanceOverviewLoading ? '—' : performanceOverview ? performanceOverview.callsReceived : '—'}
+                  </div>
+                </div>
+              </div>
               <div className="card flex items-center gap-3">
                 <FileText className="w-5 h-5 text-blue-600" />
                 <div>
-                  <div className="text-xs text-gray-600">Total</div>
+                  <div className="text-xs text-gray-600">Registered</div>
+                  <div className="text-lg font-bold text-blue-600">
+                    {performanceOverviewLoading ? '—' : performanceOverview ? performanceOverview.registeredCount : '—'}
+                  </div>
+                </div>
+              </div>
+              <div className="card flex items-center gap-3">
+                <Target className="w-5 h-5 text-emerald-600" />
+                <div>
+                  <div className="text-xs text-gray-600">Total quoted (completed)</div>
+                  <div className="text-lg font-bold text-emerald-700">
+                    {performanceOverviewLoading || !performanceOverview
+                      ? '—'
+                      : `₹${Number(performanceOverview.totalQuotedAmount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                  </div>
+                </div>
+              </div>
+              <div className="card flex items-center gap-3">
+                <FileText className="w-5 h-5 text-blue-600" />
+                <div>
+                  <div className="text-xs text-gray-600">Total leads</div>
                   <div className="text-lg font-bold">{stats.total}</div>
                 </div>
               </div>
@@ -1167,19 +1340,246 @@ export default function TelecallerRSAPage() {
               </div>
             </div>
 
+            {/* My Daily Focus */}
+            <div className="card">
+              <h2 className="text-sm sm:text-base font-bold text-text-heading mb-3 flex items-center gap-2">
+                <Target className="w-4 h-4 text-blue-600" />
+                My Daily Focus
+              </h2>
+              {performanceOverviewLoading ? (
+                <div className="text-sm text-gray-500 py-4 text-center">Loading focus metrics…</div>
+              ) : performanceOverview ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <div className="rounded-lg border p-3">
+                      <div className="text-[10px] sm:text-xs text-gray-500">Today follow-ups due</div>
+                      <div className="text-lg font-bold text-blue-600">{performanceOverview.todayFollowUpsDue}</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-[10px] sm:text-xs text-gray-500">High priority pending</div>
+                      <div className="text-lg font-bold text-amber-600">{performanceOverview.highPriorityPending}</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-[10px] sm:text-xs text-gray-500">No recording</div>
+                      <div className="text-lg font-bold text-gray-700">{performanceOverview.noRecording}</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-[10px] sm:text-xs text-gray-500">No summary</div>
+                      <div className="text-lg font-bold text-gray-700">{performanceOverview.noSummary}</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-[10px] sm:text-xs text-gray-500">No disposition</div>
+                      <div className="text-lg font-bold text-gray-700">{performanceOverview.noDisposition}</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-[10px] sm:text-xs text-gray-500">Conversion drop-off</div>
+                      <div className="text-lg font-bold text-gray-900">{performanceOverview.funnel.dropOffPercent}%</div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-4 text-xs sm:text-sm">
+                    {performanceOverview.avgTalkTimeSeconds != null && (
+                      <span className="flex items-center gap-1 text-gray-700">
+                        <PhoneCall className="w-3.5 h-3.5" />
+                        Avg talk: {Math.floor(performanceOverview.avgTalkTimeSeconds / 60)}m {performanceOverview.avgTalkTimeSeconds % 60}s
+                      </span>
+                    )}
+                    {performanceOverview.bestWindow && (
+                      <span className="flex items-center gap-1 text-green-700 font-medium">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        Best window: {performanceOverview.bestWindow.label} ({performanceOverview.bestWindow.completionRate}% completion)
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1 text-gray-700">
+                      <Award className="w-3.5 h-3.5" />
+                      Audited: {performanceOverview.personalQuality.auditedCount}
+                      {performanceOverview.personalQuality.avgScore != null && ` / ${performanceOverview.personalQuality.avgScore} avg`}
+                    </span>
+                  </div>
+                  {performanceOverview.personalQuality.lastFeedbackHighlights.length > 0 && (
+                    <div>
+                      <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">Recent audit feedback</div>
+                      <ul className="text-xs text-gray-700 space-y-0.5">
+                        {performanceOverview.personalQuality.lastFeedbackHighlights.slice(0, 3).map((a) => (
+                          <li key={a.sarv_call_id}>
+                            Score {a.audit_score} — {a.feedback ? `${a.feedback.slice(0, 80)}…` : '—'}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500 py-4 text-center">Focus metrics unavailable for this range.</div>
+              )}
+            </div>
+
+            {/* Needs Attention + Service breakdown (half & half) */}
+            <div className="card">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Left half: Needs Attention */}
+                <div>
+                  <h2 className="text-sm sm:text-base font-bold text-text-heading mb-3">Needs Attention</h2>
+                  {performanceOverview && (performanceOverview.needsAttention.length > 0 || performanceOverview.callsWithoutDisposition.length > 0) ? (
+                    <div className="space-y-3">
+                      {performanceOverview.needsAttention.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-xs">
+                            <thead>
+                              <tr className="text-left border-b text-gray-600">
+                                <th className="py-1.5 pr-2">Customer</th>
+                                <th className="py-1.5 pr-2">Phone</th>
+                                <th className="py-1.5 pr-2">Status</th>
+                                <th className="py-1.5 pr-2">Registered</th>
+                                <th className="py-1.5 pr-2">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {performanceOverview.needsAttention.slice(0, 10).map((row) => (
+                                <tr key={row.id} className="border-b last:border-b-0">
+                                  <td className="py-1.5 pr-2 font-medium">{row.customer_name || '—'}</td>
+                                  <td className="py-1.5 pr-2">{row.contact_number || '—'}</td>
+                                  <td className="py-1.5 pr-2">{row.lead_status || '—'}</td>
+                                  <td className="py-1.5 pr-2 whitespace-nowrap">
+                                    {formatDateTimeISTFromUTC(row.lead_registered_at)}
+                                  </td>
+                                  <td className="py-1.5 pr-2">
+                                    <Link
+                                      href={`/dashboard/telecaller/rsa/complaints/${row.id}`}
+                                      className="text-blue-600 hover:text-blue-700 font-semibold"
+                                    >
+                                      Open
+                                    </Link>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {performanceOverview.callsWithoutDisposition.length > 0 && (
+                        <div>
+                          <div className="text-xs font-semibold text-amber-700 mb-1">Calls missing disposition</div>
+                          <ul className="text-xs text-gray-700 space-y-1">
+                            {performanceOverview.callsWithoutDisposition.slice(0, 5).map((c) => (
+                              <li key={c.id}>
+                                <button
+                                  type="button"
+                                  className="text-left w-full rounded px-2 py-1.5 hover:bg-amber-50 hover:text-amber-800 text-blue-600 hover:underline cursor-pointer"
+                                  onClick={() => {
+                                    setTab('call_report');
+                                    setCallFilters((prev) => ({ ...prev, q: c.cnumber || '' }));
+                                    setCallPage(1);
+                                  }}
+                                >
+                                  {c.cnumber || '—'} — {formatDateTimeISTFromUTC(c.created_at)}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500 py-4">No items needing attention.</div>
+                  )}
+                </div>
+                {/* Right half: Service breakdown pie */}
+                <div>
+                  <h2 className="text-sm sm:text-base font-bold text-text-heading mb-3">Services (selected range)</h2>
+                  {overviewServiceBreakdown.length > 0 ? (
+                    (() => {
+                      const colors = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+                      const size = 140;
+                      const cx = size / 2;
+                      const cy = size / 2;
+                      const r = (size / 2) - 6;
+                      const toRad = (deg: number) => ((deg - 90) * Math.PI) / 180;
+                      const getXY = (angleDeg: number) => ({
+                        x: cx + r * Math.cos(toRad(angleDeg)),
+                        y: cy + r * Math.sin(toRad(angleDeg)),
+                      });
+                      let acc = 0;
+                      const slices = overviewServiceBreakdown.map((row, i) => {
+                        const startDeg = acc * 3.6;
+                        acc += row.percent;
+                        const endDeg = acc * 3.6;
+                        const start = getXY(startDeg);
+                        const end = getXY(endDeg);
+                        const large = row.percent > 50 ? 1 : 0;
+                        const d = `M ${cx} ${cy} L ${start.x} ${start.y} A ${r} ${r} 0 ${large} 1 ${end.x} ${end.y} Z`;
+                        return { ...row, d, color: colors[i % colors.length] };
+                      });
+                      return (
+                        <div className="flex flex-col sm:flex-row items-center gap-3">
+                          <div
+                            className="relative flex-shrink-0"
+                            onMouseLeave={() => setHoveredServicePie(null)}
+                          >
+                            <svg width={size} height={size}>
+                              {slices.map((slice) => (
+                                <path
+                                  key={slice.name}
+                                  d={slice.d}
+                                  fill={slice.color}
+                                  className="cursor-pointer transition-opacity hover:opacity-90"
+                                  onMouseEnter={() => setHoveredServicePie({ name: slice.name, count: slice.count, percent: slice.percent })}
+                                />
+                              ))}
+                            </svg>
+                            {hoveredServicePie && (
+                              <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-full z-10 mb-1 pointer-events-none">
+                                <div className="bg-gray-900 text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg whitespace-nowrap">
+                                  <div className="font-semibold">{hoveredServicePie.name}</div>
+                                  <div>Count: {hoveredServicePie.count}</div>
+                                  <div>{hoveredServicePie.percent}% of total</div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-1 min-w-0">
+                            {overviewServiceBreakdown.map((row, i) => (
+                              <div
+                                key={row.name}
+                                className="flex items-center gap-2 text-xs rounded px-1 py-0.5 cursor-pointer hover:bg-gray-100"
+                                onMouseEnter={() => setHoveredServicePie({ name: row.name, count: row.count, percent: row.percent })}
+                                onMouseLeave={() => setHoveredServicePie(null)}
+                              >
+                                <span
+                                  className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                                  style={{ backgroundColor: colors[i % colors.length] }}
+                                />
+                                <span className="text-gray-700 truncate">{row.name}</span>
+                                <span className="font-semibold text-gray-900 whitespace-nowrap">{row.count} ({row.percent}%)</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="text-xs text-gray-500 py-4">No service data in selected range.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="card">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm sm:text-base font-bold text-text-heading">Recent RSA leads</h2>
                 <div className="flex items-center gap-3">
                   <div className="text-xs text-gray-500">
-                    Showing {filteredLeads.length}
-                    {leadStatusFilter ? ` / ${leads.length}` : ''} {loading ? '(loading...)' : ''}
+                    Showing {filteredLeads.length === 0 ? 0 : (overviewPage - 1) * OVERVIEW_PAGE_SIZE + 1}-
+                    {Math.min(overviewPage * OVERVIEW_PAGE_SIZE, filteredLeads.length)} of {filteredLeads.length}
+                    {leadStatusFilter ? ` / ${overviewLeadsInRange.length}` : ''} {loading ? '(loading...)' : ''}
                   </div>
                   <div className="min-w-[170px]">
                     <select
                       className="w-full border rounded-md px-2 py-1.5 text-xs"
                       value={leadStatusFilter}
-                      onChange={(e) => setLeadStatusFilter(e.target.value)}
+                      onChange={(e) => {
+                        setLeadStatusFilter(e.target.value);
+                        setOverviewPage(1);
+                      }}
                     >
                       <option value="">All Status</option>
                       {statusFilterOptions.map((s) => (
@@ -1197,99 +1597,124 @@ export default function TelecallerRSAPage() {
                   No RSA leads found.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-xs sm:text-sm">
-                    <thead>
-                      <tr className="text-left text-gray-600 border-b">
-                        <th className="py-2 pr-3">Customer</th>
-                        <th className="py-2 pr-3">Phone</th>
-                        <th className="py-2 pr-3">Vehicle</th>
-                        <th className="py-2 pr-3">Service</th>
-                        <th className="py-2 pr-3">Status</th>
-                        <th className="py-2 pr-3">Registered</th>
-                        <th className="py-2 pr-3">Calls</th>
-                        <th className="py-2 pr-3">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredLeads.map((l) => (
-                        <tr
-                          key={l.id}
-                          className={`border-b last:border-b-0 cursor-pointer ${leadRowClass(l.lead_status || l.complaint_status || '')}`}
-                          onClick={() => openComplaintDetails(l)}
-                        >
-                          <td className="py-2 pr-3 font-semibold">{l.customer_name || '—'}</td>
-                          <td className="py-2 pr-3">{l.contact_number || '—'}</td>
-                          <td className="py-2 pr-3">
-                            {l.vehicle_number ? (
-                              <span className="font-mono">{l.vehicle_number}</span>
-                            ) : (
-                              <span className="text-gray-600">{l.vehicle_model || '—'}</span>
-                            )}
-                          </td>
-                          <td className="py-2 pr-3">{l.service_type || '—'}</td>
-                          <td className="py-2 pr-3">
-                            <span
-                              className={`px-2 py-1 rounded-full border ${statusBadgeClass(
-                                l.lead_status || l.complaint_status || ''
-                              )}`}
-                            >
-                              {statusLabel(l.lead_status || l.complaint_status || '—')}
-                            </span>
-                          </td>
-                          <td className="py-2 pr-3">
-                            {formatDateTimeISTFromUTC(l.lead_registered_at || l.requested_at)}
-                          </td>
-                          <td className="py-2 pr-3">
-                            <button
-                              type="button"
-                              className="text-blue-600 hover:text-blue-700 font-semibold"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openSarvCalls(l);
-                              }}
-                            >
-                              View calls
-                            </button>
-                          </td>
-                          <td className="py-2 pr-3">
-                            {!l.assigned_mechanic_id ? (
-                              <div className="flex items-center gap-3">
-                                <button
-                                  type="button"
-                                  className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openEditLead(l);
-                                  }}
-                                  title="Edit lead (allowed until mechanic is assigned)"
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                  Edit
-                                </button>
-                                {isPendingComplaint(l) ? (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs sm:text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-600 border-b">
+                          <th className="py-2 pr-3">Customer</th>
+                          <th className="py-2 pr-3">Phone</th>
+                          <th className="py-2 pr-3">Vehicle</th>
+                          <th className="py-2 pr-3">Service</th>
+                          <th className="py-2 pr-3">Status</th>
+                          <th className="py-2 pr-3">Registered</th>
+                          <th className="py-2 pr-3">Calls</th>
+                          <th className="py-2 pr-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedLeads.map((l) => (
+                          <tr
+                            key={l.id}
+                            className={`border-b last:border-b-0 cursor-pointer ${leadRowClass(l.lead_status || l.complaint_status || '')}`}
+                            onClick={() => openComplaintDetails(l)}
+                          >
+                            <td className="py-2 pr-3 font-semibold">{l.customer_name || '—'}</td>
+                            <td className="py-2 pr-3">{l.contact_number || '—'}</td>
+                            <td className="py-2 pr-3">
+                              {l.vehicle_number ? (
+                                <span className="font-mono">{l.vehicle_number}</span>
+                              ) : (
+                                <span className="text-gray-600">{l.vehicle_model || '—'}</span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3">{l.service_type || '—'}</td>
+                            <td className="py-2 pr-3">
+                              <span
+                                className={`px-2 py-1 rounded-full border ${statusBadgeClass(
+                                  l.lead_status || l.complaint_status || ''
+                                )}`}
+                              >
+                                {statusLabel(l.lead_status || l.complaint_status || '—')}
+                              </span>
+                            </td>
+                            <td className="py-2 pr-3">
+                              {formatDateTimeISTFromUTC(l.lead_registered_at || l.requested_at)}
+                            </td>
+                            <td className="py-2 pr-3">
+                              <button
+                                type="button"
+                                className="text-blue-600 hover:text-blue-700 font-semibold"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openSarvCalls(l);
+                                }}
+                              >
+                                View calls
+                              </button>
+                            </td>
+                            <td className="py-2 pr-3">
+                              {!l.assigned_mechanic_id ? (
+                                <div className="flex items-center gap-3">
                                   <button
                                     type="button"
-                                    className="text-red-600 hover:text-red-700 font-semibold"
+                                    className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      openCancelLead(l);
+                                      openEditLead(l);
                                     }}
-                                    title="Cancel this pending complaint"
+                                    title="Edit lead (allowed until mechanic is assigned)"
                                   >
-                                    Cancel
+                                    <Pencil className="w-3.5 h-3.5" />
+                                    Edit
                                   </button>
-                                ) : null}
-                              </div>
-                            ) : (
-                              <span className="text-gray-400 text-xs">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                                  {isPendingComplaint(l) ? (
+                                    <button
+                                      type="button"
+                                      className="text-red-600 hover:text-red-700 font-semibold"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openCancelLead(l);
+                                      }}
+                                      title="Cancel this pending complaint"
+                                    >
+                                      Cancel
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-xs">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {filteredLeads.length > OVERVIEW_PAGE_SIZE ? (
+                    <div className="flex items-center justify-end gap-2 mt-3 text-xs">
+                      <button
+                        type="button"
+                        className="px-2 py-1 border rounded disabled:opacity-50"
+                        disabled={overviewPage === 1}
+                        onClick={() => setOverviewPage((prev) => Math.max(1, prev - 1))}
+                      >
+                        Previous
+                      </button>
+                      <span className="text-gray-600">
+                        Page {overviewPage} of {overviewTotalPages}
+                      </span>
+                      <button
+                        type="button"
+                        className="px-2 py-1 border rounded disabled:opacity-50"
+                        disabled={overviewPage >= overviewTotalPages}
+                        onClick={() => setOverviewPage((prev) => Math.min(overviewTotalPages, prev + 1))}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
           </div>

@@ -219,14 +219,16 @@ export default function RSAManagerDashboard() {
   const [tab, setTab] = useState<TabKey>('overview');
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    total_leads: 0,
-    pending_leads: 0,
-    completed_leads: 0,
-    cancelled_leads: 0,
-    assigned_to_me: 0,
-    unassigned_leads: 0
+  const [overviewDateRange, setOverviewDateRange] = useState(() => {
+    const today = new Date();
+    const from = addDays(today, -6);
+    return {
+      from: formatDateInput(from),
+      to: formatDateInput(today),
+    };
   });
+  const OVERVIEW_PAGE_SIZE = 10;
+  const [overviewPage, setOverviewPage] = useState(1);
   
   const [filter, setFilter] = useState<'assigned' | 'pending' | 'completed' | 'cancelled'>('assigned');
   const [searchTerm, setSearchTerm] = useState('');
@@ -280,7 +282,7 @@ export default function RSAManagerDashboard() {
     if (user) {
       fetchData();
     }
-  }, [user, filter]);
+  }, [user]);
 
   useEffect(() => {
     if (tab !== 'call_report') return;
@@ -329,32 +331,7 @@ export default function RSAManagerDashboard() {
       const assignedOnly = (Array.isArray(leadsData) ? leadsData : []).filter(
         (lead: any) => lead?.assigned_manager_id && lead.assigned_manager_id === managerId
       );
-
-      const normalizeStatus = (lead: any) =>
-        String(lead?.lead_status || lead?.complaint_status || '').toLowerCase();
-
-      const isCompleted = (s: string) => s === 'completed' || s === 'closed';
-      const isCancelled = (s: string) => s === 'cancelled';
-      const isPending = (s: string) => !isCompleted(s) && !isCancelled(s);
-
-      const filteredByStatus = assignedOnly.filter((lead: any) => {
-        const s = normalizeStatus(lead);
-        if (filter === 'assigned') return true;
-        if (filter === 'pending') return isPending(s);
-        if (filter === 'completed') return isCompleted(s);
-        if (filter === 'cancelled') return isCancelled(s);
-        return true;
-      });
-
-      setLeads(filteredByStatus);
-      setStats({
-        total_leads: assignedOnly.length,
-        pending_leads: assignedOnly.filter((l: any) => isPending(normalizeStatus(l))).length,
-        completed_leads: assignedOnly.filter((l: any) => isCompleted(normalizeStatus(l))).length,
-        cancelled_leads: assignedOnly.filter((l: any) => isCancelled(normalizeStatus(l))).length,
-        assigned_to_me: assignedOnly.length,
-        unassigned_leads: 0,
-      });
+      setLeads(assignedOnly);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -523,11 +500,72 @@ export default function RSAManagerDashboard() {
     );
   };
 
-  const filteredLeads = leads.filter(lead =>
-    lead.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lead.contact_number?.includes(searchTerm) ||
-    lead.vehicle_number?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const normalizeStatus = (lead: any) =>
+    String(lead?.lead_status || lead?.complaint_status || '').toLowerCase();
+
+  const isCompleted = (s: string) => s === 'completed' || s === 'closed';
+  const isCancelled = (s: string) => s === 'cancelled';
+  const isPending = (s: string) => !isCompleted(s) && !isCancelled(s);
+
+  const overviewLeadsInRange = useMemo(() => {
+    const fromISO = overviewDateRange.from ? toISTBoundaryISO(overviewDateRange.from, false) : null;
+    const toISO = overviewDateRange.to ? toISTBoundaryISO(overviewDateRange.to, true) : null;
+    const fromTs = fromISO ? new Date(fromISO).getTime() : Number.NEGATIVE_INFINITY;
+    const toTs = toISO ? new Date(toISO).getTime() : Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(fromTs) || !Number.isFinite(toTs)) return leads;
+
+    return leads.filter((lead) => {
+      const raw = lead?.lead_registered_at || lead?.requested_at;
+      if (!raw) return false;
+      const ts = new Date(raw).getTime();
+      if (!Number.isFinite(ts)) return false;
+      return ts >= fromTs && ts <= toTs;
+    });
+  }, [leads, overviewDateRange.from, overviewDateRange.to]);
+
+  const overviewStats = useMemo(() => ({
+    total_leads: overviewLeadsInRange.length,
+    pending_leads: overviewLeadsInRange.filter((l: any) => isPending(normalizeStatus(l))).length,
+    completed_leads: overviewLeadsInRange.filter((l: any) => isCompleted(normalizeStatus(l))).length,
+    cancelled_leads: overviewLeadsInRange.filter((l: any) => isCancelled(normalizeStatus(l))).length,
+  }), [overviewLeadsInRange]);
+
+  const statusFilteredLeads = useMemo(() => {
+    return overviewLeadsInRange.filter((lead: any) => {
+      const s = normalizeStatus(lead);
+      if (filter === 'assigned') return true;
+      if (filter === 'pending') return isPending(s);
+      if (filter === 'completed') return isCompleted(s);
+      if (filter === 'cancelled') return isCancelled(s);
+      return true;
+    });
+  }, [overviewLeadsInRange, filter]);
+
+  const filteredLeads = useMemo(() => {
+    const q = searchTerm.toLowerCase().trim();
+    if (!q) return statusFilteredLeads;
+    return statusFilteredLeads.filter((lead) =>
+      lead.customer_name?.toLowerCase().includes(q) ||
+      lead.contact_number?.includes(searchTerm) ||
+      lead.vehicle_number?.toLowerCase().includes(q)
+    );
+  }, [statusFilteredLeads, searchTerm]);
+
+  const overviewTotalPages = Math.max(1, Math.ceil(filteredLeads.length / OVERVIEW_PAGE_SIZE));
+  const paginatedLeads = useMemo(() => {
+    const start = (overviewPage - 1) * OVERVIEW_PAGE_SIZE;
+    return filteredLeads.slice(start, start + OVERVIEW_PAGE_SIZE);
+  }, [filteredLeads, overviewPage]);
+
+  useEffect(() => {
+    setOverviewPage(1);
+  }, [overviewDateRange.from, overviewDateRange.to, filter, searchTerm]);
+
+  useEffect(() => {
+    if (overviewPage > overviewTotalPages) {
+      setOverviewPage(overviewTotalPages);
+    }
+  }, [overviewPage, overviewTotalPages]);
 
   return (
     <DashboardLayout role="rsa_manager">
@@ -903,6 +941,46 @@ export default function RSAManagerDashboard() {
 
         {tab === 'overview' ? (
         <div className="space-y-4">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div className="text-xs text-gray-600">
+              Overview defaults to last 7 days. Stats and RSA Leads both follow this date range.
+            </div>
+            <div className="flex items-end gap-2">
+              <label className="text-xs text-gray-600">
+                From
+                <input
+                  className="block mt-1 border rounded-md px-2 py-1.5 text-xs"
+                  type="date"
+                  value={overviewDateRange.from}
+                  max={overviewDateRange.to || undefined}
+                  onChange={(e) =>
+                    setOverviewDateRange((prev) => ({
+                      ...prev,
+                      from: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="text-xs text-gray-600">
+                To
+                <input
+                  className="block mt-1 border rounded-md px-2 py-1.5 text-xs"
+                  type="date"
+                  value={overviewDateRange.to}
+                  min={overviewDateRange.from || undefined}
+                  onChange={(e) =>
+                    setOverviewDateRange((prev) => ({
+                      ...prev,
+                      to: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
         {/* Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-7 md:mb-8">
           <Link href="/dashboard/rsa_manager/leads?status=assigned">
@@ -910,7 +988,7 @@ export default function RSAManagerDashboard() {
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs sm:text-sm text-gray-600">My Complaints</p>
-                  <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_leads}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-gray-900">{overviewStats.total_leads}</p>
                 </div>
                 <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-blue-500 flex-shrink-0" />
               </div>
@@ -922,7 +1000,7 @@ export default function RSAManagerDashboard() {
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs sm:text-sm text-gray-600">Pending</p>
-                  <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.pending_leads}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-yellow-600">{overviewStats.pending_leads}</p>
                 </div>
                 <Clock className="w-7 h-7 sm:w-8 sm:h-8 text-yellow-500 flex-shrink-0" />
               </div>
@@ -934,7 +1012,7 @@ export default function RSAManagerDashboard() {
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs sm:text-sm text-gray-600">Completed</p>
-                  <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.completed_leads}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-green-600">{overviewStats.completed_leads}</p>
                 </div>
                 <CheckCircle className="w-7 h-7 sm:w-8 sm:h-8 text-green-500 flex-shrink-0" />
               </div>
@@ -946,7 +1024,7 @@ export default function RSAManagerDashboard() {
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs sm:text-sm text-gray-600">Cancelled</p>
-                  <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.cancelled_leads}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-red-600">{overviewStats.cancelled_leads}</p>
                 </div>
                 <XCircle className="w-7 h-7 sm:w-8 sm:h-8 text-red-500 flex-shrink-0" />
               </div>
@@ -990,7 +1068,13 @@ export default function RSAManagerDashboard() {
         {/* Leads List */}
         <div className="bg-white rounded-lg shadow">
           <div className="p-4 sm:p-5 md:p-6">
-            <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">RSA Leads</h2>
+            <div className="flex items-center justify-between gap-3 mb-3 sm:mb-4">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">RSA Leads</h2>
+              <div className="text-xs text-gray-500">
+                Showing {filteredLeads.length === 0 ? 0 : (overviewPage - 1) * OVERVIEW_PAGE_SIZE + 1}-
+                {Math.min(overviewPage * OVERVIEW_PAGE_SIZE, filteredLeads.length)} of {filteredLeads.length}
+              </div>
+            </div>
             
             {loading ? (
               <div className="text-center py-8 sm:py-10 md:py-12">
@@ -1004,7 +1088,7 @@ export default function RSAManagerDashboard() {
               </div>
             ) : (
               <div className="space-y-3 sm:space-y-4">
-                {filteredLeads.map((lead) => (
+                {paginatedLeads.map((lead) => (
                   <Link
                     key={lead.id}
                     href={`/dashboard/rsa_manager/leads/${lead.id}`}
@@ -1063,6 +1147,29 @@ export default function RSAManagerDashboard() {
                     </div>
                   </Link>
                 ))}
+                {filteredLeads.length > OVERVIEW_PAGE_SIZE ? (
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      className="btn btn-outline text-xs px-3 py-1.5"
+                      onClick={() => setOverviewPage((p) => Math.max(1, p - 1))}
+                      disabled={overviewPage <= 1}
+                    >
+                      Prev
+                    </button>
+                    <div className="text-xs text-gray-500">
+                      Page {overviewPage} of {overviewTotalPages}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-outline text-xs px-3 py-1.5"
+                      onClick={() => setOverviewPage((p) => Math.min(overviewTotalPages, p + 1))}
+                      disabled={overviewPage >= overviewTotalPages}
+                    >
+                      Next
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
