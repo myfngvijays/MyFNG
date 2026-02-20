@@ -41,6 +41,33 @@ import { useAuthStore } from '@/store/authStore';
 import NotificationBell from '@/components/NotificationBell';
 
 const SIDEBAR_COLLAPSED_KEY = 'myfng:dashboardSidebarCollapsed';
+const AANSH_SESSION_KEY = 'myfng:aansh_session';
+
+function getStoredAanshSession(): { session_token: string; aansh_id: number; expires_at: string } | null {
+  try {
+    const raw = sessionStorage.getItem(AANSH_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { session_token?: string; aansh_id?: number; expires_at?: string };
+    if (!parsed?.session_token || parsed?.aansh_id == null || !parsed?.expires_at) return null;
+    if (new Date(parsed.expires_at).getTime() <= Date.now()) return null;
+    return {
+      session_token: parsed.session_token,
+      aansh_id: parsed.aansh_id,
+      expires_at: parsed.expires_at,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function setStoredAanshSession(session: { session_token: string; aansh_id: number; expires_at: string } | null) {
+  try {
+    if (session) sessionStorage.setItem(AANSH_SESSION_KEY, JSON.stringify(session));
+    else sessionStorage.removeItem(AANSH_SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -70,6 +97,17 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   });
   const [loading, setLoading] = useState(true);
 
+  const eligibleForAansh = role && ['TELECALLER', 'RSA_MANAGER'].includes(role.toUpperCase());
+  const [aanshAvailable, setAanshAvailable] = useState<{ aansh_id: number; system_name: string | null }[]>([]);
+  const [aanshSession, setAanshSession] = useState<{
+    session_token: string;
+    aansh_id: number;
+    expires_at: string;
+  } | null>(null);
+  const [aanshModalOpen, setAanshModalOpen] = useState(false);
+  const [aanshLoading, setAanshLoading] = useState(false);
+  const [aanshClaiming, setAanshClaiming] = useState(false);
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -81,6 +119,93 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       // ignore
     }
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (!eligibleForAansh || loading) return;
+    const stored = getStoredAanshSession();
+    if (stored) {
+      setAanshSession(stored);
+      setAanshModalOpen(false);
+    }
+    let cancelled = false;
+    setAanshLoading(true);
+    fetch('/api/sarv-aansh/session/available')
+      .then((r) => r.json())
+      .then(async (data: { available?: { aansh_id: number; system_name: string | null }[]; currentSession?: { aansh_id: number; session_token: string; expires_at: string } | null }) => {
+        if (cancelled) return;
+        setAanshAvailable(Array.isArray(data.available) ? data.available : []);
+        if (data.currentSession?.session_token && data.currentSession?.aansh_id != null) {
+          const session = {
+            session_token: data.currentSession.session_token,
+            aansh_id: data.currentSession.aansh_id,
+            expires_at: data.currentSession.expires_at,
+          };
+          setAanshSession(session);
+          setStoredAanshSession(session);
+          setAanshModalOpen(false);
+          return;
+        }
+        const hadStored = stored ?? getStoredAanshSession();
+        if (hadStored) {
+          const heart = await fetch('/api/sarv-aansh/session/heartbeat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_token: hadStored.session_token }),
+          }).then((res) => res.json()).catch(() => ({}));
+          if (!cancelled && heart?.expires_at) {
+            const session = { ...hadStored, expires_at: heart.expires_at };
+            setAanshSession(session);
+            setStoredAanshSession(session);
+            setAanshModalOpen(false);
+            return;
+          }
+        }
+        if (!cancelled) {
+          setAanshSession(null);
+          setStoredAanshSession(null);
+          if (Array.isArray(data.available) && data.available.length > 0) {
+            setAanshModalOpen(true);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAanshAvailable([]);
+          setStoredAanshSession(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAanshLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, eligibleForAansh]);
+
+  useEffect(() => {
+    if (!aanshSession?.session_token) return;
+    const t = setInterval(() => {
+      fetch('/api/sarv-aansh/session/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_token: aanshSession.session_token }),
+      })
+        .then((r) => r.json())
+        .then((data: { expires_at?: string }) => {
+          if (data.expires_at) {
+            setAanshSession((prev) => (prev ? { ...prev, expires_at: data.expires_at! } : null));
+          }
+        })
+        .catch(() => {
+          setAanshSession(null);
+        });
+    }, 10000);
+    return () => clearInterval(t);
+  }, [aanshSession?.session_token]);
+
+  // Note: do NOT auto-release on beforeunload.
+  // Refresh/navigation also triggers beforeunload, which would incorrectly free Aansh.
+  // We keep explicit release on logout; browser close fallback is handled by short TTL + heartbeat.
 
   const withTimeout = async <T,>(p: PromiseLike<T>, ms: number, label: string): Promise<T> => {
     const promise = Promise.resolve(p as any) as Promise<T>;
@@ -186,10 +311,74 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   };
 
   const handleLogout = async () => {
+    if (eligibleForAansh && aanshSession?.session_token) {
+      try {
+        await fetch('/api/sarv-aansh/session/release', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_token: aanshSession.session_token }),
+        });
+      } catch {
+        // best-effort release
+      }
+      setAanshSession(null);
+      setStoredAanshSession(null);
+    }
     const supabase = createClient();
     await supabase.auth.signOut();
     logout();
     router.push('/login');
+  };
+
+  const handleAanshClaim = async (aanshId: number) => {
+    setAanshClaiming(true);
+    try {
+      const res = await fetch('/api/sarv-aansh/session/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aansh_id: aanshId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Claim failed');
+      const session = {
+        session_token: data.session_token,
+        aansh_id: data.aansh_id,
+        expires_at: data.expires_at,
+      };
+      setAanshSession(session);
+      setStoredAanshSession(session);
+      setAanshModalOpen(false);
+      setAanshAvailable((prev) => prev.filter((item) => item.aansh_id !== aanshId));
+    } catch (e: any) {
+      alert(e?.message || 'Failed to claim Aansh');
+    } finally {
+      setAanshClaiming(false);
+    }
+  };
+
+  const openAanshSelector = async () => {
+    if (!eligibleForAansh) return;
+    setAanshModalOpen(true);
+    setAanshLoading(true);
+    try {
+      const res = await fetch('/api/sarv-aansh/session/available');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to load Aansh options');
+      setAanshAvailable(Array.isArray(data.available) ? data.available : []);
+      if (data.currentSession?.session_token && data.currentSession?.aansh_id != null) {
+        const session = {
+          session_token: data.currentSession.session_token,
+          aansh_id: data.currentSession.aansh_id,
+          expires_at: data.currentSession.expires_at,
+        };
+        setAanshSession(session);
+        setStoredAanshSession(session);
+      }
+    } catch {
+      setAanshAvailable([]);
+    } finally {
+      setAanshLoading(false);
+    }
   };
 
   // Get role-specific menu items
@@ -266,6 +455,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/rsa_manager', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/rsa_manager/leads', icon: <FileText className="w-5 h-5" />, label: 'View All Complaints' },
         { href: '/dashboard/rsa_manager/create-complaint', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Create Complaint' },
+        { href: '/dashboard/rsa_manager/car-service-enquiry', icon: <Car className="w-5 h-5" />, label: 'Car Service Enquiry' },
         { href: '/dashboard/rsa_manager/registered', icon: <ClipboardCheck className="w-5 h-5" />, label: 'View Registered' },
         { href: '/dashboard/rsa_manager/payments', icon: <DollarSign className="w-5 h-5" />, label: 'Payment' },
         { href: '/dashboard/rsa_manager/mechanics', icon: <Wrench className="w-5 h-5" />, label: 'Manage Mechanics' },
@@ -411,6 +601,16 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
+            {eligibleForAansh && aanshSession && (
+              <button
+                type="button"
+                onClick={openAanshSelector}
+                title="Change Aansh"
+                className="hidden sm:inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 hover:bg-blue-100"
+              >
+                Aansh: {aanshSession.aansh_id}
+              </button>
+            )}
             <NotificationBell />
             
             <div className="flex items-center gap-2 sm:gap-3">
@@ -482,6 +682,51 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           className="fixed inset-0 bg-black/50 z-20 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
+      )}
+
+      {/* Aansh selector modal (TELECALLER / RSA_MANAGER) - only after session check done, so refresh keeps same Aansh */}
+      {eligibleForAansh && aanshModalOpen && !aanshLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-semibold text-gray-900">Select Aansh ID</h2>
+              {aanshSession ? (
+                <button
+                  type="button"
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                  onClick={() => setAanshModalOpen(false)}
+                >
+                  Close
+                </button>
+              ) : null}
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              Choose an available Aansh to receive SARV calls. It will be released when you log out or close the browser.
+            </p>
+            {aanshSession ? (
+              <p className="text-xs text-blue-700 mb-3">Current Aansh: {aanshSession.aansh_id}</p>
+            ) : null}
+            {aanshLoading ? (
+              <div className="py-6 text-center text-gray-500">Loading...</div>
+            ) : aanshAvailable.length === 0 ? (
+              <p className="text-sm text-amber-600 py-2">No Aansh IDs available. Contact admin or try again later.</p>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {aanshAvailable.map((item) => (
+                  <button
+                    key={item.aansh_id}
+                    type="button"
+                    onClick={() => handleAanshClaim(item.aansh_id)}
+                    disabled={aanshClaiming}
+                    className="w-full flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:border-blue-200 disabled:opacity-50"
+                  >
+                    {aanshClaiming ? 'Claiming...' : item.system_name ? `${item.system_name} (${item.aansh_id})` : `Aansh ${item.aansh_id}`}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

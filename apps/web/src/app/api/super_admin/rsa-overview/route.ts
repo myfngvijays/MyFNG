@@ -285,6 +285,97 @@ export async function GET(request: NextRequest) {
       console.warn('Failed to count company mechanics:', mechCountError?.message);
     }
 
+    let totalLinkGeneratedCount = 0;
+    let totalLinkGeneratedAmount = 0;
+    let totalCapturedPaymentCount = 0;
+    let totalCapturedPaymentAmount = 0;
+    let totalRefundCount = 0;
+    let totalRefundAmount = 0;
+    let paymentRowsForTable: Array<{
+      order_id: string | null;
+      payment_id: string | null;
+      customer_name: string | null;
+      customer_phone: string | null;
+      employee_name: string | null;
+      employee_role: string | null;
+      status: string | null;
+      amount: number;
+      captured_amount: number;
+      refunded_amount: number;
+      created_at: string | null;
+    }> = [];
+
+    // Payment KPIs for selected range.
+    // Uses direct-pay ledger table created for RSA pay links.
+    try {
+      const { data: paymentRows, error: paymentError } = await db
+        .from('Razorpay_Direct_pay_RSA')
+        .select('order_id, payment_id, customer_name, customer_phone, amount, amount_paise, status, notes, razorpay_payload, created_at')
+        .gte('created_at', from)
+        .lte('created_at', to)
+        .order('created_at', { ascending: false })
+        .limit(10000);
+
+      if (!paymentError && Array.isArray(paymentRows)) {
+        totalLinkGeneratedCount = paymentRows.length;
+
+        for (const row of paymentRows) {
+          const baseAmount =
+            row?.amount != null
+              ? Number(row.amount)
+              : row?.amount_paise != null
+                ? Number(row.amount_paise) / 100
+                : 0;
+          const safeAmount = Number.isFinite(baseAmount) ? baseAmount : 0;
+          totalLinkGeneratedAmount += safeAmount;
+
+          const payload = row?.razorpay_payload && typeof row.razorpay_payload === 'object' ? row.razorpay_payload : {};
+          const notes = row?.notes && typeof row?.notes === 'object' ? row.notes : {};
+          const status = String(row?.status || '').toUpperCase();
+          const capturedPaise = Number(payload?.amount_captured || 0);
+          const refundedPaise = Number(payload?.amount_refunded || 0);
+
+          const capturedAmount =
+            capturedPaise > 0
+              ? capturedPaise / 100
+              : ['SUCCESS', 'PAID', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(status)
+                ? safeAmount
+                : 0;
+          if (capturedAmount > 0) {
+            totalCapturedPaymentCount += 1;
+            totalCapturedPaymentAmount += capturedAmount;
+          }
+
+          const refundedAmount =
+            refundedPaise > 0
+              ? refundedPaise / 100
+              : ['REFUNDED', 'PARTIALLY_REFUNDED'].includes(status)
+                ? safeAmount
+                : 0;
+          if (refundedAmount > 0) {
+            totalRefundCount += 1;
+            totalRefundAmount += refundedAmount;
+          }
+
+          paymentRowsForTable.push({
+            order_id: row?.order_id ? String(row.order_id) : null,
+            payment_id: row?.payment_id ? String(row.payment_id) : null,
+            customer_name: row?.customer_name ? String(row.customer_name) : null,
+            customer_phone: row?.customer_phone ? String(row.customer_phone) : null,
+            employee_name: notes?.generated_by_name ? String(notes.generated_by_name) : null,
+            employee_role: notes?.generated_by_role ? String(notes.generated_by_role) : null,
+            status: row?.status ? String(row.status) : null,
+            amount: safeAmount,
+            captured_amount: capturedAmount,
+            refunded_amount: refundedAmount,
+            created_at: row?.created_at ? String(row.created_at) : null,
+          });
+        }
+      }
+    } catch {
+      // Non-fatal: keep payment KPIs as 0 if table/schema not available.
+    }
+
     return NextResponse.json({
       range: { from, to },
       status_options: statusOptions,
@@ -300,7 +391,14 @@ export async function GET(request: NextRequest) {
         payment_to_mechanic: paymentToMechanic,
         // Business rule: profit = quoted - mechanic payment
         company_profit: totalQuoted - paymentToMechanic,
+        total_link_generated_count: totalLinkGeneratedCount,
+        total_link_generated_amount: totalLinkGeneratedAmount,
+        total_captured_payment_count: totalCapturedPaymentCount,
+        total_captured_payment_amount: totalCapturedPaymentAmount,
+        total_refund_count: totalRefundCount,
+        total_refund_amount: totalRefundAmount,
       },
+      payment_rows: paymentRowsForTable,
       breakdowns: {
         department: finalizeBreakdown(deptMap),
         district: finalizeBreakdown(districtMap),

@@ -30,6 +30,14 @@ function digits10(input: unknown) {
 }
 
 function pickRecordingUrl(payload: SarvPayload) {
+  const direct =
+    payload?.recording_url ||
+    payload?.recordingUrl ||
+    payload?.recordingURL ||
+    payload?.recording ||
+    '';
+  if (direct) return String(direct);
+
   const ahDetail = parseJsonSafe<any[]>(payload?.aHDetail ?? payload?.ahdetail, []);
   const answered = ahDetail.find((item) => String(item?.status || '').toLowerCase() === 'answered');
   const candidate = answered?.recordingUrl || answered?.recording || '';
@@ -60,96 +68,25 @@ function getValue(payload: SarvPayload, keys: string[]) {
   return null;
 }
 
-function isTimeInWindow(timeValue: string, from: string | null, to: string | null) {
-  if (!from || !to) return true;
-  if (from <= to) {
-    return timeValue >= from && timeValue <= to;
-  }
-  // Overnight window (e.g. 22:00 to 02:00)
-  return timeValue >= from || timeValue <= to;
-}
-
-function parseSarvTimestamp(input: string | null) {
-  if (!input) return null;
-  const raw = String(input).trim();
-  if (!raw) return null;
-  const hasTz = raw.endsWith('Z') || /[+\-]\d{2}:?\d{2}$/.test(raw);
-  const hasT = raw.includes('T');
-
-  if (hasTz) {
-    const dt = new Date(raw);
-    if (Number.isNaN(dt.getTime())) return null;
-    const iso = dt.toISOString();
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Kolkata',
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    }).formatToParts(dt);
-    const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
-    const weekday = get('weekday');
-    const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    const day = dayMap[weekday] ?? 0;
-    const timeValue = `${get('hour')}:${get('minute')}:${get('second')}`;
-    return { iso, day, timeValue };
-  }
-
-  // Assume SARV timestamps are local IST if no timezone provided.
-  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
-  if (!match) return null;
-  const [, y, mo, d, hh, mm, ss = '00'] = match;
-  const utcMs = Date.UTC(
-    Number(y),
-    Number(mo) - 1,
-    Number(d),
-    Number(hh) - 5,
-    Number(mm) - 30,
-    Number(ss)
-  );
-  const dt = new Date(utcMs);
-  const iso = dt.toISOString();
-  const day = dt.getUTCDay();
-  const timeValue = `${hh}:${mm}:${ss}`;
-  return { iso, day, timeValue };
-}
-
-async function resolveAssignee(db: any, aanshIds: number[], custAnswerSTime: string | null) {
-  if (!aanshIds.length || !custAnswerSTime) return null;
-  const stamp = parseSarvTimestamp(custAnswerSTime);
-  if (!stamp) return null;
-  const { day, timeValue, iso } = stamp;
+/** Resolve assignee from active session-based locks (sarv_aansh_sessions). */
+async function resolveAssignee(db: any, aanshIds: number[]) {
+  if (!aanshIds.length) return null;
+  const now = new Date().toISOString();
 
   for (const aanshId of aanshIds) {
-    const { data: mapping } = await db
-      .from('sarv_aansh_mappings')
-      .select('assignee_id, assignee_role, telecaller_id, effective_from, effective_to, day_of_week, time_from, time_to')
+    const { data: row } = await db
+      .from('sarv_aansh_sessions')
+      .select('user_id, assignee_role')
       .eq('aansh_id', aanshId)
-      .lte('effective_from', iso)
-      .or(`effective_to.is.null,effective_to.gte.${iso}`)
-      .order('effective_from', { ascending: false })
-      .limit(10);
+      .is('released_at', null)
+      .gt('expires_at', now)
+      .limit(1)
+      .maybeSingle();
 
-    const rows = Array.isArray(mapping) ? mapping : mapping ? [mapping] : [];
-    for (const row of rows) {
-      const days = Array.isArray(row.day_of_week) ? row.day_of_week : null;
-      const dayMatch = !days || days.length === 0 || days.includes(day);
-      if (!dayMatch) continue;
-
-      const from = row.time_from ? String(row.time_from).slice(0, 8) : null;
-      const to = row.time_to ? String(row.time_to).slice(0, 8) : null;
-      if (!isTimeInWindow(timeValue, from, to)) continue;
-
-      if (row?.assignee_id && row?.assignee_role) {
-        return { id: row.assignee_id, role: row.assignee_role };
-      }
-      if (row?.telecaller_id) {
-        return { id: row.telecaller_id, role: 'TELECALLER' };
-      }
+    if (row?.user_id && row?.assignee_role) {
+      return { id: row.user_id, role: row.assignee_role };
     }
   }
-
   return null;
 }
 
@@ -436,19 +373,33 @@ export async function POST(request: NextRequest) {
 
       const custAnswerSTime = toTimestamp(getValue(payload, ['custAnswerSTime', 'custanswerstime']));
       const aanshIds = parseAansh(payload);
-      const assignee = await resolveAssignee(db, aanshIds, custAnswerSTime);
+      const assignee = await resolveAssignee(db, aanshIds);
 
       const recordingUrl = pickRecordingUrl(payload);
       const phone10 = digits10(getValue(payload, ['cNumber10', 'cnumber10', 'cNumber', 'cnumber']));
+
+      const { data: existingCall } = await db
+        .from('sarv_calls')
+        .select('id, assigned_user_id, assigned_role, telecaller_id, recording_url')
+        .eq('callid', callid)
+        .maybeSingle();
+
+      const effectiveAssignedUserId = assignee?.id ?? existingCall?.assigned_user_id ?? null;
+      const effectiveAssignedRole = assignee?.role ?? existingCall?.assigned_role ?? null;
+      const effectiveRecordingUrl = recordingUrl || existingCall?.recording_url || null;
+      const effectiveTelecallerId =
+        effectiveAssignedRole === 'TELECALLER'
+          ? effectiveAssignedUserId
+          : existingCall?.telecaller_id || null;
 
       const upsertPayload: Record<string, any> = {
         callid,
         userid: getValue(payload, ['userId', 'userid']),
         masteragent: getValue(payload, ['masterAgent', 'masteragent']),
         masteragentnumber: getValue(payload, ['masterAgentNumber', 'masteragentnumber']),
-        telecaller_id: assignee?.role === 'TELECALLER' ? assignee.id : null,
-        assigned_user_id: assignee?.id ?? null,
-        assigned_role: assignee?.role ?? null,
+        telecaller_id: effectiveTelecallerId,
+        assigned_user_id: effectiveAssignedUserId,
+        assigned_role: effectiveAssignedRole,
         cnumber: getValue(payload, ['cNumber', 'cnumber']),
         did: getValue(payload, ['did']),
         ctype: getValue(payload, ['cType', 'ctype']),
@@ -461,7 +412,7 @@ export async function POST(request: NextRequest) {
         custanswerstime: custAnswerSTime,
         custansweretime: toTimestamp(getValue(payload, ['custAnswerETime', 'custansweretime'])),
         custanswerduration: getValue(payload, ['custAnswerDuration', 'custanswerduration']),
-        recording_url: recordingUrl || null,
+        recording_url: effectiveRecordingUrl,
         disposition: getValue(payload, ['disposition']),
         disposition_category: getValue(payload, ['disposition_category']),
         disposition_note: getValue(payload, ['disposition_note', 'notes_detail']),

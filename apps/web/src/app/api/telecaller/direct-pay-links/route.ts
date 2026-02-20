@@ -42,6 +42,11 @@ function normalizeDirectPayRow(row: any) {
   };
 }
 
+function canCancelStatus(value: unknown) {
+  const status = String(value || '').trim().toUpperCase();
+  return status === 'LINK_GENERATED' || status === 'CREATED' || status === 'FAILED';
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -174,6 +179,99 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, row: normalizeDirectPayRow(row) }, { status: 200 });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data, error: authError } = await supabase.auth.getUser();
+    const user = data?.user || null;
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const profile = await resolveUserProfile(supabase, user);
+    if (!profile) {
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    }
+
+    const roleCode = String((profile.roles as any)?.role_code || '');
+    const allowed = new Set(['TELECALLER', 'RSA_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN']);
+    if (!allowed.has(roleCode)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const ref = String(body?.ref || '').trim();
+    if (!ref) {
+      return NextResponse.json({ error: 'ref is required' }, { status: 400 });
+    }
+
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const db = (supabaseAdmin ?? supabase) as any;
+    const { data: rows, error } = await db
+      .from('Razorpay_Direct_pay_RSA')
+      .select('order_id, payment_id, amount, customer_name, customer_phone, customer_email, status, notes, created_at, updated_at')
+      .gte('created_at', since)
+      .order('updated_at', { ascending: false })
+      .limit(1000);
+
+    if (error) {
+      return NextResponse.json({ error: error.message || 'Failed to load payment links' }, { status: 500 });
+    }
+
+    const ownRows = (rows || []).filter((row: any) => {
+      const notes = row?.notes && typeof row.notes === 'object' ? row.notes : {};
+      const ownerProfileId = String((notes as any)?.generated_by_profile_id || '').trim();
+      if (ownerProfileId && ownerProfileId !== String(profile.id || '')) return false;
+      return String((notes as any)?.link_ref || '').trim() === ref;
+    });
+
+    if (ownRows.length === 0) {
+      return NextResponse.json({ error: 'Payment link not found' }, { status: 404 });
+    }
+
+    const hasSettled = ownRows.some((row: any) => {
+      const status = String(row?.status || '').trim().toUpperCase();
+      return status === 'SUCCESS' || status === 'PAID' || status.includes('REFUND');
+    });
+    if (hasSettled) {
+      return NextResponse.json({ error: 'Paid/refunded links cannot be cancelled' }, { status: 409 });
+    }
+
+    const cancellableRows = ownRows.filter((row: any) => canCancelStatus(row?.status));
+    if (cancellableRows.length === 0) {
+      const latest = ownRows[0];
+      return NextResponse.json({ success: true, row: normalizeDirectPayRow(latest) }, { status: 200 });
+    }
+
+    const nowIso = new Date().toISOString();
+    for (const row of cancellableRows) {
+      const orderId = String(row?.order_id || '').trim();
+      if (!orderId) continue;
+      await db
+        .from('Razorpay_Direct_pay_RSA')
+        .update({ status: 'CANCELLED', updated_at: nowIso })
+        .eq('order_id', orderId);
+    }
+
+    const latestByTime = [...ownRows, ...cancellableRows]
+      .sort(
+        (a: any, b: any) =>
+          new Date(String(b?.updated_at || b?.created_at || 0)).getTime() -
+          new Date(String(a?.updated_at || a?.created_at || 0)).getTime()
+      )
+      .find(Boolean);
+
+    const latest = latestByTime
+      ? { ...latestByTime, status: 'CANCELLED', updated_at: nowIso }
+      : { ref, link: '', status: 'CANCELLED', updated_at: nowIso };
+
+    return NextResponse.json({ success: true, row: normalizeDirectPayRow(latest) }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });
   }

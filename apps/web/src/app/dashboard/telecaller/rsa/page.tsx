@@ -264,6 +264,7 @@ function paymentStatusBadgeClass(value: string) {
   if (s === 'SUCCESS' || s === 'PAID') return 'bg-green-100 text-green-700 border-green-200';
   if (s === 'CREATED') return 'bg-blue-100 text-blue-700 border-blue-200';
   if (s === 'FAILED') return 'bg-red-100 text-red-700 border-red-200';
+  if (s === 'CANCELLED' || s === 'CANCELED') return 'bg-red-100 text-red-700 border-red-200';
   if (s === 'LINK_GENERATED') return 'bg-amber-100 text-amber-700 border-amber-200';
   return 'bg-gray-100 text-gray-700 border-gray-200';
 }
@@ -274,6 +275,7 @@ function paymentStatusLabel(value: string) {
   if (s === 'CREATED') return 'Pending Payment';
   if (s === 'SUCCESS') return 'Paid';
   if (s === 'FAILED') return 'Failed';
+  if (s === 'CANCELLED' || s === 'CANCELED') return 'Cancelled';
   return statusLabel(value || 'Unknown');
 }
 
@@ -393,6 +395,7 @@ export default function TelecallerRSAPage() {
   const [collectRefreshLoading, setCollectRefreshLoading] = useState(false);
   const [collectRefreshError, setCollectRefreshError] = useState('');
   const [generatedPayments, setGeneratedPayments] = useState<GeneratedPaymentLink[]>([]);
+  const [cancelLinkLoadingRef, setCancelLinkLoadingRef] = useState('');
   const [editLead, setEditLead] = useState<any | null>(null);
   const [editLeadLoading, setEditLeadLoading] = useState(false);
   const [leadStatusFilter, setLeadStatusFilter] = useState('');
@@ -651,6 +654,47 @@ export default function TelecallerRSAPage() {
       setCopySuccess('Payment link copied.');
     } catch {
       setCollectError('Unable to copy link. Please copy manually.');
+    }
+  };
+
+  const canCancelLink = (statusValue: string) => {
+    const status = String(statusValue || '').trim().toUpperCase();
+    return status === 'LINK_GENERATED' || status === 'CREATED' || status === 'FAILED';
+  };
+
+  const cancelGeneratedPaymentLink = async (ref: string) => {
+    if (!ref) return;
+    const ok = window.confirm('Customer ne mana kiya hai? Is payment link ko cancel karna hai?');
+    if (!ok) return;
+
+    setCollectError('');
+    setCopySuccess('');
+    setCollectRefreshError('');
+    setCancelLinkLoadingRef(ref);
+    try {
+      const res = await fetch('/api/telecaller/direct-pay-links', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ref }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to cancel payment link');
+      setGeneratedPayments((prev) =>
+        prev.map((item) =>
+          item.ref === ref
+            ? {
+                ...item,
+                status: 'CANCELLED',
+                updated_at: new Date().toISOString(),
+              }
+            : item
+        )
+      );
+      setCopySuccess('Payment link cancelled.');
+    } catch (e: any) {
+      setCollectRefreshError(e?.message || 'Failed to cancel payment link');
+    } finally {
+      setCancelLinkLoadingRef('');
     }
   };
 
@@ -1718,6 +1762,16 @@ export default function TelecallerRSAPage() {
                               >
                                 View
                               </button>
+                              {canCancelLink(row.status) ? (
+                                <button
+                                  type="button"
+                                  className="text-red-600 hover:text-red-700 font-semibold disabled:opacity-60"
+                                  onClick={() => cancelGeneratedPaymentLink(row.ref)}
+                                  disabled={cancelLinkLoadingRef === row.ref}
+                                >
+                                  {cancelLinkLoadingRef === row.ref ? 'Cancelling...' : 'Cancel'}
+                                </button>
+                              ) : null}
                             </div>
                           </td>
                         </tr>

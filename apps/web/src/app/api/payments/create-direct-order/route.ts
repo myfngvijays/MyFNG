@@ -23,6 +23,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Payment gateway not configured' }, { status: 500 });
     }
 
+    if (linkRef) {
+      const { supabaseAdmin } = getSupabaseAdmin();
+      if (supabaseAdmin) {
+        const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: rowsByRef } = await supabaseAdmin
+          .from('Razorpay_Direct_pay_RSA')
+          .select('status, notes, created_at, updated_at')
+          .gte('created_at', since)
+          .order('updated_at', { ascending: false })
+          .limit(1000);
+        const latestForRef = (rowsByRef || [])
+          .filter((row: any) => {
+            const notes = row?.notes && typeof row.notes === 'object' ? row.notes : {};
+            return String((notes as any)?.link_ref || '').trim() === linkRef;
+          })
+          .sort(
+            (a: any, b: any) =>
+              new Date(String(b?.updated_at || b?.created_at || 0)).getTime() -
+              new Date(String(a?.updated_at || a?.created_at || 0)).getTime()
+          )[0];
+        const latestStatus = String(latestForRef?.status || '').trim().toUpperCase();
+        if (latestStatus === 'CANCELLED') {
+          return NextResponse.json(
+            { error: 'This payment link has been cancelled by support. Please contact the team for a new link.' },
+            { status: 410 }
+          );
+        }
+      }
+    }
+
     const notes: Record<string, string> = {
       purpose: 'PAY_NOW',
     };

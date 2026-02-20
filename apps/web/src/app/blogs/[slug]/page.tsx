@@ -10,9 +10,16 @@ import { formatDateDMY } from "@/lib/utils";
 import ViewCounter from '@/components/blog/ViewCounter';
 import CopyLinkButton from '@/components/blog/CopyLinkButton';
 import BlogComments from '@/components/blog/BlogComments';
+import HtmlStyleEffects from '@/components/blog/HtmlStyleEffects';
 import { isPuneOrPcmcCity, resolveLocalAreas, PUNE_PCMC_AREAS, normalizeCity } from '@/lib/blog/localSeo';
+import { Poppins } from 'next/font/google';
 
 export const dynamic = 'force-dynamic';
+
+const poppins = Poppins({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+});
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -373,6 +380,326 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const followYoutube = process.env.NEXT_PUBLIC_SOCIAL_YOUTUBE_URL || '';
   const followLinkedin = process.env.NEXT_PUBLIC_SOCIAL_LINKEDIN_URL || '';
   const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || '';
+  const isExactHtmlStylePage = transformed.slug === 'what-to-do-when-you-need-towing-service-near-me-in-pune';
+  const htmlStyleQuote = highlightQuote || 'Ignoring early engine warning signs can lead to expensive repairs later.';
+
+  if (isExactHtmlStylePage) {
+    return (
+      <div className={`${poppins.className} min-h-screen bg-[#f5f7fb]`}>
+        <style>{`
+          .blog-html-wrap .header{background:#fff;box-shadow:0 2px 10px rgba(0,0,0,0.08);position:sticky;top:0;z-index:1000;}
+          .blog-html-wrap .navbar{max-width:1200px;margin:auto;display:flex;align-items:center;justify-content:space-between;padding:12px 20px;}
+          .blog-html-wrap .logo img{height:38px;}
+          .blog-html-wrap .nav-links{display:flex;gap:25px;align-items:center;}
+          .blog-html-wrap .nav-links a{text-decoration:none;color:#333;font-weight:500;font-size:15px;}
+          .blog-html-wrap .header-buttons{display:flex;gap:15px;}
+          .blog-html-wrap .btn-outline{border:1px solid #0a4ea3;padding:8px 16px;border-radius:10px;text-decoration:none;color:#0a4ea3;font-weight:500;}
+          .blog-html-wrap .btn-primary{background:#0a4ea3;padding:9px 18px;border-radius:10px;color:#fff;text-decoration:none;font-weight:500;}
+          .blog-html-wrap .hamburger{display:none;font-size:22px;cursor:pointer;background:transparent;border:none;color:#111827;}
+          .blog-html-wrap .mobile-menu{display:none;flex-direction:column;background:#fff;padding:15px;}
+          .blog-html-wrap .mobile-menu a{padding:10px 0;text-decoration:none;color:#333;}
+          .blog-html-wrap .container{max-width:1200px;margin:auto;padding:20px;}
+          .blog-html-wrap .breadcrumb{font-size:14px;color:#888;margin-bottom:20px;}
+          .blog-html-wrap .blog-title{font-size:32px;font-weight:700;margin-bottom:10px;color:#111827;line-height:1.2;}
+          .blog-html-wrap .blog-meta{font-size:13px;color:#777;margin-bottom:20px;display:flex;gap:20px;flex-wrap:wrap;}
+          .blog-html-wrap .layout{display:flex;gap:25px;}
+          .blog-html-wrap .content-area{flex:3;}
+          .blog-html-wrap .sidebar{flex:1;position:sticky;top:90px;height:fit-content;}
+          .blog-html-wrap .featured-image{width:100%;border-radius:14px;box-shadow:0 5px 20px rgba(0,0,0,0.1);margin-bottom:20px;}
+          .blog-html-wrap .social-wrap{display:flex;gap:192px;margin-bottom:22px;}
+          .blog-html-wrap .follow{background:#fff;padding:15px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.06);display:flex;gap:15px;flex-wrap:wrap;width:44%;border:1px solid #006bff;align-items:center;}
+          .blog-html-wrap .share{background:#eef2f7;padding:15px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.06);display:flex;gap:15px;flex-wrap:wrap;width:37%;border:1px solid #006bff;align-items:center;}
+          .blog-html-wrap .follow-label,.blog-html-wrap .share-label{font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}
+          .blog-html-wrap .social-link{color:#0056d2;display:inline-flex;align-items:center;font-size:25px;}
+          .blog-html-wrap .quote{background:#0056d2;color:#fff;padding:20px;border-radius:12px;font-style:italic;margin-bottom:25px;}
+          .blog-html-wrap .main-content{background:#fff;padding:25px;border-radius:14px;box-shadow:0 2px 14px rgba(0,0,0,0.06);line-height:1.7;color:#333;}
+          .blog-html-wrap .main-content h2{margin:20px 0 10px;}
+          .blog-html-wrap .main-content img{width:100%;border-radius:10px;margin:15px 0;}
+          .blog-html-wrap .main-content ul{padding-left:20px;}
+          .blog-html-wrap .main-content li{margin:6px 0;}
+          .blog-html-wrap .tags{margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+          .blog-html-wrap .tags span{background:#eef2f7;padding:8px 14px;border-radius:20px;font-size:13px;}
+          .blog-html-wrap .faq{margin-top:25px;}
+          .blog-html-wrap .faq-item{background:#fff;border-radius:12px;margin-bottom:12px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,0.05);}
+          .blog-html-wrap .faq-question{display:flex;justify-content:space-between;align-items:center;}
+          .blog-html-wrap .faq-item h4{font-size:17px;font-weight:600;margin-bottom:8px;}
+          .blog-html-wrap .faq-item p{font-size:14px;color:#555;display:none;margin-top:10px;}
+          .blog-html-wrap .faq-item.active p{display:block;}
+          .blog-html-wrap .faq-item i{font-size:16px;color:#0a4ea3;transition:.3s;}
+          .blog-html-wrap .comment-box{background:#fff;padding:25px;border-radius:14px;margin-top:25px;}
+          .blog-html-wrap .comment-box input,.blog-html-wrap .comment-box textarea{width:100%;margin-top:10px;padding:12px;border-radius:10px;border:1px solid #ccc;}
+          .blog-html-wrap .comment-box button{margin-top:15px;background:#5fa6d9;color:#fff;border:none;padding:12px 20px;border-radius:10px;cursor:pointer;}
+          .blog-html-wrap .side-box{background:#fff;padding:18px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06);width:325px;max-width:100%;}
+          .blog-html-wrap .search{display:flex;gap:10px;}
+          .blog-html-wrap .search input{flex:1;padding:10px;border-radius:8px;border:1px solid #ccc;}
+          .blog-html-wrap .search button{background:#0a4ea3;color:#fff;border:none;padding:10px 16px;border-radius:8px;}
+          .blog-html-wrap .playstore-btn{display:flex;align-items:center;gap:12px;background:#0a4ea3;color:#fff;text-decoration:none;padding:12px 15px;border-radius:12px;margin-top:10px;}
+          .blog-html-wrap .playstore-btn i{font-size:28px;}
+          .blog-html-wrap .playstore-btn span{font-size:12px;display:block;}
+          .blog-html-wrap .playstore-btn strong{font-size:16px;}
+          .blog-html-wrap .service-slider{position:relative;height:240px;overflow:hidden;border-radius:12px;}
+          .blog-html-wrap .service-slide{background:#fff;padding:15px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.08);text-align:center;margin-top:12px;}
+          .blog-html-wrap .service-slider .service-slide{
+            position:absolute;
+            width:100%;
+            height:100%;
+            top:0;
+            left:100%;
+            opacity:0;
+            transition:.6s ease;
+            margin-top:0;
+          }
+          .blog-html-wrap .service-slider .service-slide.active{
+            left:0;
+            opacity:1;
+          }
+          .blog-html-wrap .service-slide img{width:100%;height:130px;object-fit:cover;border-radius:10px;margin-bottom:10px;}
+          .blog-html-wrap .service-slide h4{font-size:16px;margin-bottom:10px;color:#0a4ea3;}
+          .blog-html-wrap .book-btn{display:block;background:#0a4ea3;color:#fff;padding:10px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;}
+          .blog-html-wrap .recent-post{display:flex;gap:10px;margin-bottom:15px;}
+          .blog-html-wrap .recent-post img{width:70px;height:70px;object-fit:cover;border-radius:8px;}
+          .blog-html-wrap .recent-post a{text-decoration:none;font-size:14px;color:#333;font-weight:500;}
+          .blog-html-wrap .categories{display:flex;flex-wrap:wrap;gap:10px;}
+          .blog-html-wrap .categories a{background:#eef2f7;padding:8px 14px;border-radius:20px;text-decoration:none;color:#333;font-size:13px;}
+          @media(max-width:1024px){
+            .blog-html-wrap .nav-links,.blog-html-wrap .header-buttons{display:none;}
+            .blog-html-wrap .hamburger{display:block;}
+            .blog-html-wrap .layout{flex-direction:column;}
+            .blog-html-wrap .sidebar{position:static;}
+            .blog-html-wrap .side-box{width:100%;}
+            .blog-html-wrap .social-wrap{flex-direction:column;gap:20px;}
+            .blog-html-wrap .follow,.blog-html-wrap .share{width:100%;}
+          }
+        `}</style>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+        {schema ? (
+          <script
+            type="application/ld+json"
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+          />
+        ) : null}
+        <div className="blog-html-wrap">
+          <header className="header">
+            <div className="navbar">
+              <div className="logo">
+                <img src="https://myfng.cloud/logo.png" alt="MyFNG" />
+              </div>
+              <div className="nav-links">
+                <a href="/">Home</a>
+                <a href="/services">Services</a>
+                <a href="/about">About</a>
+                <a href="/roadside-assistance">Roadside Assistance</a>
+                <a href="/blogs">Blog</a>
+                <a href="/contact">Contact</a>
+              </div>
+              <div className="header-buttons">
+                <a href="/login" className="btn-outline">Partner Login</a>
+                <a href="/login" className="btn-primary">Customer Login</a>
+              </div>
+              <button type="button" id="blogHamburgerBtn" className="hamburger" aria-label="Toggle menu">
+                <i className="fa fa-bars" />
+              </button>
+            </div>
+            <div className="mobile-menu" id="mobileMenu">
+              <a href="/">Home</a>
+              <a href="/services">Services</a>
+              <a href="/about">About</a>
+              <a href="/roadside-assistance">Roadside Assistance</a>
+              <a href="/blogs">Blog</a>
+              <a href="/contact">Contact</a>
+            </div>
+          </header>
+          <div className="container">
+            <div className="breadcrumb">
+              Home &gt; Blogs {breadcrumbCategory?.name ? `> ${breadcrumbCategory.name}` : ''} &gt; {transformed.title}
+            </div>
+
+            <h1 className="blog-title">{transformed.title}</h1>
+
+            <div className="blog-meta">
+              {dateText ? (
+                <span className="inline-flex items-center gap-1">
+                  <i className="fa fa-calendar" />
+                  {dateText}
+                </span>
+              ) : null}
+              {readTimeText ? (
+                <span className="inline-flex items-center gap-1">
+                  <i className="fa fa-clock" />
+                  {readTimeText}
+                </span>
+              ) : null}
+              <span className="inline-flex items-center gap-1">
+                <i className="fa fa-eye" />
+                <ViewCounter slug={transformed.slug} initialViews={views} /> views
+              </span>
+            </div>
+
+            <div className="layout">
+              <div className="content-area">
+                {transformed.featured_image ? (
+                  <Image
+                    src={transformed.featured_image}
+                    alt={transformed.title}
+                    width={1000}
+                    height={560}
+                    className="featured-image"
+                    priority
+                  />
+                ) : null}
+
+                <div className="social-wrap">
+                  <div className="follow">
+                    <strong className="follow-label"><i className="fa-solid fa-user-plus" style={{ color: '#013d95' }} /> Follow Us:</strong>
+                    <a href={followFacebook || '#'} className="social-link" target="_blank" rel="noreferrer">
+                      <i className="fa-brands fa-square-facebook fa-fade" style={{ color: '#0091ff' }} />
+                    </a>
+                    <a href={followInstagram || '#'} className="social-link" target="_blank" rel="noreferrer">
+                      <i className="fa-brands fa-square-instagram fa-fade" style={{ color: '#d62976' }} />
+                    </a>
+                    <a href={followYoutube || '#'} className="social-link" target="_blank" rel="noreferrer">
+                      <i className="fa-brands fa-youtube fa-fade" style={{ color: '#ff0000' }} />
+                    </a>
+                    <a href={followLinkedin || '#'} className="social-link" target="_blank" rel="noreferrer">
+                      <i className="fa-brands fa-linkedin fa-fade" style={{ color: '#0a66c2' }} />
+                    </a>
+                    <a href="https://x.com/myfngcarservice" className="social-link" target="_blank" rel="noreferrer">
+                      <i className="fa-brands fa-square-twitter fa-fade" style={{ color: '#1da1f2' }} />
+                    </a>
+                  </div>
+
+                  <div className="share">
+                    <strong className="share-label"><i className="fa-solid fa-share-nodes" style={{ color: '#013d95' }} /> Share Us:</strong>
+                    <a href={waHref} className="social-link" target="_blank" rel="noreferrer">
+                      <i className="fa-brands fa-whatsapp fa-fade" style={{ color: '#25d366' }} />
+                    </a>
+                    <a href={fbHref} className="social-link" target="_blank" rel="noreferrer">
+                      <i className="fa-brands fa-square-facebook fa-fade" style={{ color: '#0091ff' }} />
+                    </a>
+                    <a href={`https://www.instagram.com/?url=${encodeURIComponent(shareUrl)}`} className="social-link" target="_blank" rel="noreferrer">
+                      <i className="fa-brands fa-square-instagram fa-fade" style={{ color: '#d62976' }} />
+                    </a>
+                    <a href={liHref} className="social-link" target="_blank" rel="noreferrer">
+                      <i className="fa-brands fa-linkedin fa-fade" style={{ color: '#0a66c2' }} />
+                    </a>
+                  </div>
+                </div>
+
+                <div className="quote">"{htmlStyleQuote}"</div>
+
+                <div className="main-content">
+                  {transformed.excerpt ? <p>{transformed.excerpt}</p> : null}
+                  <div dangerouslySetInnerHTML={{ __html: transformed.content }} />
+                  <div className="tags">
+                    <strong>Tags :</strong>
+                    {(transformed.tags || []).map((tag) => (tag ? <span key={tag.slug || tag.name}>{tag.name}</span> : null))}
+                  </div>
+                </div>
+
+                {transformed.faqs && transformed.faqs.length ? (
+                  <div className="faq">
+                    <h2>FAQs</h2>
+                    {transformed.faqs.slice(0, 8).map((f, idx) => (
+                      <div key={`${idx}-${f.question}`} className="faq-item">
+                        <div className="faq-question">
+                          <h4>{f.question}</h4>
+                          <i className="fa fa-plus" />
+                        </div>
+                        <p>{f.answer}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="comment-box">
+                  <h3>Comments</h3>
+                  <input placeholder="Name" />
+                  <input placeholder="Email (optional)" />
+                  <textarea rows={4} placeholder="Write a comment..." />
+                  <button type="button">Post Comment</button>
+                </div>
+              </div>
+
+              <aside className="sidebar">
+                <div className="side-box">
+                  <h3>Search</h3>
+                  <form action="/blogs" method="GET" className="search">
+                    <input name="q" placeholder="Search blogs by keyword" />
+                    <button type="submit">Search</button>
+                  </form>
+                </div>
+
+                <div className="side-box">
+                  <h3>Download MyFNG App - Book Car Service Faster</h3>
+                  <a href={playStoreUrl || '#'} className="playstore-btn" target={playStoreUrl ? '_blank' : undefined} rel="noreferrer">
+                    <i className="fab fa-google-play" />
+                    <div>
+                      <span>Get it on</span>
+                      <strong>Google Play</strong>
+                    </div>
+                  </a>
+                </div>
+
+                <div className="side-box">
+                  <h3>Book Your Service</h3>
+                  <div className="service-slider">
+                    <div className="service-slide active">
+                      <img src="https://myfng.in/assets/images/packages/basic_service_package_image.webp" alt="Periodic Car Service" />
+                      <h4>Periodic Car Service</h4>
+                      <a href="/book-service" className="book-btn">Book Now</a>
+                    </div>
+                    <div className="service-slide">
+                      <img src="https://myfng.in/assets/images/packages/ac_performance_package_image.webp" alt="Car AC Service" />
+                      <h4>Car AC Service</h4>
+                      <a href="/book-service" className="book-btn">Book Now</a>
+                    </div>
+                    <div className="service-slide">
+                      <img src="https://myfng.in/assets/images/packages/brake_booster_replacement.webp" alt="Brake Service" />
+                      <h4>Brake Service</h4>
+                      <a href="/book-service" className="book-btn">Book Now</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="side-box">
+                  <h3>Recent Posts</h3>
+                  {(recentPosts || []).map((p: any) => (
+                    <div key={p.id} className="recent-post">
+                      <img src={p.featured_image || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70'} alt={p.title} />
+                      <Link href={`/blogs/${p.slug}`}>{p.title}</Link>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="side-box">
+                  <h3>Related Articles</h3>
+                  {(recentPosts || []).map((p: any) => (
+                    <div key={`related-${p.id}`} className="recent-post">
+                      <img src={p.featured_image || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70'} alt={p.title} />
+                      <Link href={`/blogs/${p.slug}`}>{p.title}</Link>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="side-box">
+                  <h3>Categories</h3>
+                  <div className="categories">
+                    {(categories || []).map((c: any) => (
+                      <Link key={c.id} href={`/blogs?category=${encodeURIComponent(c.id)}`}>
+                        {c.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </div>
+          <HtmlStyleEffects />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

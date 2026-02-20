@@ -130,7 +130,26 @@ type OverviewData = {
     payment_received: number;
     payment_to_mechanic: number;
     company_profit: number;
+    total_link_generated_count?: number;
+    total_link_generated_amount?: number;
+    total_captured_payment_count?: number;
+    total_captured_payment_amount?: number;
+    total_refund_count?: number;
+    total_refund_amount?: number;
   };
+  payment_rows?: Array<{
+    order_id: string | null;
+    payment_id: string | null;
+    customer_name: string | null;
+    customer_phone: string | null;
+    employee_name: string | null;
+    employee_role: string | null;
+    status: string | null;
+    amount: number;
+    captured_amount: number;
+    refunded_amount: number;
+    created_at: string | null;
+  }>;
   breakdowns: {
     department: OverviewBreakdownRow[];
     district: OverviewBreakdownRow[];
@@ -139,6 +158,8 @@ type OverviewData = {
     mechanic?: OverviewBreakdownRow[];
   };
 };
+
+type PaymentMetricKey = 'links' | 'captured' | 'refund';
 
 function formatStatusLabel(value?: string | null) {
   const raw = String(value || '').trim();
@@ -177,7 +198,7 @@ type OverviewTrendPoint = {
 
 type TrendMetric = 'total_requests' | 'resolved' | 'company_profit' | 'total_quoted';
 
-type TabKey = 'mapping' | 'report' | 'overview';
+type TabKey = 'mapping' | 'report' | 'overview' | 'catalog' | 'sessions';
 
 function formatDateTime(value?: string | null) {
   if (!value) return '—';
@@ -508,6 +529,13 @@ export default function SuperAdminRSASettingsPage() {
   >({});
   const [overviewStatusOptions, setOverviewStatusOptions] = useState<string[]>([]);
   const [overviewExportLoading, setOverviewExportLoading] = useState(false);
+  const [reconcileLoading, setReconcileLoading] = useState(false);
+  const [reconcileMessage, setReconcileMessage] = useState('');
+  const [activePaymentMetric, setActivePaymentMetric] = useState<PaymentMetricKey | null>(null);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
+  const [paymentRoleFilter, setPaymentRoleFilter] = useState('');
+  const [paymentEmployeeFilter, setPaymentEmployeeFilter] = useState('');
+  const [paymentSearch, setPaymentSearch] = useState('');
   const [districtOpen, setDistrictOpen] = useState(false);
   const [mechanicOpen, setMechanicOpen] = useState(false);
   const [showProfit, setShowProfit] = useState(false);
@@ -565,6 +593,15 @@ export default function SuperAdminRSASettingsPage() {
 
   const [reportRatingFilter, setReportRatingFilter] = useState<string>('');
 
+  const [catalogItems, setCatalogItems] = useState<{ id: string; aansh_id: number; system_name?: string | null; is_active: boolean; created_at?: string }[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogNewId, setCatalogNewId] = useState('');
+  const [catalogNewName, setCatalogNewName] = useState('');
+  const [catalogSaving, setCatalogSaving] = useState(false);
+  const [sessionsList, setSessionsList] = useState<{ id: string; aansh_id: number; user_id: string; assignee_role: string; expires_at: string; user_name?: string; user_email?: string }[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+
   const filteredReportCalls = useMemo(() => {
     const list = Array.isArray(reportCalls) ? reportCalls : [];
     const f = String(reportRatingFilter || '').trim();
@@ -607,6 +644,36 @@ export default function SuperAdminRSASettingsPage() {
       setMappingError(e?.message || 'Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCatalog = async () => {
+    setCatalogLoading(true);
+    setCatalogError('');
+    try {
+      const res = await fetch('/api/super_admin/sarv-aansh-catalog');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load catalog');
+      setCatalogItems(Array.isArray(json?.catalog) ? json.catalog : []);
+    } catch (e: any) {
+      setCatalogError(e?.message || 'Failed to load catalog');
+      setCatalogItems([]);
+    } finally {
+      setCatalogLoading(false);
+    }
+  };
+
+  const loadSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      const res = await fetch('/api/super_admin/sarv-aansh-sessions');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load sessions');
+      setSessionsList(Array.isArray(json?.sessions) ? json.sessions : []);
+    } catch {
+      setSessionsList([]);
+    } finally {
+      setSessionsLoading(false);
     }
   };
 
@@ -1057,6 +1124,29 @@ export default function SuperAdminRSASettingsPage() {
     }
   };
 
+  const reconcileStalePayments = async () => {
+    setReconcileLoading(true);
+    setReconcileMessage('');
+    setOverviewError('');
+    try {
+      const res = await fetch('/api/super_admin/rsa-overview/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: 30, limit: 1000 }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to reconcile stale payments');
+      setReconcileMessage(
+        `Reconcile done. Scanned: ${json?.scanned ?? 0}, Updated: ${json?.updated ?? 0}, No capture: ${json?.no_capture ?? 0}, Failed: ${json?.failed ?? 0}`
+      );
+      await loadOverview();
+    } catch (e: any) {
+      setOverviewError(e?.message || 'Failed to reconcile stale payments');
+    } finally {
+      setReconcileLoading(false);
+    }
+  };
+
   const openMechanicCoverage = async () => {
     setMechCoverageOpen(true);
     setMechCoverageTab('state');
@@ -1117,6 +1207,14 @@ export default function SuperAdminRSASettingsPage() {
   useEffect(() => {
     setReportJumpPage(String(reportPage));
   }, [reportPage]);
+
+  useEffect(() => {
+    if (tab === 'catalog') loadCatalog();
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab === 'sessions') loadSessions();
+  }, [tab]);
 
   useEffect(() => {
     if (tab !== 'overview') return;
@@ -1314,6 +1412,69 @@ export default function SuperAdminRSASettingsPage() {
     }
   };
 
+  const paymentMetricRows = useMemo(() => {
+    const rows = Array.isArray(overviewData?.payment_rows) ? overviewData.payment_rows : [];
+    if (!activePaymentMetric) return [];
+    if (activePaymentMetric === 'links') return rows;
+    if (activePaymentMetric === 'captured') return rows.filter((r) => Number(r.captured_amount || 0) > 0);
+    return rows.filter((r) => Number(r.refunded_amount || 0) > 0);
+  }, [overviewData, activePaymentMetric]);
+
+  useEffect(() => {
+    setPaymentStatusFilter('');
+    setPaymentRoleFilter('');
+    setPaymentEmployeeFilter('');
+    setPaymentSearch('');
+  }, [activePaymentMetric]);
+
+  const paymentStatusOptions = useMemo(() => {
+    return Array.from(new Set(paymentMetricRows.map((r) => String(r.status || '').trim()).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [paymentMetricRows]);
+
+  const paymentRoleOptions = useMemo(() => {
+    return Array.from(new Set(paymentMetricRows.map((r) => String(r.employee_role || '').trim()).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [paymentMetricRows]);
+
+  const paymentEmployeeOptions = useMemo(() => {
+    return Array.from(new Set(paymentMetricRows.map((r) => String(r.employee_name || '').trim()).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [paymentMetricRows]);
+
+  const filteredPaymentMetricRows = useMemo(() => {
+    const q = paymentSearch.trim().toLowerCase();
+    return paymentMetricRows.filter((row) => {
+      const statusOk = !paymentStatusFilter || String(row.status || '').trim() === paymentStatusFilter;
+      const roleOk = !paymentRoleFilter || String(row.employee_role || '').trim() === paymentRoleFilter;
+      const employeeOk = !paymentEmployeeFilter || String(row.employee_name || '').trim() === paymentEmployeeFilter;
+      const text = [
+        row.order_id,
+        row.payment_id,
+        row.customer_name,
+        row.customer_phone,
+        row.employee_name,
+        row.employee_role,
+      ]
+        .map((v) => String(v || '').toLowerCase())
+        .join(' ');
+      const searchOk = !q || text.includes(q);
+      return statusOk && roleOk && employeeOk && searchOk;
+    });
+  }, [paymentMetricRows, paymentStatusFilter, paymentRoleFilter, paymentEmployeeFilter, paymentSearch]);
+
+  const paymentMetricTitle =
+    activePaymentMetric === 'links'
+      ? 'Total Link Generate'
+      : activePaymentMetric === 'captured'
+        ? 'Total Capture Payment'
+        : activePaymentMetric === 'refund'
+          ? 'Total Refund'
+          : '';
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -1342,6 +1503,20 @@ export default function SuperAdminRSASettingsPage() {
           onClick={() => setTab('mapping')}
         >
           Manage Mapping
+        </button>
+        <button
+          type="button"
+          className={tab === 'catalog' ? 'btn btn-primary text-sm' : 'btn btn-outline text-sm'}
+          onClick={() => setTab('catalog')}
+        >
+          Aansh Catalog
+        </button>
+        <button
+          type="button"
+          className={tab === 'sessions' ? 'btn btn-primary text-sm' : 'btn btn-outline text-sm'}
+          onClick={() => setTab('sessions')}
+        >
+          Active Sessions
         </button>
       </div>
 
@@ -1529,6 +1704,196 @@ export default function SuperAdminRSASettingsPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {tab === 'catalog' ? (
+        <div className="space-y-6">
+          {catalogError ? <div className="text-sm text-red-600">{catalogError}</div> : null}
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <h2 className="text-sm font-semibold text-gray-800 mb-3">Aansh Catalog</h2>
+            <p className="text-xs text-gray-500 mb-3">Available Aansh IDs for session-based assignment. Telecallers/RSA managers claim from this list when they log in.</p>
+            <div className="flex flex-wrap items-end gap-3 mb-4">
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">New Aansh ID</label>
+                <input
+                  className="w-32 border rounded-md px-3 py-2 text-sm"
+                  type="number"
+                  min={0}
+                  value={catalogNewId}
+                  onChange={(e) => setCatalogNewId(e.target.value)}
+                  placeholder="e.g. 123"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">System name</label>
+                <input
+                  className="w-48 border rounded-md px-3 py-2 text-sm"
+                  type="text"
+                  value={catalogNewName}
+                  onChange={(e) => setCatalogNewName(e.target.value)}
+                  placeholder="e.g. Line 1"
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary text-sm px-4 py-2"
+                disabled={catalogSaving || !catalogNewId.trim()}
+                onClick={async () => {
+                  const id = catalogNewId.trim();
+                  if (!id) return;
+                  setCatalogSaving(true);
+                  setCatalogError('');
+                  try {
+                    const res = await fetch('/api/super_admin/sarv-aansh-catalog', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        aansh_id: Number(id),
+                        system_name: catalogNewName.trim() || null,
+                      }),
+                    });
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(json?.error || 'Add failed');
+                    setCatalogNewId('');
+                    setCatalogNewName('');
+                    await loadCatalog();
+                  } catch (e: any) {
+                    setCatalogError(e?.message || 'Add failed');
+                  } finally {
+                    setCatalogSaving(false);
+                  }
+                }}
+              >
+                {catalogSaving ? 'Adding...' : 'Add'}
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs sm:text-sm">
+                <thead>
+                  <tr className="text-left text-gray-600 border-b">
+                    <th className="py-2 pr-3">Aansh ID</th>
+                    <th className="py-2 pr-3">System name</th>
+                    <th className="py-2 pr-3">Active</th>
+                    <th className="py-2 pr-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalogLoading ? (
+                    <tr><td className="py-3 text-gray-500" colSpan={4}>Loading...</td></tr>
+                  ) : catalogItems.length === 0 ? (
+                    <tr><td className="py-3 text-gray-500" colSpan={4}>No catalog entries.</td></tr>
+                  ) : (
+                    catalogItems.map((row) => (
+                      <tr key={row.id} className="border-b last:border-b-0">
+                        <td className="py-2 pr-3 font-semibold">{row.aansh_id}</td>
+                        <td className="py-2 pr-3">
+                          <input
+                            className="w-full max-w-[180px] border rounded px-2 py-1 text-sm"
+                            type="text"
+                            defaultValue={row.system_name ?? ''}
+                            placeholder="System name"
+                            onBlur={async (e) => {
+                              const v = e.target.value.trim();
+                              if (v === (row.system_name ?? '')) return;
+                              try {
+                                const res = await fetch(`/api/super_admin/sarv-aansh-catalog/${row.id}`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ system_name: v || null }),
+                                });
+                                if (!res.ok) throw new Error('Update failed');
+                                await loadCatalog();
+                              } catch {
+                                setCatalogError('Update failed');
+                              }
+                            }}
+                          />
+                        </td>
+                        <td className="py-2 pr-3">
+                          <button
+                            type="button"
+                            className={`text-sm px-2 py-1 rounded ${row.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`/api/super_admin/sarv-aansh-catalog/${row.id}`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ is_active: !row.is_active }),
+                                });
+                                if (!res.ok) throw new Error('Update failed');
+                                await loadCatalog();
+                              } catch {
+                                setCatalogError('Update failed');
+                              }
+                            }}
+                          >
+                            {row.is_active ? 'Yes' : 'No'}
+                          </button>
+                        </td>
+                        <td className="py-2 pr-3">
+                          <button
+                            type="button"
+                            className="text-red-600 hover:text-red-700 font-semibold"
+                            onClick={async () => {
+                              if (!confirm('Remove this Aansh ID from catalog?')) return;
+                              try {
+                                const res = await fetch(`/api/super_admin/sarv-aansh-catalog/${row.id}`, { method: 'DELETE' });
+                                if (!res.ok) throw new Error('Delete failed');
+                                await loadCatalog();
+                              } catch {
+                                setCatalogError('Delete failed');
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {tab === 'sessions' ? (
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <h2 className="text-sm font-semibold text-gray-800 mb-3">Active Aansh Sessions</h2>
+            <p className="text-xs text-gray-500 mb-3">Currently claimed Aansh IDs (released on logout or after 30s without heartbeat).</p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs sm:text-sm">
+                <thead>
+                  <tr className="text-left text-gray-600 border-b">
+                    <th className="py-2 pr-3">Aansh ID</th>
+                    <th className="py-2 pr-3">Role</th>
+                    <th className="py-2 pr-3">User</th>
+                    <th className="py-2 pr-3">Expires</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessionsLoading ? (
+                    <tr><td className="py-3 text-gray-500" colSpan={4}>Loading...</td></tr>
+                  ) : sessionsList.length === 0 ? (
+                    <tr><td className="py-3 text-gray-500" colSpan={4}>No active sessions.</td></tr>
+                  ) : (
+                    sessionsList.map((s) => (
+                      <tr key={s.id} className="border-b last:border-b-0">
+                        <td className="py-2 pr-3 font-semibold">{s.aansh_id}</td>
+                        <td className="py-2 pr-3">{s.assignee_role}</td>
+                        <td className="py-2 pr-3">{s.user_name || s.user_email || s.user_id}</td>
+                        <td className="py-2 pr-3">{formatDateTime(s.expires_at)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" className="mt-3 btn btn-outline text-sm" onClick={loadSessions}>Refresh</button>
           </div>
         </div>
       ) : null}
@@ -1954,8 +2319,18 @@ export default function SuperAdminRSASettingsPage() {
         <div className="space-y-6">
           {overviewError ? <div className="text-sm text-red-600">{overviewError}</div> : null}
           {trendError ? <div className="text-sm text-red-600">{trendError}</div> : null}
+          {reconcileMessage ? <div className="text-sm text-green-700">{reconcileMessage}</div> : null}
 
           <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              className="btn btn-outline text-xs px-3 py-1.5"
+              onClick={reconcileStalePayments}
+              disabled={overviewLoading || reconcileLoading}
+              title="Sync stale LINK_GENERATED/CREATED payments from Razorpay"
+            >
+              {reconcileLoading ? 'Reconciling...' : 'Reconcile stale payments'}
+            </button>
             <button
               type="button"
               className="btn btn-outline text-xs px-3 py-1.5"
@@ -2089,6 +2464,205 @@ export default function SuperAdminRSASettingsPage() {
               </div>
             </div>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button
+              type="button"
+              onClick={() => setActivePaymentMetric('links')}
+              className={`bg-white rounded-lg shadow-sm p-4 text-left hover:shadow-md transition ${
+                activePaymentMetric === 'links' ? 'ring-2 ring-blue-500' : ''
+              }`}
+            >
+              <div className="text-xs text-gray-500">Total Link Generate</div>
+              <div className="text-base font-semibold">
+                {overviewLoading
+                  ? '—'
+                  : `${(overviewData?.kpis as any)?.total_link_generated_count ?? 0} / ${formatCurrency(
+                      (overviewData?.kpis as any)?.total_link_generated_amount ?? 0
+                    )}`}
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActivePaymentMetric('captured')}
+              className={`bg-white rounded-lg shadow-sm p-4 text-left hover:shadow-md transition ${
+                activePaymentMetric === 'captured' ? 'ring-2 ring-blue-500' : ''
+              }`}
+            >
+              <div className="text-xs text-gray-500">Total Capture Payment</div>
+              <div className="text-base font-semibold">
+                {overviewLoading
+                  ? '—'
+                  : `${(overviewData?.kpis as any)?.total_captured_payment_count ?? 0} / ${formatCurrency(
+                      (overviewData?.kpis as any)?.total_captured_payment_amount ?? 0
+                    )}`}
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActivePaymentMetric('refund')}
+              className={`bg-white rounded-lg shadow-sm p-4 text-left hover:shadow-md transition ${
+                activePaymentMetric === 'refund' ? 'ring-2 ring-blue-500' : ''
+              }`}
+            >
+              <div className="text-xs text-gray-500">Total Refund</div>
+              <div className="text-base font-semibold">
+                {overviewLoading
+                  ? '—'
+                  : `${(overviewData?.kpis as any)?.total_refund_count ?? 0} / ${formatCurrency(
+                      (overviewData?.kpis as any)?.total_refund_amount ?? 0
+                    )}`}
+              </div>
+            </button>
+          </div>
+
+          {activePaymentMetric ? (
+            <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/40 px-4">
+              <div className="bg-white rounded-lg shadow-lg w-full max-w-6xl max-h-[82vh] overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between px-4 py-3 border-b">
+                  <h3 className="text-sm font-semibold text-gray-800">{paymentMetricTitle} - Details</h3>
+                  <button
+                    type="button"
+                    className="btn btn-outline text-xs px-3 py-1.5"
+                    onClick={() => setActivePaymentMetric(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="p-4 overflow-auto">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
+                    <div>
+                      <label className="text-xs text-gray-600">Search</label>
+                      <input
+                        className="w-full border rounded-md px-3 py-2 text-sm"
+                        placeholder="Order/Payment/Customer/Employee"
+                        value={paymentSearch}
+                        onChange={(e) => setPaymentSearch(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Status</label>
+                      <select
+                        className="w-full border rounded-md px-3 py-2 text-sm"
+                        value={paymentStatusFilter}
+                        onChange={(e) => setPaymentStatusFilter(e.target.value)}
+                      >
+                        <option value="">All</option>
+                        {paymentStatusOptions.map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Role</label>
+                      <select
+                        className="w-full border rounded-md px-3 py-2 text-sm"
+                        value={paymentRoleFilter}
+                        onChange={(e) => setPaymentRoleFilter(e.target.value)}
+                      >
+                        <option value="">All</option>
+                        {paymentRoleOptions.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Employee Name</label>
+                      <select
+                        className="w-full border rounded-md px-3 py-2 text-sm"
+                        value={paymentEmployeeFilter}
+                        onChange={(e) => setPaymentEmployeeFilter(e.target.value)}
+                      >
+                        <option value="">All</option>
+                        {paymentEmployeeOptions.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        className="btn btn-outline text-xs px-3 py-2 w-full"
+                        onClick={() => {
+                          setPaymentSearch('');
+                          setPaymentStatusFilter('');
+                          setPaymentRoleFilter('');
+                          setPaymentEmployeeFilter('');
+                        }}
+                      >
+                        Reset Filters
+                      </button>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs sm:text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-600 border-b">
+                          <th className="py-2 pr-3">Payment ID</th>
+                          <th className="py-2 pr-3">Customer</th>
+                          <th className="py-2 pr-3">Employee</th>
+                          <th className="py-2 pr-3">Role</th>
+                          <th className="py-2 pr-3">Status</th>
+                          <th className="py-2 pr-3">Amount</th>
+                          <th className="py-2 pr-3">Captured</th>
+                          <th className="py-2 pr-3">Refunded</th>
+                          <th className="py-2 pr-3">Created</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPaymentMetricRows.length === 0 ? (
+                          <tr>
+                            <td className="py-3 text-gray-500" colSpan={9}>
+                              No rows found for selected filter.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredPaymentMetricRows.map((row, idx) => (
+                            <tr key={`${row.order_id || 'order'}-${idx}`} className="border-b last:border-b-0">
+                              <td className="py-2 pr-3">{row.payment_id || '—'}</td>
+                              <td className="py-2 pr-3">{row.customer_name || row.customer_phone || '—'}</td>
+                              <td className="py-2 pr-3">{row.employee_name || '—'}</td>
+                              <td className="py-2 pr-3">{row.employee_role || '—'}</td>
+                              <td className="py-2 pr-3">
+                                {(() => {
+                                  const status = String(row.status || '—').toUpperCase();
+                                  const cls =
+                                    status === 'SUCCESS' || status === 'PAID'
+                                      ? 'bg-green-100 text-green-700'
+                                      : status === 'FAILED'
+                                        ? 'bg-red-100 text-red-700'
+                                        : status.includes('REFUND')
+                                          ? 'bg-orange-100 text-orange-700'
+                                          : status === 'CREATED' || status === 'LINK_GENERATED'
+                                            ? 'bg-blue-100 text-blue-700'
+                                            : 'bg-gray-100 text-gray-700';
+                                  return (
+                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
+                                      {status}
+                                    </span>
+                                  );
+                                })()}
+                              </td>
+                              <td className="py-2 pr-3">{formatCurrency(row.amount || 0)}</td>
+                              <td className="py-2 pr-3">{formatCurrency(row.captured_amount || 0)}</td>
+                              <td className="py-2 pr-3">{formatCurrency(row.refunded_amount || 0)}</td>
+                              <td className="py-2 pr-3">{formatDateTime(row.created_at)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             <div className="bg-white rounded-lg shadow-sm p-4 lg:col-span-2">

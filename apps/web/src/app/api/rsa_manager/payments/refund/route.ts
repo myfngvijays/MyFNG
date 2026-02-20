@@ -15,6 +15,11 @@ function digits10(input: unknown) {
   return d.length <= 10 ? d : d.slice(-10);
 }
 
+function isComplaintCompleted(value: unknown) {
+  const status = String(value ?? '').trim().toLowerCase();
+  return status === 'completed' || status === 'closed' || status === 'resolved';
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -71,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     const { data: assignedLeads } = await db
       .from('rsa_leads')
-      .select('id, contact_number')
+      .select('id, contact_number, lead_status, complaint_status')
       .eq('assigned_manager_id', profile.id)
       .limit(2000);
 
@@ -90,6 +95,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'You can refund only your assigned lead payments' }, { status: 403 });
     }
     const linkedLead = leadByPhone.get(paymentPhone) || null;
+    if (linkedLead && isComplaintCompleted(linkedLead?.lead_status || linkedLead?.complaint_status)) {
+      return NextResponse.json({ error: 'Complaint already completed. Refund is not allowed.' }, { status: 400 });
+    }
 
     // Pull live payment details from Razorpay to enforce refundable amount.
     const paymentResp = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, {

@@ -10,6 +10,37 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+function parseJsonSafe<T = any>(input: unknown, fallback: T): T {
+  if (input == null) return fallback;
+  if (typeof input === 'object') return input as T;
+  const raw = String(input).trim();
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function recordingFromRawPayload(payload: any) {
+  const direct =
+    payload?.recording_url ||
+    payload?.recordingUrl ||
+    payload?.recordingURL ||
+    payload?.recording ||
+    '';
+  if (direct) return String(direct);
+
+  const ahDetail = parseJsonSafe<any[]>(payload?.aHDetail ?? payload?.ahdetail, []);
+  const answered = ahDetail.find((item) => String(item?.status || '').toLowerCase() === 'answered');
+  const candidate = answered?.recordingUrl || answered?.recording || '';
+  if (candidate) return String(candidate);
+
+  const recordings = parseJsonSafe<any[]>(payload?.recordings, []);
+  const rec = recordings[0]?.file;
+  return rec ? String(rec) : '';
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -77,7 +108,8 @@ export async function GET(request: NextRequest) {
         sarv_created_at,
         created_at,
         assigned_user_id,
-        assigned_role
+        assigned_role,
+        raw_payload
       `
       )
       .eq('assigned_user_id', profile.id)
@@ -85,12 +117,6 @@ export async function GET(request: NextRequest) {
       .lte('created_at', to)
       .order('created_at', { ascending: false });
 
-    if (hasRecording === 'true') {
-      query = query.not('recording_url', 'is', null);
-    }
-    if (hasRecording === 'false') {
-      query = query.is('recording_url', null);
-    }
     if (q) {
       query = query.or(`callid.ilike.%${q}%,cnumber.ilike.%${q}%`);
     }
@@ -114,16 +140,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const withAuditFlag = allCalls.map((call: any) => ({
-      ...call,
-      has_audit: auditedCallIds.has(String(call?.id || '')),
-    }));
+    const withAuditFlag = allCalls.map((call: any) => {
+      const fallbackRecording = call?.recording_url ? '' : recordingFromRawPayload(call?.raw_payload || {});
+      return {
+        ...call,
+        recording_url: call?.recording_url || fallbackRecording || null,
+        has_audit: auditedCallIds.has(String(call?.id || '')),
+      };
+    });
 
     let filtered = withAuditFlag;
+    if (hasRecording === 'true') {
+      filtered = filtered.filter((call: any) => Boolean(String(call?.recording_url || '').trim()));
+    } else if (hasRecording === 'false') {
+      filtered = filtered.filter((call: any) => !String(call?.recording_url || '').trim());
+    }
     if (hasAudit === 'true') {
-      filtered = withAuditFlag.filter((call: any) => Boolean(call?.has_audit));
+      filtered = filtered.filter((call: any) => Boolean(call?.has_audit));
     } else if (hasAudit === 'false') {
-      filtered = withAuditFlag.filter((call: any) => !call?.has_audit);
+      filtered = filtered.filter((call: any) => !call?.has_audit);
     }
 
     const total = filtered.length;
