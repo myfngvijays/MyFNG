@@ -24,31 +24,18 @@ export default function LiveStats() {
   };
 
   // Initialize with fixed values to avoid hydration mismatch
-  const [activeUsers, setActiveUsers] = useState(550); // Middle of 400-700 range
   const [servicesCompleted, setServicesCompleted] = useState(SERVICES_BASE);
   const [avgResponseTime, setAvgResponseTime] = useState(10); // Middle of 5-15 range
-  const [customerSatisfaction, setCustomerSatisfaction] = useState(98.25); // Middle of 97.0-99.5 range
 
   useEffect(() => {
-    // Initialize with random-ish values only on client side (FOMO), but keep services deterministic
-    setActiveUsers(Math.floor(Math.random() * 300) + 400); // 400-700
+    // Initialize dynamic values on client side (FOMO), but keep services deterministic
     setAvgResponseTime(Math.floor(Math.random() * 10) + 5); // 5-15
-    setCustomerSatisfaction(97 + Math.random() * 2.5); // 97.0-99.5
 
     // Services: compute immediately, then re-compute periodically (time-based lifetime counter)
     setServicesCompleted(computeServicesCompleted(Date.now()));
     const servicesInterval = setInterval(() => {
       setServicesCompleted(computeServicesCompleted(Date.now()));
     }, 30000); // every 30s is enough; increments happen gradually through the day
-
-    // Update active users every 3-5 seconds (fluctuate between 400-700) - FOMO effect
-    const userInterval = setInterval(() => {
-      const change = Math.floor(Math.random() * 30) - 15; // -15 to +15
-      setActiveUsers((prev) => {
-        const newValue = prev + change;
-        return Math.max(400, Math.min(700, newValue));
-      });
-    }, Math.random() * 2000 + 3000); // Random between 3-5 seconds
 
     // Update response time every 10-20 seconds (fluctuate between 5-15 min)
     const responseInterval = setInterval(() => {
@@ -59,35 +46,24 @@ export default function LiveStats() {
       });
     }, Math.random() * 10000 + 10000); // Random between 10-20 seconds
 
-    // Update customer satisfaction every 8-15 seconds (fluctuate between 97.0-99.5%)
-    const satisfactionInterval = setInterval(() => {
-      const change = (Math.random() * 0.3) - 0.15; // -0.15 to +0.15
-      setCustomerSatisfaction((prev) => {
-        const newValue = prev + change;
-        return Math.max(97.0, Math.min(99.5, newValue));
-      });
-    }, Math.random() * 7000 + 8000); // Random between 8-15 seconds
-
     return () => {
       clearInterval(servicesInterval);
-      clearInterval(userInterval);
       clearInterval(responseInterval);
-      clearInterval(satisfactionInterval);
     };
   }, []);
 
   const statCards = [
     {
       icon: Users,
-      label: 'Active Users',
-      value: activeUsers.toLocaleString(),
+      label: 'Customers Served',
+      value: '10,000',
       suffix: '+',
       color: 'text-blue-500',
       bgColor: 'bg-blue-500/10'
     },
     {
       icon: Car,
-      label: 'Services Completed',
+      label: 'Cars Serviced',
       value: servicesCompleted.toLocaleString(),
       suffix: '+',
       color: 'text-green-500',
@@ -103,9 +79,9 @@ export default function LiveStats() {
     },
     {
       icon: TrendingUp,
-      label: 'Customer Satisfaction',
-      value: customerSatisfaction.toFixed(1),
-      suffix: '%',
+      label: 'Customer Rating',
+      value: '⭐ 4.7 / 5',
+      suffix: '',
       color: 'text-orange-500',
       bgColor: 'bg-orange-500/10'
     }

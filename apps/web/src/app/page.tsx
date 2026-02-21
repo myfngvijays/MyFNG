@@ -556,46 +556,46 @@ export default function HomePage() {
     {
       icon: Activity,
       title: 'Car Periodic Service',
-      desc: 'AI-powered scheduled maintenance with digital health reports',
+      desc: 'Scheduled maintenance by verified workshops',
       slug: 'periodic-service',
       color: 'text-blue-600',
       bg: 'bg-blue-50',
       ring: 'ring-blue-200/60',
-      priceFrom: '₹1,999',
+      priceFrom: '₹2,999',
       eta: '2–3 hrs',
-      warranty: '1 Month',
-      highlights: ['AI health report', 'Genuine consumables', 'Pickup & drop options'],
+      warranty: '3 Months',
+      highlights: ['Detailed inspection report (photos & videos)', 'Genuine consumables', 'Free pickup & drop'],
     },
     {
       icon: Zap,
       title: 'Car Engine Service',
-      desc: 'Complete engine diagnostics powered by AI',
+      desc: 'Complete engine inspection and repair by expert mechanics',
       slug: 'engine-service',
       color: 'text-orange-600',
       bg: 'bg-orange-50',
       ring: 'ring-orange-200/60',
       priceFrom: '₹2,499',
-      eta: '3–5 hrs',
-      warranty: '1 Month',
+      eta: '1–3 hrs',
+      warranty: '1000 kms / 1 Month',
       highlights: ['Computer diagnostics', 'Performance tuning', 'Transparent estimate'],
     },
     {
       icon: Shield,
       title: 'Car AC Service',
-      desc: 'Complete climate control solutions',
+      desc: 'Inspection, gas refill, and AC performance service',
       slug: 'ac-service',
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
       ring: 'ring-emerald-200/60',
       priceFrom: '₹1,299',
       eta: '1–2 hrs',
-      warranty: '15 Days',
+      warranty: '1 Month',
       highlights: ['Cooling check', 'Gas top-up/refill', 'Cabin sanitization'],
     },
     {
       icon: Zap,
       title: 'Car Battery Service',
-      desc: 'AI-powered battery health analysis',
+      desc: 'Battery testing, replacement, and warranty support',
       slug: 'battery-service',
       color: 'text-yellow-600',
       bg: 'bg-yellow-50',
@@ -608,20 +608,20 @@ export default function HomePage() {
     {
       icon: Shield,
       title: 'Brake Service',
-      desc: 'Complete brake system inspection',
+      desc: 'Brake inspection, pad replacement, and safety checks',
       slug: 'brake-service',
       color: 'text-red-600',
       bg: 'bg-red-50',
       ring: 'ring-red-200/60',
       priceFrom: '₹1,499',
       eta: '1–2 hrs',
-      warranty: '15 Days',
+      warranty: '1000 kms / 1 Month',
       highlights: ['Pad & disc check', 'Brake fluid test', 'Safety road test'],
     },
     {
       icon: Car,
       title: 'Tyre & Wheel Care',
-      desc: 'Professional tyre and wheel services',
+      desc: 'Wheel alignment, balancing, and tyre services',
       slug: 'tyre-wheel-care',
       color: 'text-purple-600',
       bg: 'bg-purple-50',
@@ -634,7 +634,7 @@ export default function HomePage() {
     {
       icon: Activity,
       title: 'Detailing Service',
-      desc: 'Premium car detailing and protection',
+      desc: 'Interior & exterior detailing with paint protection options',
       slug: 'detailing-service',
       color: 'text-cyan-600',
       bg: 'bg-cyan-50',
@@ -647,14 +647,14 @@ export default function HomePage() {
     {
       icon: Car,
       title: 'Denting & Painting',
-      desc: 'High-precision body work',
+      desc: 'Precision bodywork with colour-matched painting',
       slug: 'denting-painting',
       color: 'text-indigo-600',
       bg: 'bg-indigo-50',
       ring: 'ring-indigo-200/60',
       priceFrom: '₹3,999',
       eta: '1–3 days',
-      warranty: '3 Months',
+      warranty: 'Up to 24 Months',
       highlights: ['Color matching', 'Panel repair', 'Premium finish'],
     },
   ] satisfies ServiceExplorerItem[];
@@ -736,7 +736,7 @@ export default function HomePage() {
               </h1>
               
               <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
-                Smart diagnostics, transparent pricing, verified garages, and real-time tracking — all in one platform
+                Verified garages, photo & video updates, transparent pricing, genuine parts and warranty - all managed by MY FNG.
               </p>
 
               {/* Buttons */}
@@ -757,7 +757,7 @@ export default function HomePage() {
                   className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-blue-900 bg-white border border-blue-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   <Bot className="w-5 h-5" />
-                  Book via MYFNG AI
+                  Book via MY FNG AI
                 </button>
 
                 <Link
@@ -765,7 +765,7 @@ export default function HomePage() {
                   className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-gray-900 bg-white/70 backdrop-blur border border-gray-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:bg-white hover:text-blue-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   <MapPin className="w-5 h-5" />
-                  Workshop Locator
+                  Find Verified Workshops
                 </Link>
               </div>
 
@@ -803,8 +803,8 @@ export default function HomePage() {
                       <Bot className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                      <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider">AI Recommendation</div>
-                      <div className="font-bold text-gray-900 text-sm leading-tight">Engine Oil Change Due</div>
+                      <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider">AI Booking Suggestion</div>
+                      <div className="font-bold text-gray-900 text-sm leading-tight">Recommended Service Package</div>
                     </div>
                   </div>
                 </div>
@@ -816,8 +816,8 @@ export default function HomePage() {
                       <CheckCircle className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                      <div className="text-xs font-semibold text-green-600 uppercase tracking-wider">Health Status</div>
-                      <div className="font-bold text-gray-900 text-sm">92% Overall Health</div>
+                      <div className="text-xs font-semibold text-green-600 uppercase tracking-wider">Service Progress</div>
+                      <div className="font-bold text-gray-900 text-sm">Live Updates Enabled</div>
                     </div>
                   </div>
                   <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2">
@@ -862,10 +862,10 @@ export default function HomePage() {
           <div className="mt-10 animate-fade-in-up" style={{ animationDelay: '0.75s' }}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { icon: CheckCircle, title: 'Verified Garages', desc: 'Trusted network' },
-                { icon: Cpu, title: 'Genuine Parts', desc: 'Quality assured' },
-                { icon: Shield, title: 'Upfront Pricing', desc: 'No hidden costs' },
-                { icon: MapPin, title: 'Pan-India Network', desc: '50+ cities' },
+                { icon: CheckCircle, title: 'Free Pickup & Drop', desc: 'Doorstep convenience included' },
+                { icon: Cpu, title: '100+ Workshops', desc: 'Strong, growing partner network' },
+                { icon: Shield, title: 'Service Warranty', desc: '1000 km or 1 month coverage' },
+                { icon: MapPin, title: 'Same-Day Service', desc: 'Available for most services' },
               ].map((b, idx) => {
                 const Icon = b.icon;
                 return (
@@ -895,10 +895,10 @@ export default function HomePage() {
       <section className="py-12 sm:py-14 md:py-16 bg-gradient-to-br from-gray-50 to-white">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-8 sm:mb-10 md:mb-12">
-            <AIFeatureBadge text="Real-Time Analytics" />
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-3 sm:mt-4 mb-3 sm:mb-4 text-brand-secondary">Trusted by Thousands</h2>
+            <AIFeatureBadge text="Live Platform Metrics" />
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-3 sm:mt-4 mb-3 sm:mb-4 text-brand-secondary">Trusted by Thousands of Car Owners</h2>
             <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto px-2 sm:px-0">
-              Join India's fastest-growing AI-powered car service booking platform
+              India's fast-growing AI-powered car service booking platform.
             </p>
           </div>
           <LiveStats />
@@ -1001,9 +1001,9 @@ export default function HomePage() {
         <div className="container mx-auto px-4 sm:px-6">
           <div className="text-center mb-12 sm:mb-16">
             <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">How It Works</span>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">Experience the Future</h2>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">How MY FNG Manages Your Car Service</h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Your entire car service booking journey is seamlessly managed by our advanced AI. Watch how it works.
+              From booking to delivery, every step is coordinated, documented, and supported by MY FNG.
             </p>
           </div>
 
@@ -1014,28 +1014,28 @@ export default function HomePage() {
               {[
                 { 
                   icon: <MessageSquare className="w-5 h-5" />, 
-                  title: "Book via AI", 
-                  desc: "Chat with our AI assistant to book instantly. No calls, no waiting." 
+                  title: "Book via MY FNG AI", 
+                  desc: "Chat with our AI assistant to select your service and preferred time. No calls required." 
                 },
                 { 
                   icon: <Calendar className="w-5 h-5" />, 
                   title: "Pickup Scheduled", 
-                  desc: "We confirm the best time and our driver arrives at your doorstep." 
+                  desc: "We confirm your slot and arrange doorstep pickup at your convenience." 
                 },
                 { 
                   icon: <MapPin className="w-5 h-5" />, 
-                  title: "Live Tracking", 
-                  desc: "Watch your car's journey and service progress in real-time." 
+                  title: "Tracking & Updates", 
+                  desc: "Track your car's journey and receive photos & video updates during service." 
                 },
                 { 
                   icon: <CheckCircle className="w-5 h-5" />, 
                   title: "Quality Check", 
-                  desc: "AI-verified inspection report before the car leaves the workshop." 
+                  desc: "Service completion is verified as per MY FNG process before delivery." 
                 },
                 { 
                   icon: <Shield className="w-5 h-5" />, 
                   title: "Delivery & Warranty", 
-                  desc: "Car delivered back to you with complete service warranty protection." 
+                  desc: "Your car is delivered back with service documentation and warranty coverage." 
                 }
               ].map((step, idx) => (
                 <div 
@@ -1088,21 +1088,21 @@ export default function HomePage() {
                   
                   <h3 className="text-3xl font-bold mb-4">
                     {[
-                      "Smart Booking System",
-                      "Scheduled Logistics",
-                      "Real-Time Dashboard",
-                      "Quality Assurance",
-                      "Peace of Mind"
+                      "Smart Booking Assistant",
+                      "Doorstep Pickup Confirmed",
+                      "Real-Time Service Updates",
+                      "Service Review & Approval",
+                      "Delivered with Warranty"
                     ][activeStep]}
                   </h3>
                   
                   <p className="text-blue-100 text-lg max-w-xs mx-auto">
                     {[
-                      "Just type 'Book Service' and let our AI handle the rest.",
-                      "Our certified driver will arrive at your location on time.",
-                      "Watch your car move on the map and see service photos instantly.",
-                      "Every bolt is checked. Every fluid is topped up. Verified by AI.",
-                      "Drive worry-free with our comprehensive service warranty."
+                      "Book in Minutes. No Calls Needed.",
+                      "Pickup Scheduled at Your Convenience",
+                      "Track pickup, workshop progress, and view photos as work happens.",
+                      "Work summary and documentation shared before delivery.",
+                      "Car returned to you with service documentation and coverage."
                     ][activeStep]}
                   </p>
 
@@ -1127,7 +1127,7 @@ export default function HomePage() {
             <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">Why Choose Us</span>
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">Why Choose MY FNG?</h2>
             <p className="text-sm sm:text-base text-gray-600 mt-3 sm:mt-4 max-w-2xl mx-auto px-4">
-              Experience the difference with our AI-powered platform and premium service quality
+              India's most transparent, AI-powered car service platform - built for reliability, not guesswork.
             </p>
           </div>
 
@@ -1152,13 +1152,12 @@ export default function HomePage() {
               intents: WhyIntent[];
             };
 
-            // NOTE (per requirement): 4 tiles ka content same rahega (different copy nahi),
-            // aur selection/hover par color change nahi hoga.
+            // Tiles remain static; no selection behavior.
             const intents: IntentMeta[] = [
               {
                 id: 'instant' as const,
-                title: 'Book Fast',
-                desc: 'Instant booking via AI',
+                title: 'AI-Powered Booking',
+                desc: 'No calls. No follow-ups. No confusion.',
                 icon: Bot,
                 pill: 'bg-blue-600 text-white',
                 card: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white',
@@ -1166,27 +1165,27 @@ export default function HomePage() {
               },
               {
                 id: 'save' as const,
-                title: 'Book Fast',
-                desc: 'Instant booking via AI',
-                icon: Bot,
+                title: 'Verified Workshops Only',
+                desc: "We audit workshops. You don't have to.",
+                icon: Shield,
                 pill: 'bg-blue-600 text-white',
                 card: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white',
                 glow: 'bg-blue-500/30',
               },
               {
                 id: 'control' as const,
-                title: 'Book Fast',
-                desc: 'Instant booking via AI',
-                icon: Bot,
+                title: 'Free Pickup & Drop',
+                desc: 'Doorstep convenience at no extra cost.',
+                icon: Car,
                 pill: 'bg-blue-600 text-white',
                 card: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white',
                 glow: 'bg-blue-500/30',
               },
               {
                 id: 'trust' as const,
-                title: 'Book Fast',
-                desc: 'Instant booking via AI',
-                icon: Bot,
+                title: 'MY FNG Service Guarantee',
+                desc: 'We own the experience, end to end.',
+                icon: CheckCircle,
                 pill: 'bg-blue-600 text-white',
                 card: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white',
                 glow: 'bg-blue-500/30',
@@ -1195,27 +1194,27 @@ export default function HomePage() {
 
             const features: WhyFeature[] = [
               {
-                id: 'ai-booking',
-                title: 'AI-Powered Booking',
-                desc: "India's first AI chatbot booking. No calls, no waiting — just instant service.",
-                icon: Bot,
+                id: 'parts',
+                title: 'Genuine / OEM / OES Spare Parts',
+                desc: 'Only genuine, OEM, or OES-recommended parts used.',
+                icon: Wrench,
                 color: 'text-blue-600',
                 bg: 'bg-blue-50',
-                intents: ['instant'],
+                intents: ['trust'],
               },
               {
-                id: 'quick-turnaround',
-                title: 'Quick Turnaround',
-                desc: 'Fast service with committed timelines.',
+                id: 'same-day-service',
+                title: 'Same-Day Service',
+                desc: "Quick turnaround for most jobs with committed timelines. If there's a delay, you're informed in advance.",
                 icon: Clock,
                 color: 'text-green-600',
                 bg: 'bg-green-50',
-                intents: ['instant'],
+                intents: ['control'],
               },
               {
                 id: 'pricing',
                 title: 'Transparent Pricing',
-                desc: '100% upfront pricing. No hidden costs.',
+                desc: 'No hidden charges.',
                 icon: Shield,
                 color: 'text-orange-600',
                 bg: 'bg-orange-50',
@@ -1232,8 +1231,8 @@ export default function HomePage() {
               },
               {
                 id: 'quality-first',
-                title: 'Quality First',
-                desc: 'Genuine parts & quality checks on every service.',
+                title: 'Quality-Checked Parts',
+                desc: 'Every part is quality-checked before installation.',
                 icon: Award,
                 color: 'text-purple-600',
                 bg: 'bg-purple-50',
@@ -1241,8 +1240,8 @@ export default function HomePage() {
               },
               {
                 id: 'expert-team',
-                title: 'Expert Team',
-                desc: 'Verified mechanics with 5+ years experience.',
+                title: 'Expert Technicians',
+                desc: 'Skilled professionals trained for modern car servicing.',
                 icon: Users,
                 color: 'text-red-600',
                 bg: 'bg-red-50',
@@ -1259,7 +1258,7 @@ export default function HomePage() {
               },
               {
                 id: 'support',
-                title: '24/7 Support',
+                title: '24/7 MY FNG Support',
                 desc: 'We are always here to help you, anytime, anywhere.',
                 icon: Heart,
                 color: 'text-indigo-600',
@@ -1271,7 +1270,15 @@ export default function HomePage() {
             // Keep the section content stable (no "active" intent switching)
             const activeIntent = intents[0];
             // Requirement: only 2 content cards show here
-            const filtered = features.filter((f) => f.id === 'ai-booking' || f.id === 'quick-turnaround');
+            const filtered = features.filter((f) => f.id === 'parts' || f.id === 'same-day-service');
+            const includedItems = [
+              'Transparent Pricing (No hidden charges)',
+              'Live Service Tracking',
+              'Quality-Checked Parts',
+              'Expert Technicians',
+              'Service Warranty',
+              '24/7 MY FNG Support',
+            ];
             const HeroIcon = activeIntent.icon;
 
             return (
@@ -1323,20 +1330,22 @@ export default function HomePage() {
                           </span>
                         </div>
 
-                        <h3 className="mt-5 text-2xl sm:text-3xl font-extrabold leading-tight">{activeIntent.title}</h3>
+                        <h3 className="mt-5 text-2xl sm:text-3xl font-extrabold leading-tight">Complete Transparency</h3>
                         <p className="mt-3 text-white/85 text-sm sm:text-base leading-relaxed">
-                          Book in seconds with AI guidance — pickup & updates included.
+                          See what's happening with your car.
+                          <br />
+                          Photos, videos, estimates, and approvals shared at every stage of service.
                         </p>
 
                         <div className="mt-6 grid grid-cols-2 gap-3">
                           {/* Requirement: only 2 content boxes, and constant */}
                               <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">No calls</div>
-                                <div className="mt-1 font-extrabold">AI booking</div>
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Real-time</div>
+                                <div className="mt-1 font-extrabold">Photo & video updates</div>
                               </div>
                               <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Fast</div>
-                                <div className="mt-1 font-extrabold">Committed ETA</div>
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-white/70">Approval-first</div>
+                                <div className="mt-1 font-extrabold">No work without your go-ahead</div>
                               </div>
                               </div>
                               </div>
@@ -1370,20 +1379,21 @@ export default function HomePage() {
                       <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
                         Also included with every service
                       </div>
+                      <p className="text-sm text-gray-600 mb-3">Included as standard. Not add-ons.</p>
                       <div className="flex flex-wrap gap-2">
-                        {features
-                          .filter((f) => !filtered.some((x) => x.id === f.id))
-                          .slice(0, 6)
-                          .map((f) => (
+                        {includedItems.map((item, idx) => (
                             <span
-                              key={`chip-${f.id}`}
+                              key={`chip-${idx}`}
                               className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-3 py-2 text-xs font-semibold text-gray-900"
                             >
-                              <span className={`w-2 h-2 rounded-full ${f.color.replace('text-', 'bg-')}`} />
-                              {f.title}
+                              <span className="w-2 h-2 rounded-full bg-blue-500" />
+                              {item}
                             </span>
                           ))}
                       </div>
+                      <p className="mt-4 text-sm text-gray-600 leading-relaxed">
+                        Thousands of car owners trust MY FNG because we don't just connect you to a workshop - we manage your car service like a professional operation.
+                      </p>
                     </div>
                   </div>
                 </div>

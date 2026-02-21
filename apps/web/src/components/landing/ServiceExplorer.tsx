@@ -195,7 +195,7 @@ export default function ServiceExplorer({
               Everything your car needs, in one place.
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Check pricing, ETA & service details — book in one tap.
+              Verified services. Clear pricing. One simple booking.
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -211,13 +211,13 @@ export default function ServiceExplorer({
                 onClick={onAskAI}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-white/80 backdrop-blur border border-gray-200 px-6 py-3 text-gray-900 font-semibold hover:border-blue-200 hover:text-blue-700 transition-all"
               >
-                Ask AI <Sparkles className="w-5 h-5" />
+                Ask MY FNG AI <Sparkles className="w-5 h-5" />
               </button>
               <Link
                 href="/services"
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/70 px-6 py-3 text-gray-900 font-semibold hover:border-gray-300 transition-all"
               >
-                Explore All <ArrowRight className="w-5 h-5" />
+                Explore All Services <ArrowRight className="w-5 h-5" />
               </Link>
             </div>
           </div>
@@ -259,7 +259,9 @@ export default function ServiceExplorer({
                           </div>
 
                           <p className="mt-4 text-sm sm:text-base text-gray-700 leading-relaxed line-clamp-3">
-                            {active.desc}
+                            {active.slug === 'periodic-service'
+                              ? 'Guided service booking with transparent inspection and documentation.'
+                              : active.desc}
                           </p>
 
                           <div className="mt-5 grid grid-cols-3 gap-2">
@@ -281,7 +283,9 @@ export default function ServiceExplorer({
                                 </div>
                                 <Shield className="w-4 h-4 text-gray-400" />
                               </div>
-                              <div className="mt-1 text-sm font-bold text-gray-900">{active.warranty}</div>
+                              <div className="mt-1 text-sm font-bold text-gray-900">
+                                {active.slug === 'periodic-service' ? '1000 kms / 3 Months' : active.warranty}
+                              </div>
                             </div>
                           </div>
 
@@ -381,6 +385,9 @@ export default function ServiceExplorer({
                   })}
               </div>
             ) : null}
+            <p className="mt-6 text-sm text-gray-600 text-center">
+              All services are delivered by MY FNG-verified workshops with pricing approval, photo & video proof, and customer support.
+            </p>
           </div>
         </div>
       </div>
