@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const ELIGIBLE_ROLES = new Set(['TELECALLER', 'RSA_MANAGER']);
-const SESSION_TTL_SECONDS = 30;
+const SESSION_TTL_SECONDS = 120;
 
 export { SESSION_TTL_SECONDS };
 

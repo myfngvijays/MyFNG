@@ -42,6 +42,7 @@ import NotificationBell from '@/components/NotificationBell';
 
 const SIDEBAR_COLLAPSED_KEY = 'myfng:dashboardSidebarCollapsed';
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
+const AANSH_OPTIONAL_SKIP_KEY = 'myfng:aansh_optional_skip';
 
 function getStoredAanshSession(): { session_token: string; aansh_id: number; expires_at: string } | null {
   try {
@@ -49,7 +50,6 @@ function getStoredAanshSession(): { session_token: string; aansh_id: number; exp
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { session_token?: string; aansh_id?: number; expires_at?: string };
     if (!parsed?.session_token || parsed?.aansh_id == null || !parsed?.expires_at) return null;
-    if (new Date(parsed.expires_at).getTime() <= Date.now()) return null;
     return {
       session_token: parsed.session_token,
       aansh_id: parsed.aansh_id,
@@ -64,6 +64,23 @@ function setStoredAanshSession(session: { session_token: string; aansh_id: numbe
   try {
     if (session) sessionStorage.setItem(AANSH_SESSION_KEY, JSON.stringify(session));
     else sessionStorage.removeItem(AANSH_SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function getAanshOptionalSkip(): boolean {
+  try {
+    return sessionStorage.getItem(AANSH_OPTIONAL_SKIP_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setAanshOptionalSkip(skip: boolean) {
+  try {
+    if (skip) sessionStorage.setItem(AANSH_OPTIONAL_SKIP_KEY, '1');
+    else sessionStorage.removeItem(AANSH_OPTIONAL_SKIP_KEY);
   } catch {
     // ignore
   }
@@ -140,6 +157,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             aansh_id: data.currentSession.aansh_id,
             expires_at: data.currentSession.expires_at,
           };
+          setAanshOptionalSkip(false);
           setAanshSession(session);
           setStoredAanshSession(session);
           setAanshModalOpen(false);
@@ -154,6 +172,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           }).then((res) => res.json()).catch(() => ({}));
           if (!cancelled && heart?.expires_at) {
             const session = { ...hadStored, expires_at: heart.expires_at };
+            setAanshOptionalSkip(false);
             setAanshSession(session);
             setStoredAanshSession(session);
             setAanshModalOpen(false);
@@ -163,8 +182,10 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         if (!cancelled) {
           setAanshSession(null);
           setStoredAanshSession(null);
-          if (Array.isArray(data.available) && data.available.length > 0) {
+          if (Array.isArray(data.available) && data.available.length > 0 && !getAanshOptionalSkip()) {
             setAanshModalOpen(true);
+          } else {
+            setAanshModalOpen(false);
           }
         }
       })
@@ -184,7 +205,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
   useEffect(() => {
     if (!aanshSession?.session_token) return;
-    const t = setInterval(() => {
+    const sendHeartbeat = () => {
       fetch('/api/sarv-aansh/session/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -193,19 +214,39 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         .then((r) => r.json())
         .then((data: { expires_at?: string }) => {
           if (data.expires_at) {
-            setAanshSession((prev) => (prev ? { ...prev, expires_at: data.expires_at! } : null));
+            setAanshSession((prev) => {
+              if (!prev) return null;
+              const next = { ...prev, expires_at: data.expires_at! };
+              setStoredAanshSession(next);
+              return next;
+            });
           }
         })
         .catch(() => {
-          setAanshSession(null);
+          // Network blips/background throttling are common when window loses focus.
+          // Keep session and retry on next tick/focus instead of dropping immediately.
         });
-    }, 10000);
-    return () => clearInterval(t);
+    };
+
+    // Kick once immediately so active session reflects quickly after tab/window switch.
+    sendHeartbeat();
+    const t = setInterval(sendHeartbeat, 10000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') sendHeartbeat();
+    };
+    const onFocus = () => sendHeartbeat();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [aanshSession?.session_token]);
 
   // Note: do NOT auto-release on beforeunload.
   // Refresh/navigation also triggers beforeunload, which would incorrectly free Aansh.
-  // We keep explicit release on logout; browser close fallback is handled by short TTL + heartbeat.
+  // Session release is explicit on logout (or by admin manual remove).
 
   const withTimeout = async <T,>(p: PromiseLike<T>, ms: number, label: string): Promise<T> => {
     const promise = Promise.resolve(p as any) as Promise<T>;
@@ -345,6 +386,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         aansh_id: data.aansh_id,
         expires_at: data.expires_at,
       };
+      setAanshOptionalSkip(false);
       setAanshSession(session);
       setStoredAanshSession(session);
       setAanshModalOpen(false);
@@ -358,6 +400,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
   const openAanshSelector = async () => {
     if (!eligibleForAansh) return;
+    setAanshOptionalSkip(false);
     setAanshModalOpen(true);
     setAanshLoading(true);
     try {
@@ -457,6 +500,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/rsa_manager/create-complaint', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Create Complaint' },
         { href: '/dashboard/rsa_manager/car-service-enquiry', icon: <Car className="w-5 h-5" />, label: 'Car Service Enquiry' },
         { href: '/dashboard/rsa_manager/registered', icon: <ClipboardCheck className="w-5 h-5" />, label: 'View Registered' },
+        { href: '/dashboard/rsa_manager/rsa-sessions', icon: <Activity className="w-5 h-5" />, label: 'Active Aansh Sessions' },
         { href: '/dashboard/rsa_manager/payments', icon: <DollarSign className="w-5 h-5" />, label: 'Payment' },
         { href: '/dashboard/rsa_manager/mechanics', icon: <Wrench className="w-5 h-5" />, label: 'Manage Mechanics' },
         { href: '/dashboard/rsa_manager/membership-customer', icon: <Users className="w-5 h-5" />, label: 'Membership Customer' },
@@ -601,14 +645,14 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
-            {eligibleForAansh && aanshSession && (
+            {eligibleForAansh && (
               <button
                 type="button"
                 onClick={openAanshSelector}
                 title="Change Aansh"
                 className="hidden sm:inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 hover:bg-blue-100"
               >
-                Aansh: {aanshSession.aansh_id}
+                {aanshSession ? `Aansh: ${aanshSession.aansh_id}` : 'Select Aansh'}
               </button>
             )}
             <NotificationBell />
@@ -701,7 +745,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
               ) : null}
             </div>
             <p className="text-sm text-gray-500 mb-4">
-              Choose an available Aansh to receive SARV calls. It will be released when you log out or close the browser.
+              Choose an available Aansh to receive SARV calls, or continue without selecting one for now. Claimed Aansh is released on logout.
             </p>
             {aanshSession ? (
               <p className="text-xs text-blue-700 mb-3">Current Aansh: {aanshSession.aansh_id}</p>
@@ -724,6 +768,18 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
                   </button>
                 ))}
               </div>
+            )}
+            {!aanshSession && (
+              <button
+                type="button"
+                className="mt-4 w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                onClick={() => {
+                  setAanshOptionalSkip(true);
+                  setAanshModalOpen(false);
+                }}
+              >
+                Proceed without Aansh
+              </button>
             )}
           </div>
         </div>

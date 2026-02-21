@@ -28,20 +28,16 @@ export async function GET() {
   }
 
   const db = supabaseAdmin as any;
-  const now = new Date().toISOString();
-
   const [catalogRes, activeRes, mySessionRes] = await Promise.all([
     db.from('sarv_aansh_catalog').select('aansh_id, system_name').eq('is_active', true),
     db
       .from('sarv_aansh_sessions')
       .select('aansh_id')
-      .is('released_at', null)
-      .gt('expires_at', now),
+      .is('released_at', null),
     db
       .from('sarv_aansh_sessions')
       .select('aansh_id, session_token, expires_at')
       .is('released_at', null)
-      .gt('expires_at', now)
       .eq('user_id', profileId)
       .maybeSingle(),
   ]);
@@ -60,14 +56,13 @@ export async function GET() {
     }));
 
   const myRow = mySessionRes.data as any;
-  const currentSession =
-    myRow && myRow.expires_at > now
-      ? {
-          aansh_id: myRow.aansh_id,
-          session_token: myRow.session_token,
-          expires_at: myRow.expires_at,
-        }
-      : null;
+  const currentSession = myRow
+    ? {
+        aansh_id: myRow.aansh_id,
+        session_token: myRow.session_token,
+        expires_at: myRow.expires_at,
+      }
+    : null;
 
   return NextResponse.json({ available, currentSession });
 }

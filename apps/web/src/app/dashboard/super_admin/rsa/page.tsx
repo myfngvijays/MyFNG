@@ -601,6 +601,7 @@ export default function SuperAdminRSASettingsPage() {
   const [catalogSaving, setCatalogSaving] = useState(false);
   const [sessionsList, setSessionsList] = useState<{ id: string; aansh_id: number; user_id: string; assignee_role: string; expires_at: string; user_name?: string; user_email?: string }[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionRemovingId, setSessionRemovingId] = useState<string>('');
 
   const filteredReportCalls = useMemo(() => {
     const list = Array.isArray(reportCalls) ? reportCalls : [];
@@ -674,6 +675,26 @@ export default function SuperAdminRSASettingsPage() {
       setSessionsList([]);
     } finally {
       setSessionsLoading(false);
+    }
+  };
+
+  const removeSession = async (sessionId: string) => {
+    if (!sessionId) return;
+    if (!confirm('Is session ko manually release karna hai?')) return;
+    setSessionRemovingId(sessionId);
+    try {
+      const res = await fetch('/api/super_admin/sarv-aansh-sessions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to remove session');
+      await loadSessions();
+    } catch (e: any) {
+      alert(e?.message || 'Failed to remove session');
+    } finally {
+      setSessionRemovingId('');
     }
   };
 
@@ -1864,7 +1885,7 @@ export default function SuperAdminRSASettingsPage() {
         <div className="space-y-6">
           <div className="bg-white rounded-lg shadow-sm p-4">
             <h2 className="text-sm font-semibold text-gray-800 mb-3">Active Aansh Sessions</h2>
-            <p className="text-xs text-gray-500 mb-3">Currently claimed Aansh IDs (released on logout or after 30s without heartbeat).</p>
+            <p className="text-xs text-gray-500 mb-3">Currently claimed Aansh IDs (released on logout or manual remove by admin).</p>
             <div className="overflow-x-auto">
               <table className="min-w-full text-xs sm:text-sm">
                 <thead>
@@ -1873,13 +1894,14 @@ export default function SuperAdminRSASettingsPage() {
                     <th className="py-2 pr-3">Role</th>
                     <th className="py-2 pr-3">User</th>
                     <th className="py-2 pr-3">Expires</th>
+                    <th className="py-2 pr-3">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sessionsLoading ? (
-                    <tr><td className="py-3 text-gray-500" colSpan={4}>Loading...</td></tr>
+                    <tr><td className="py-3 text-gray-500" colSpan={5}>Loading...</td></tr>
                   ) : sessionsList.length === 0 ? (
-                    <tr><td className="py-3 text-gray-500" colSpan={4}>No active sessions.</td></tr>
+                    <tr><td className="py-3 text-gray-500" colSpan={5}>No active sessions.</td></tr>
                   ) : (
                     sessionsList.map((s) => (
                       <tr key={s.id} className="border-b last:border-b-0">
@@ -1887,6 +1909,16 @@ export default function SuperAdminRSASettingsPage() {
                         <td className="py-2 pr-3">{s.assignee_role}</td>
                         <td className="py-2 pr-3">{s.user_name || s.user_email || s.user_id}</td>
                         <td className="py-2 pr-3">{formatDateTime(s.expires_at)}</td>
+                        <td className="py-2 pr-3">
+                          <button
+                            type="button"
+                            className="text-red-600 hover:text-red-700 font-semibold disabled:text-gray-400"
+                            onClick={() => removeSession(s.id)}
+                            disabled={sessionRemovingId === s.id}
+                          >
+                            {sessionRemovingId === s.id ? 'Removing...' : 'Remove'}
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
