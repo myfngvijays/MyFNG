@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
 import NotificationBell from './NotificationBell';
 
@@ -36,12 +37,12 @@ export default function DashboardHeader({
   // Simple header: back + title (no welcome, no logout)
   if (title) {
     return (
-      <View style={styles.header}>
+      <View style={styles.simpleHeader}>
         <View style={styles.leftSection}>
           <View style={styles.simpleRow}>
             {onBack && (
               <TouchableOpacity onPress={onBack} style={styles.backButton}>
-                <Text style={styles.backText}>←</Text>
+                <Ionicons name="arrow-back" size={20} color={COLORS.white} />
               </TouchableOpacity>
             )}
             <Text style={styles.simpleTitle}>{title}</Text>
@@ -89,8 +90,23 @@ export default function DashboardHeader({
 const styles = StyleSheet.create({
   header: {
     backgroundColor: COLORS.primary,
-    padding: SPACING.lg,
-    paddingTop: SPACING.xxl,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+    paddingTop: SPACING.xl,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  simpleHeader: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+    paddingTop: SPACING.lg,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -107,19 +123,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    minHeight: 40,
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
   },
   simpleTitle: {
     fontSize: FONT_SIZES.lg,

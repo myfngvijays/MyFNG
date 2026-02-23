@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { apiFetch } from '../../../lib/api';
 import DashboardHeader from '../../../components/DashboardHeader';
@@ -106,22 +107,35 @@ export default function CustomerSupportScreen() {
   return (
     <View style={styles.container}>
       <DashboardHeader title="Support" onBack={() => navigation.goBack()} />
-      
-      {/* Create Ticket Button */}
-      <View style={styles.headerActions}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={styles.summaryCard}>
+          <View>
+            <Text style={styles.summaryLabel}>Total Tickets</Text>
+            <Text style={styles.summaryValue}>{tickets.length}</Text>
+          </View>
+          <View style={styles.summaryIconWrap}>
+            <Ionicons name="chatbubbles-outline" size={20} color={COLORS.primary} />
+          </View>
+        </View>
+
         <TouchableOpacity
           style={styles.createButton}
           onPress={() => setShowCreateForm(!showCreateForm)}
         >
+          <Ionicons name={showCreateForm ? 'close-outline' : 'add-outline'} size={18} color={COLORS.white} />
           <Text style={styles.createButtonText}>
-            {showCreateForm ? 'Cancel' : '+ Create Ticket'}
+            {showCreateForm ? 'Cancel' : 'Create Ticket'}
           </Text>
         </TouchableOpacity>
-      </View>
 
       {/* Create Ticket Form */}
       {showCreateForm && (
         <View style={styles.createForm}>
+          <Text style={styles.formTitle}>Raise a new ticket</Text>
           <TextInput
             style={styles.formInput}
             placeholder="Subject"
@@ -142,15 +156,12 @@ export default function CustomerSupportScreen() {
             style={styles.submitButton}
             onPress={handleCreateTicket}
           >
+            <Ionicons name="send-outline" size={16} color={COLORS.white} />
             <Text style={styles.submitButtonText}>Submit Ticket</Text>
           </TouchableOpacity>
         </View>
       )}
-
-      <ScrollView
-        style={styles.scrollView}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
+      
         {tickets.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No support tickets found</Text>
@@ -210,17 +221,40 @@ const styles = StyleSheet.create({
     fontSize: SIZES.md,
     color: COLORS.textSecondary,
   },
-  headerActions: {
+  content: {
     padding: SPACING.md,
+    paddingBottom: SPACING.xl,
+  },
+  summaryCard: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryLabel: { color: COLORS.textSecondary, fontSize: SIZES.sm, fontWeight: '700' },
+  summaryValue: { color: COLORS.textHeading, fontWeight: '800', fontSize: 26, marginTop: 4 },
+  summaryIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   createButton: {
     backgroundColor: COLORS.primary,
     padding: SPACING.md,
     borderRadius: 8,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: SPACING.sm,
   },
   createButtonText: {
     color: COLORS.white,
@@ -230,9 +264,10 @@ const styles = StyleSheet.create({
   createForm: {
     backgroundColor: COLORS.white,
     padding: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderRadius: 10,
+    marginBottom: SPACING.sm,
   },
+  formTitle: { color: COLORS.textHeading, fontSize: SIZES.md, fontWeight: '700', marginBottom: SPACING.sm },
   formInput: {
     height: 40,
     borderWidth: 1,
@@ -254,6 +289,9 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderRadius: 8,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
   },
   submitButtonText: {
     color: COLORS.white,
@@ -280,10 +318,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    marginHorizontal: SPACING.md,
     borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primary,
   },
   ticketHeader: {
     flexDirection: 'row',

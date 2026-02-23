@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
@@ -44,22 +45,34 @@ export default function CustomerMembershipScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       <DashboardHeader title="Membership" onBack={() => navigation.goBack()} />
-      <ScrollView>
+      <ScrollView contentContainerStyle={styles.content}>
         {membership && (
           <View style={styles.activeCard}>
-            <Text style={styles.activeText}>Active: {membership.plan?.name || membership.plan_id}</Text>
+            <View style={styles.activeRow}>
+              <View>
+                <Text style={styles.activeLabel}>Current Plan</Text>
+                <Text style={styles.activeText}>{membership.plan?.name || membership.plan_id}</Text>
+              </View>
+              <Ionicons name="ribbon-outline" size={22} color="#166534" />
+            </View>
           </View>
         )}
         {plans.map((plan) => (
           <View key={plan.id} style={styles.card}>
-            <Text style={styles.planName}>{plan.name}</Text>
+            <View style={styles.planHeader}>
+              <Text style={styles.planName}>{plan.name}</Text>
+              <Text style={styles.price}>₹{Number(plan.price || 0).toFixed(2)}</Text>
+            </View>
             <Text style={styles.planDesc}>{plan.description || 'Membership plan'}</Text>
-            <Text style={styles.price}>₹{Number(plan.price || 0).toFixed(2)}</Text>
             {(groupedBenefits[plan.id] || []).map((b) => (
               <Text key={b.id} style={styles.benefit}>• {b.title}</Text>
             ))}
-            <TouchableOpacity style={styles.btn} onPress={() => subscribe(plan.id)}>
-              <Text style={styles.btnText}>Subscribe</Text>
+            <TouchableOpacity
+              style={[styles.btn, membership?.plan_id === plan.id && styles.btnDisabled]}
+              onPress={() => subscribe(plan.id)}
+              disabled={membership?.plan_id === plan.id}
+            >
+              <Text style={styles.btnText}>{membership?.plan_id === plan.id ? 'Active Plan' : 'Subscribe'}</Text>
             </TouchableOpacity>
           </View>
         ))}
@@ -70,14 +83,19 @@ export default function CustomerMembershipScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  activeCard: { margin: SPACING.md, backgroundColor: '#ECFDF3', borderWidth: 1, borderColor: '#86EFAC', borderRadius: 10, padding: SPACING.md },
-  activeText: { color: '#166534', fontWeight: '700' },
-  card: { backgroundColor: COLORS.white, marginHorizontal: SPACING.md, marginBottom: SPACING.md, borderRadius: 10, padding: SPACING.md },
+  content: { padding: SPACING.md, paddingBottom: SPACING.xl },
+  activeCard: { backgroundColor: '#ECFDF3', borderWidth: 1, borderColor: '#86EFAC', borderRadius: 10, padding: SPACING.md, marginBottom: SPACING.md },
+  activeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  activeLabel: { color: '#166534', fontSize: SIZES.sm },
+  activeText: { color: '#166534', fontWeight: '700', marginTop: 4, fontSize: SIZES.md },
+  card: { backgroundColor: COLORS.white, marginBottom: SPACING.md, borderRadius: 10, padding: SPACING.md },
+  planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   planName: { fontSize: SIZES.lg, fontWeight: '800', color: COLORS.textHeading },
   planDesc: { marginTop: 4, color: COLORS.textSecondary },
-  price: { marginTop: 8, fontSize: SIZES.lg, color: COLORS.primary, fontWeight: '700' },
+  price: { fontSize: SIZES.md, color: COLORS.primary, fontWeight: '700' },
   benefit: { marginTop: 4, color: COLORS.text, fontSize: SIZES.sm },
   btn: { marginTop: SPACING.md, backgroundColor: COLORS.primary, borderRadius: 8, alignItems: 'center', paddingVertical: 12 },
+  btnDisabled: { opacity: 0.65 },
   btnText: { color: '#FFF', fontWeight: '700' },
 });
 

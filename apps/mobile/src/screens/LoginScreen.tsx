@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,112 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
+import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
+import { ENV } from '../config/environment';
+import { setCustomerSessionToken } from '../lib/customerSession';
 
 export default function LoginScreen({ navigation, onLoginSuccess }: any) {
+  const [customerStep, setCustomerStep] = useState<'phone' | 'otp'>('phone');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerOtp, setCustomerOtp] = useState('');
+  const [customerConfirmation, setCustomerConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [partnerMode, setPartnerMode] = useState(false);
+
+  useEffect(() => {
+    // Emulator/testing stability: skip app verification challenge for Firebase test numbers.
+    if (__DEV__) {
+      auth().settings.appVerificationDisabledForTesting = true;
+    }
+  }, []);
+
+  const handleCustomerOtpStart = async () => {
+    const cleanPhone = customerPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const phoneWithCountry = `+91${cleanPhone}`;
+      const result = await auth().signInWithPhoneNumber(phoneWithCountry);
+      setCustomerConfirmation(result);
+      setCustomerStep('otp');
+      Alert.alert('OTP Sent', `OTP sent to ${phoneWithCountry}`);
+    } catch (error: any) {
+      const code = error?.code as string | undefined;
+      if (code === 'auth/network-request-failed') {
+        Alert.alert(
+          'Send OTP Failed',
+          'Network issue. Check emulator internet and Firebase Auth app setup (package name + SHA).'
+        );
+      } else {
+        Alert.alert('Send OTP Failed', error?.message || 'Unable to send OTP');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCustomerOtpVerify = async () => {
+    if (!customerConfirmation) {
+      Alert.alert('Session Expired', 'Please request OTP again.');
+      setCustomerStep('phone');
+      return;
+    }
+    if (customerOtp.trim().length < 4) {
+      Alert.alert('Invalid OTP', 'Please enter the OTP sent to your number');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const userCredential = await customerConfirmation.confirm(customerOtp.trim());
+      if (!userCredential?.user) throw new Error('OTP verification failed');
+      const idToken = await userCredential.user.getIdToken();
+
+      const verifyOtpUrl = `${ENV.API_URL}/api/customer/auth/verify-otp`;
+      const res = await fetch(verifyOtpUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-mobile-client': 'true',
+        },
+        body: JSON.stringify({ idToken }),
+      });
+
+      const raw = await res.text();
+      let json: any = {};
+      try {
+        json = raw ? JSON.parse(raw) : {};
+      } catch (_e) {
+        json = {};
+      }
+
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error(`Auth API not found at ${verifyOtpUrl}`);
+        }
+        throw new Error(json?.error || `Verification failed (HTTP ${res.status})`);
+      }
+
+      if (!json?.session_token) {
+        throw new Error('Session token not received');
+      }
+      await setCustomerSessionToken(json.session_token);
+      Alert.alert('Login Successful', 'You are now logged in as customer');
+      navigation?.navigate?.('PublicHome');
+    } catch (error: any) {
+      Alert.alert('OTP Verification Failed', error?.message || 'Invalid OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -88,66 +187,78 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         {/* Login Form */}
         <View style={styles.formSection}>
           <Text style={styles.formTitle}>Welcome Back! 👋</Text>
-          <Text style={styles.formSubtitle}>Sign in to continue</Text>
+          <Text style={styles.formSubtitle}>Login with mobile OTP</Text>
 
-          {/* Email Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputIcon}>📧</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              editable={!loading}
-            />
-          </View>
+          {customerStep === 'phone' ? (
+            <>
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputIcon}>📱</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Mobile Number"
+                  value={customerPhone}
+                  onChangeText={(text) => setCustomerPhone(text.replace(/\D/g, ''))}
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  editable={!loading}
+                />
+              </View>
 
-          {/* Password Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputIcon}>🔒</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              editable={!loading}
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword(!showPassword)}
-              style={styles.eyeIcon}
-            >
-              <Text style={{fontSize: 18}}>{showPassword ? '👁️' : '🙈'}</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={[styles.customerPrimaryButton, loading && styles.loginButtonDisabled]}
+                onPress={handleCustomerOtpStart}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.customerPrimaryButtonText}>Continue with OTP</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputIcon}>🔐</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter OTP"
+                  value={customerOtp}
+                  onChangeText={(text) => setCustomerOtp(text.replace(/\D/g, ''))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  editable={!loading}
+                />
+              </View>
 
-          {/* Login Button */}
-          <TouchableOpacity
-            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <>
-                <Text style={styles.loginButtonText}>Sign In</Text>
-                <Text style={{fontSize: 18, color: '#FFF'}}>→</Text>
-              </>
-            )}
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.customerPrimaryButton, loading && styles.loginButtonDisabled]}
+                onPress={handleCustomerOtpVerify}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.customerPrimaryButtonText}>Verify OTP</Text>
+                )}
+              </TouchableOpacity>
 
-          {/* Test Credentials Info */}
-          <View style={styles.infoBox}>
-            <Text style={{fontSize: 18, color: '#3B82F6'}}>ℹ️</Text>
-            <Text style={styles.infoText}>
-              Use your registered credentials to login
-            </Text>
-          </View>
+              <TouchableOpacity
+                style={styles.changeNumberButton}
+                disabled={loading}
+                onPress={() => {
+                  setCustomerStep('phone');
+                  setCustomerOtp('');
+                  setCustomerConfirmation(null);
+                }}
+              >
+                <Text style={styles.changeNumberText}>Change Number</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
-          {/* Customer Signup */}
           <View style={styles.signupRow}>
             <Text style={styles.signupText}>New customer?</Text>
             <TouchableOpacity
@@ -160,13 +271,76 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           </View>
 
           <TouchableOpacity
-            style={styles.customerOtpButton}
-            onPress={() => navigation?.navigate?.('CustomerOtpLogin')}
+            style={styles.partnerMiniButton}
+            onPress={() => setPartnerMode((prev: boolean) => !prev)}
             disabled={loading}
             activeOpacity={0.85}
           >
-            <Text style={styles.customerOtpButtonText}>Login as Customer (Mobile + OTP)</Text>
+            <Text style={styles.partnerMiniButtonText}>
+              {partnerMode ? 'Hide Partner Login' : 'Partner Login'}
+            </Text>
           </TouchableOpacity>
+
+          {partnerMode && (
+            <>
+              <View style={styles.partnerDivider}>
+                <Text style={styles.partnerDividerText}>Partner Sign In</Text>
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputIcon}>📧</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Partner Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  editable={!loading}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputIcon}>🔒</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  editable={!loading}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeIcon}
+                >
+                  <Text style={{fontSize: 18}}>{showPassword ? '👁️' : '🙈'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <>
+                    <Text style={styles.loginButtonText}>Partner Sign In</Text>
+                    <Text style={{fontSize: 18, color: '#FFF'}}>→</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.infoBox}>
+                <Text style={{fontSize: 18, color: '#3B82F6'}}>ℹ️</Text>
+                <Text style={styles.infoText}>
+                  Use your registered partner credentials
+                </Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Footer */}
@@ -296,18 +470,57 @@ const styles = StyleSheet.create({
     color: '#0088E8',
     fontWeight: '800',
   },
-  customerOtpButton: {
+  customerPrimaryButton: {
+    marginTop: 8,
+    backgroundColor: '#0088E8',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#0088E8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  customerPrimaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  partnerMiniButton: {
     marginTop: 12,
     borderWidth: 1,
-    borderColor: '#0088E8',
+    borderColor: '#93C5FD',
     borderRadius: 10,
-    paddingVertical: 10,
+    paddingVertical: 8,
     alignItems: 'center',
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#F8FAFC',
   },
-  customerOtpButtonText: {
-    color: '#005FB8',
-    fontSize: 13,
+  partnerMiniButtonText: {
+    color: '#1E3A8A',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  partnerDivider: {
+    marginTop: 14,
+    marginBottom: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    paddingTop: 10,
+  },
+  partnerDividerText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  changeNumberButton: {
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  changeNumberText: {
+    color: '#2563EB',
+    fontSize: 12,
     fontWeight: '700',
   },
   footer: {

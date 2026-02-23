@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -17,12 +17,19 @@ import { setCustomerSessionToken } from '../lib/customerSession';
 
 type Step = 'phone' | 'otp';
 
-export default function CustomerOtpLoginScreen({ navigation }: any) {
+export default function CustomerOtpLoginScreen({ navigation, route }: any) {
   const [step, setStep] = useState<Step>('phone');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(route?.params?.initialPhone || '');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [confirmation, setConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
+
+  useEffect(() => {
+    const initialPhone = route?.params?.initialPhone;
+    if (typeof initialPhone === 'string' && initialPhone.length > 0) {
+      setPhone(initialPhone.replace(/\D/g, '').slice(0, 10));
+    }
+  }, [route?.params?.initialPhone]);
 
   const handleSendOtp = async () => {
     const cleanPhone = phone.replace(/\D/g, '');

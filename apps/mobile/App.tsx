@@ -23,6 +23,8 @@ function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const isCustomerSessionUser =
+    user?.type === 'customer_session' && userProfile?.role?.role_code === 'CUSTOMER';
 
   useEffect(() => {
     checkUser();
@@ -156,7 +158,7 @@ function AppContent() {
   return (
     <NavigationContainer onStateChange={() => { void checkUser(); }}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {!user || !userProfile ? (
+        {!user || !userProfile || isCustomerSessionUser ? (
           <>
             {/* Public Home (marketing + navigation hub) */}
             <Stack.Screen name="PublicHome" component={PublicHomeScreen} />
@@ -170,6 +172,17 @@ function AppContent() {
             </Stack.Screen>
             <Stack.Screen name="CustomerSignup" component={CustomerRegistrationScreen} />
             <Stack.Screen name="CustomerOtpLogin" component={CustomerOtpLoginScreen} />
+            {isCustomerSessionUser ? (
+              <Stack.Screen name="Dashboard">
+                {(props) => (
+                  <DashboardNavigator
+                    {...props}
+                    userProfile={userProfile}
+                    onLogout={handleLogout}
+                  />
+                )}
+              </Stack.Screen>
+            ) : null}
           </>
         ) : (
           <Stack.Screen name="Dashboard">

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
@@ -58,7 +59,17 @@ export default function CustomerCartScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       <DashboardHeader title="Cart" onBack={() => navigation.goBack()} />
-      <ScrollView>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.summaryCard}>
+          <View>
+            <Text style={styles.summaryLabel}>Current Subtotal</Text>
+            <Text style={styles.summaryValue}>₹{subtotal.toFixed(2)}</Text>
+          </View>
+          <View style={styles.summaryIconWrap}>
+            <Ionicons name="cart-outline" size={22} color={COLORS.primary} />
+          </View>
+        </View>
+
         <View style={styles.card}>
           <Text style={styles.label}>Add Item</Text>
           <TextInput style={styles.input} placeholder="Service type" value={serviceType} onChangeText={setServiceType} />
@@ -70,11 +81,18 @@ export default function CustomerCartScreen({ navigation }: any) {
           <Text style={styles.label}>Cart Items</Text>
           {items.map((item) => (
             <View key={item.id} style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.itemTitle}>{item.service_type}</Text>
-                <Text style={styles.itemSub}>₹{Number(item.total_price || 0).toFixed(2)}</Text>
+              <View style={styles.rowLeft}>
+                <View style={styles.itemIconWrap}>
+                  <Ionicons name="build-outline" size={14} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemTitle}>{item.service_type}</Text>
+                  <Text style={styles.itemSub}>₹{Number(item.total_price || 0).toFixed(2)}</Text>
+                </View>
               </View>
-              <TouchableOpacity onPress={() => removeItem(item.id)}><Text style={styles.remove}>Remove</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => removeItem(item.id)}>
+                <Text style={styles.remove}>Remove</Text>
+              </TouchableOpacity>
             </View>
           ))}
           {items.length === 0 && <Text style={styles.empty}>Cart is empty</Text>}
@@ -100,12 +118,36 @@ export default function CustomerCartScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  card: { backgroundColor: COLORS.white, margin: SPACING.md, borderRadius: 10, padding: SPACING.md },
+  content: { padding: SPACING.md, paddingBottom: SPACING.xl },
+  summaryCard: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryLabel: { color: COLORS.textSecondary, fontSize: SIZES.sm, fontWeight: '700' },
+  summaryValue: { color: COLORS.textHeading, fontWeight: '800', fontSize: 28, marginTop: 4 },
+  summaryIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  card: { backgroundColor: COLORS.white, borderRadius: 10, padding: SPACING.md, marginBottom: SPACING.md },
   label: { fontSize: SIZES.md, fontWeight: '700', color: COLORS.textHeading, marginBottom: SPACING.sm },
   input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, height: 44, paddingHorizontal: SPACING.md, color: COLORS.text, marginBottom: SPACING.sm },
   btn: { backgroundColor: COLORS.primary, borderRadius: 8, alignItems: 'center', paddingVertical: 12 },
   btnText: { color: '#FFF', fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  itemIconWrap: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF' },
   itemTitle: { color: COLORS.textHeading, fontWeight: '600' },
   itemSub: { color: COLORS.textSecondary, fontSize: SIZES.xs },
   remove: { color: COLORS.danger, fontWeight: '700' },

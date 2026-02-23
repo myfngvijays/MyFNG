@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { requireOptionalNativeModule } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import { getCustomerSessionToken } from '../lib/customerSession';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicPillNav';
 
@@ -88,6 +89,15 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
   const supportPhone = '+919167779696';
   const supportEmail = 'support@myfng.in';
+  
+  const goToLoginOrDashboard = useCallback(async () => {
+    const token = await getCustomerSessionToken();
+    if (token) {
+      navigation.navigate('Dashboard');
+      return;
+    }
+    navigation.navigate('Login');
+  }, [navigation]);
 
   const AI_POPUP_DISMISSED_TS_KEY = 'myfng_ai_popup_dismissed_ts_v1';
 
@@ -830,7 +840,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
             <View style={styles.headerRight}>
               <TouchableOpacity
                 style={styles.iconBtn}
-                onPress={() => navigation.navigate('Login')}
+                onPress={() => { void goToLoginOrDashboard(); }}
                 accessibilityLabel="Notifications"
               >
                 <Ionicons name="notifications-outline" size={20} color={COLORS.primaryDark} />
@@ -1231,7 +1241,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           onPressTab={(tab: PublicPillNavTab) => {
             if (tab === 'ai') goToAIBooking();
             if (tab === 'search') onPressLocator();
-            if (tab === 'profile') navigation.navigate('Login');
+            if (tab === 'profile') { void goToLoginOrDashboard(); }
             if (tab === 'settings') setSupportOpen(true);
           }}
         />
@@ -1345,7 +1355,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 style={styles.modalLoginBtn}
                 onPress={() => {
                   setCityModalOpen(false);
-                  navigation.navigate('Login');
+                  void goToLoginOrDashboard();
                 }}
               >
                 <Text style={styles.modalLoginText}>Partner / Customer Login</Text>
@@ -1371,7 +1381,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 style={styles.modalLoginBtn}
                 onPress={() => {
                   setSupportOpen(false);
-                  navigation.navigate('Login');
+                  void goToLoginOrDashboard();
                 }}
               >
                 <Text style={styles.modalLoginText}>Login</Text>
