@@ -6,6 +6,7 @@
 import { cookies, headers } from 'next/headers';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { createClient } from '@/lib/supabase/server';
+import { verifyFirebaseIdToken } from '@/lib/firebase/admin';
 
 const CUSTOMER_SESSION_COOKIE = 'customer_session';
 const SESSION_DAYS = 30;
@@ -72,6 +73,84 @@ export async function getCustomerFromSession(): Promise<{
           return { customer: customer as CustomerRow, session: session as CustomerSessionRow };
         }
       }
+    }
+  }
+
+  const normalizePhone = (v: string | null | undefined): string | null => {
+    const digits = String(v || '').replace(/\D/g, '');
+    if (!digits) return null;
+    return digits.slice(-10);
+  };
+
+  const upsertCustomerFromFirebase = async (
+    firebaseUid: string,
+    phoneRaw: string | undefined
+  ): Promise<CustomerRow | null> => {
+    const normalizedPhone = normalizePhone(phoneRaw);
+
+    let existingCustomer: any = null;
+    const { data: byUid } = await supabaseAdmin
+      .from('customers')
+      .select('id, phone, firebase_uid, email, full_name, profile_image, phone_verified, email_verified, is_active')
+      .eq('firebase_uid', firebaseUid)
+      .maybeSingle();
+    existingCustomer = byUid;
+
+    if (!existingCustomer && normalizedPhone) {
+      const { data: byPhone } = await supabaseAdmin
+        .from('customers')
+        .select('id, phone, firebase_uid, email, full_name, profile_image, phone_verified, email_verified, is_active')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+      existingCustomer = byPhone;
+    }
+
+    if (existingCustomer) {
+      const { data: updated } = await supabaseAdmin
+        .from('customers')
+        .update({
+          firebase_uid: firebaseUid,
+          phone: normalizedPhone || existingCustomer.phone,
+          phone_verified: normalizedPhone ? true : existingCustomer.phone_verified,
+          last_login_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingCustomer.id)
+        .select('id, phone, firebase_uid, email, full_name, profile_image, phone_verified, email_verified, is_active')
+        .single();
+      return (updated as CustomerRow) || (existingCustomer as CustomerRow);
+    }
+
+    if (!normalizedPhone) return null;
+
+    const { data: inserted } = await supabaseAdmin
+      .from('customers')
+      .insert({
+        phone: normalizedPhone,
+        firebase_uid: firebaseUid,
+        phone_verified: true,
+        email_verified: false,
+        is_active: true,
+        full_name: `Customer ${normalizedPhone.slice(-4)}`,
+        last_login_at: new Date().toISOString(),
+      })
+      .select('id, phone, firebase_uid, email, full_name, profile_image, phone_verified, email_verified, is_active')
+      .single();
+    return (inserted as CustomerRow) || null;
+  };
+
+  // Firebase-first fallback for mobile/web clients that send ID token directly.
+  const firebaseHeaderToken =
+    headerStore.get('x-firebase-id-token') || headerStore.get('X-Firebase-Id-Token');
+  if (firebaseHeaderToken) {
+    try {
+      const decoded = await verifyFirebaseIdToken(firebaseHeaderToken);
+      const customer = await upsertCustomerFromFirebase(decoded.uid, decoded.phone_number);
+      if (customer && customer.is_active) {
+        return { customer, session: null };
+      }
+    } catch {
+      // ignore and continue to legacy fallbacks
     }
   }
 

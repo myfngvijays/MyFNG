@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
@@ -77,7 +77,12 @@ export default function CustomerOrdersScreen({ navigation }: any) {
         {orders.map((o) => {
           const amount = resolveDisplayAmount(o);
           return (
-            <View key={o.id} style={styles.card}>
+            <TouchableOpacity
+              key={o.id}
+              style={styles.card}
+              activeOpacity={0.9}
+              onPress={() => navigation.navigate('CustomerOrderDetail', { orderId: o.id, leadNumber: o.lead_number })}
+            >
               <View style={styles.topRow}>
                 <View style={styles.titleWrap}>
                   <Ionicons name="receipt-outline" size={16} color={COLORS.primary} />
@@ -92,7 +97,7 @@ export default function CustomerOrdersScreen({ navigation }: any) {
               <Text style={styles.amount}>
                 Amount: {amount !== null ? `₹${amount.toFixed(2)}` : 'Pending'}
               </Text>
-            </View>
+            </TouchableOpacity>
           );
         })}
         {!loading && orders.length === 0 && <Text style={styles.empty}>No orders found</Text>}

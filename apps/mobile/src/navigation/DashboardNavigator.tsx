@@ -38,6 +38,7 @@ import CustomerMembershipScreen from '../screens/dashboard/customer/CustomerMemb
 import CustomerCartScreen from '../screens/dashboard/customer/CustomerCartScreen';
 import CustomerOrdersScreen from '../screens/dashboard/customer/CustomerOrdersScreen';
 import CustomerProfileScreen from '../screens/dashboard/customer/CustomerProfileScreen';
+import CustomerOrderDetailScreen from '../screens/dashboard/customer/CustomerOrderDetailScreen';
 
 // Workshop Supervisor screens
 import TeamOverviewScreen from '../screens/dashboard/workshop_supervisor/TeamOverviewScreen';
@@ -1305,6 +1306,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="CustomerOrders"
           component={CustomerOrdersScreen}
           options={{ title: 'Order History' }}
+        />
+        <Stack.Screen
+          name="CustomerOrderDetail"
+          component={CustomerOrderDetailScreen}
+          options={{ title: 'Order Details' }}
         />
       </Stack.Navigator>
     );
