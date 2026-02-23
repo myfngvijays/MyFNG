@@ -797,7 +797,7 @@ export default function HomePage() {
                 </div>
                 
                 {/* Floating Card 1: AI Recommendation – keep inside right column to avoid overlapping left */}
-                <div className="absolute -top-6 left-2 md:top-8 md:left-0 bg-white p-4 rounded-2xl shadow-xl shadow-blue-900/5 border border-blue-50 animate-float z-20 max-w-[240px]">
+                <div className="hidden sm:block absolute -top-6 left-2 md:top-8 md:left-0 bg-white p-4 rounded-2xl shadow-xl shadow-blue-900/5 border border-blue-50 animate-float z-20 max-w-[240px]">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-600/20">
                       <Bot className="w-5 h-5 text-white" />
@@ -810,7 +810,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Floating Card 2: Health Status */}
-                <div className="absolute top-1/3 -right-6 md:-right-12 bg-white p-4 rounded-2xl shadow-xl shadow-green-900/5 border border-green-50 animate-float z-20 max-w-[200px]" style={{animationDelay: '1s'}}>
+                <div className="hidden sm:block absolute top-1/3 -right-6 md:-right-12 bg-white p-4 rounded-2xl shadow-xl shadow-green-900/5 border border-green-50 animate-float z-20 max-w-[200px]" style={{animationDelay: '1s'}}>
                    <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/20">
                       <CheckCircle className="w-5 h-5 text-white" />
@@ -826,7 +826,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Floating Card 3: Nearest Workshop – keep inside right column */}
-                <div className="absolute -bottom-8 left-4 md:bottom-8 md:left-2 bg-white p-4 rounded-2xl shadow-xl shadow-purple-900/5 border border-purple-50 animate-float z-20" style={{animationDelay: '2s'}}>
+                <div className="hidden sm:block absolute -bottom-8 left-4 md:bottom-8 md:left-2 bg-white p-4 rounded-2xl shadow-xl shadow-purple-900/5 border border-purple-50 animate-float z-20" style={{animationDelay: '2s'}}>
                    <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center shadow-lg shadow-purple-600/20">
                       <MapPin className="w-5 h-5 text-white" />
@@ -860,7 +860,7 @@ export default function HomePage() {
 
           {/* Trust tiles (same style as TrustBadges) - Full width */}
           <div className="mt-10 animate-fade-in-up" style={{ animationDelay: '0.75s' }}>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               {[
                 { icon: CheckCircle, title: 'Free Pickup & Drop', desc: 'Doorstep convenience included' },
                 { icon: Cpu, title: '100+ Workshops', desc: 'Strong, growing partner network' },
@@ -871,14 +871,14 @@ export default function HomePage() {
                 return (
                   <div
                     key={b.title}
-                    className="bg-white/50 backdrop-blur-sm rounded-xl p-4 flex items-center gap-3 animate-fade-in"
+                    className="bg-white/50 backdrop-blur-sm rounded-xl p-3 sm:p-4 flex items-center gap-3 animate-fade-in"
                     style={{ animationDelay: `${idx * 0.1}s` }}
                   >
                     <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
                       <Icon className="w-5 h-5 text-white" />
           </div>
                     <div>
-                      <div className="text-sm font-bold text-gray-900">{b.title}</div>
+                      <div className="text-sm sm:text-[15px] font-bold text-gray-900 leading-snug">{b.title}</div>
                       <div className="text-xs text-gray-600">{b.desc}</div>
                     </div>
                   </div>
@@ -1001,8 +1001,8 @@ export default function HomePage() {
         <div className="container mx-auto px-4 sm:px-6">
           <div className="text-center mb-12 sm:mb-16">
             <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">How It Works</span>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">How MY FNG Manages Your Car Service</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">How MY FNG Manages Your Car Service</h2>
+            <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto">
               From booking to delivery, every step is coordinated, documented, and supported by MY FNG.
             </p>
           </div>
@@ -1041,7 +1041,7 @@ export default function HomePage() {
                 <div 
                   key={idx}
                   onMouseEnter={() => setActiveStep(idx)}
-                  className={`group p-6 rounded-2xl cursor-pointer transition-all duration-300 border-2 ${
+                  className={`group p-4 sm:p-6 rounded-2xl cursor-pointer transition-all duration-300 border-2 ${
                     activeStep === idx 
                       ? 'bg-blue-50 border-blue-500 shadow-lg scale-[1.02]' 
                       : 'bg-white border-transparent hover:bg-gray-50 hover:border-gray-100'
@@ -1054,7 +1054,7 @@ export default function HomePage() {
                       {idx + 1}
                     </div>
                     <div>
-                      <h3 className={`text-lg font-bold mb-1 transition-colors ${activeStep === idx ? 'text-blue-900' : 'text-gray-900'}`}>
+                      <h3 className={`text-base sm:text-lg font-bold mb-1 transition-colors ${activeStep === idx ? 'text-blue-900' : 'text-gray-900'}`}>
                         {step.title}
                       </h3>
                       <p className={`text-sm leading-relaxed transition-colors ${activeStep === idx ? 'text-blue-700' : 'text-gray-500'}`}>
@@ -1284,7 +1284,7 @@ export default function HomePage() {
             return (
               <div className="mt-12 max-w-7xl mx-auto">
                 {/* Intent tiles */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                   {intents.map((i) => {
                     const Icon = i.icon;
                     return (
@@ -1300,14 +1300,14 @@ export default function HomePage() {
                             <Icon className="w-6 h-6" />
                           </div>
                           <span
-                            className="text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-gray-200 bg-white text-gray-600"
+                            className="hidden sm:inline-flex text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-gray-200 bg-white text-gray-600"
                           >
                             Choose
                           </span>
                         </div>
                         <div className="mt-3">
-                          <div className="text-base sm:text-lg font-extrabold text-gray-900">{i.title}</div>
-                          <div className="mt-1 text-xs sm:text-sm text-gray-600">{i.desc}</div>
+                          <div className="text-sm sm:text-lg font-extrabold text-gray-900 leading-snug">{i.title}</div>
+                          <div className="mt-1 text-[12px] sm:text-sm text-gray-600 leading-relaxed">{i.desc}</div>
                         </div>
                       </button>
                     );

@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { ENV } from '../config/environment';
+import { getCustomerSessionToken } from './customerSession';
 
 type JsonValue = Record<string, any> | any[] | null;
 
@@ -8,13 +9,15 @@ export async function apiFetch<T = JsonValue>(
   options: RequestInit = {}
 ): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  if (!token) throw new Error('Not authenticated');
+  const bearerToken = session?.access_token;
+  const customerSessionToken = await getCustomerSessionToken();
+  if (!bearerToken && !customerSessionToken) throw new Error('Not authenticated');
 
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> | undefined),
-    Authorization: `Bearer ${token}`,
   };
+  if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
+  if (customerSessionToken) headers['x-customer-session'] = customerSessionToken;
 
   const res = await fetch(`${ENV.API_URL}${path}`, {
     ...options,

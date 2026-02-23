@@ -158,6 +158,15 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
               <Text style={styles.signupLink}>Sign Up</Text>
             </TouchableOpacity>
           </View>
+
+          <TouchableOpacity
+            style={styles.customerOtpButton}
+            onPress={() => navigation?.navigate?.('CustomerOtpLogin')}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.customerOtpButtonText}>Login as Customer (Mobile + OTP)</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Footer */}
@@ -286,6 +295,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#0088E8',
     fontWeight: '800',
+  },
+  customerOtpButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#0088E8',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+  },
+  customerOtpButtonText: {
+    color: '#005FB8',
+    fontSize: 13,
+    fontWeight: '700',
   },
   footer: {
     alignItems: 'center',

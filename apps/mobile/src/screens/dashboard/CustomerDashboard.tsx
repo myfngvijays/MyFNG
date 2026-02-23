@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { apiFetch } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../context/AuthContext';
+import { clearCustomerSessionToken } from '../../lib/customerSession';
 import DashboardHeader from '../../components/DashboardHeader';
 import StatCard from '../../components/StatCard';
 import LeadCard from '../../components/LeadCard';
@@ -11,22 +12,7 @@ import { formatDateDMY } from "@/lib/dateFormat";
 
 export default function CustomerDashboard() {
   const navigation = useNavigation<any>();
-  const [userProfile, setUserProfile] = React.useState<any | null>(null);
-
-  React.useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single()
-          .then(({ data }) => {
-            if (data) setUserProfile(data);
-          });
-      }
-    });
-  }, []);
+  const [customer, setCustomer] = useState<any | null>(null);
   const [stats, setStats] = useState({
     totalBookings: 0,
     activeServices: 0,
@@ -37,30 +23,18 @@ export default function CustomerDashboard() {
 
   const fetchData = async () => {
     try {
-      if (!userProfile?.id) return;
-
-      // Fetch customer bookings
-      const [total, active, completed] = await Promise.all([
-        supabase.from('bookings').select('id', { count: 'exact', head: true }).eq('customer_id', userProfile.id),
-        supabase.from('bookings').select('id', { count: 'exact', head: true }).eq('customer_id', userProfile.id).in('status', ['pending', 'in_progress']),
-        supabase.from('bookings').select('id', { count: 'exact', head: true }).eq('customer_id', userProfile.id).eq('status', 'completed'),
+      const [me, ordersRes] = await Promise.all([
+        apiFetch<{ customer: any }>('/api/customer/auth/me'),
+        apiFetch<{ orders: any[] }>('/api/customer/orders'),
       ]);
-
+      const orders = ordersRes.orders || [];
+      setCustomer(me.customer || null);
+      setMyBookings(orders.slice(0, 8));
       setStats({
-        totalBookings: total.count || 0,
-        activeServices: active.count || 0,
-        completedServices: completed.count || 0,
+        totalBookings: orders.length,
+        activeServices: orders.filter((o: any) => !['CLOSED', 'CANCELLED', 'COMPLETED'].includes(o.status)).length,
+        completedServices: orders.filter((o: any) => ['COMPLETED', 'CLOSED'].includes(o.status)).length,
       });
-
-      // Fetch my bookings
-      const { data: bookingsData } = await supabase
-        .from('bookings')
-        .select('*')
-        .eq('customer_id', userProfile.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      setMyBookings(bookingsData || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     }
@@ -77,13 +51,17 @@ export default function CustomerDashboard() {
   }, []);
 
   const handleLogout = async () => {
+    try {
+      await apiFetch('/api/customer/auth/logout', { method: 'POST' });
+    } catch (_e) {}
+    await clearCustomerSessionToken();
     await supabase.auth.signOut();
   };
 
   return (
     <View style={styles.container}>
       <DashboardHeader
-        name={userProfile?.full_name || 'Customer'}
+        name={customer?.full_name || 'Customer'}
         role="Customer"
         onLogout={handleLogout}
       />
@@ -96,11 +74,11 @@ export default function CustomerDashboard() {
       >
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.actionsGrid}>
-          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('BookService')}>
-            <Text style={styles.actionTitle}>Book Service</Text>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerOrders')}>
+            <Text style={styles.actionTitle}>Order History</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('TrackBooking')}>
-            <Text style={styles.actionTitle}>Track Booking</Text>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerWallet')}>
+            <Text style={styles.actionTitle}>Wallet</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerVehicles')}>
             <Text style={styles.actionTitle}>My Vehicles</Text>
@@ -108,8 +86,17 @@ export default function CustomerDashboard() {
           <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerSupport')}>
             <Text style={styles.actionTitle}>Support</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerInvoices')}>
-            <Text style={styles.actionTitle}>Invoices</Text>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerRefer')}>
+            <Text style={styles.actionTitle}>Refer & Earn</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerCart')}>
+            <Text style={styles.actionTitle}>Cart</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerNotifications')}>
+            <Text style={styles.actionTitle}>Notifications</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerMembership')}>
+            <Text style={styles.actionTitle}>Membership</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CustomerProfile')}>
             <Text style={styles.actionTitle}>Profile</Text>
@@ -145,7 +132,7 @@ export default function CustomerDashboard() {
             {myBookings.map((booking) => (
               <LeadCard
                 key={booking.id}
-                customerName="My Booking"
+                customerName={booking.lead_number || 'Order'}
                 vehicleModel={booking.vehicle_model || 'N/A'}
                 serviceType={booking.service_type || 'Service'}
                 status={booking.status || 'pending'}

@@ -16,7 +16,6 @@ import { formatDateDMY } from "@/lib/utils";
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 import {
   Plus,
   Clock,
@@ -40,60 +39,61 @@ export default function CustomerDashboardPage() {
     completed: 0,
     total: 0,
   });
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchCustomerData();
+    fetch('/api/customer/analytics/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ event_name: 'dashboard_viewed', event_group: 'engagement' }),
+    }).catch(() => {});
   }, []);
 
   async function fetchCustomerData() {
-    const supabase = createClient();
-
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const [meRes, leadsRes, flagsRes] = await Promise.all([
+        fetch('/api/customer/auth/me', { credentials: 'include' }),
+        fetch('/api/customer/leads', { credentials: 'include' }),
+        fetch('/api/customer/feature-flags', { credentials: 'include' }),
+      ]);
 
-      if (!user) {
+      if (!meRes.ok) {
         router.push('/customer/login');
         return;
       }
 
-      // Fetch customer profile
-      const { data: customerData } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
+      const meData = await meRes.json().catch(() => ({}));
+      const customerData = meData?.customer ?? null;
       setCustomer(customerData);
 
-      // Fetch customer leads
-      const { data: leadsData } = await supabase
-        .from('service_leads')
-        .select('*')
-        .eq('customer_phone', customerData?.phone)
-        .order('created_at', { ascending: false })
-        .limit(5);
+      const leadsData = leadsRes.ok ? (await leadsRes.json().catch(() => ({})))?.leads ?? [] : [];
+      setLeads(leadsData);
+      const flagsData = flagsRes.ok ? (await flagsRes.json().catch(() => ({})))?.flags ?? {} : {};
+      setFlags(flagsData);
 
-      setLeads(leadsData || []);
-
-      // Calculate stats
-      const allLeads = leadsData || [];
+      const allLeads = Array.isArray(leadsData) ? leadsData : [];
       setStats({
-        active: allLeads.filter(l => !['CLOSED', 'REJECTED', 'CANCELLED'].includes(l.status)).length,
-        completed: allLeads.filter(l => l.status === 'CLOSED').length,
+        active: allLeads.filter((l: any) => !['CLOSED', 'REJECTED', 'CANCELLED'].includes(l?.status)).length,
+        completed: allLeads.filter((l: any) => l?.status === 'CLOSED').length,
         total: allLeads.length,
       });
-
     } catch (error) {
       console.error('Error fetching data:', error);
+      router.push('/customer/login');
     } finally {
       setLoading(false);
     }
   }
 
   async function handleLogout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push('/customer/login');
+    try {
+      await fetch('/api/customer/auth/logout', { method: 'POST', credentials: 'include' });
+    } finally {
+      router.push('/customer/login');
+      router.refresh();
+    }
   }
 
   function getStatusColor(status: string) {
@@ -129,7 +129,7 @@ export default function CustomerDashboardPage() {
                 <h1 className="text-2xl font-bold text-gray-900">
                   Welcome, {customer?.full_name?.split(' ')[0]}!
                 </h1>
-                <p className="text-sm text-gray-600">{customer?.email}</p>
+                <p className="text-sm text-gray-600">{customer?.email || customer?.phone || '—'}</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
@@ -202,7 +202,7 @@ export default function CustomerDashboardPage() {
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-900">Recent Services</h2>
-              <Link href="/customer/history" className="text-brand-primary hover:underline text-sm font-medium">
+              <Link href="/customer/orders" className="text-brand-primary hover:underline text-sm font-medium">
                 View All
               </Link>
             </div>
@@ -259,7 +259,7 @@ export default function CustomerDashboardPage() {
 
         {/* Quick Links */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Link href="/customer/history" className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+          <Link href="/customer/orders" className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
                 <History className="w-6 h-6 text-purple-600" />
@@ -271,14 +271,14 @@ export default function CustomerDashboardPage() {
             </div>
           </Link>
 
-          <Link href="/customer/invoices" className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+          <Link href="/customer/wallet" className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
                 <FileText className="w-6 h-6 text-green-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">Invoices</h3>
-                <p className="text-sm text-gray-600">View & download invoices</p>
+                <h3 className="font-semibold text-gray-900">Wallet</h3>
+                <p className="text-sm text-gray-600">Offers and virtual cash</p>
               </div>
             </div>
           </Link>
@@ -294,6 +294,15 @@ export default function CustomerDashboardPage() {
               </div>
             </div>
           </Link>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          {(flags.customer_referral ?? true) && <Link href="/customer/refer" className="bg-white rounded-lg shadow p-3 text-center text-sm">Refer & Earn</Link>}
+          <Link href="/customer/notifications" className="bg-white rounded-lg shadow p-3 text-center text-sm">Notification Toggles</Link>
+          <Link href="/customer/vehicles" className="bg-white rounded-lg shadow p-3 text-center text-sm">My Vehicle</Link>
+          <Link href="/customer/support" className="bg-white rounded-lg shadow p-3 text-center text-sm">Help & Support</Link>
+          {(flags.customer_membership ?? true) && <Link href="/customer/membership" className="bg-white rounded-lg shadow p-3 text-center text-sm">Membership</Link>}
+          {(flags.customer_cart ?? true) && <Link href="/customer/cart" className="bg-white rounded-lg shadow p-3 text-center text-sm">Cart</Link>}
         </div>
       </main>
     </div>

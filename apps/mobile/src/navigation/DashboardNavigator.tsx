@@ -31,7 +31,13 @@ import DigitalAuthorBlogsScreen from '../screens/dashboard/digital_author/Digita
 import DigitalAuthorBlogEditorScreen from '../screens/dashboard/digital_author/DigitalAuthorBlogEditorScreen';
 import DigitalAuthorProfileScreen from '../screens/dashboard/digital_author/DigitalAuthorProfileScreen';
 import CustomerVehiclesScreen from '../screens/dashboard/customer/CustomerVehiclesScreen';
-import ProfileScreen from '../screens/dashboard/ProfileScreen';
+import CustomerWalletScreen from '../screens/dashboard/customer/CustomerWalletScreen';
+import CustomerReferScreen from '../screens/dashboard/customer/CustomerReferScreen';
+import CustomerNotificationsScreen from '../screens/dashboard/customer/CustomerNotificationsScreen';
+import CustomerMembershipScreen from '../screens/dashboard/customer/CustomerMembershipScreen';
+import CustomerCartScreen from '../screens/dashboard/customer/CustomerCartScreen';
+import CustomerOrdersScreen from '../screens/dashboard/customer/CustomerOrdersScreen';
+import CustomerProfileScreen from '../screens/dashboard/customer/CustomerProfileScreen';
 
 // Workshop Supervisor screens
 import TeamOverviewScreen from '../screens/dashboard/workshop_supervisor/TeamOverviewScreen';
@@ -1267,8 +1273,38 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         />
         <Stack.Screen
           name="CustomerProfile"
-          component={ProfileScreen}
+          component={CustomerProfileScreen}
           options={{ title: 'My Profile' }}
+        />
+        <Stack.Screen
+          name="CustomerWallet"
+          component={CustomerWalletScreen}
+          options={{ title: 'Wallet' }}
+        />
+        <Stack.Screen
+          name="CustomerRefer"
+          component={CustomerReferScreen}
+          options={{ title: 'Refer & Earn' }}
+        />
+        <Stack.Screen
+          name="CustomerNotifications"
+          component={CustomerNotificationsScreen}
+          options={{ title: 'Notifications' }}
+        />
+        <Stack.Screen
+          name="CustomerMembership"
+          component={CustomerMembershipScreen}
+          options={{ title: 'Membership' }}
+        />
+        <Stack.Screen
+          name="CustomerCart"
+          component={CustomerCartScreen}
+          options={{ title: 'Cart' }}
+        />
+        <Stack.Screen
+          name="CustomerOrders"
+          component={CustomerOrdersScreen}
+          options={{ title: 'Order History' }}
         />
       </Stack.Navigator>
     );

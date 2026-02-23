@@ -23,6 +23,7 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0088E8"
       },
+      "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
       "permissions": [
         "CAMERA",

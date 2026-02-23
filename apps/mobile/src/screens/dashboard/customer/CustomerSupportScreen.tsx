@@ -12,7 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { supabase } from '../../../lib/supabase';
+import { apiFetch } from '../../../lib/api';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
@@ -36,47 +36,8 @@ export default function CustomerSupportScreen() {
   const fetchTickets = async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('email, phone')
-        .eq('id', user.id)
-        .single();
-
-      if (!userProfile) return;
-
-      // Fetch support tickets - adjust table name as needed
-      const { data, error } = await supabase
-        .from('support_tickets')
-        .select('*')
-        .or(`customer_email.eq.${userProfile.email},customer_phone.eq.${userProfile.phone}`)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error && error.code !== 'PGRST116') {
-        // PGRST116 = table doesn't exist, use service_leads as fallback
-        const { data: leadsData } = await supabase
-          .from('service_leads')
-          .select('id, lead_number, customer_name, status, created_at, complaint_details')
-          .or(`customer_email.eq.${userProfile.email},customer_phone.eq.${userProfile.phone}`)
-          .eq('status', 'COMPLAINT')
-          .order('created_at', { ascending: false });
-
-        setTickets((leadsData || []).map((lead: any) => ({
-          id: lead.id,
-          ticket_number: lead.lead_number,
-          subject: lead.complaint_details || 'Service Complaint',
-          description: lead.complaint_details || '',
-          status: lead.status,
-          created_at: lead.created_at,
-          category: 'SERVICE',
-          priority: 'MEDIUM',
-        })));
-      } else {
-        setTickets(data || []);
-      }
+      const data = await apiFetch<{ tickets: any[] }>('/api/customer/support/tickets');
+      setTickets(data.tickets || []);
     } catch (error) {
       console.error('Error fetching tickets:', error);
     } finally {
@@ -97,32 +58,16 @@ export default function CustomerSupportScreen() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('email, phone, full_name')
-        .eq('id', user.id)
-        .single();
-
-      if (!userProfile) return;
-
-      // Create ticket - adjust table name as needed
-      const { error } = await supabase
-        .from('support_tickets')
-        .insert([{
-          customer_email: userProfile.email,
-          customer_phone: userProfile.phone,
-          customer_name: userProfile.full_name,
+      await apiFetch('/api/customer/support/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           subject: newTicket.subject,
           description: newTicket.description,
           category: newTicket.category,
-          priority: newTicket.priority,
-          status: 'OPEN',
-        }]);
-
-      if (error) throw error;
+          severity: newTicket.priority,
+        }),
+      });
 
       Alert.alert('Success', 'Support ticket created successfully');
       setShowCreateForm(false);

@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { supabase } from '../../../lib/supabase';
+import { apiFetch } from '../../../lib/api';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
@@ -28,33 +28,9 @@ export default function CustomerServiceHistoryScreen() {
   const fetchServiceHistory = async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('email, phone')
-        .eq('id', user.id)
-        .single();
-
-      if (!userProfile) return;
-
-      let query = supabase
-        .from('service_leads')
-        .select('*, workshop:workshops(name, phone)')
-        .or(`customer_email.eq.${userProfile.email},customer_phone.eq.${userProfile.phone}`)
-        .order('created_at', { ascending: false });
-
-      if (filter === 'completed') {
-        query = query.eq('status', 'COMPLETED');
-      } else if (filter === 'cancelled') {
-        query = query.eq('status', 'CANCELLED');
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      setServices(data || []);
+      const statusParam = filter === 'all' ? '' : `?status=${filter === 'cancelled' ? 'CANCELLED' : 'COMPLETED'}`;
+      const data = await apiFetch<{ orders: any[] }>(`/api/customer/orders${statusParam}`);
+      setServices(data.orders || []);
     } catch (error) {
       console.error('Error fetching service history:', error);
     } finally {
@@ -140,13 +116,6 @@ export default function CustomerServiceHistoryScreen() {
               
               <Text style={styles.serviceType}>{service.service_type || 'General Service'}</Text>
               
-              {service.workshop?.name && (
-                <View style={styles.workshopInfo}>
-                  <Text style={styles.workshopLabel}>Workshop:</Text>
-                  <Text style={styles.workshopName}>{service.workshop.name}</Text>
-                </View>
-              )}
-              
               <View style={styles.serviceDetails}>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Date:</Text>
@@ -164,17 +133,6 @@ export default function CustomerServiceHistoryScreen() {
                 )}
               </View>
               
-              {service.customer_feedback && (
-                <View style={styles.feedbackContainer}>
-                  <Text style={styles.feedbackLabel}>Your Feedback:</Text>
-                  <Text style={styles.feedbackText}>{service.customer_feedback}</Text>
-                  {service.customer_satisfaction_score && (
-                    <Text style={styles.ratingText}>
-                      Rating: {'⭐'.repeat(service.customer_satisfaction_score)}
-                    </Text>
-                  )}
-                </View>
-              )}
             </View>
           ))
         )}
@@ -274,21 +232,6 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginBottom: SPACING.xs,
   },
-  workshopInfo: {
-    flexDirection: 'row',
-    marginBottom: SPACING.sm,
-    alignItems: 'center',
-  },
-  workshopLabel: {
-    fontSize: SIZES.sm,
-    color: COLORS.textSecondary,
-    marginRight: SPACING.xs,
-  },
-  workshopName: {
-    fontSize: SIZES.sm,
-    color: COLORS.text,
-    fontWeight: '600',
-  },
   serviceDetails: {
     marginTop: SPACING.sm,
     paddingTop: SPACING.sm,
@@ -312,25 +255,5 @@ const styles = StyleSheet.create({
   amountValue: {
     color: COLORS.success,
     fontSize: SIZES.md,
-  },
-  feedbackContainer: {
-    marginTop: SPACING.sm,
-    padding: SPACING.sm,
-    backgroundColor: COLORS.gray[50],
-    borderRadius: 8,
-  },
-  feedbackLabel: {
-    fontSize: SIZES.xs,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
-  },
-  feedbackText: {
-    fontSize: SIZES.sm,
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  ratingText: {
-    fontSize: SIZES.sm,
-    color: COLORS.warning,
   },
 });

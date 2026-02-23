@@ -148,6 +148,43 @@ export type Database = {
           updated_at: string;
         };
       };
+      customers: {
+        Row: {
+          id: string;
+          phone: string;
+          firebase_uid: string | null;
+          email: string | null;
+          full_name: string | null;
+          profile_image: string | null;
+          email_verified: boolean;
+          phone_verified: boolean;
+          is_active: boolean;
+          last_login_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['customers']['Row'], 'id' | 'created_at' | 'updated_at'> & { id?: string };
+        Update: Partial<Database['public']['Tables']['customers']['Insert']>;
+      };
+      customer_sessions: {
+        Row: {
+          id: string;
+          customer_id: string;
+          token: string;
+          expires_at: string;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          customer_id: string;
+          token: string;
+          expires_at: string;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['customer_sessions']['Insert']>;
+      };
     };
   };
 };

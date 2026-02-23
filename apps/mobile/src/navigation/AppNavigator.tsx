@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from '../screens/LoginScreen';
 import CustomerRegistrationScreen from '../screens/dashboard/customer/CustomerRegistrationScreen';
+import CustomerOtpLoginScreen from '../screens/CustomerOtpLoginScreen';
 import SuperAdminDashboard from '../screens/dashboard/SuperAdminDashboard';
 import WorkshopAdminDashboard from '../screens/dashboard/WorkshopAdminDashboard';
 import WorkshopSupervisorDashboard from '../screens/dashboard/WorkshopSupervisorDashboard';
@@ -76,6 +77,7 @@ export default function AppNavigator() {
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="CustomerSignup" component={CustomerRegistrationScreen} />
+            <Stack.Screen name="CustomerOtpLogin" component={CustomerOtpLoginScreen} />
           </>
         ) : (
           <Stack.Screen

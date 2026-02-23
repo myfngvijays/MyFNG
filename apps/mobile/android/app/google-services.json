@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "455279370834",
+    "project_id": "myfng-d863c",
+    "storage_bucket": "myfng-d863c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:455279370834:android:ae9e7dcf4df27191e7b58b",
+        "android_client_info": {
+          "package_name": "com.myfng.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB4blMtw_C2RmmPU0FUItsBWFS5CU_mnns"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
