@@ -151,6 +151,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
       const cta = typeof data?.cta === 'string' ? data.cta.trim() : '';
       const assistantText =
         (typeof data?.assistantMessage === 'string' && data.assistantMessage.trim()) ||
+        (typeof data?.response === 'string' && data.response.trim()) ||
         ([msg, cta].filter(Boolean).join('\n') || 'Sorry, kuch issue aa gaya. Please try again.');
 
       const ui: UiPayload | undefined = (() => {

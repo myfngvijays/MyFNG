@@ -21,23 +21,23 @@ export default function ContactPage() {
         .contact-page .contact-header { text-align: center; margin-bottom: 40px; padding: 0 10px; }
         .contact-page .contact-header h1 { color: #00338d; font-size: clamp(1.8rem, 5vw, 2.5rem); margin-bottom: 10px; }
         .contact-page .contact-header p { margin: 0; color: #334155; }
-        .contact-page .contact-wrapper { display: grid; grid-template-columns: 1fr 2fr; gap: 30px; margin-bottom: 30px; }
+        .contact-page .contact-wrapper { display: grid; grid-template-columns: 1fr 2fr; gap: 30px; margin-bottom: 30px; align-items: stretch; }
         @media (max-width: 992px) { .contact-page .contact-wrapper { grid-template-columns: 1fr; } }
-        .contact-page .info-sidebar { background: #00338d; color: white; padding: 10px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); height: fit-content; }
+        .contact-page .info-sidebar { background: #00338d; color: white; padding: 10px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); height: 100%; }
         .contact-page .info-card { margin-bottom: 25px; display: flex; align-items: flex-start; }
         .contact-page .info-card .info-icon { font-size: 1.2rem; margin-right: 15px; background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
         .contact-page .info-card h3 { margin: 0 0 5px 0; font-size: 1.1rem; color: #fff; }
         .contact-page .info-card p { margin: 0; font-size: 0.95rem; opacity: 0.9; word-break: break-word; color: rgba(255,255,255,0.9); }
         .contact-page .info-card a { color: rgba(255,255,255,0.95); text-decoration: none; }
         .contact-page .info-card a:hover { text-decoration: underline; }
-        .contact-page .emergency-box { background: #dc2626; padding: 20px; border-radius: 8px; margin-top: 30px; border-right: 2px solid #fff; border-bottom: 2px solid #fff; }
+        .contact-page .emergency-box { background: #dc2626; padding: 20px; border-radius: 8px; margin-top: auto; border-right: 2px solid #fff; border-bottom: 2px solid #fff; }
         .contact-page .emergency-box h3 { color: #fff; margin: 0 0 8px 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
         .contact-page .emergency-box p { margin: 0; color: rgba(255,255,255,0.95); font-size: 0.95rem; }
         .contact-page .emergency-box a { color: #fff; text-decoration: none; }
         .contact-page .emergency-box a:hover { text-decoration: underline; }
         .contact-page .rsa-banner a { color: #d90429; text-decoration: none; font-weight: 800; }
         .contact-page .rsa-banner a:hover { text-decoration: underline; }
-        .contact-page .service-box { background: rgba(2,61,149,0.59); padding: 20px; border-radius: 8px; margin-top: 0; }
+        .contact-page .service-box { background: rgba(2,61,149,0.59); padding: 20px; border-radius: 8px; margin-top: 0; height: 100%; display: flex; flex-direction: column; gap: 0; }
         .contact-page .form-container { background: white; padding: clamp(20px, 5vw, 40px); border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
         .contact-page .form-container h3 { margin-top: 0; margin-bottom: 25px; color: #00338d; font-size: 1.25rem; }
         .contact-page .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }

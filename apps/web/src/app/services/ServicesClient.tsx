@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { ArrowRight, CheckCircle, Clock, IndianRupee, Shield, ShieldCheck, Sparkles } from 'lucide-react';
@@ -74,6 +74,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
   }, [categories]);
 
   const [selectedService, setSelectedService] = useState<Service>(services[0] || DEFAULT_SERVICES[0]);
+  const detailsCardRef = useRef<HTMLDivElement | null>(null);
 
   // Keep selection valid when services list changes (e.g., DB fetch arrives).
   useEffect(() => {
@@ -82,6 +83,23 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
     if (next && next !== selectedService) setSelectedService(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [services]);
+
+  const handleSelectService = (service: Service) => {
+    setSelectedService(service);
+
+    if (typeof window === 'undefined' || window.innerWidth >= 1024) return;
+
+    // On mobile/tablet, jump to the details card after selecting a service.
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const detailsEl = detailsCardRef.current;
+        if (!detailsEl) return;
+        const navOffset = 92;
+        const targetY = detailsEl.getBoundingClientRect().top + window.scrollY - navOffset;
+        window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+      });
+    });
+  };
 
   const popularServices = ['Car AC Service', 'Car Battery Service', 'Car Brake Service', 'Car Engine Service', 'Periodic Car Service'];
 
@@ -149,7 +167,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                         return (
                           <button
                             key={service.id}
-                            onClick={() => setSelectedService(service)}
+                            onClick={() => handleSelectService(service)}
                             className={`w-full text-left p-4 rounded-xl transition-all ${
                               isSelected
                                 ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-300 shadow-md'
@@ -194,7 +212,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                 </div>
 
                 {/* Right: Large Preview Card */}
-                <div className="lg:col-span-7">
+                <div ref={detailsCardRef} className="lg:col-span-7">
                   <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
                     {/* Featured Badge */}
                     <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-3 flex items-center justify-between">
@@ -205,10 +223,16 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                       <span className="text-blue-100 text-sm font-medium">{selectedService.title}</span>
                     </div>
 
-                    {/* Service Image */}
-                    <div className="relative h-64 bg-gradient-to-br from-gray-100 to-gray-200">
-                      <Image src={selectedService.image} alt={selectedService.title} fill className="object-cover" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+                    {/* Service Image (square-first layout for uploaded creatives) */}
+                    <div className="bg-gradient-to-br from-gray-100 to-gray-200 p-4 sm:p-5 md:p-6">
+                      <div className="relative mx-auto w-full max-w-[420px] aspect-square overflow-hidden rounded-2xl border border-white/70 shadow-lg">
+                        <Image
+                          src={selectedService.image}
+                          alt={selectedService.title}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
                     </div>
 
                     {/* Content */}
@@ -316,7 +340,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                       return (
                         <button
                           key={service.id}
-                          onClick={() => setSelectedService(service)}
+                          onClick={() => handleSelectService(service)}
                           className="inline-flex w-full items-center gap-2 px-3 sm:px-5 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-full hover:border-blue-400 hover:shadow-md transition-all group"
                         >
                           {(() => {

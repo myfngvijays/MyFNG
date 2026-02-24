@@ -12,14 +12,8 @@ import CopyLinkButton from '@/components/blog/CopyLinkButton';
 import BlogComments from '@/components/blog/BlogComments';
 import HtmlStyleEffects from '@/components/blog/HtmlStyleEffects';
 import { isPuneOrPcmcCity, resolveLocalAreas, PUNE_PCMC_AREAS, normalizeCity } from '@/lib/blog/localSeo';
-import { Poppins } from 'next/font/google';
 
 export const dynamic = 'force-dynamic';
-
-const poppins = Poppins({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700'],
-});
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -347,6 +341,13 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const schema = buildSchemas(transformed);
 
   const seo: any = (transformed.seo_data || {}) as any;
+  const authorDisplayName = String(
+    seo?.author_name ||
+      (transformed.author as any)?.full_name ||
+      (transformed as any)?.author_name ||
+      (transformed.author as any)?.name ||
+      ''
+  ).trim();
   const breadcrumbCategory =
     (transformed.categories || []).filter(Boolean)[0] ||
     transformed.category ||
@@ -375,17 +376,18 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const fbHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
   const liHref = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`;
 
-  const followFacebook = process.env.NEXT_PUBLIC_SOCIAL_FACEBOOK_URL || '';
-  const followInstagram = process.env.NEXT_PUBLIC_SOCIAL_INSTAGRAM_URL || '';
+  const followFacebook = process.env.NEXT_PUBLIC_SOCIAL_FACEBOOK_URL || 'https://www.facebook.com/myfngcarservices';
+  const followInstagram = process.env.NEXT_PUBLIC_SOCIAL_INSTAGRAM_URL || 'https://www.instagram.com/myfngcarservices';
   const followYoutube = process.env.NEXT_PUBLIC_SOCIAL_YOUTUBE_URL || '';
-  const followLinkedin = process.env.NEXT_PUBLIC_SOCIAL_LINKEDIN_URL || '';
+  const followLinkedin = process.env.NEXT_PUBLIC_SOCIAL_LINKEDIN_URL || 'https://www.linkedin.com/company/myfngcarservices';
+  const followX = process.env.NEXT_PUBLIC_SOCIAL_X_URL || '';
   const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || '';
   const isExactHtmlStylePage = transformed.slug === 'what-to-do-when-you-need-towing-service-near-me-in-pune';
   const htmlStyleQuote = highlightQuote || 'Ignoring early engine warning signs can lead to expensive repairs later.';
 
   if (isExactHtmlStylePage) {
     return (
-      <div className={`${poppins.className} min-h-screen bg-[#f5f7fb]`}>
+      <div className="min-h-screen bg-[#f5f7fb]">
         <style>{`
           .blog-html-wrap .header{background:#fff;box-shadow:0 2px 10px rgba(0,0,0,0.08);position:sticky;top:0;z-index:1000;}
           .blog-html-wrap .navbar{max-width:1200px;margin:auto;display:flex;align-items:center;justify-content:space-between;padding:12px 20px;}
@@ -430,13 +432,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .comment-box input,.blog-html-wrap .comment-box textarea{width:100%;margin-top:10px;padding:12px;border-radius:10px;border:1px solid #ccc;}
           .blog-html-wrap .comment-box button{margin-top:15px;background:#5fa6d9;color:#fff;border:none;padding:12px 20px;border-radius:10px;cursor:pointer;}
           .blog-html-wrap .side-box{background:#fff;padding:18px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06);width:325px;max-width:100%;}
-          .blog-html-wrap .search{display:flex;gap:10px;}
-          .blog-html-wrap .search input{flex:1;padding:10px;border-radius:8px;border:1px solid #ccc;}
+          .blog-html-wrap .search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;}
+          .blog-html-wrap .search input{min-width:0;width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;}
           .blog-html-wrap .search button{background:#0a4ea3;color:#fff;border:none;padding:10px 16px;border-radius:8px;}
-          .blog-html-wrap .playstore-btn{display:flex;align-items:center;gap:12px;background:#0a4ea3;color:#fff;text-decoration:none;padding:12px 15px;border-radius:12px;margin-top:10px;}
-          .blog-html-wrap .playstore-btn i{font-size:28px;}
-          .blog-html-wrap .playstore-btn span{font-size:12px;display:block;}
-          .blog-html-wrap .playstore-btn strong{font-size:16px;}
+          .blog-html-wrap .playstore-badge{display:inline-block;margin-top:10px;max-width:220px;}
+          .blog-html-wrap .playstore-badge img{display:block;width:100%;height:auto;}
           .blog-html-wrap .service-slider{position:relative;height:240px;overflow:hidden;border-radius:12px;}
           .blog-html-wrap .service-slide{background:#fff;padding:15px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.08);text-align:center;margin-top:12px;}
           .blog-html-wrap .service-slider .service-slide{
@@ -460,7 +460,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .recent-post img{width:70px;height:70px;object-fit:cover;border-radius:8px;}
           .blog-html-wrap .recent-post a{text-decoration:none;font-size:14px;color:#333;font-weight:500;}
           .blog-html-wrap .categories{display:flex;flex-wrap:wrap;gap:10px;}
-          .blog-html-wrap .categories a{background:#eef2f7;padding:8px 14px;border-radius:20px;text-decoration:none;color:#333;font-size:13px;}
+          .blog-html-wrap .categories a{background:#eef2f7;padding:8px 14px;border-radius:20px;text-decoration:none;color:#333;font-size:12px;}
           @media(max-width:1024px){
             .blog-html-wrap .nav-links,.blog-html-wrap .header-buttons{display:none;}
             .blog-html-wrap .hamburger{display:block;}
@@ -489,7 +489,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 <a href="/">Home</a>
                 <a href="/services">Services</a>
                 <a href="/about">About</a>
-                <a href="/rsa_landing">Roadside Assistance</a>
+                <a href="/car-roadside-assitance">Roadside Assistance</a>
                 <a href="/blogs">Blog</a>
                 <a href="/contact">Contact</a>
               </div>
@@ -505,7 +505,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
               <a href="/">Home</a>
               <a href="/services">Services</a>
               <a href="/about">About</a>
-              <a href="/rsa_landing">Roadside Assistance</a>
+              <a href="/car-roadside-assitance">Roadside Assistance</a>
               <a href="/blogs">Blog</a>
               <a href="/contact">Contact</a>
             </div>
@@ -518,6 +518,12 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             <h1 className="blog-title">{transformed.title}</h1>
 
             <div className="blog-meta">
+              {authorDisplayName ? (
+                <span className="inline-flex items-center gap-1">
+                  <i className="fa fa-user" />
+                  {authorDisplayName}
+                </span>
+              ) : null}
               {dateText ? (
                 <span className="inline-flex items-center gap-1">
                   <i className="fa fa-calendar" />
@@ -552,21 +558,31 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 <div className="social-wrap">
                   <div className="follow">
                     <strong className="follow-label"><i className="fa-solid fa-user-plus" style={{ color: '#013d95' }} /> Follow Us:</strong>
-                    <a href={followFacebook || '#'} className="social-link" target="_blank" rel="noreferrer">
-                      <i className="fa-brands fa-square-facebook fa-fade" style={{ color: '#0091ff' }} />
-                    </a>
-                    <a href={followInstagram || '#'} className="social-link" target="_blank" rel="noreferrer">
-                      <i className="fa-brands fa-square-instagram fa-fade" style={{ color: '#d62976' }} />
-                    </a>
-                    <a href={followYoutube || '#'} className="social-link" target="_blank" rel="noreferrer">
-                      <i className="fa-brands fa-youtube fa-fade" style={{ color: '#ff0000' }} />
-                    </a>
-                    <a href={followLinkedin || '#'} className="social-link" target="_blank" rel="noreferrer">
-                      <i className="fa-brands fa-linkedin fa-fade" style={{ color: '#0a66c2' }} />
-                    </a>
-                    <a href="https://x.com/myfngcarservice" className="social-link" target="_blank" rel="noreferrer">
-                      <i className="fa-brands fa-square-twitter fa-fade" style={{ color: '#1da1f2' }} />
-                    </a>
+                    {followFacebook ? (
+                      <a href={followFacebook} className="social-link" target="_blank" rel="noreferrer">
+                        <i className="fa-brands fa-square-facebook fa-fade" style={{ color: '#0091ff' }} />
+                      </a>
+                    ) : null}
+                    {followInstagram ? (
+                      <a href={followInstagram} className="social-link" target="_blank" rel="noreferrer">
+                        <i className="fa-brands fa-square-instagram fa-fade" style={{ color: '#d62976' }} />
+                      </a>
+                    ) : null}
+                    {followYoutube ? (
+                      <a href={followYoutube} className="social-link" target="_blank" rel="noreferrer">
+                        <i className="fa-brands fa-youtube fa-fade" style={{ color: '#ff0000' }} />
+                      </a>
+                    ) : null}
+                    {followLinkedin ? (
+                      <a href={followLinkedin} className="social-link" target="_blank" rel="noreferrer">
+                        <i className="fa-brands fa-linkedin fa-fade" style={{ color: '#0a66c2' }} />
+                      </a>
+                    ) : null}
+                    {followX ? (
+                      <a href={followX} className="social-link" target="_blank" rel="noreferrer">
+                        <i className="fa-brands fa-square-twitter fa-fade" style={{ color: '#1da1f2' }} />
+                      </a>
+                    ) : null}
                   </div>
 
                   <div className="share">
@@ -577,7 +593,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     <a href={fbHref} className="social-link" target="_blank" rel="noreferrer">
                       <i className="fa-brands fa-square-facebook fa-fade" style={{ color: '#0091ff' }} />
                     </a>
-                    <a href={`https://www.instagram.com/?url=${encodeURIComponent(shareUrl)}`} className="social-link" target="_blank" rel="noreferrer">
+                    <a href={followInstagram} className="social-link" target="_blank" rel="noreferrer">
                       <i className="fa-brands fa-square-instagram fa-fade" style={{ color: '#d62976' }} />
                     </a>
                     <a href={liHref} className="social-link" target="_blank" rel="noreferrer">
@@ -632,12 +648,17 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
                 <div className="side-box">
                   <h3>Download MyFNG App - Book Car Service Faster</h3>
-                  <a href={playStoreUrl || '#'} className="playstore-btn" target={playStoreUrl ? '_blank' : undefined} rel="noreferrer">
-                    <i className="fab fa-google-play" />
-                    <div>
-                      <span>Get it on</span>
-                      <strong>Google Play</strong>
-                    </div>
+                  <a
+                    href={playStoreUrl || '#'}
+                    className="playstore-badge"
+                    target={playStoreUrl ? '_blank' : undefined}
+                    rel="noreferrer"
+                    aria-label="Get it on Google Play"
+                  >
+                    <img
+                      src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
+                      alt="Get it on Google Play"
+                    />
                   </a>
                 </div>
 
@@ -751,9 +772,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             </h1>
 
             {/* Author Name - at top */}
-            {transformed.author?.full_name ? (
+            {authorDisplayName ? (
               <div className="mt-2 text-sm sm:text-base font-semibold text-gray-800">
-                Author: {transformed.author.full_name}
+                Author: {authorDisplayName}
               </div>
             ) : null}
 

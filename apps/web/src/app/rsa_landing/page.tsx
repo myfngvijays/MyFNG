@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
+import Footer from '@/components/landing/Footer';
 
 const RSA_WHATSAPP = '919610448949';
 const RSA_SUBSCRIPTION_PLANS = [
@@ -84,17 +85,74 @@ function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
   e.preventDefault();
   const form = e.currentTarget;
   const data = new FormData(form);
-  const name = data.get('name') as string;
+  const name = String(data.get('name') || 'RSA Customer');
   const phone = data.get('phone') as string;
-  const city = data.get('city') as string;
+  const city = String(data.get('city') || 'Not shared');
   const service = data.get('service') as string;
   const location = data.get('location') as string;
-  const msg = `Hello MYFNG Team,%0A%0AI need Roadside Assistance (RSA).%0A%0AName: ${encodeURIComponent(name)}%0APhone: ${encodeURIComponent(phone)}%0ACity: ${encodeURIComponent(city)}%0AService: ${encodeURIComponent(service)}%0ALocation: ${encodeURIComponent(location)}%0A%0APlease dispatch help ASAP.`;
+  const dropLocationLink = String(data.get('drop_location_link') || '').trim();
+  const dropLine = dropLocationLink
+    ? `%0ADrop Location (Google Link): ${encodeURIComponent(dropLocationLink)}`
+    : '';
+  const msg = `Hello MYFNG Team,%0A%0AI need Roadside Assistance (RSA).%0A%0AName: ${encodeURIComponent(name)}%0APhone: ${encodeURIComponent(phone)}%0ACity: ${encodeURIComponent(city)}%0AService: ${encodeURIComponent(service)}%0ALocation: ${encodeURIComponent(location)}${dropLine}%0A%0APlease dispatch help ASAP.`;
   window.open(`https://wa.me/${RSA_WHATSAPP}?text=${msg}`, '_blank');
   form.reset();
 }
 
 export default function RsaLandingPage() {
+  const [locationValue, setLocationValue] = useState('');
+  const [locating, setLocating] = useState(false);
+  const [selectedRsaService, setSelectedRsaService] = useState('');
+
+  const scrollToSection = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    sectionId: 'services' | 'pricing' | 'process' | 'reviews' | 'faq' | 'contact'
+  ) => {
+    e.preventDefault();
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    const headerOffset = 88;
+    const y = section.getBoundingClientRect().top + window.scrollY - headerOffset;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    window.history.replaceState(null, '', `#${sectionId}`);
+  };
+
+  const handleUseMyLocation = () => {
+    if (locating) return;
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+      window.alert('Geolocation is not available on this device.');
+      return;
+    }
+
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        try {
+          const res = await fetch(
+            `/api/location/google-reverse?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`
+          );
+          const data: any = await res.json().catch(() => null);
+          const resolved =
+            (typeof data?.address === 'string' && data.address.trim()) ||
+            (typeof data?.shortLabel === 'string' && data.shortLabel.trim()) ||
+            `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+          setLocationValue(resolved);
+        } catch {
+          setLocationValue(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+        } finally {
+          setLocating(false);
+        }
+      },
+      () => {
+        setLocating(false);
+        window.alert('Location permission denied. Please allow location access.');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: `
@@ -111,7 +169,7 @@ export default function RsaLandingPage() {
     .rsa-landing header{position:sticky;top:0;z-index:50;background: rgba(15, 7, 7, .55);backdrop-filter: blur(14px);border-bottom:1px solid var(--border)}
     .rsa-landing .nav{display:flex;align-items:center;justify-content:space-between;padding:14px 0;gap:14px}
     .rsa-landing .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.3px}
-    .rsa-landing .logo{width:40px;height:40px;border-radius:14px;background: linear-gradient(135deg, var(--brand2), var(--brand));display:grid;place-items:center;box-shadow: 0 10px 30px rgba(255,77,46,.25);font-weight:900;color:#2a0a07}
+    .rsa-landing .brand-logo{height:34px;width:auto;display:block}
     .rsa-landing .nav-links{display:flex;gap:18px;align-items:center;font-size:14px;color:rgba(255,255,255,.75)}
     .rsa-landing .nav-links a:hover{color:#fff}
     .rsa-landing .nav-cta{display:flex;gap:10px;align-items:center}
@@ -120,29 +178,34 @@ export default function RsaLandingPage() {
     .rsa-landing .btn.primary{background: linear-gradient(135deg, var(--brand2), var(--brand));border: none;box-shadow: 0 16px 40px rgba(255,77,46,.22);color:#2a0a07}
     .rsa-landing .btn.primary:hover{filter:brightness(1.05)}
     .rsa-landing .btn.small{padding:9px 12px;border-radius:12px}
-    .rsa-landing .hero{position:relative;overflow:hidden;padding: 60px 0 30px;background:radial-gradient(1200px 700px at 15% 20%, rgba(255, 92, 0, 0.18), transparent 60%),radial-gradient(900px 600px at 70% 30%, rgba(255, 0, 92, 0.12), transparent 55%),radial-gradient(900px 700px at 85% 85%, rgba(255, 90, 0, 0.10), transparent 60%),linear-gradient(135deg, #4c0e0b 0%, #3f0d0a 35%, #5a1510 70%, #7b1d1c 100%)}
-    .rsa-landing .hero::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 20% 30%, rgba(0,0,0,.18), transparent 60%),radial-gradient(circle at 80% 70%, rgba(0,0,0,.22), transparent 55%);pointer-events:none}
-    .rsa-landing .hero-grid{position:relative;z-index:2;display:grid;grid-template-columns: 1.1fr .9fr;gap:22px;align-items:stretch}
-    .rsa-landing .badge{display:inline-flex;gap:10px;align-items:center;padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background: rgba(255,255,255,.06);color:rgba(255,255,255,.82);font-size:13px;width:fit-content}
-    .rsa-landing .dot{width:10px;height:10px;border-radius:50%;background:#ff3b30;box-shadow:0 0 0 6px rgba(255,59,48,.15)}
-    .rsa-landing h1{margin:14px 0 12px;font-size:46px;line-height:1.1;letter-spacing:-.7px}
-    .rsa-landing .gradient-text{background: linear-gradient(135deg, #ff8a00, #ff4d2e, #ff8a00);-webkit-background-clip:text;background-clip:text;color:transparent}
-    .rsa-landing .lead{color:rgba(255,255,255,.75);font-size:16px;line-height:1.75;margin:0 0 18px}
-    .rsa-landing .chips{display:flex;gap:10px;flex-wrap:wrap;margin: 12px 0 18px}
-    .rsa-landing .chip{display:inline-flex;gap:8px;align-items:center;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background: rgba(0,0,0,.12);font-size:13px;color:rgba(255,255,255,.85)}
-    .rsa-landing .hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin: 12px 0 16px}
-    .rsa-landing .stats{display:grid;grid-template-columns: repeat(2, 1fr);gap:12px;margin-top:18px}
-    .rsa-landing .stat{border:1px solid rgba(255,255,255,.16);background: rgba(255,255,255,.06);border-radius: var(--radius);padding:14px}
-    .rsa-landing .stat strong{display:block;font-size:20px;color:#ffffff}
-    .rsa-landing .stat span{color:rgba(255,255,255,.72);font-size:13px}
-    .rsa-landing .card{border:1px solid rgba(255,255,255,.16);background: rgba(0,0,0,.22);border-radius: 22px;box-shadow: var(--shadow);padding:18px}
-    .rsa-landing .card h3{margin:4px 0 8px;font-size:18px;color:#ffffff}
-    .rsa-landing .card p{margin:0 0 14px;color:rgba(255,255,255,.72);font-size:13px}
-    .rsa-landing .form{display:grid;gap:10px;margin-top:10px}
-    .rsa-landing .input{width:100%;padding:12px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background: rgba(0,0,0,.20);color:#ffffff;outline:none;font-size:14px}
+    .rsa-landing .hero{position:relative;overflow:hidden;padding: 34px 0 28px;background: radial-gradient(600px 420px at 12% 25%, rgba(246, 84, 22, 0.24), transparent 70%),radial-gradient(560px 400px at 78% 40%, rgba(145, 26, 18, 0.26), transparent 75%),linear-gradient(110deg,#571008 0%,#63140a 34%,#6f180d 58%,#7d1b12 100%)}
+    .rsa-landing .hero::before{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.04),rgba(0,0,0,.18));pointer-events:none}
+    .rsa-landing .hero-grid{position:relative;z-index:2;display:grid;grid-template-columns: 1.04fr .96fr;gap:20px;align-items:stretch}
+    .rsa-landing .badge{display:inline-flex;gap:8px;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.18);color:rgba(255,255,255,.84);font-size:12px;font-weight:600;width:fit-content}
+    .rsa-landing .dot{width:8px;height:8px;border-radius:50%;background:#ff6a46;box-shadow:0 0 0 4px rgba(255,106,70,.18)}
+    .rsa-landing h1{margin:14px 0 10px;font-size:56px;line-height:1.03;letter-spacing:-1px}
+    .rsa-landing .gradient-text{background: linear-gradient(135deg,#ffa037,#ff6f2f 55%,#ff4d2e);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .rsa-landing .lead{color:rgba(255,255,255,.84);font-size:16px;line-height:1.55;margin:0 0 14px;max-width:590px}
+    .rsa-landing .chips{display:flex;gap:8px;flex-wrap:wrap;margin: 10px 0 0}
+    .rsa-landing .chip{display:inline-flex;gap:7px;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.18);font-size:12px;font-weight:700;color:rgba(255,255,255,.92)}
+    .rsa-landing .hero-actions{display:none}
+    .rsa-landing .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
+    .rsa-landing .stat{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);border-radius:14px;padding:12px}
+    .rsa-landing .stat strong{display:block;font-size:29px;color:#ffffff;line-height:1.2}
+    .rsa-landing .stat span{color:rgba(255,255,255,.68);font-size:12px}
+    .rsa-landing .card{border:1px solid rgba(255,255,255,.11);background: linear-gradient(180deg,#11192f 0%,#0f1629 100%);border-radius: 20px;box-shadow: var(--shadow);padding:16px}
+    .rsa-landing .card h3{margin:0 0 4px;font-size:30px;color:#ffffff}
+    .rsa-landing .card p{margin:0 0 12px;color:rgba(255,255,255,.68);font-size:13px}
+    .rsa-landing .form{display:grid;gap:9px;margin-top:10px}
+    .rsa-landing .input{width:100%;padding:11px 12px;border-radius:11px;border:1px solid rgba(255,255,255,.09);background: rgba(255,255,255,.04);color:#ffffff;outline:none;font-size:13px}
     .rsa-landing .input::placeholder{color:rgba(255,255,255,.5)}
-    .rsa-landing .input:focus{border-color: rgba(255,138,0,.75)}
-    .rsa-landing .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .rsa-landing .input:focus{border-color: rgba(255,127,50,.8)}
+    .rsa-landing .form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .rsa-landing .location-wrap{position:relative}
+    .rsa-landing .location-wrap .input{padding-right:42px}
+    .rsa-landing .loc-btn{position:absolute;right:7px;top:7px;height:28px;width:28px;border:none;border-radius:8px;background:linear-gradient(135deg,#ff8a00,#ff4d2e);color:#140806;font-weight:800;cursor:pointer}
+    .rsa-landing .send-btn{border:none;border-radius:11px;padding:12px 14px;background:linear-gradient(90deg,#ff960f 0%,#ff6f18 55%,#ff4d2e 100%);font-size:16px;font-weight:800;color:#1e0a07;cursor:pointer}
+    .rsa-landing .send-btn:hover{filter:brightness(1.04)}
     .rsa-landing .note{margin-top:10px;font-size:12px;color:rgba(255,255,255,.70)}
     .rsa-landing section{padding: 46px 0;background:#070b14}
     .rsa-landing .section-title{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:18px}
@@ -191,8 +254,9 @@ export default function RsaLandingPage() {
     .rsa-landing footer{padding: 26px 0;border-top:1px solid rgba(255,255,255,.10);color:rgba(255,255,255,.65);font-size:13px;background:#070b14}
     .rsa-landing .marquee{overflow:hidden;position:relative}
     .rsa-landing .marquee-track{display:flex;gap:18px;width:max-content;animation:rsa-scroll 70s linear infinite}
+    .rsa-landing section[id], .rsa-landing aside[id]{scroll-margin-top:88px}
     @keyframes rsa-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-    @media (max-width: 980px){.rsa-landing .hero-grid{grid-template-columns:1fr;gap:14px}.rsa-landing h1{font-size:36px}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .grid-3{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:repeat(2,1fr)}.rsa-landing .pricing{grid-template-columns:1fr}.rsa-landing .plan-grid{grid-template-columns:repeat(2,1fr)}.rsa-landing .testimonials{grid-template-columns:repeat(2,1fr)}.rsa-landing .nav-links{display:none}}
+    @media (max-width: 980px){.rsa-landing .hero{padding:24px 0 24px}.rsa-landing .hero-grid{grid-template-columns:1fr;gap:14px}.rsa-landing h1{font-size:42px}.rsa-landing .lead{font-size:23px}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .grid-3{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:repeat(2,1fr)}.rsa-landing .pricing{grid-template-columns:1fr}.rsa-landing .plan-grid{grid-template-columns:repeat(2,1fr)}.rsa-landing .testimonials{grid-template-columns:repeat(2,1fr)}.rsa-landing .nav-links{display:none}}
     @media (max-width: 560px){.rsa-landing h1{font-size:30px}.rsa-landing .form-row{grid-template-columns:1fr}.rsa-landing .grid-3,.rsa-landing .grid-4,.rsa-landing .plan-grid{grid-template-columns:1fr}.rsa-landing .steps{grid-template-columns:1fr}.rsa-landing .testimonials{grid-template-columns:1fr}.rsa-landing .stats{grid-template-columns:1fr}}
   `}} />
       <div className="rsa-landing">
@@ -200,19 +264,15 @@ export default function RsaLandingPage() {
           <div className="container">
             <div className="nav">
               <div className="brand">
-                <div className="logo">MF</div>
-                <div>
-                  <div style={{ fontSize: '14px', lineHeight: 1.1 }}>MYFNG</div>
-                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.70)', fontWeight: 600 }}>Roadside Assistance</div>
-                </div>
+                <img src="/logo.png" alt="MY FNG" className="brand-logo" />
               </div>
               <nav className="nav-links">
-                <a href="#services">Services</a>
-                <a href="#pricing">Pricing</a>
-                <a href="#process">Process</a>
-                <a href="#reviews">Reviews</a>
-                <a href="#faq">FAQ</a>
-                <a href="#contact">Contact</a>
+                <a href="#services" onClick={(e) => scrollToSection(e, 'services')}>Services</a>
+                <a href="#pricing" onClick={(e) => scrollToSection(e, 'pricing')}>Pricing</a>
+                <a href="#process" onClick={(e) => scrollToSection(e, 'process')}>Process</a>
+                <a href="#reviews" onClick={(e) => scrollToSection(e, 'reviews')}>Reviews</a>
+                <a href="#faq" onClick={(e) => scrollToSection(e, 'faq')}>FAQ</a>
+                <a href="#contact" onClick={(e) => scrollToSection(e, 'contact')}>Contact</a>
               </nav>
               <div className="nav-cta">
                 <a className="btn small" href={`tel:+${RSA_WHATSAPP}`}>📞 Call</a>
@@ -228,46 +288,80 @@ export default function RsaLandingPage() {
               <div>
                 <div className="badge"><span className="dot" />24×7 Emergency Support • AI-Powered Emergency Dispatch</div>
                 <h1>Stuck on the Road?<br /><span className="gradient-text">We&apos;re Just a Tap Away!</span></h1>
-                <p className="lead">Car breakdown? Flat tyre? Battery dead? MYFNG&apos;s roadside assistance helps you quickly with <b>AI-powered emergency dispatch</b> and verified technicians — reaching you in <b>under 30 minutes</b> (subject to location).</p>
+                <p className="lead">Car breakdown? Flat tyre? Battery dead? MYFNG roadside assistance connects you with verified technicians in <b>under 30 minutes</b> (subject to location).</p>
                 <div className="chips">
                   <div className="chip">⏱ Under 30 Min</div>
-                  <div className="chip">🛡 Trusted Help</div>
-                  <div className="chip">📍 Live Tracking</div>
-                </div>
-                <div className="hero-actions">
-                  <a className="btn primary" href="#contact">🚨 Request Emergency Help</a>
-                  <a className="btn" href={`https://wa.me/${RSA_WHATSAPP}`} target="_blank" rel="noopener noreferrer">💬 WhatsApp Now</a>
-                  <a className="btn" href="#services">Explore Services →</a>
-                </div>
-                <div style={{ marginTop: 8, color: 'rgba(255,255,255,.65)', fontSize: 13 }}>Available in 50+ cities across India • 24×7 Support</div>
-                <div className="stats">
-                  <div className="stat"><strong>24×7</strong><span>Emergency assistance</span></div>
-                  <div className="stat"><strong>30 Min</strong><span>Average dispatch time</span></div>
-                  <div className="stat"><strong>Live GPS</strong><span>Track technician</span></div>
-                  <div className="stat"><strong>30000+</strong><span>Rescues Done</span></div>
+                  <div className="chip">🛡 Trusted Technicians</div>
+                  <div className="chip">📍 Live Location Tracking</div>
                 </div>
               </div>
               <aside className="card" id="contact">
                 <h3>Quick RSA Request</h3>
-                <p>Share your details. We will connect instantly and dispatch help.</p>
-                <form className="form" onSubmit={handleSubmit}>
-                  <input className="input" type="text" name="name" placeholder="Your Name" required />
+                <p>Share your details. We will connect instantly.</p>
+                <form
+                  className="form"
+                  onSubmit={(e) => {
+                    handleSubmit(e);
+                    setSelectedRsaService('');
+                    setLocationValue('');
+                  }}
+                >
+                  <input type="hidden" name="name" value="RSA Customer" />
+                  <input type="hidden" name="city" value="Not shared" />
                   <div className="form-row">
                     <input className="input" type="tel" name="phone" placeholder="Mobile Number" required />
-                    <input className="input" type="text" name="city" placeholder="City" required />
+                    <select
+                      className="input"
+                      name="service"
+                      value={selectedRsaService}
+                      onChange={(e) => setSelectedRsaService(e.target.value)}
+                      required
+                    >
+                      <option value="">Select Service</option>
+                      <option>Jump Start</option>
+                      <option>Towing Service</option>
+                      <option>Flat Tyre Fix</option>
+                      <option>Fuel Delivery</option>
+                      <option>Minor Repair</option>
+                      <option>Accident Support</option>
+                    </select>
                   </div>
-                  <select className="input" name="service" required>
-                    <option value="">Select Service</option>
-                    <option>Jump Start</option>
-                    <option>Towing Service</option>
-                    <option>Flat Tyre Fix</option>
-                    <option>Fuel Delivery</option>
-                    <option>Minor Repair</option>
-                    <option>Accident Support</option>
-                  </select>
-                  <input className="input" type="text" name="location" placeholder="Current Location / Landmark" required />
-                  <button className="btn primary" type="submit">Submit & WhatsApp</button>
-                  <div className="note">By submitting, you agree to be contacted by MYFNG for RSA support.</div>
+                  <div className="location-wrap">
+                    <input
+                      className="input"
+                      type="text"
+                      name="location"
+                      placeholder="Current Location / Landmark"
+                      value={locationValue}
+                      onChange={(e) => setLocationValue(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="loc-btn"
+                      aria-label="Use my location"
+                      onClick={handleUseMyLocation}
+                      disabled={locating}
+                      title={locating ? 'Detecting location...' : 'Use current location'}
+                    >
+                      {locating ? '…' : '📍'}
+                    </button>
+                  </div>
+                  {selectedRsaService === 'Towing Service' ? (
+                    <input
+                      className="input"
+                      type="url"
+                      name="drop_location_link"
+                      placeholder="Drop Location Google Link (Optional)"
+                    />
+                  ) : null}
+                  <button className="send-btn" type="submit">🚨 Send Help on WhatsApp</button>
+                  <div className="stats">
+                    <div className="stat"><strong>24×7</strong><span>Emergency Assistance</span></div>
+                    <div className="stat"><strong>30 Min</strong><span>Avg Dispatch Time</span></div>
+                    <div className="stat"><strong>Live GPS</strong><span>Track Technician</span></div>
+                    <div className="stat"><strong>30000+</strong><span>Rescues Done</span></div>
+                  </div>
                 </form>
               </aside>
             </div>
@@ -294,45 +388,66 @@ export default function RsaLandingPage() {
           <div className="container">
             <div className="section-title">
               <div>
-                <h2>Best Plans for You</h2>
-                <p>Subscription packages which suit your car and your pocket.</p>
+                <h2>Pricing</h2>
+                <p>Clear and affordable pricing. Exact cost depends on location, vehicle type and distance.</p>
               </div>
             </div>
 
-            <div className="plan-grid">
-              {RSA_SUBSCRIPTION_PLANS.map((plan) => (
-                <div className="plan-card" key={plan.key}>
-                  <div className="topline" />
-                  <div className="body">
-                    <h3>{plan.title}</h3>
-                    <div className="price">₹{plan.price.toLocaleString('en-IN')}</div>
-                    <div className="duration">{plan.durationLabel}</div>
-                    <ul className="list">
-                      {plan.features.map((feature) => (
-                        <li key={feature}>
-                          <span className="tick">✓</span>
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div style={{ marginTop: 'auto' }}>
-                      <a className="btn primary" href="#contact">Buy Now</a>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="terms-card">
-              <h4>Terms &amp; Conditions</h4>
-              <ul className="list">
-                {RSA_PLAN_TERMS.map((term) => (
-                  <li key={term}>
+            <div className="pricing">
+              <div className="price-card">
+                <h3>Towing</h3>
+                <div className="price">₹25/km <small>onwards</small></div>
+                <ul className="list">
+                  <li>
                     <span className="tick">✓</span>
-                    <span>{term}</span>
+                    <span>Safe towing with proper equipment</span>
                   </li>
-                ))}
-              </ul>
+                  <li>
+                    <span className="tick">✓</span>
+                    <span>Pickup from breakdown spot</span>
+                  </li>
+                  <li>
+                    <span className="tick">✓</span>
+                    <span>Drop to nearest service location</span>
+                  </li>
+                </ul>
+                <div style={{ marginTop: 12 }}>
+                  <a className="btn primary" href="#contact" onClick={(e) => scrollToSection(e, 'contact')}>
+                    Request Towing
+                  </a>
+                </div>
+              </div>
+
+              <div className="price-card">
+                <h3>RSA Support</h3>
+                <div className="price">
+                  On Demand <small>as per service</small>
+                </div>
+                <ul className="list">
+                  <li>
+                    <span className="tick">✓</span>
+                    <span>Jumpstart, puncture, fuel &amp; minor fixes</span>
+                  </li>
+                  <li>
+                    <span className="tick">✓</span>
+                    <span>AI-powered emergency dispatch</span>
+                  </li>
+                  <li>
+                    <span className="tick">✓</span>
+                    <span>24×7 customer support</span>
+                  </li>
+                </ul>
+                <div style={{ marginTop: 12 }}>
+                  <a
+                    className="btn primary"
+                    href={`https://wa.me/${RSA_WHATSAPP}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    WhatsApp for Quote
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -379,6 +494,63 @@ export default function RsaLandingPage() {
           </div>
         </section>
 
+        <section id="plans">
+          <div className="container">
+            <div className="section-title">
+              <div>
+                <h2>Best Plans for You</h2>
+                <p>Subscription packages which suit your car and your pocket.</p>
+              </div>
+            </div>
+
+            <div className="plan-grid">
+              {RSA_SUBSCRIPTION_PLANS.map((plan) => (
+                <div className="plan-card" key={plan.key}>
+                  <div className="topline" />
+                  <div className="body">
+                    <h3>{plan.title}</h3>
+                    <div className="price">₹{plan.price.toLocaleString('en-IN')}</div>
+                    <div className="duration">{plan.durationLabel}</div>
+                    <ul className="list">
+                      {plan.features.map((feature, idx) => (
+                        <li key={`${plan.key}-${idx}-${feature}`}>
+                          <span className="tick">✓</span>
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div style={{ marginTop: 'auto' }}>
+                      <a className="btn primary" href="#contact" onClick={(e) => scrollToSection(e, 'contact')}>
+                        Buy Now
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="terms">
+          <div className="container">
+            <div className="section-title">
+              <div>
+                <h2>Terms &amp; Conditions</h2>
+              </div>
+            </div>
+            <div className="terms-card" style={{ marginTop: 0 }}>
+              <ul className="list">
+                {RSA_PLAN_TERMS.map((term) => (
+                  <li key={term}>
+                    <span className="tick">✓</span>
+                    <span>{term}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
         <section id="faq">
           <div className="container">
             <div className="section-title"><div><h2>FAQ</h2><p>Frequently asked questions about MYFNG Roadside Assistance.</p></div></div>
@@ -401,10 +573,8 @@ export default function RsaLandingPage() {
           </div>
         </section>
 
-        <footer>
-          <div className="container">© MYFNG Roadside Assistance. All rights reserved.</div>
-        </footer>
       </div>
+      <Footer />
     </>
   );
 }

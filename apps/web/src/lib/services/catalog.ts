@@ -1,5 +1,8 @@
 import { Activity, Battery, Car, Shield, Sparkles, Wrench, Zap } from 'lucide-react';
 
+const SERVICE_IMAGE_BASE_URL =
+  'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public';
+
 export type Service = {
   id: number;
   slug: string;
@@ -49,7 +52,7 @@ export const DEFAULT_SERVICES: Service[] = [
     icon: Activity,
     description: 'Standardised periodic maintenance to keep your car smooth, safe, and fuel-efficient.',
     longDescription:
-      'Keep your car running smooth, safe, and fuel-efficient with MyFNG Car Periodic Service. We follow a standardised service process to inspect, clean, and maintain all critical components—helping prevent your car breakdowns and costly repairs.',
+      'Keep your car running smooth, safe, and fuel-efficient with MyFNG Periodic Car Service. We follow a standardised service process to inspect, clean, and maintain all critical components—helping prevent your car breakdowns and costly repairs.',
     features: [
       'Engine Oil Replacement (Shell/Castrol Premium)',
       'Oil Filter & Air Filter Replacement',
@@ -61,7 +64,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Warranty on All Parts & Labor',
     ],
     benefits: ['Improved fuel efficiency', 'Extended engine life', 'Preventive maintenance', 'AI-powered diagnostics'],
-    image: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1200',
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Periodic_Service.png`,
     duration: '2-3 hours',
     warranty: '6 months / 5,000 km',
   },
@@ -85,7 +88,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Exhaust System Check',
     ],
     benefits: ['Optimal engine performance', 'Early problem detection', 'Reduced breakdowns', 'Better fuel economy'],
-    image: 'https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2?auto=format&fit=crop&q=80&w=1200',
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Engine_Service.png`,
     duration: '3-4 hours',
     warranty: '6 months / 5,000 km',
   },
@@ -109,7 +112,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Complete System Sanitization',
     ],
     benefits: ['Better cooling performance', 'Improved air quality', 'Reduced energy consumption', 'Fresh cabin environment'],
-    image: 'https://images.unsplash.com/photo-1527247043581-9a9099575e8b?auto=format&fit=crop&q=80&w=1200',
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_AC_Service.png`,
     duration: '2-3 hours',
     warranty: '6 months',
   },
@@ -133,7 +136,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Free Installation',
     ],
     benefits: ['Reliable vehicle starts', 'Preventive replacement', 'Extended battery life', 'Peace of mind'],
-    image: 'https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&q=80&w=1200',
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Battery_Service.png`,
     duration: '1-2 hours',
     warranty: '18-24 months',
   },
@@ -157,7 +160,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Complete System Bleeding',
     ],
     benefits: ['Enhanced safety', 'Optimal stopping power', 'Reduced brake noise', 'Longer component life'],
-    image: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&q=80&w=1200',
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Brake_Service.png`,
     duration: '2-3 hours',
     warranty: '6 months / 10,000 km',
   },
@@ -181,7 +184,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Warranty on Parts & Labor',
     ],
     benefits: ['Smoother gear shifts', 'Better drivability', 'Reduced vibration/noise', 'Prevents breakdowns'],
-    image: 'https://images.unsplash.com/photo-1603386329225-868f9b1ee6f8?auto=format&fit=crop&q=80&w=1200',
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Clutch_Service.png`,
     duration: '3-6 hours',
     warranty: '3 months / 3,000 km',
   },
@@ -205,7 +208,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Road Hazard Inspection',
     ],
     benefits: ['Better fuel efficiency', 'Extended tyre life', 'Improved handling', 'Enhanced safety'],
-    image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=1200',
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Wheel_Care_Service.png`,
     duration: '1-2 hours',
     warranty: '6 months',
   },
@@ -229,7 +232,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Leather Conditioning',
     ],
     benefits: ['Showroom finish', 'Paint protection', 'Increased resale value', 'Long-lasting shine'],
-    image: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?auto=format&fit=crop&q=80&w=1200',
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Detailing_Service.png`,
     duration: '4-6 hours',
     warranty: '3-6 months',
   },
@@ -253,7 +256,7 @@ export const DEFAULT_SERVICES: Service[] = [
       '2-Year Paint Warranty',
     ],
     benefits: ['Flawless finish', 'Color match guarantee', 'Long-lasting paint', 'Increased resale value'],
-    image: 'https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&q=80&w=1200',
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Denting-Painting_Service.png`,
     duration: '2-5 days',
     warranty: '2 years',
   },

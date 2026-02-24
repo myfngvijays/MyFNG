@@ -9,6 +9,7 @@ import LiveStats from '@/components/landing/LiveStats';
 import AIFeatureBadge from '@/components/landing/AIFeatureBadge';
 import DynamicFOMO from '@/components/landing/DynamicFOMO';
 import ServiceExplorer, { type ServiceExplorerItem } from '@/components/landing/ServiceExplorer';
+import { DEFAULT_SERVICES } from '@/lib/services/catalog';
 import { 
   MessageSquare, 
   Zap, 
@@ -91,6 +92,18 @@ export default function HomePage() {
   const [headerAiQuery, setHeaderAiQuery] = useState('');
   const [chatDraft, setChatDraft] = useState('');
   const [latestBlogs, setLatestBlogs] = useState<Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string }>>([]);
+  const heroServiceSlides = useMemo(
+    () =>
+      DEFAULT_SERVICES.map((service) => ({
+        title: service.title,
+        image: service.image,
+      })).filter((service) => Boolean(service.image)),
+    []
+  );
+  const [heroServiceSlideIdx, setHeroServiceSlideIdx] = useState(0);
+  const [heroSlidesReady, setHeroSlidesReady] = useState(false);
+  const activeHeroServiceSlide =
+    heroServiceSlides.length > 0 ? heroServiceSlides[heroServiceSlideIdx % heroServiceSlides.length] : null;
 
   type ChatRole = 'user' | 'assistant';
   type UiSuggestion = {
@@ -151,6 +164,42 @@ export default function HomePage() {
       cancelled = true;
     };
   }, []);
+
+  // Auto-rotate hero service creatives on homepage.
+  useEffect(() => {
+    if (heroServiceSlides.length === 0) {
+      setHeroSlidesReady(true);
+      return;
+    }
+    let cancelled = false;
+    const preloadImages = async () => {
+      await Promise.all(
+        heroServiceSlides.map(
+          (slide) =>
+            new Promise<void>((resolve) => {
+              const img = new window.Image();
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+              img.src = slide.image;
+            })
+        )
+      );
+      if (!cancelled) setHeroSlidesReady(true);
+    };
+    void preloadImages();
+    return () => {
+      cancelled = true;
+    };
+  }, [heroServiceSlides]);
+
+  // Start rotating only after images are preloaded to avoid blank flashes.
+  useEffect(() => {
+    if (!heroSlidesReady || heroServiceSlides.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setHeroServiceSlideIdx((prev) => (prev + 1) % heroServiceSlides.length);
+    }, 2600);
+    return () => window.clearInterval(timer);
+  }, [heroSlidesReady, heroServiceSlides.length]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatConnected, setChatConnected] = useState(false);
   const [chatContext, setChatContext] = useState<any>({}); // keep flexible (matches /api/chatbot context)
@@ -550,7 +599,7 @@ export default function HomePage() {
   const services = [
     {
       icon: Activity,
-      title: 'Car Periodic Service',
+      title: 'Periodic Car Service',
       desc: 'Scheduled maintenance by verified workshops',
       slug: 'periodic-service',
       color: 'text-blue-600',
@@ -703,7 +752,7 @@ export default function HomePage() {
       </div>
 
       {/* 1. Hero Section: AI-Powered & Futuristic - Updated Clean Look */}
-      <section className="relative pt-14 pb-10 sm:pb-12 lg:pt-20 lg:pb-24 overflow-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50">
+      <section className="relative pt-24 pb-8 sm:pt-24 sm:pb-10 lg:pt-24 lg:pb-12 lg:min-h-[calc(100vh-84px)] overflow-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50">
         {/* Background Elements */}
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
         <div className="absolute top-0 right-0 w-full lg:w-1/2 h-full bg-gradient-to-l from-blue-100/40 to-transparent transform skew-x-12 translate-x-1/4"></div>
@@ -713,16 +762,16 @@ export default function HomePage() {
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl animate-float" style={{animationDelay: '1.5s'}}></div>
 
         <div className="container mx-auto px-4 sm:px-6 relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-6 sm:gap-8 lg:gap-14">
+          <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-6 sm:gap-8 lg:gap-10">
             
             {/* Left Content – higher z so buttons are never covered by right visual */}
             <div className="lg:col-span-6 text-center lg:text-left w-full relative z-20">
               {/* AI Badge */}
-              <div className="mb-6 flex justify-center lg:justify-start">
+              <div className="mb-4 lg:mb-5 flex justify-center lg:justify-start">
                 <AIFeatureBadge text="Powered by Advanced AI Technology" />
               </div>
               
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold mb-6 text-gray-900 leading-tight tracking-tight">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-6xl font-bold mb-4 lg:mb-5 text-gray-900 leading-tight tracking-tight">
                 India's First <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
                   AI-Powered Car
@@ -730,7 +779,7 @@ export default function HomePage() {
                 Service Booking Platform
               </h1>
               
-              <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
+              <p className="text-base sm:text-lg lg:text-lg text-gray-600 mb-6 max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
                 Verified garages, photo & video updates, transparent pricing, genuine parts and warranty - all managed by MY FNG.
               </p>
 
@@ -738,7 +787,7 @@ export default function HomePage() {
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start">
                 <Link
                   href="/book-service"
-                  className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-white bg-blue-600 shadow-lg shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                  className="btn inline-flex w-full sm:w-auto sm:min-w-[220px] items-center justify-center rounded-2xl px-6 py-3.5 text-base sm:text-lg font-semibold text-white bg-blue-600 shadow-lg shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   Book Service Now
                 </Link>
@@ -765,7 +814,7 @@ export default function HomePage() {
               </div>
 
               {/* Dynamic FOMO - Live Indicator */}
-              <div className="mt-6 flex justify-center lg:justify-start">
+              <div className="mt-4 lg:mt-5 flex justify-center lg:justify-start">
                 <div className="max-w-xl">
                   <DynamicFOMO />
                 </div>
@@ -775,16 +824,19 @@ export default function HomePage() {
             </div>
 
             {/* Right Visual */}
-            <div className="lg:col-span-6 relative w-full mt-4 sm:mt-6 lg:mt-0 min-w-0">
+            <div className="lg:col-span-6 relative w-full mt-3 sm:mt-4 lg:mt-0 min-w-0">
               <div className="relative z-10 perspective-1000">
                 {/* Main Image - Using the clean futuristic car image */}
                 <div className="relative z-10 rounded-3xl overflow-hidden shadow-2xl shadow-blue-500/20 bg-white p-2 border border-white/50 backdrop-blur-sm">
                   <div className="rounded-2xl overflow-hidden relative bg-gradient-to-b from-gray-100 to-white">
                      {/* Using a placeholder car illustration or the existing image but styled cleaner */}
-                     <img 
-                      src="https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000" 
-                      alt="Futuristic Car" 
-                      className="w-full object-cover h-[300px] sm:h-[400px] mix-blend-multiply opacity-90 hover:opacity-100 transition-opacity duration-500"
+                     <img
+                      src={
+                        activeHeroServiceSlide?.image ||
+                        'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000'
+                      }
+                      alt={activeHeroServiceSlide?.title || 'Featured service image'}
+                      className="w-full object-cover h-[260px] sm:h-[340px] lg:h-[360px] mix-blend-multiply opacity-90 hover:opacity-100 transition-opacity duration-500"
                     />
                     {/* Gradient Overlay for better text visibility if needed */}
                     <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent"></div>
@@ -854,7 +906,7 @@ export default function HomePage() {
           </div>
 
           {/* Trust tiles (same style as TrustBadges) - Full width */}
-          <div className="mt-10 animate-fade-in-up" style={{ animationDelay: '0.75s' }}>
+          <div className="mt-6 lg:mt-8 animate-fade-in-up" style={{ animationDelay: '0.75s' }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               {[
                 { icon: CheckCircle, title: 'Free Pickup & Drop', desc: 'Doorstep convenience included' },
@@ -916,7 +968,7 @@ export default function HomePage() {
       <section className="py-12 sm:py-16 md:py-20 bg-gray-50">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-8 sm:mb-10 md:mb-12">
-            <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">Brands We Serve</span>
+            <AIFeatureBadge text="Brands We Serve" />
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">We Service All Major Car Brands</h2>
             <p className="text-sm sm:text-base text-gray-600 mt-3 sm:mt-4 px-4">
               From Maruti to Mercedes, we've got you covered
@@ -999,7 +1051,7 @@ export default function HomePage() {
       <section className="py-12 sm:py-16 md:py-24 bg-white">
         <div className="container mx-auto px-4 sm:px-6">
           <div className="text-center mb-12 sm:mb-16">
-            <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">How It Works</span>
+            <AIFeatureBadge text="How It Works" />
             <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">
               How MY FNG Manages
               <br className="sm:hidden" /> Your Car Service
@@ -1088,7 +1140,7 @@ export default function HomePage() {
                     ][activeStep]}
                   </div>
                   
-                  <h3 className="text-3xl font-bold mb-4">
+                  <h3 className="text-3xl font-bold mb-4 text-white">
                     {[
                       "Smart Booking Assistant",
                       "Doorstep Pickup Confirmed",
@@ -1126,8 +1178,8 @@ export default function HomePage() {
       <section className="py-12 sm:py-16 md:py-20 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
-            <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">Why Choose Us</span>
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-white">Why Choose MY FNG?</h2>
+            <AIFeatureBadge text="Why Choose Us" />
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">Why Choose MY FNG?</h2>
             <p className="text-sm sm:text-base text-gray-600 mt-3 sm:mt-4 max-w-2xl mx-auto px-4">
               India's most transparent, AI-powered car service platform - built for reliability, not guesswork.
             </p>
@@ -1461,7 +1513,7 @@ export default function HomePage() {
                 {/* CTA */}
                 <div className="flex flex-col items-center lg:items-start gap-3 animate-fade-in-up" style={{ animationDelay: '0.35s' }}>
                   <Link
-                    href="/rsa_landing"
+                    href="/car-roadside-assitance"
                     className="inline-flex items-center justify-center gap-3 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white text-sm sm:text-lg font-bold px-7 sm:px-10 py-3.5 sm:py-4 rounded-2xl shadow-2xl shadow-red-500/40 transition-all transform hover:-translate-y-0.5 animate-pulse-glow"
                   >
                     <Radio className="w-5 h-5 animate-pulse" />
@@ -1529,7 +1581,7 @@ export default function HomePage() {
 
                 {/* Mobile only: compact “View all” */}
                 <div className="sm:hidden mt-3 flex justify-center">
-                  <Link href="/rsa_landing" className="text-sm font-semibold text-orange-200 hover:text-white underline underline-offset-4">
+                  <Link href="/car-roadside-assitance" className="text-sm font-semibold text-orange-200 hover:text-white underline underline-offset-4">
                     View all roadside services →
               </Link>
                 </div>
@@ -1543,7 +1595,7 @@ export default function HomePage() {
       <section className="py-12 sm:py-16 md:py-20 bg-white">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
-            <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">Latest Updates</span>
+            <AIFeatureBadge text="Latest Updates" />
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">From Our Blogs</h2>
             <p className="text-sm sm:text-base text-gray-600 mt-3 sm:mt-4 px-4">
               Stay updated with car maintenance tips, industry news, and expert advice
@@ -1618,7 +1670,7 @@ export default function HomePage() {
       <section className="py-12 sm:py-16 md:py-20 bg-gray-50">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
-            <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">Testimonials</span>
+            <AIFeatureBadge text="Testimonials" />
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">What People Say About Us</h2>
             <p className="text-sm sm:text-base text-gray-600 mt-3 sm:mt-4 px-4">
               Real feedback from our satisfied customers
@@ -1730,7 +1782,7 @@ export default function HomePage() {
       <section className="py-12 sm:py-16 md:py-20 bg-white">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
-            <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">FAQ</span>
+            <AIFeatureBadge text="FAQ" />
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">Frequently Asked Questions</h2>
             <p className="text-sm sm:text-base text-gray-600 mt-3 sm:mt-4 px-4">
               Got questions? We've got answers

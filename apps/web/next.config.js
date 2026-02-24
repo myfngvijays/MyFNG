@@ -42,6 +42,11 @@ const nextConfig = {
         hostname: 'img.icons8.com',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'cffommijlvicfjhbqyzk.supabase.co',
+        pathname: '/**',
+      },
     ],
   },
   
@@ -59,6 +64,11 @@ const nextConfig = {
       // SEO continuity: old MyFNG uses /blogs/*
       { source: '/blog', destination: '/blogs', permanent: true },
       { source: '/blog/:slug', destination: '/blogs/:slug', permanent: true },
+      // Ads/deep-link continuity for periodic service page
+      { source: '/services/periodic-service', destination: '/car-services/periodic-car-service', permanent: true },
+      // RSA canonical URL
+      { source: '/rsa_landing', destination: '/car-roadside-assitance', permanent: true },
+      { source: '/roadside-assistance', destination: '/car-roadside-assitance', permanent: true },
     ];
   },
 };

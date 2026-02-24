@@ -12,6 +12,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
+import AIFeatureBadge from './AIFeatureBadge';
 
 export type ServiceExplorerItem = {
   slug: string;
@@ -190,7 +191,7 @@ export default function ServiceExplorer({
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="text-center">
-            <span className="text-blue-600 font-bold tracking-wider uppercase text-sm">Our Services</span>
+            <AIFeatureBadge text="Our Services" />
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">
               Everything your car needs, in one place.
             </h2>

@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { ArrowRight, Bot } from 'lucide-react';
 import { createChatPaymentOrder, initializeRazorpayCheckout, loadRazorpayScript } from '@/lib/services/paymentService';
 
@@ -68,6 +69,8 @@ export default function AIBookingPage() {
 function AIBookingPageInner() {
   // V2 is now the only chatbot experience.
   const CHAT_API = '/api/chatbot/v2';
+  const searchParams = useSearchParams();
+  const isEmbed = searchParams.get('embed') === '1';
 
   const [chatDraft, setChatDraft] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -224,22 +227,6 @@ function AIBookingPageInner() {
 
     let cancelled = false;
 
-    const buildShortLabel = (data: any) => {
-      const a = data?.address || {};
-      const part1 =
-        a?.suburb ||
-        a?.neighbourhood ||
-        a?.village ||
-        a?.town ||
-        a?.city ||
-        a?.county ||
-        a?.state_district ||
-        '';
-      const part2 = a?.city || a?.town || a?.state || a?.region || '';
-      const label = [part1, part2].filter(Boolean).join(', ').replace(/\s+/g, ' ').trim();
-      return label.slice(0, 80);
-    };
-
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
@@ -253,15 +240,13 @@ function AIBookingPageInner() {
             locationCapturedAt: Date.now(),
           }));
 
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12&addressdetails=1`
-          );
+          const res = await fetch(`/api/location/reverse?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`);
           if (!res.ok) return;
           const data: any = await res.json();
-          const display = data?.display_name || '';
+          const display = String(data?.displayName || '').trim();
           if (!display) return;
           if (cancelled) return;
-          const shortLabel = buildShortLabel(data);
+          const shortLabel = String(data?.shortLabel || '').trim();
           setChatContext((prev: any) => ({
             ...(prev || {}),
             addressText: display,
@@ -302,17 +287,32 @@ function AIBookingPageInner() {
     }
 
     try {
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-      const res = await fetch(CHAT_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, context: nextContext }),
-        signal: controller.signal,
-      });
-      clearTimeout(t);
+      const requestOnce = async () => {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        try {
+          const res = await fetch(CHAT_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text, context: nextContext }),
+            signal: controller.signal,
+          });
+          const data: any = await res.json().catch(() => null);
+          return { res, data };
+        } finally {
+          clearTimeout(t);
+        }
+      };
 
-      const data: any = await res.json().catch(() => null);
+      let res: Response;
+      let data: any;
+      try {
+        ({ res, data } = await requestOnce());
+      } catch (firstErr: any) {
+        // One silent retry helps during hot-reload/cold-start hiccups.
+        if (firstErr?.name === 'AbortError') throw firstErr;
+        ({ res, data } = await requestOnce());
+      }
       const v2ConversationId = data?.data?.conversationId;
       if (res.ok && (data?.conversationId || v2ConversationId)) setChatConnected(true);
 
@@ -321,6 +321,7 @@ function AIBookingPageInner() {
 
       const assistantText =
         (typeof data?.assistantMessage === 'string' && data.assistantMessage.trim()) ||
+        (typeof data?.response === 'string' && data.response.trim()) ||
         (v2Msg ? [v2Msg, v2Cta].filter(Boolean).join('\n') : '') ||
         (typeof data?.error === 'string' && data.error.trim()) ||
         'Sorry, kuch issue aa gaya. Please try again.';
@@ -563,7 +564,8 @@ function AIBookingPageInner() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={isEmbed ? 'h-full bg-gray-50' : 'min-h-screen bg-gray-50'}>
+      {!isEmbed && (
       <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/90 backdrop-blur">
         <div className="mx-auto max-w-4xl px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
@@ -573,7 +575,7 @@ function AIBookingPageInner() {
             <div className="min-w-0">
               <div className="font-bold text-gray-900 truncate">Book via MY FNG AI</div>
               <div className="text-xs text-gray-500 truncate">
-                {chatConnected ? `API: ${CHAT_API} • Connected` : `API: ${CHAT_API} • Connecting...`}
+                {chatConnected ? 'AI Assistant • Online' : 'AI Assistant • Starting...'}
               </div>
               {String(chatContext?.locationLabel || '').trim() ? (
                 <div className="text-[11px] text-gray-600 truncate">City: {String(chatContext.locationLabel)}</div>
@@ -585,8 +587,9 @@ function AIBookingPageInner() {
           </Link>
         </div>
       </header>
+      )}
 
-      <main className="mx-auto max-w-4xl px-4 py-6">
+      <main className={isEmbed ? 'h-full p-0' : 'mx-auto max-w-4xl px-4 py-6'}>
         {suggestionModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
@@ -648,8 +651,8 @@ function AIBookingPageInner() {
             </div>
           </div>
         )}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div ref={chatScrollRef} className="h-[65vh] bg-gray-50 p-4 overflow-y-auto">
+        <div className={isEmbed ? 'bg-white h-full overflow-hidden' : 'bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden'}>
+          <div ref={chatScrollRef} className={isEmbed ? 'h-[430px] bg-gray-50 p-4 overflow-y-auto' : 'h-[65vh] bg-gray-50 p-4 overflow-y-auto'}>
             {chatMessages.map((m) => {
               const isUser = m.role === 'user';
               return (

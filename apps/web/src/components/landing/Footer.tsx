@@ -10,7 +10,7 @@ export default function Footer() {
           <div>
             <h3 className="text-base sm:text-lg font-bold mb-4 sm:mb-6 border-b-2 border-brand-primary inline-block pb-2 text-white">Services</h3>
             <ul className="space-y-2 sm:space-y-3 text-sm sm:text-base text-blue-100">
-              <li><Link href="/services/periodic-service" className="hover:text-white transition">Car Periodic Service</Link></li>
+              <li><Link href="/services/periodic-service" className="hover:text-white transition">Periodic Car Service</Link></li>
               <li><Link href="/services/engine-service" className="hover:text-white transition">Car Engine Service</Link></li>
               <li><Link href="/services/brake-service" className="hover:text-white transition">Brake Service</Link></li>
               <li><Link href="/services/ac-service" className="hover:text-white transition">Car AC Service</Link></li>
@@ -108,10 +108,6 @@ export default function Footer() {
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4">
             <div className="flex items-center gap-2">
               <img src="/logo.png" alt="MY FNG Logo" className="h-6 sm:h-7 md:h-8 w-auto brightness-0 invert flex-shrink-0" />
-              <div>
-                <span className="text-lg sm:text-xl font-bold">MY FNG</span>
-                <p className="text-xs text-blue-200">Your Friendly Neighbourhood Garage</p>
-              </div>
             </div>
             <p className="text-blue-200 text-xs sm:text-sm text-center sm:text-right">
               © {new Date().getFullYear()} MY FNG. All rights reserved.

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Toaster } from 'react-hot-toast';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import MobileBottomNav from '@/components/landing/MobileBottomNav';
+import AskMyFngFloatingButton from '@/components/landing/AskMyFngFloatingButton';
 import '@fontsource/poppins/300.css';
 import '@fontsource/poppins/400.css';
 import '@fontsource/poppins/500.css';
@@ -34,6 +35,7 @@ export default function RootLayout({
       <body className="font-sans">
         <NotificationProvider>
           {children}
+          <AskMyFngFloatingButton />
           <MobileBottomNav />
         </NotificationProvider>
         <Toaster position="top-right" />

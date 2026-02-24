@@ -1,194 +1,171 @@
-import { NextResponse } from 'next/server';
-
-import type { ChatbotV2Request, ChatbotV2Response } from '@/lib/chatbot_v2/types';
-import { classifyIntent } from '@/lib/chatbot_v2/intent/classifier';
-import {
-  ensureConversationId,
-  extractLikelyQuestion,
-  extractContextPatchFromUserText,
-  mergeContext,
-  normalizeContext,
-  detectMissingInfo,
-} from '@/lib/chatbot_v2/memory/context';
-import { pickUserLang, rewritePreservingFacts } from '@/lib/chatbot_v2/reply/language';
-import { routeMessage } from '@/lib/chatbot_v2/router';
-import { answerFromFaqOrKb } from '@/lib/chatbot_v2/kb/retriever';
-import { runToolCallingAgent } from '@/lib/chatbot_v2/agent/agent';
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession, saveSession } from '@/lib/chatbot_v2/session';
+import { logChatActivity } from '@/lib/chatbot_v2/telecrm';
+import { handleChatError } from '@/lib/chatbot_v2/error-handler';
+import { CHATBOT_TOOLS, executeToolCall } from '@/lib/chatbot_v2/chatbot-tools';
+import { SYSTEM_PROMPT } from '@/lib/chatbot_v2/chatbot-system-prompt';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: Request) {
-  const body = (await req.json().catch(() => null)) as ChatbotV2Request | null;
-  if (!body?.message || typeof body.message !== 'string') {
-    const resp: ChatbotV2Response = {
-      type: 'answer',
-      message: 'Message missing hai.',
-      cta: 'Aapko kis cheez me help chahiye?',
-      data: {},
+type V2Request = {
+  message?: string;
+  context?: Record<string, any>;
+  session_id?: string;
+};
+
+type ChatMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type?: string;
+    function?: {
+      name: string;
+      arguments: string;
     };
-    return NextResponse.json(resp, { status: 400 });
-  }
+  }>;
+};
 
-  const rawMessage = body.message;
-  const userText = extractLikelyQuestion(rawMessage);
-
-  const baseCtx = normalizeContext(body.context || {});
-  const conversationId = ensureConversationId(baseCtx);
-  // Apply best-effort extraction from message (phone, vehicle number, pickup/self, etc.)
-  const extractedPatch = extractContextPatchFromUserText(userText);
-  const context = mergeContext(baseCtx, { conversationId, ...extractedPatch });
-
-  const lang = pickUserLang(context, userText);
-  let intent = await classifyIntent({ message: userText, context });
-
-  // Flow override: if user is already in booking/pricing flow, keep routing consistent.
-  // Only override when current message is ambiguous (GeneralInfo). If user explicitly asks booking/pricing,
-  // respect the classifier result so the user can switch flows.
-  const looksLikeYesNo = /^(yes|haan|ha|sahi|correct|ok|okay|bilkul|no|nahi|nahin|change|galat|wrong)\b/i.test(userText.trim());
-  const looksLikeBookingStep =
-    looksLikeYesNo ||
-    /([6-9]\d{9})/.test(userText.replace(/\D/g, '')) || // phone
-    /\b([A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,3}\s?\d{3,4})\b/i.test(userText) || // vehicle number
-    /(pickup|self\s*visit|self\s*drop|walk\s*in)/i.test(userText) ||
-    /\b(tata|maruti|suzuki|hyundai|mahindra|honda|toyota|kia|mg|renault|nissan|ford|skoda|volkswagen|vw|bmw|audi|mercedes)\b/i.test(
-      userText
-    ); // model line
-  const looksLikePricingStep =
-    looksLikeBookingStep || /(price|cost|charges|rate|kitna|fees|estimate|quotation|quote|periodic|service)/i.test(userText);
-
-  // IMPORTANT: do NOT hijack informational KB questions into booking/pricing.
-  if (context.flow === 'BOOKING' && intent.intent === 'GeneralInfo' && looksLikeBookingStep) {
-    intent = { ...intent, intent: 'BookingRequest', confidence: Math.max(intent.confidence, 0.75) };
-  }
-  // Payment-link consent step: if we asked "payment link chahiye?" and user replies yes/no,
-  // route it to booking (NOT KB).
-  const looksLikePaymentConsent =
-    looksLikeYesNo || /(i\s*want|chahiye|haan\s*chahiye|send\s*(link)?|link\s*send)/i.test(userText.trim());
-  if (context.awaitingPaymentLinkConsent && intent.intent === 'GeneralInfo' && looksLikePaymentConsent) {
-    intent = { ...intent, intent: 'BookingRequest', confidence: Math.max(intent.confidence, 0.75) };
-  }
-  const looksLikeLastServiceReply = Boolean(extractedPatch.lastServiceDoneAt) || /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s*\d{4}$/i.test(userText.trim()) || /^\d{4}$/.test(userText.trim());
-  const looksLikeCarModelReply =
-    /^[a-zA-Z0-9][a-zA-Z0-9\s\-]{1,30}$/.test(userText.trim()) &&
-    /[a-zA-Z]/.test(userText.trim()) &&
-    !looksLikeYesNo &&
-    !/\b(price|cost|charges|rate|fees|workshop|address|booking|book|pickup|service)\b/i.test(userText);
-  const looksLikePickupChoice = /(pickup|self\s*visit|self-visit|self\s*drop|walk\s*in)/i.test(userText.trim());
-  if (
-    context.flow === 'PRICING' &&
-    intent.intent === 'GeneralInfo' &&
-    (looksLikePricingStep || looksLikeLastServiceReply || (context.awaitingCarModelSelection && looksLikeCarModelReply))
-  ) {
-    intent = { ...intent, intent: 'PriceEnquiry', confidence: Math.max(intent.confidence, 0.75) };
-  }
-  // If user chooses pickup/self-visit after pricing, switch to booking.
-  if (context.flow === 'PRICING' && intent.intent === 'GeneralInfo' && looksLikePickupChoice) {
-    intent = { ...intent, intent: 'BookingRequest', confidence: Math.max(intent.confidence, 0.75) };
-  }
-  // Workshop flow: if we just asked for area/city/pincode, treat the next location-like message as WorkshopLocation.
-  const looksLikeLocationReply =
-    /^\d{6}$/.test(userText.replace(/\D/g, '')) ||
-    (/^[a-zA-Z\u0900-\u097F\s]{3,40}$/.test(userText.trim()) && !/\b(price|cost|book|booking|repair|clean|service)\b/i.test(userText));
-  if (context.flow === 'WORKSHOP' && intent.intent === 'GeneralInfo' && looksLikeLocationReply) {
-    intent = { ...intent, intent: 'WorkshopLocation', confidence: Math.max(intent.confidence, 0.75) };
-  }
-  const missing = detectMissingInfo(context);
-
-  // KB-first fast path for informational questions (stable + avoids agent/tool costs).
-  // IMPORTANT: run AFTER flow override so step replies like "self visit/ok/yes" don't get hijacked by KB.
-  // If KB returns an answer, return it directly with empty CTA.
-  const kbEligible =
-    intent.intent === 'GeneralInfo' ||
-    intent.intent === 'WarrantySupport' ||
-    intent.intent === 'RepairIssue' ||
-    intent.intent === 'CleaningDetailing';
-  if (kbEligible) {
-    const raw = await answerFromFaqOrKb({ userText, lang });
-    if (raw) {
-      const answer = await rewritePreservingFacts({ userText, answerFacts: raw, lang });
-      const out: ChatbotV2Response = {
-        type: 'answer',
-        message: answer,
-        cta: '',
-        data: {
-          conversationId,
-          intent,
-          // Persist extractedPatch so frontend retains memory; no server patch on KB fast path.
-          contextPatch: {
-            ...extractedPatch,
-            conversationId,
-            lastKbQuery: userText.slice(0, 200),
-            lastKbAnswerFacts: raw.slice(0, 1200),
-            lastKbAt: Date.now(),
-          },
-          lang,
-        },
-      };
-      return NextResponse.json(out);
-    }
-  }
-
-  // Agent gate (min-cost): use agent primarily for actionable flows.
-  // If agent fails or returns invalid output, fall back to deterministic router.
-  const isValidLatLng = (lat: unknown, lng: unknown) => {
-    const la = Number(lat);
-    const lo = Number(lng);
-    if (!Number.isFinite(la) || !Number.isFinite(lo)) return false;
-    if (Math.abs(la) > 90 || Math.abs(lo) > 180) return false;
-    if (Math.abs(la) < 0.0001 && Math.abs(lo) < 0.0001) return false;
-    return true;
-  };
-  const canUseWorkshopAgent = isValidLatLng(context.locationLat, context.locationLng);
-
-  // Keep pricing + workshop deterministic to follow our scripted flow and keep token cost minimum.
-  // Agent is ONLY allowed for explicit payment-link style asks (otherwise it breaks booking flow continuity by not setting ctx.flow).
-  const wantsPaymentLink =
-    Boolean((intent as any)?.entities?.wantsPaymentLink) || /(pay\s*now|payment\s*link|upi\s*link|pay link|pay online)/i.test(userText);
-  const agentEligible = intent.intent === 'BookingRequest' && wantsPaymentLink;
-  if (agentEligible) {
-    const agent = await runToolCallingAgent({ userText, lang, context, intent });
-    if (agent) {
-      const out: ChatbotV2Response = {
-        type: agent.response.type,
-        message: agent.response.message,
-        cta: agent.response.cta,
-        data: {
-          ...agent.response.data,
-          conversationId,
-          intent,
-          contextPatch: { ...extractedPatch, ...agent.contextPatch, conversationId },
-          lang,
-          agent: agent.meta,
-        },
-      };
-      return NextResponse.json(out);
-    }
-  }
-
-  const { response, contextPatch } = await routeMessage({ userText, lang, intent, context, missing });
-
-  // Strict response format; context is returned inside data for the frontend to store.
-  const out: ChatbotV2Response = {
-    type: response.type,
-    message: response.message,
-    cta: response.cta,
-    data: {
-      ...response.data,
-      conversationId,
-      intent,
-      // Persist extracted + server patches so frontend can keep state without re-asking.
-      contextPatch: { ...extractedPatch, ...contextPatch, conversationId },
-      lang,
+async function createCompletion(messages: ChatMessage[]) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
     },
-  };
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages,
+      tools: CHATBOT_TOOLS,
+      tool_choice: 'auto',
+      temperature: 0.7,
+      max_tokens: 1000,
+    }),
+  });
 
-  // UI payload (optional): lift to top-level for frontend convenience
-  const ui = (out.data as any)?.ui;
-  if (ui) {
-    const withUi: any = { ...out, ui };
-    return NextResponse.json(withUi);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`OpenAI completion failed (${res.status}): ${txt.slice(0, 300)}`);
   }
-  return NextResponse.json(out);
+
+  const data = (await res.json()) as any;
+  return data?.choices?.[0]?.message as ChatMessage | undefined;
 }
 
+function getSessionId(body: V2Request) {
+  const fromContext = String(body?.context?.conversationId || '').trim();
+  if (fromContext) return fromContext;
+  const fromBody = String(body?.session_id || '').trim();
+  if (fromBody) return fromBody;
+  return `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
+export async function POST(req: NextRequest) {
+  const body = (await req.json().catch(() => null)) as V2Request | null;
+  const message = String(body?.message || '').trim();
+  const sessionId = getSessionId(body || {});
+
+  if (!message) {
+    return NextResponse.json(
+      {
+        type: 'answer',
+        message: 'Message missing hai.',
+        cta: 'Aapko kis cheez me help chahiye?',
+        assistantMessage: 'Message missing hai.',
+        data: { contextPatch: { conversationId: sessionId } },
+      },
+      { status: 400 }
+    );
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json(
+      {
+        type: 'answer',
+        message: 'Chatbot temporarily unavailable.',
+        cta: 'Please try again shortly.',
+        assistantMessage: 'Chatbot temporarily unavailable.',
+        data: { contextPatch: { conversationId: sessionId } },
+      },
+      { status: 503 }
+    );
+  }
+
+  try {
+    const sessionData = await getSession(sessionId);
+    const history = Array.isArray(sessionData.history) ? sessionData.history : [];
+
+    const messages: ChatMessage[] = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...history.map((msg: any) => ({
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content: String(msg.content || ''),
+      })),
+      { role: 'user', content: message },
+    ];
+
+    let assistantMessage = await createCompletion(messages);
+    let toolCalls = assistantMessage?.tool_calls || [];
+    let finalResponse = String(assistantMessage?.content || '').trim();
+
+    let iteration = 0;
+    const maxIterations = 5;
+
+    while (toolCalls.length > 0 && iteration < maxIterations) {
+      iteration += 1;
+      messages.push({
+        role: 'assistant',
+        content: String(assistantMessage?.content || ''),
+        tool_calls: toolCalls,
+      });
+
+      for (const toolCall of toolCalls) {
+        if (toolCall.type && toolCall.type !== 'function') continue;
+        if (!toolCall.function?.name) continue;
+
+        const toolName = toolCall.function.name;
+        const toolArgs = JSON.parse(toolCall.function.arguments || '{}');
+        if (toolName === 'create_booking') toolArgs.session_id = sessionId;
+
+        const toolResult = await executeToolCall(toolName, toolArgs);
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(toolResult),
+        });
+      }
+
+      assistantMessage = await createCompletion(messages);
+      toolCalls = assistantMessage?.tool_calls || [];
+      finalResponse = String(assistantMessage?.content || '').trim();
+    }
+
+    if (!finalResponse) {
+      finalResponse = "I'm here to help! Could you please rephrase your question?";
+    }
+
+    const nextHistory = [...history, { role: 'user', content: message }, { role: 'assistant', content: finalResponse }].slice(-20);
+    await saveSession(sessionId, { history: nextHistory });
+
+    void logChatActivity(sessionId, message, 'user');
+    void logChatActivity(sessionId, finalResponse, 'bot');
+
+    return NextResponse.json({
+      type: 'answer',
+      intent: 'llm_managed',
+      message: finalResponse,
+      cta: '',
+      assistantMessage: finalResponse,
+      session_id: sessionId,
+      data: {
+        contextPatch: {
+          conversationId: sessionId,
+        },
+      },
+    });
+  } catch (error) {
+    return handleChatError(error, sessionId);
+  }
+}

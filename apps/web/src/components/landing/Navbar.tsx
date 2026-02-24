@@ -302,7 +302,7 @@ export default function Navbar() {
               </div>
             </div>
             <Link href="/about" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
-            <Link href="/rsa_landing" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
+            <Link href="/car-roadside-assitance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
             <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
             <Link href="/contact" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
           </div>

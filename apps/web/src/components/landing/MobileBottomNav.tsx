@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Bot, Home, LifeBuoy, Phone, Wrench } from 'lucide-react';
@@ -15,7 +16,12 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: 'Home', href: '/', icon: Home, matchPrefixes: ['/'] },
   { label: 'Services', href: '/services', icon: Wrench, matchPrefixes: ['/services', '/car-services'] },
-  { label: 'Roadside', href: '/rsa_landing', icon: LifeBuoy, matchPrefixes: ['/roadside-assistance', '/rsa_landing'] },
+  {
+    label: 'Roadside',
+    href: '/car-roadside-assitance',
+    icon: LifeBuoy,
+    matchPrefixes: ['/car-roadside-assitance', '/roadside-assistance', '/rsa_landing'],
+  },
   { label: 'Contact', href: '/contact', icon: Phone, matchPrefixes: ['/contact', '/customer/login', '/login'] },
 ];
 
@@ -29,6 +35,15 @@ function isItemActive(pathname: string, item: NavItem): boolean {
 
 export default function MobileBottomNav() {
   const pathname = usePathname();
+  const [isEmbed, setIsEmbed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search || '');
+    setIsEmbed(params.get('embed') === '1');
+  }, [pathname]);
+
+  if (isEmbed) return null;
 
   return (
     <>
