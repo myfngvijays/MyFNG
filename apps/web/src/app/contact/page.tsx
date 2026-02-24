@@ -8,7 +8,7 @@ import { Phone, Mail, MapPin, Clock, Send, Truck } from 'lucide-react';
 const MAP_EMBED_URL =
   'https://www.google.com/maps/embed?pb=!1m16!1m12!1m3!1d120646.4!2d73.0679487!3d19.1220139!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!2m1!1sMY%20FNG!5e0!3m2!1sen!2sin';
 const MAP_OPEN_URL =
-  'https://www.google.com/maps/search/MY+FNG/@19.1220139,73.0679487,10z?hl=en&entry=ttu';
+  'https://maps.app.goo.gl/WjBHrvYCDjvhEe7X9';
 
 export default function ContactPage() {
   return (
@@ -69,8 +69,8 @@ export default function ContactPage() {
                     <div className="info-icon"><Phone className="w-5 h-5" /></div>
                     <div>
                       <h3>Customer Support</h3>
-                      <p><a href="tel:+919167779696">+91 9167779696</a></p>
-                      <p><a href="mailto:info@myfng.in">info@myfng.in</a></p>
+                      <p><a href="tel:+919772215095">+91-9772215095</a></p>
+                      <p><a href="mailto:support@myfng.in">support@myfng.in</a></p>
                     </div>
                   </div>
 
@@ -78,9 +78,9 @@ export default function ContactPage() {
                     <div className="info-icon"><Mail className="w-5 h-5" /></div>
                     <div>
                       <h3>Support / Inquiry</h3>
-                      <p>Service - <a href="tel:+919152307030">+91-9152307030</a></p>
+                      <p>Service - <a href="tel:+919772215095">+91-9772215095</a></p>
                       <p>RSA - <a href="tel:+919610448949">+91-9610448949</a></p>
-                      <p><a href="mailto:support@myfng.in">support@myfng.in</a></p>
+                      <p><a href="mailto:info@myfng.in">info@myfng.in</a></p>
                     </div>
                   </div>
 
@@ -88,7 +88,11 @@ export default function ContactPage() {
                     <div className="info-icon"><MapPin className="w-5 h-5" /></div>
                     <div>
                       <h3>Head Office</h3>
-                      <p>A/309, Centrum Business Square, Road No 16, Wagle Industrial Estate, Thane (W), Thane-400604</p>
+                      <p>
+                        <a href={MAP_OPEN_URL} target="_blank" rel="noopener noreferrer">
+                          A/309, Centrum Business Square, Road No 16, Wagle Industrial Estate, Thane (W), Thane-400604
+                        </a>
+                      </p>
                     </div>
                   </div>
 
@@ -96,14 +100,14 @@ export default function ContactPage() {
                     <div className="info-icon"><Clock className="w-5 h-5" /></div>
                     <div>
                       <h3>Office Hours</h3>
-                      <p>Mon - Sat: 9 am - 6 pm</p>
-                      <p>Sunday: Closed</p>
+                      <p>Mon - Sat: 09:30 AM - 06:30 PM</p>
+                      <p>Sun: Closed</p>
                     </div>
                   </div>
 
                   <div className="emergency-box">
                     <h3><Truck className="w-5 h-5 inline" /> 24/7 Roadside</h3>
-                    <p>Stranded? Call our emergency dispatch: <strong><br /><a href="tel:18003093431">1800-309-3431</a></strong></p>
+                    <p>Stranded? Call our emergency dispatch: <strong><br /><a href="tel:+919610448949">+91-9610448949</a></strong></p>
                   </div>
                 </div>
               </aside>
@@ -160,7 +164,7 @@ export default function ContactPage() {
 
             <div className="rsa-banner">
               <Truck className="w-6 h-6 flex-shrink-0" />
-              RSA Helpline: <a href="tel:18003093431">1800-309-3431</a>
+              RSA Helpline: <a href="tel:+919610448949">+91-9610448949</a>
             </div>
 
             <div className="map-container">

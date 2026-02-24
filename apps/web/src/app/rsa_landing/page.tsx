@@ -3,6 +3,82 @@
 import React from 'react';
 
 const RSA_WHATSAPP = '919610448949';
+const RSA_SUBSCRIPTION_PLANS = [
+  {
+    key: 'basic',
+    title: 'Basic Plan',
+    price: 999,
+    durationLabel: '1 Year / 2 Service',
+    features: [
+      'Flat tyre Assistance',
+      'Battery Jumpstart',
+      'Towing',
+      'On spot minor repairs',
+      'Key Unlock Assistance in unlocking your vehicle if keys are misplaced',
+    ],
+  },
+  {
+    key: 'standard',
+    title: 'Standard',
+    price: 2999,
+    durationLabel: '5 Years / 10 Service',
+    features: [
+      'Flat tyre Assistance',
+      'Battery Jumpstart',
+      'Towing',
+      'On spot minor repairs',
+      'Key Unlock Assistance in unlocking your vehicle if keys are misplaced',
+    ],
+  },
+  {
+    key: 'ultimate',
+    title: 'Ultimate',
+    price: 4999,
+    durationLabel: '15 Years / 30 Services',
+    features: [
+      'Flat tyre Assistance',
+      'Battery Jumpstart',
+      'Towing',
+      'On spot minor repairs',
+      'Key Unlock Assistance in unlocking your vehicle if keys are misplaced',
+    ],
+  },
+  {
+    key: 'family',
+    title: 'Family',
+    price: 9990,
+    durationLabel: '15 Years / 50 Services',
+    features: [
+      'Upto 3 Vehicles',
+      'Flat tyre Assistance',
+      'Battery Jumpstart',
+      'Towing',
+      'Key Unlock Assistance in unlocking your vehicle if keys are misplaced',
+    ],
+  },
+  {
+    key: 'premium',
+    title: 'Premium',
+    price: 9990,
+    durationLabel: '1 Year / Unlimited Service - 20% OFF',
+    features: [
+      'No capping on free services',
+      '1 Night Hotel Accommodation',
+      'Cab Arrangement (Free up to 50 km)',
+      'No capping on free services',
+    ],
+  },
+] as const;
+
+const RSA_PLAN_TERMS = [
+  'Members are entitled to 2 free RSA services per year under all plans, excluding the Premium Plan.',
+  "Towing distance is calculated on a round-trip basis (from the service provider’s location to the vehicle’s location and then to the destination).",
+  'Key Unlock Assistance is subject to the type of lock system used in the vehicle.',
+  'On-Spot Minor Repairs are limited to small fixes that can be completed without requiring extensive tools or garage equipment.',
+  'Hotel accommodation is subject to availability and limited to one night.',
+  'Cab arrangement is limited to 50 km and additional charges may apply for distances exceeding this limit.',
+  'Ambulance service is provided in case of accidents only and is subject to availability.',
+] as const;
 
 function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
   e.preventDefault();
@@ -79,6 +155,16 @@ export default function RsaLandingPage() {
     .rsa-landing .feature h4{margin:0 0 6px;font-size:16px;color:#ffffff}
     .rsa-landing .feature p{margin:0;color:rgba(255,255,255,.68);font-size:13px;line-height:1.6}
     .rsa-landing .pricing{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .rsa-landing .plan-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+    .rsa-landing .plan-card{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);border-radius:20px;overflow:hidden;display:flex;flex-direction:column}
+    .rsa-landing .plan-card .topline{height:4px;background:linear-gradient(90deg,#ff8a00,#ff4d2e)}
+    .rsa-landing .plan-card .body{padding:16px;display:flex;flex-direction:column;gap:10px;height:100%}
+    .rsa-landing .plan-card h3{margin:0;font-size:18px;color:#ffffff}
+    .rsa-landing .plan-card .price{font-size:26px;font-weight:900;line-height:1}
+    .rsa-landing .plan-card .duration{font-size:12px;font-weight:700;color:#ffcf99}
+    .rsa-landing .plan-card .list li{font-size:13px}
+    .rsa-landing .terms-card{margin-top:16px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);border-radius:18px;padding:16px}
+    .rsa-landing .terms-card h4{margin:0 0 8px;color:#ffffff}
     .rsa-landing .price-card{border:1px solid rgba(255,255,255,.10);background: rgba(255,255,255,.05);border-radius: 22px;padding:18px}
     .rsa-landing .price-card h3{margin:0 0 8px;color:#ffffff}
     .rsa-landing .price{font-size:34px;font-weight:900;letter-spacing:-.5px;margin:10px 0;color:#ffffff}
@@ -106,8 +192,8 @@ export default function RsaLandingPage() {
     .rsa-landing .marquee{overflow:hidden;position:relative}
     .rsa-landing .marquee-track{display:flex;gap:18px;width:max-content;animation:rsa-scroll 70s linear infinite}
     @keyframes rsa-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-    @media (max-width: 980px){.rsa-landing .hero-grid{grid-template-columns:1fr;gap:14px}.rsa-landing h1{font-size:36px}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .grid-3{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:repeat(2,1fr)}.rsa-landing .pricing{grid-template-columns:1fr}.rsa-landing .testimonials{grid-template-columns:repeat(2,1fr)}.rsa-landing .nav-links{display:none}}
-    @media (max-width: 560px){.rsa-landing h1{font-size:30px}.rsa-landing .form-row{grid-template-columns:1fr}.rsa-landing .grid-3,.rsa-landing .grid-4{grid-template-columns:1fr}.rsa-landing .steps{grid-template-columns:1fr}.rsa-landing .testimonials{grid-template-columns:1fr}.rsa-landing .stats{grid-template-columns:1fr}}
+    @media (max-width: 980px){.rsa-landing .hero-grid{grid-template-columns:1fr;gap:14px}.rsa-landing h1{font-size:36px}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .grid-3{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:repeat(2,1fr)}.rsa-landing .pricing{grid-template-columns:1fr}.rsa-landing .plan-grid{grid-template-columns:repeat(2,1fr)}.rsa-landing .testimonials{grid-template-columns:repeat(2,1fr)}.rsa-landing .nav-links{display:none}}
+    @media (max-width: 560px){.rsa-landing h1{font-size:30px}.rsa-landing .form-row{grid-template-columns:1fr}.rsa-landing .grid-3,.rsa-landing .grid-4,.rsa-landing .plan-grid{grid-template-columns:1fr}.rsa-landing .steps{grid-template-columns:1fr}.rsa-landing .testimonials{grid-template-columns:1fr}.rsa-landing .stats{grid-template-columns:1fr}}
   `}} />
       <div className="rsa-landing">
         <header>
@@ -206,28 +292,47 @@ export default function RsaLandingPage() {
 
         <section id="pricing">
           <div className="container">
-            <div className="section-title"><div><h2>Pricing</h2><p>Clear and affordable pricing. Exact cost depends on location, vehicle type and distance.</p></div></div>
-            <div className="pricing">
-              <div className="price-card">
-                <h3>Towing</h3>
-                <div className="price">₹25/km <small>onwards</small></div>
-                <ul className="list">
-                  <li><span className="tick">✓</span> Safe towing with proper equipment</li>
-                  <li><span className="tick">✓</span> Pickup from breakdown spot</li>
-                  <li><span className="tick">✓</span> Drop to nearest service location</li>
-                </ul>
-                <div style={{ marginTop: 14 }}><a className="btn primary" href="#contact">Request Towing</a></div>
+            <div className="section-title">
+              <div>
+                <h2>Best Plans for You</h2>
+                <p>Subscription packages which suit your car and your pocket.</p>
               </div>
-              <div className="price-card">
-                <h3>RSA Support</h3>
-                <div className="price">On Demand <small>as per service</small></div>
-                <ul className="list">
-                  <li><span className="tick">✓</span> Jumpstart, puncture, fuel & minor fixes</li>
-                  <li><span className="tick">✓</span> AI-powered emergency dispatch</li>
-                  <li><span className="tick">✓</span> 24×7 customer support</li>
-                </ul>
-                <div style={{ marginTop: 14 }}><a className="btn primary" href={`https://wa.me/${RSA_WHATSAPP}`} target="_blank" rel="noopener noreferrer">WhatsApp for Quote</a></div>
-              </div>
+            </div>
+
+            <div className="plan-grid">
+              {RSA_SUBSCRIPTION_PLANS.map((plan) => (
+                <div className="plan-card" key={plan.key}>
+                  <div className="topline" />
+                  <div className="body">
+                    <h3>{plan.title}</h3>
+                    <div className="price">₹{plan.price.toLocaleString('en-IN')}</div>
+                    <div className="duration">{plan.durationLabel}</div>
+                    <ul className="list">
+                      {plan.features.map((feature) => (
+                        <li key={feature}>
+                          <span className="tick">✓</span>
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div style={{ marginTop: 'auto' }}>
+                      <a className="btn primary" href="#contact">Buy Now</a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="terms-card">
+              <h4>Terms &amp; Conditions</h4>
+              <ul className="list">
+                {RSA_PLAN_TERMS.map((term) => (
+                  <li key={term}>
+                    <span className="tick">✓</span>
+                    <span>{term}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </section>

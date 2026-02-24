@@ -483,13 +483,13 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           <header className="header">
             <div className="navbar">
               <div className="logo">
-                <img src="https://myfng.cloud/logo.png" alt="MyFNG" />
+                <img src="https://myfng.in/logo.png" alt="MyFNG" />
               </div>
               <div className="nav-links">
                 <a href="/">Home</a>
                 <a href="/services">Services</a>
                 <a href="/about">About</a>
-                <a href="/roadside-assistance">Roadside Assistance</a>
+                <a href="/rsa_landing">Roadside Assistance</a>
                 <a href="/blogs">Blog</a>
                 <a href="/contact">Contact</a>
               </div>
@@ -505,7 +505,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
               <a href="/">Home</a>
               <a href="/services">Services</a>
               <a href="/about">About</a>
-              <a href="/roadside-assistance">Roadside Assistance</a>
+              <a href="/rsa_landing">Roadside Assistance</a>
               <a href="/blogs">Blog</a>
               <a href="/contact">Contact</a>
             </div>

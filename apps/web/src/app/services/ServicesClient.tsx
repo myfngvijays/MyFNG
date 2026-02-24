@@ -23,6 +23,26 @@ const INTERNAL_SLUG_TO_CAR_SERVICES: Record<string, string> = {
 
 type CategoryRow = { uuid: string; category: string; description: string | null; sequence: number };
 
+const SERVICE_DISPLAY_META: Record<string, { priceFrom: string; warranty?: string }> = {
+  'periodic-service': { priceFrom: '₹2,999', warranty: '1000 kms / 3 Months' },
+  'engine-service': { priceFrom: '₹2,499', warranty: '1000 kms / 1 Month' },
+  'ac-service': { priceFrom: '₹1,299', warranty: '1 Month' },
+  'battery-service': { priceFrom: '₹899', warranty: 'Up to 24 Months' },
+  'brake-service': { priceFrom: '₹1,499', warranty: '1000 kms / 1 Month' },
+  'tyre-wheel-care': { priceFrom: '₹699', warranty: 'NA' },
+  'clutch-service': { priceFrom: '₹1,999' },
+  'detailing-service': { priceFrom: '₹2,999', warranty: 'NA' },
+  'denting-painting': { priceFrom: '₹3,999', warranty: 'Up to 24 Months' },
+};
+
+function getServiceDisplayMeta(service: Service) {
+  const meta = SERVICE_DISPLAY_META[service.slug];
+  return {
+    priceFrom: meta?.priceFrom ?? 'On Request',
+    warranty: meta?.warranty ?? service.warranty,
+  };
+}
+
 export default function ServicesClient({ categories }: { categories: CategoryRow[] }) {
   const services = useMemo(() => {
     const byCategory = new Map<string, CategoryRow>();
@@ -70,7 +90,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
       <Navbar />
 
       {/* Full-Bleed Service Explorer Section */}
-      <section className="relative min-h-[85vh] mt-16 overflow-hidden bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20">
+      <section className="relative mt-16 overflow-hidden bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20">
         {/* Background Illustration/Pattern */}
         <div className="absolute inset-0">
           <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03]"></div>
@@ -81,18 +101,18 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
 
         <div className="relative z-10 h-full">
           {/* Header */}
-          <div className="container mx-auto px-4 sm:px-6 pt-12 pb-8">
+          <div className="container mx-auto px-4 sm:px-6 pt-8 pb-4 lg:pt-6 lg:pb-3">
             <div className="max-w-7xl mx-auto">
               <p className="text-sm font-semibold text-blue-600 uppercase tracking-wide mb-3">OUR SERVICES</p>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-4">
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
                 Explore services by <br className="hidden sm:block" />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">category</span>
               </h1>
-              <p className="text-lg text-gray-600 max-w-2xl mb-8">
+              <p className="text-base md:text-lg text-gray-600 max-w-2xl mb-5">
                 Swipe to browse. Tap a service to preview pricing, timing, and what you get — all upfront.
               </p>
 
-              <div className="flex flex-wrap gap-3 mb-8">
+              <div className="flex flex-wrap gap-3 mb-3 lg:mb-2">
                 <Link
                   href="#services"
                   className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/25"
@@ -112,7 +132,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
           </div>
 
           {/* Main Service Explorer - Split View */}
-          <div id="services" className="container mx-auto px-4 sm:px-6">
+          <div id="services" className="container mx-auto px-4 sm:px-6 lg:-mt-2">
             <div className="max-w-7xl mx-auto">
               <div className="grid lg:grid-cols-12 gap-6 lg:gap-8">
                 {/* Left: Sticky Service List */}
@@ -153,7 +173,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                                 <div className="flex items-center gap-2 text-xs text-gray-500">
                                   <span className="flex items-center gap-1">
                                     <IndianRupee className="w-3 h-3" />
-                                    {service.duration.replace(' hours', 'h').replace(' hour', 'h')}
+                                    {getServiceDisplayMeta(service).priceFrom.replace('₹', '').trim()}
                                   </span>
                                   <span>•</span>
                                   <span>{service.duration}</span>
@@ -217,9 +237,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                             </div>
                           </div>
                           <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Starting From</p>
-                          <p className="text-xl font-bold text-gray-900">
-                            {selectedService.duration.includes('days') ? '₹3,999+' : '₹' + selectedService.duration.split('-')[0].trim()}
-                          </p>
+                          <p className="text-xl font-bold text-gray-900">{getServiceDisplayMeta(selectedService).priceFrom}</p>
                         </div>
 
                         <div className="text-center">
@@ -239,7 +257,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                             </div>
                           </div>
                           <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Warranty</p>
-                          <p className="text-xl font-bold text-gray-900">{selectedService.warranty}</p>
+                          <p className="text-xl font-bold text-gray-900">{getServiceDisplayMeta(selectedService).warranty}</p>
                         </div>
                       </div>
 
@@ -290,7 +308,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                     <span className="text-sm text-gray-500">Quick access</span>
                   </div>
 
-                  <div className="flex flex-wrap gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     {popularServices.map((serviceName) => {
                       const service = services.find((s) => s.title === serviceName);
                       if (!service) return null;
@@ -299,13 +317,13 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                         <button
                           key={service.id}
                           onClick={() => setSelectedService(service)}
-                          className="inline-flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-full hover:border-blue-400 hover:shadow-md transition-all group"
+                          className="inline-flex w-full items-center gap-2 px-3 sm:px-5 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-full hover:border-blue-400 hover:shadow-md transition-all group"
                         >
                           {(() => {
                             const IconComponent = service.icon;
                             return <IconComponent className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />;
                           })()}
-                          <span className="font-medium text-gray-900">{service.title}</span>
+                          <span className="font-medium text-gray-900 text-sm sm:text-base truncate">{service.title}</span>
                         </button>
                       );
                     })}

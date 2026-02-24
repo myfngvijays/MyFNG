@@ -8,7 +8,9 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Alert } from 'react-native';
@@ -22,6 +24,7 @@ import RSAMechanicDetailScreen from './rsa/RSAMechanicDetailScreen';
 import AddMechanicScreen from './rsa/AddMechanicScreen';
 import { Icon } from '../../components/Icon';
 import BottomNav from '../../components/BottomNav';
+import { apiFetch } from '../../lib/api';
 
 export default function RSAManagerDashboard() {
   const { userProfile, logout } = useAuth();
@@ -29,6 +32,7 @@ export default function RSAManagerDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [leads, setLeads] = useState<any[]>([]);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
+  const [screenHistory, setScreenHistory] = useState<string[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [stats, setStats] = useState({
@@ -39,7 +43,28 @@ export default function RSAManagerDashboard() {
     assigned_to_me: 0,
     unassigned_leads: 0,
   });
-  const [filter, setFilter] = useState<'all' | 'assigned' | 'unassigned' | 'pending' | 'completed'>('all');
+  const [filter, setFilter] = useState<'assigned' | 'pending' | 'completed' | 'cancelled'>('assigned');
+  const [callReports, setCallReports] = useState<any[]>([]);
+  const [fromDate, setFromDate] = useState<Date>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+  const [toDate, setToDate] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(23, 59, 59, 999);
+    return d;
+  });
+  const [showFromPicker, setShowFromPicker] = useState(false);
+  const [showToPicker, setShowToPicker] = useState(false);
+
+  const getTabForScreen = (screen: string) => {
+    if (screen === 'RSAMechanics' || screen === 'RSAMechanicDetail') return 'mechanics';
+    if (screen === 'AddMechanic') return 'add_mechanic';
+    if (screen === 'RSAMore') return 'more';
+    return 'dashboard';
+  };
 
   // Update activeTab when screen changes
   useEffect(() => {
@@ -49,12 +74,15 @@ export default function RSAManagerDashboard() {
       setActiveTab('mechanics');
     } else if (currentScreen === 'AddMechanic') {
       setActiveTab('add_mechanic');
+    } else if (currentScreen === 'RSAMore') {
+      setActiveTab('more');
     }
   }, [currentScreen]);
 
   useEffect(() => {
     fetchData();
-  }, [filter, userProfile]);
+    fetchCallReports();
+  }, [filter, userProfile, fromDate, toDate]);
 
   const fetchData = async () => {
     if (!userProfile?.id) return;
@@ -62,25 +90,52 @@ export default function RSAManagerDashboard() {
     setLoading(true);
     try {
       const managerId = userProfile.id;
-      const status = filter === 'all' ? '' : filter === 'assigned' ? 'assigned' : filter;
-      const showAll = filter === 'all' || filter === 'unassigned';
-      
-      const [leadsResult, statsResult] = await Promise.all([
-        supabase.rpc('rsa_manager_get_all_leads', {
-          p_manager_id: managerId,
-          p_status: status,
-          p_show_all: showAll,
-        }),
-        supabase.rpc('rsa_manager_get_statistics', {
-          p_manager_id: managerId,
-        }),
-      ]);
-      
-      const leadsData = leadsResult.data || [];
-      const statsData = statsResult.data && statsResult.data.length > 0 ? statsResult.data[0] : stats;
-      
-      setLeads(leadsData);
-      setStats(statsData);
+      const { data: leadsData, error } = await supabase.rpc('rsa_manager_get_all_leads', {
+        p_manager_id: managerId,
+        p_status: '',
+        p_show_all: false, // match web: "My Complaints" baseline
+      });
+      if (error) throw error;
+
+      const allLeads = Array.isArray(leadsData) ? leadsData : [];
+
+      const fromStart = new Date(fromDate);
+      fromStart.setHours(0, 0, 0, 0);
+      const toEnd = new Date(toDate);
+      toEnd.setHours(23, 59, 59, 999);
+
+      const normalizeStatus = (lead: any) =>
+        String(lead?.lead_status || lead?.complaint_status || '').toLowerCase();
+      const isCompleted = (s: string) => s === 'completed' || s === 'closed';
+      const isCancelled = (s: string) => s === 'cancelled';
+      const isPending = (s: string) => !isCompleted(s) && !isCancelled(s);
+
+      const leadsInRange = allLeads.filter((lead: any) => {
+        const dt = lead?.lead_registered_at || lead?.requested_at || lead?.created_at;
+        if (!dt) return false;
+        const ts = new Date(dt).getTime();
+        if (!Number.isFinite(ts)) return false;
+        return ts >= fromStart.getTime() && ts <= toEnd.getTime();
+      });
+
+      const filteredLeads = leadsInRange.filter((lead: any) => {
+        const s = normalizeStatus(lead);
+        if (filter === 'assigned') return true;
+        if (filter === 'pending') return isPending(s);
+        if (filter === 'completed') return isCompleted(s);
+        if (filter === 'cancelled') return isCancelled(s);
+        return true;
+      });
+
+      setLeads(filteredLeads);
+      setStats({
+        total_leads: leadsInRange.length,
+        pending_leads: leadsInRange.filter((l: any) => isPending(normalizeStatus(l))).length,
+        completed_leads: leadsInRange.filter((l: any) => isCompleted(normalizeStatus(l))).length,
+        cancelled_leads: leadsInRange.filter((l: any) => isCancelled(normalizeStatus(l))).length,
+        assigned_to_me: leadsInRange.length,
+        unassigned_leads: 0,
+      });
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -90,8 +145,18 @@ export default function RSAManagerDashboard() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchData();
+    await Promise.all([fetchData(), fetchCallReports()]);
     setRefreshing(false);
+  };
+
+  const fetchCallReports = async () => {
+    try {
+      const data = await apiFetch<any>('/api/rsa/sarv-calls?limit=50');
+      setCallReports(Array.isArray(data?.calls) ? data.calls : []);
+    } catch (error) {
+      console.error('Error fetching call reports:', error);
+      setCallReports([]);
+    }
   };
 
   const handleClaimLead = async (e: any, leadId: string) => {
@@ -127,6 +192,7 @@ export default function RSAManagerDashboard() {
   // Simple navigation object
   const navigation = {
     navigate: (screen: string, params?: any) => {
+      setScreenHistory((prev) => (screen !== currentScreen ? [...prev, currentScreen] : prev));
       setCurrentScreen(screen);
       if (params?.leadId) {
         setSelectedLeadId(params.leadId);
@@ -134,31 +200,25 @@ export default function RSAManagerDashboard() {
       if (params?.mechanicId) {
         setSelectedMechanicId(params.mechanicId);
       }
-      // Update active tab based on screen
-      if (screen === 'RSAMechanics') {
-        setActiveTab('mechanics');
-      } else if (screen === 'AddMechanic') {
-        setActiveTab('add_mechanic');
-      } else {
-        setActiveTab('dashboard');
-      }
+      setActiveTab(getTabForScreen(screen));
     },
     goBack: () => {
-      // If we're on a detail screen, go back to previous screen
-      if (currentScreen === 'RSAMechanicDetail') {
-        setCurrentScreen('RSAMechanics');
-        setSelectedMechanicId(null);
-        setActiveTab('mechanics');
-      } else if (currentScreen === 'RSALeadDetail') {
-        setCurrentScreen('dashboard');
-        setSelectedLeadId(null);
-        setActiveTab('dashboard');
-      } else {
-        setCurrentScreen('dashboard');
-        setSelectedLeadId(null);
-        setSelectedMechanicId(null);
-        setActiveTab('dashboard');
-      }
+      setScreenHistory((prev) => {
+        if (prev.length === 0) {
+          setCurrentScreen('dashboard');
+          setActiveTab('dashboard');
+          setSelectedLeadId(null);
+          setSelectedMechanicId(null);
+          return prev;
+        }
+
+        const previousScreen = prev[prev.length - 1];
+        setCurrentScreen(previousScreen);
+        setActiveTab(getTabForScreen(previousScreen));
+        if (previousScreen !== 'RSALeadDetail') setSelectedLeadId(null);
+        if (previousScreen !== 'RSAMechanicDetail') setSelectedMechanicId(null);
+        return prev.slice(0, -1);
+      });
     }
   };
 
@@ -185,23 +245,133 @@ export default function RSAManagerDashboard() {
     return <AddMechanicScreen navigation={navigation} route={{ params: {} }} />;
   }
 
+  if (currentScreen === 'RSACreateComplaint') {
+    const Screen = require('./rsa/RSACreateComplaintScreen').default;
+    return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'RSAPayments') {
+    const Screen = require('./rsa/RSAPaymentsScreen').default;
+    return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'RSARegistered') {
+    const Screen = require('./rsa/RSARegisteredScreen').default;
+    return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'RSACarServiceEnquiry') {
+    const Screen = require('./rsa/RSACarServiceEnquiryScreen').default;
+    return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'RSAManagerReports') {
+    const Screen = require('./rsa/RSAManagerReportsScreen').default;
+    return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'RSAManagerSettings') {
+    const Screen = require('./rsa/RSAManagerSettingsScreen').default;
+    return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'RSASessions') {
+    const Screen = require('./rsa/RSASessionsScreen').default;
+    return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'RSAMembershipCustomer') {
+    const Screen = require('./rsa/RSAMembershipCustomerScreen').default;
+    return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
   // Render Mechanic Detail Screen
   if (currentScreen === 'RSAMechanicDetail' && selectedMechanicId) {
     return <RSAMechanicDetailScreen navigation={navigation} route={{ params: { mechanicId: selectedMechanicId } }} />;
   }
 
-  const handleTabChange = (tab: string) => {
+  if (currentScreen === 'RSAMore') {
+    const moreItems: Array<{ screen: string; label: string; subtitle: string; icon: string }> = [
+      { screen: 'RSACreateComplaint', label: 'Create Complaint', subtitle: 'Register new RSA request', icon: 'plus' },
+      { screen: 'RSARegistered', label: 'Registered', subtitle: 'View newly registered complaints', icon: 'clipboard' },
+      { screen: 'RSAPayments', label: 'Payments', subtitle: 'Payment links and refunds', icon: 'cash' },
+      { screen: 'RSACarServiceEnquiry', label: 'Car Service', subtitle: 'Manage car service enquiries', icon: 'car' },
+      { screen: 'RSAManagerReports', label: 'Reports', subtitle: 'Performance and analytics', icon: 'chart-line' },
+      { screen: 'RSAManagerSettings', label: 'Settings', subtitle: 'Profile and notification preferences', icon: 'settings' },
+      { screen: 'RSASessions', label: 'Sessions', subtitle: 'Monitor active Aansh sessions', icon: 'clock' },
+      { screen: 'RSAMembershipCustomer', label: 'Membership', subtitle: 'Membership customer module', icon: 'account' },
+    ];
+
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.headerTitle}>RSA Manager</Text>
+              <Text style={styles.headerSubtitle}>Roadside Assistance Management</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={handleLogout}
+            >
+              <Icon name="logout" size={18} color={COLORS.white} />
+              <Text style={styles.logoutButtonText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.moreContent}
+        >
+          <View style={styles.moreOptionsList}>
+            {moreItems.map((item) => (
+              <TouchableOpacity key={item.screen} style={styles.moreOptionCard} onPress={() => navigation.navigate(item.screen)}>
+                <View style={styles.moreOptionLeft}>
+                  <View style={styles.moreOptionIconWrap}>
+                    <Icon name={item.icon} size={18} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.moreOptionTextWrap}>
+                    <Text style={styles.moreOptionTitle}>{item.label}</Text>
+                    <Text style={styles.moreOptionSubtitle}>{item.subtitle}</Text>
+                  </View>
+                </View>
+                <Icon name="chevron-right" size={18} color={COLORS.gray[500]} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+
+        <BottomNav
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          tabs={[
+            { id: 'dashboard', label: 'Dashboard', icon: 'home' },
+            { id: 'mechanics', label: 'Mechanics', icon: 'wrench' },
+            { id: 'add_mechanic', label: 'Add', icon: 'plus' },
+            { id: 'more', label: 'More', icon: 'menu' },
+          ]}
+        />
+      </View>
+    );
+  }
+
+  function handleTabChange(tab: string) {
+    setScreenHistory([]);
     if (tab === 'mechanics') {
       setCurrentScreen('RSAMechanics');
       setActiveTab('mechanics');
     } else if (tab === 'add_mechanic') {
       setCurrentScreen('AddMechanic');
       setActiveTab('add_mechanic');
+    } else if (tab === 'more') {
+      setCurrentScreen('RSAMore');
+      setActiveTab('more');
     } else {
       setCurrentScreen('dashboard');
       setActiveTab('dashboard');
     }
-  };
+  }
 
   const handleLogout = () => {
     Alert.alert(
@@ -219,6 +389,25 @@ export default function RSAManagerDashboard() {
         },
       ]
     );
+  };
+
+  const resetLast7Days = () => {
+    const d = new Date();
+    const from = new Date(d);
+    from.setDate(from.getDate() - 6);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(d);
+    to.setHours(23, 59, 59, 999);
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const formatDateLabel = (date: Date) => {
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
   };
 
   const getStatusColor = (status: string) => {
@@ -240,7 +429,7 @@ export default function RSAManagerDashboard() {
       style={styles.leadCard}
       onPress={() => {
         setSelectedLeadId(lead.id);
-        setCurrentScreen('RSALeadDetail');
+        navigation.navigate('RSALeadDetail', { leadId: lead.id });
       }}
     >
       <View style={styles.leadHeader}>
@@ -380,44 +569,70 @@ export default function RSAManagerDashboard() {
         style={styles.scrollView}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        <View style={styles.dateFilterCard}>
+          <View style={styles.dateRow}>
+            <TouchableOpacity style={styles.dateBtn} onPress={() => setShowFromPicker(true)}>
+              <Text style={styles.dateBtnLabel}>From: {formatDateLabel(fromDate)}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dateBtn} onPress={() => setShowToPicker(true)}>
+              <Text style={styles.dateBtnLabel}>To: {formatDateLabel(toDate)}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dateResetBtn} onPress={resetLast7Days}>
+              <Text style={styles.dateResetText}>Last 7 Days</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Stats Cards */}
-        <View style={styles.statsContainer}>
-          <StatCard
-            icon={<Icon name="alert-circle" size={24} color={COLORS.primary} />}
-            label="Total Leads"
-            value={stats.total_leads.toString()}
-            color={COLORS.primary}
-          />
-          <StatCard
-            icon={<Icon name="clock" size={24} color={COLORS.warning} />}
-            label="Pending"
-            value={stats.pending_leads.toString()}
-            color={COLORS.warning}
-          />
-          <StatCard
-            icon={<Icon name="users" size={24} color={COLORS.secondary} />}
-            label="Assigned to Me"
-            value={stats.assigned_to_me.toString()}
-            color={COLORS.secondary}
-          />
-          <StatCard
-            icon={<Icon name="alert-circle" size={24} color={COLORS.orange} />}
-            label="Unassigned"
-            value={stats.unassigned_leads.toString()}
-            color={COLORS.orange}
-          />
-          <StatCard
-            icon={<Icon name="check-circle" size={24} color={COLORS.success} />}
-            label="Completed"
-            value={stats.completed_leads.toString()}
-            color={COLORS.success}
-          />
-          <StatCard
-            icon={<Icon name="x-circle" size={24} color={COLORS.error} />}
-            label="Cancelled"
-            value={stats.cancelled_leads.toString()}
-            color={COLORS.error}
-          />
+        <View style={styles.statsGrid}>
+          <View style={styles.statCell}>
+            <StatCard
+              icon={<Icon name="alert-circle" size={24} color={COLORS.primary} />}
+              label="Total Leads"
+              value={stats.total_leads.toString()}
+              color={COLORS.primary}
+            />
+          </View>
+          <View style={styles.statCell}>
+            <StatCard
+              icon={<Icon name="clock" size={24} color={COLORS.warning} />}
+              label="Pending"
+              value={stats.pending_leads.toString()}
+              color={COLORS.warning}
+            />
+          </View>
+          <View style={styles.statCell}>
+            <StatCard
+              icon={<Icon name="users" size={24} color={COLORS.secondary} />}
+              label="Assigned to Me"
+              value={stats.assigned_to_me.toString()}
+              color={COLORS.secondary}
+            />
+          </View>
+          <View style={styles.statCell}>
+            <StatCard
+              icon={<Icon name="alert-circle" size={24} color={COLORS.orange} />}
+              label="Unassigned"
+              value={stats.unassigned_leads.toString()}
+              color={COLORS.orange}
+            />
+          </View>
+          <View style={styles.statCell}>
+            <StatCard
+              icon={<Icon name="check-circle" size={24} color={COLORS.success} />}
+              label="Completed"
+              value={stats.completed_leads.toString()}
+              color={COLORS.success}
+            />
+          </View>
+          <View style={styles.statCell}>
+            <StatCard
+              icon={<Icon name="x-circle" size={24} color={COLORS.error} />}
+              label="Cancelled"
+              value={stats.cancelled_leads.toString()}
+              color={COLORS.error}
+            />
+          </View>
         </View>
 
         {/* Filters */}
@@ -427,7 +642,7 @@ export default function RSAManagerDashboard() {
           style={styles.filtersContainer}
           contentContainerStyle={styles.filtersContent}
         >
-          {(['all', 'assigned', 'unassigned', 'pending', 'completed'] as const).map((f) => (
+          {(['assigned', 'pending', 'completed', 'cancelled'] as const).map((f) => (
             <TouchableOpacity
               key={f}
               style={[styles.filterButton, filter === f && styles.filterButtonActive]}
@@ -439,7 +654,7 @@ export default function RSAManagerDashboard() {
                   filter === f && styles.filterButtonTextActive,
                 ]}
               >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+                {f === 'assigned' ? 'My Complaints' : f.charAt(0).toUpperCase() + f.slice(1)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -456,6 +671,24 @@ export default function RSAManagerDashboard() {
             leads.map(renderLeadCard)
           )}
         </View>
+
+        <View style={styles.callReportSection}>
+          <Text style={styles.callReportTitle}>Call Report</Text>
+          <TouchableOpacity style={styles.callReportRefresh} onPress={fetchCallReports}>
+            <Text style={styles.callReportRefreshText}>Refresh Calls</Text>
+          </TouchableOpacity>
+          {callReports.slice(0, 20).map((row: any, idx: number) => (
+            <View key={row.id || idx} style={styles.callReportCard}>
+              <Text style={styles.callReportMain}>{row.customer_phone || row.from_number || 'Call'}</Text>
+              <Text style={styles.callReportMeta}>Disposition: {row.disposition || '—'} • Duration: {row.duration_seconds || 0}s</Text>
+              {row.recording_url ? (
+                <TouchableOpacity onPress={() => Linking.openURL(String(row.recording_url))}>
+                  <Text style={styles.callReportLink}>Open Recording</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ))}
+        </View>
       </ScrollView>
 
       {/* Bottom Navigation */}
@@ -466,8 +699,39 @@ export default function RSAManagerDashboard() {
           { id: 'dashboard', label: 'Dashboard', icon: 'home' },
           { id: 'mechanics', label: 'Mechanics', icon: 'wrench' },
           { id: 'add_mechanic', label: 'Add', icon: 'plus' },
+          { id: 'more', label: 'More', icon: 'menu' },
         ]}
       />
+
+      {showFromPicker && (
+        <DateTimePicker
+          value={fromDate}
+          mode="date"
+          onChange={(_, selectedDate) => {
+            setShowFromPicker(false);
+            if (selectedDate) {
+              const normalized = new Date(selectedDate);
+              normalized.setHours(0, 0, 0, 0);
+              setFromDate(normalized);
+            }
+          }}
+        />
+      )}
+
+      {showToPicker && (
+        <DateTimePicker
+          value={toDate}
+          mode="date"
+          onChange={(_, selectedDate) => {
+            setShowToPicker(false);
+            if (selectedDate) {
+              const normalized = new Date(selectedDate);
+              normalized.setHours(23, 59, 59, 999);
+              setToDate(normalized);
+            }
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -538,11 +802,15 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingBottom: 80, // Space for bottom nav
   },
-  statsContainer: {
+  statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: SPACING.md,
-    gap: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    justifyContent: 'space-between',
+  },
+  statCell: {
+    width: '48%',
   },
   filtersContainer: {
     marginBottom: SPACING.md,
@@ -692,6 +960,167 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
     marginTop: SPACING.md,
+    fontFamily: 'Poppins',
+  },
+  shortcutsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+  },
+  moreContent: {
+    paddingTop: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: 96,
+  },
+  moreOptionsList: {
+    gap: SPACING.sm,
+  },
+  moreOptionCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  moreOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: SPACING.sm,
+  },
+  moreOptionIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.sm,
+  },
+  moreOptionTextWrap: {
+    flex: 1,
+  },
+  moreOptionTitle: {
+    color: COLORS.textHeading,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    fontFamily: 'Poppins',
+  },
+  moreOptionSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZES.xs,
+    marginTop: 2,
+    fontFamily: 'Poppins',
+  },
+  dateFilterCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    gap: SPACING.sm,
+    alignItems: 'center',
+  },
+  dateBtn: {
+    backgroundColor: COLORS.gray[100],
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    flex: 1,
+  },
+  dateBtnLabel: {
+    color: COLORS.textHeading,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+    fontFamily: 'Poppins',
+  },
+  dateResetBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    minWidth: 110,
+    alignItems: 'center',
+  },
+  dateResetText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
+    fontFamily: 'Poppins',
+  },
+  shortcutBtn: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  shortcutText: {
+    color: COLORS.textHeading,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+    fontFamily: 'Poppins',
+  },
+  callReportSection: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: 96,
+  },
+  callReportTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.textHeading,
+    marginBottom: SPACING.sm,
+    fontFamily: 'Poppins',
+  },
+  callReportRefresh: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  callReportRefreshText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
+    fontFamily: 'Poppins',
+  },
+  callReportCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  callReportMain: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: COLORS.textHeading,
+    fontFamily: 'Poppins',
+  },
+  callReportMeta: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    fontFamily: 'Poppins',
+  },
+  callReportLink: {
+    marginTop: SPACING.xs,
+    color: COLORS.primary,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
     fontFamily: 'Poppins',
   },
 });

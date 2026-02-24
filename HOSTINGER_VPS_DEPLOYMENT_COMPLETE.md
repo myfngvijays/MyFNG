@@ -2,7 +2,7 @@
 
 ## ✅ Prerequisites
 - Hostinger VPS (Ubuntu/Debian)
-- Domain: myfng.cloud
+- Domain: myfng.in (primary) and myfng.cloud (redirect)
 - Supabase Project Credentials
 
 ---
@@ -153,7 +153,7 @@ pm2 startup
 
 **In Hostinger DNS Panel (hPanel):**
 
-1. Go to Hostinger Dashboard → Domains → myfng.cloud → DNS
+1. Go to GoDaddy Dashboard → Domains → myfng.in → DNS
 2. Add/Update A Record:
    ```
    Type: A
@@ -180,7 +180,7 @@ sudo nano /etc/nginx/sites-available/myfng
 server {
     listen 80;
     listen [::]:80;
-    server_name myfng.cloud www.myfng.cloud;
+    server_name myfng.in www.myfng.in;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -193,6 +193,14 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+}
+
+# Keep old cloud domain active with permanent redirect
+server {
+    listen 80;
+    listen [::]:80;
+    server_name myfng.cloud www.myfng.cloud;
+    return 301 https://myfng.in$request_uri;
 }
 
 # Save: Ctrl+X, then Y, then Enter
@@ -217,7 +225,10 @@ sudo systemctl reload nginx
 # Install Certbot
 sudo apt install -y certbot python3-certbot-nginx
 
-# Get SSL certificate
+# Get SSL certificate for primary domain
+sudo certbot --nginx -d myfng.in -d www.myfng.in
+
+# Optional: keep certificate for old cloud redirect host as well
 sudo certbot --nginx -d myfng.cloud -d www.myfng.cloud
 
 # Follow prompts:
@@ -236,7 +247,7 @@ sudo certbot renew --dry-run
 ### Step 12: Test Application
 
 1. **Wait 10-15 minutes** for DNS propagation
-2. Open browser and go to: **https://myfng.cloud**
+2. Open browser and go to: **https://myfng.in**
 3. You should see your application!
 4. Test login with Super Admin/Lead Manager credentials
 5. Check if 400 errors are gone
@@ -294,7 +305,7 @@ sudo systemctl restart nginx
 ### Issue 3: Domain Not Resolving
 ```bash
 # Check DNS propagation
-ping myfng.cloud
+ping myfng.in
 
 # If not resolving, wait 30 minutes for DNS propagation
 # Or flush local DNS: (on Mac)
@@ -347,7 +358,8 @@ free -m                     # Memory usage
 - ✅ Nginx configured as reverse proxy
 - ✅ Domain pointing to VPS
 - ✅ SSL certificate installed
-- ✅ Application accessible at https://myfng.cloud
+- ✅ Application accessible at https://myfng.in
+- ✅ myfng.cloud 301 redirects to myfng.in
 - ✅ Login working
 - ✅ No 400 errors!
 

@@ -87,6 +87,18 @@ export default function RSALeadsScreen() {
     }
   };
 
+  const handleBack = () => {
+    if (typeof navigation?.canGoBack === 'function' && navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    if (typeof navigation?.goBack === 'function') {
+      navigation.goBack();
+      return;
+    }
+    navigation?.navigate?.('RSAManagerDashboard');
+  };
+
   if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
@@ -98,7 +110,7 @@ export default function RSALeadsScreen() {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="RSA Leads" onBack={() => navigation.goBack()} />
+      <DashboardHeader title="RSA Leads" onBack={handleBack} />
       
       {/* Search and Filter */}
       <View style={styles.headerActions}>

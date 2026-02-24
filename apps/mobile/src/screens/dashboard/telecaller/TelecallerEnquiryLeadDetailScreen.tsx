@@ -130,6 +130,18 @@ export default function TelecallerEnquiryLeadDetailScreen({ navigation }: any) {
     }
   }
 
+  const handleBack = () => {
+    if (typeof navigation?.canGoBack === 'function' && navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    if (typeof navigation?.goBack === 'function') {
+      navigation.goBack();
+      return;
+    }
+    navigation?.navigate?.('TelecallerEnquiryLeads');
+  };
+
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -142,7 +154,7 @@ export default function TelecallerEnquiryLeadDetailScreen({ navigation }: any) {
   if (!lead) {
     return (
       <View style={styles.container}>
-        <DashboardHeader title="Enquiry Lead" onBack={() => navigation.goBack()} />
+        <DashboardHeader title="Enquiry Lead" onBack={handleBack} />
         <View style={styles.body}>
           <Text style={styles.emptyText}>Lead not found</Text>
         </View>
@@ -152,7 +164,7 @@ export default function TelecallerEnquiryLeadDetailScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Enquiry Lead" onBack={() => navigation.goBack()} />
+      <DashboardHeader title="Enquiry Lead" onBack={handleBack} />
       <ScrollView style={styles.body}>
         <Text style={styles.title}>{lead.lead_number || 'Lead'}</Text>
         <Text style={styles.meta}>{lead.customer_name || 'Customer'} • {lead.customer_phone || ''}</Text>

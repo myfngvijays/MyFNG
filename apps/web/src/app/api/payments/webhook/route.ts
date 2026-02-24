@@ -10,51 +10,229 @@ import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';
 
 async function updateDirectPayStatus(params: {
   orderId?: string | null;
   paymentId?: string | null;
+  linkRef?: string | null;
   signature?: string | null;
-  status: 'SUCCESS' | 'FAILED';
+  status: 'SUCCESS' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'CANCELLED' | 'EXPIRED';
   amountPaise?: number | null;
   currency?: string | null;
   payload: any;
 }) {
   const orderId = String(params.orderId || '').trim();
-  if (!orderId) return;
+  const paymentId = String(params.paymentId || '').trim();
+  const linkRef = String(params.linkRef || '').trim();
 
   const now = new Date().toISOString();
   const { supabaseAdmin } = getSupabaseAdmin();
   const db = (supabaseAdmin ?? await createClient()) as any;
 
-  const { data: existingRow } = await db
-    .from('Razorpay_Direct_pay_RSA')
-    .select('customer_name, customer_email, customer_phone, signature, notes')
-    .eq('order_id', orderId)
-    .maybeSingle();
+  let existingRow: any = null;
+
+  if (orderId) {
+    const { data } = await db
+      .from('Razorpay_Direct_pay_RSA')
+      .select('id, order_id, customer_name, customer_email, customer_phone, signature, notes')
+      .eq('order_id', orderId)
+      .maybeSingle();
+    existingRow = data || null;
+  }
+
+  if (!existingRow && paymentId) {
+    const { data } = await db
+      .from('Razorpay_Direct_pay_RSA')
+      .select('id, order_id, customer_name, customer_email, customer_phone, signature, notes')
+      .eq('payment_id', paymentId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    existingRow = data || null;
+  }
+
+  if (!existingRow && linkRef) {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: rows } = await db
+      .from('Razorpay_Direct_pay_RSA')
+      .select('id, order_id, customer_name, customer_email, customer_phone, signature, notes, created_at, updated_at')
+      .gte('created_at', since)
+      .order('updated_at', { ascending: false })
+      .limit(1000);
+    existingRow =
+      (rows || []).find((row: any) => {
+        const notes = row?.notes && typeof row.notes === 'object' ? row.notes : {};
+        return String((notes as any)?.link_ref || '').trim() === linkRef;
+      }) || null;
+  }
+
+  const resolvedOrderId = String(orderId || existingRow?.order_id || '').trim();
+  if (!resolvedOrderId && !existingRow?.id) return;
+
+  const notes = existingRow?.notes && typeof existingRow.notes === 'object' ? existingRow.notes : {};
+  const mergedNotes = {
+    ...notes,
+    ...(linkRef ? { link_ref: linkRef } : {}),
+  };
+
+  const payloadToSave = {
+    ...(existingRow?.razorpay_payload && typeof existingRow.razorpay_payload === 'object' ? existingRow.razorpay_payload : {}),
+    last_event: params.payload,
+  };
+
+  if (resolvedOrderId) {
+    await db
+      .from('Razorpay_Direct_pay_RSA')
+      .upsert(
+        {
+          order_id: resolvedOrderId,
+          payment_id: paymentId || existingRow?.payment_id || null,
+          signature: params.signature || existingRow?.signature || null,
+          amount: Number.isFinite(params.amountPaise as number) ? Number(params.amountPaise) / 100 : existingRow?.amount ?? null,
+          amount_paise: Number.isFinite(params.amountPaise as number) ? Number(params.amountPaise) : existingRow?.amount_paise ?? null,
+          currency: params.currency || existingRow?.currency || 'INR',
+          status: params.status,
+          customer_name: existingRow?.customer_name || 'Customer',
+          customer_email: existingRow?.customer_email || null,
+          customer_phone: existingRow?.customer_phone || '',
+          notes: mergedNotes,
+          razorpay_payload: payloadToSave,
+          updated_at: now,
+        },
+        { onConflict: 'order_id' }
+      );
+    return;
+  }
 
   await db
     .from('Razorpay_Direct_pay_RSA')
-    .upsert(
-      {
-        order_id: orderId,
-        payment_id: params.paymentId || null,
-        signature: params.signature || existingRow?.signature || null,
-        amount: Number.isFinite(params.amountPaise as number) ? Number(params.amountPaise) / 100 : null,
-        amount_paise: Number.isFinite(params.amountPaise as number) ? Number(params.amountPaise) : null,
-        currency: params.currency || 'INR',
-        status: params.status,
-        customer_name: existingRow?.customer_name || 'Customer',
-        customer_email: existingRow?.customer_email || null,
-        customer_phone: existingRow?.customer_phone || '',
-        notes: existingRow?.notes || { purpose: 'PAY_NOW' },
-        razorpay_payload: params.payload,
+    .update({
+      payment_id: paymentId || existingRow?.payment_id || null,
+      signature: params.signature || existingRow?.signature || null,
+      amount: Number.isFinite(params.amountPaise as number) ? Number(params.amountPaise) / 100 : existingRow?.amount ?? null,
+      amount_paise: Number.isFinite(params.amountPaise as number) ? Number(params.amountPaise) : existingRow?.amount_paise ?? null,
+      currency: params.currency || existingRow?.currency || 'INR',
+      status: params.status,
+      notes: mergedNotes,
+      razorpay_payload: payloadToSave,
+      updated_at: now,
+    })
+    .eq('id', existingRow.id);
+}
+
+async function fetchRazorpayPayment(paymentId: string) {
+  const id = String(paymentId || '').trim();
+  if (!id || !RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) return null;
+
+  const response = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(id)}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64')}`,
+    },
+  });
+  if (!response.ok) return null;
+  return await response.json().catch(() => null);
+}
+
+async function handlePaymentLinkPaid(payload: any, supabase: any) {
+  const paymentFromPayload = payload?.payment?.entity || null;
+  const linkEntity = payload?.payment_link?.entity || payload?.payment_link || {};
+  const paymentId =
+    String(paymentFromPayload?.id || linkEntity?.payment_id || payload?.payment_id || '').trim();
+  const linkRef = String(linkEntity?.reference_id || linkEntity?.notes?.link_ref || '').trim();
+  const payment = paymentFromPayload || (paymentId ? await fetchRazorpayPayment(paymentId) : null);
+
+  if (!payment) {
+    await updateDirectPayStatus({
+      paymentId,
+      linkRef,
+      status: 'SUCCESS',
+      amountPaise: Number(linkEntity?.amount_paid || 0),
+      currency: String(linkEntity?.currency || 'INR'),
+      payload,
+    });
+    return;
+  }
+
+  if (linkRef) {
+    payment.notes = {
+      ...(payment.notes && typeof payment.notes === 'object' ? payment.notes : {}),
+      link_ref: linkRef,
+    };
+  }
+  await handlePaymentSuccess({ payment: { entity: payment } }, supabase);
+}
+
+async function handlePaymentLinkTerminalStatus(payload: any, status: 'CANCELLED' | 'EXPIRED') {
+  const linkEntity = payload?.payment_link?.entity || payload?.payment_link || payload?.entity || {};
+  const paymentId = String(linkEntity?.payment_id || payload?.payment_id || '').trim();
+  const linkRef = String(linkEntity?.reference_id || linkEntity?.notes?.link_ref || '').trim();
+  await updateDirectPayStatus({
+    paymentId,
+    linkRef,
+    status,
+    amountPaise: Number(linkEntity?.amount || 0),
+    currency: String(linkEntity?.currency || 'INR'),
+    payload,
+  });
+}
+
+async function handleRefundEvent(payload: any, supabase: any, eventName: string) {
+  const refund = payload?.refund?.entity || payload?.entity || payload;
+  const paymentId = String(refund?.payment_id || '').trim();
+  const refundedPaise = Number(refund?.amount || 0);
+  const now = new Date().toISOString();
+  if (!paymentId) return;
+
+  const { data: transaction } = await supabase
+    .from('payment_transactions')
+    .select('id, amount, status')
+    .eq('gateway_payment_id', paymentId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const capturedPaise = transaction?.amount ? Math.round(Number(transaction.amount) * 100) : 0;
+  const nextStatus =
+    capturedPaise > 0 && refundedPaise >= capturedPaise ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
+
+  if (transaction?.id) {
+    await supabase
+      .from('payment_transactions')
+      .update({
+        status: nextStatus,
+        webhook_received_at: now,
+        webhook_data: payload,
         updated_at: now,
+      })
+      .eq('id', transaction.id);
+  }
+
+  await updateDirectPayStatus({
+    paymentId,
+    status: nextStatus as 'REFUNDED' | 'PARTIALLY_REFUNDED',
+    amountPaise: refundedPaise || undefined,
+    currency: String(refund?.currency || 'INR'),
+    payload,
+  });
+
+  if (transaction?.id) {
+    await createFinanceEvent({
+      eventType: eventName === 'refund.processed' ? 'refund_processed' : 'refund_created',
+      entityType: 'payment',
+      entityId: transaction.id,
+      eventData: {
+        gateway: 'RAZORPAY',
+        payment_id: paymentId,
+        refund_id: String(refund?.id || ''),
+        amount_paise: refundedPaise,
+        status: nextStatus,
       },
-      { onConflict: 'order_id' }
-    );
+    });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -100,6 +278,28 @@ export async function POST(request: NextRequest) {
 
       case 'order.paid':
         await handleOrderPaid(event.payload, supabase);
+        break;
+
+      case 'payment_link.paid':
+      case 'payment.link.paid':
+      case 'payment_link.partially_paid':
+      case 'payment.link.partially_paid':
+        await handlePaymentLinkPaid(event.payload, supabase);
+        break;
+
+      case 'payment_link.cancelled':
+      case 'payment.link.cancelled':
+        await handlePaymentLinkTerminalStatus(event.payload, 'CANCELLED');
+        break;
+
+      case 'payment_link.expired':
+      case 'payment.link.expired':
+        await handlePaymentLinkTerminalStatus(event.payload, 'EXPIRED');
+        break;
+
+      case 'refund.created':
+      case 'refund.processed':
+        await handleRefundEvent(event.payload, supabase, event.event);
         break;
 
       default:

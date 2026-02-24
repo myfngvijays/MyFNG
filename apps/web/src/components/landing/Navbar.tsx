@@ -302,7 +302,7 @@ export default function Navbar() {
               </div>
             </div>
             <Link href="/about" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
-            <Link href="/roadside-assistance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
+            <Link href="/rsa_landing" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
             <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
             <Link href="/contact" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
           </div>
@@ -315,7 +315,7 @@ export default function Navbar() {
               <span className="hidden sm:inline">Partner Login</span>
               <span className="sm:hidden">Partner</span>
             </Link>
-            <Link href="/customer/login" className="hidden sm:inline-flex btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 whitespace-nowrap">
+            <Link href="/customer/login" className="hidden btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 whitespace-nowrap">
               <span className="hidden sm:inline">Customer Login</span>
               <span className="sm:hidden">Login</span>
               <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />

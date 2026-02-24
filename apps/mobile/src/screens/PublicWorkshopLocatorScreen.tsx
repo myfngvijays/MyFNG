@@ -100,6 +100,7 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<WorkshopRow[]>([]);
+  const [cityScoped, setCityScoped] = useState<boolean>(Boolean(city));
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(initialUserLoc);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const mapRef = useRef<MapView | null>(null);
@@ -158,16 +159,35 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
   async function fetchWorkshops() {
     try {
       setLoading(true);
-      const base = supabase
-        .from('workshops')
-        .select('id,name,city,latitude,longitude,map_link,is_verified,phone')
-        .eq('is_verified', true)
-        .order('created_at', { ascending: false })
-        .limit(250);
+      const fetchRows = async (cityFilter?: string) => {
+        let query = supabase
+          .from('workshops')
+          .select('id,name,city,latitude,longitude,map_link,is_verified,phone')
+          .eq('is_verified', true)
+          .order('created_at', { ascending: false })
+          .limit(250);
+        if (cityFilter) query = query.ilike('city', `%${cityFilter}%`);
+        return query;
+      };
 
-      const res = city ? await base.ilike('city', `%${city}%`) : await base;
-      if (res.error) throw res.error;
-      setRows((res.data as any[]) || []);
+      const cityValue = String(city || '').trim();
+      if (cityValue) {
+        const cityRes = await fetchRows(cityValue);
+        if (cityRes.error) throw cityRes.error;
+        const cityRows = (cityRes.data as any[]) || [];
+        if (cityRows.length > 0) {
+          setRows(cityRows);
+          setCityScoped(true);
+          return;
+        }
+      }
+
+      // Fallback: if city filter returns nothing (common in emulator geo like Mountain View),
+      // show all verified workshops so locator is still useful.
+      const allRes = await fetchRows();
+      if (allRes.error) throw allRes.error;
+      setRows((allRes.data as any[]) || []);
+      setCityScoped(false);
     } catch {
       Alert.alert('Unable to load workshops', 'Please try again.');
     } finally {
@@ -284,7 +304,13 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Workshop Locator</Text>
-            <Text style={styles.subTitle}>{city ? `City: ${city}` : 'Verified workshops near you'}</Text>
+            <Text style={styles.subTitle}>
+              {city
+                ? cityScoped
+                  ? `City: ${city}`
+                  : `City: ${city} (showing all nearby verified)`
+                : 'Verified workshops near you'}
+            </Text>
           </View>
           <TouchableOpacity onPress={detectMyLocation} style={styles.locBtn} activeOpacity={0.9}>
             <Ionicons name="locate" size={18} color="#fff" />

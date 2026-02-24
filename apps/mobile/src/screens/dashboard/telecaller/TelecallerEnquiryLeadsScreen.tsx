@@ -56,6 +56,18 @@ export default function TelecallerEnquiryLeadsScreen({ navigation }: any) {
     );
   });
 
+  const handleBack = () => {
+    if (typeof navigation?.canGoBack === 'function' && navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    if (typeof navigation?.goBack === 'function') {
+      navigation.goBack();
+      return;
+    }
+    navigation?.navigate?.('TelecallerDashboard');
+  };
+
   const renderItem = ({ item }: { item: EnquiryLead }) => (
     <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('TelecallerEnquiryLeadDetail', { leadId: item.id })}>
       <Text style={styles.cardTitle}>{item.lead_number || 'Lead'}</Text>
@@ -72,7 +84,7 @@ export default function TelecallerEnquiryLeadsScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Enquiry Leads" onBack={() => navigation.goBack()} />
+      <DashboardHeader title="Enquiry Leads" onBack={handleBack} />
       <View style={styles.searchRow}>
         <TextInput
           style={styles.searchInput}

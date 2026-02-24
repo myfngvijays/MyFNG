@@ -235,6 +235,21 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={TeamManagerViewScreen}
           options={{ title: 'Team Management' }}
         />
+        <Stack.Screen
+          name="TelecallerRSA"
+          component={require('../screens/dashboard/telecaller/TelecallerRSAScreen').default}
+          options={{ title: 'RSA' }}
+        />
+        <Stack.Screen
+          name="TelecallerRSACreateComplaint"
+          component={require('../screens/dashboard/telecaller/TelecallerRSACreateComplaintScreen').default}
+          options={{ title: 'Create RSA Complaint' }}
+        />
+        <Stack.Screen
+          name="TelecallerRSAComplaintDetail"
+          component={require('../screens/dashboard/telecaller/TelecallerRSAComplaintDetailScreen').default}
+          options={{ title: 'RSA Complaint Detail' }}
+        />
       </Stack.Navigator>
     );
   }
@@ -765,6 +780,14 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     const RSAMechanicsScreen = require('../screens/dashboard/rsa/RSAMechanicsScreen').default;
     const RSAMechanicDetailScreen = require('../screens/dashboard/rsa/RSAMechanicDetailScreen').default;
     const AddMechanicScreen = require('../screens/dashboard/rsa/AddMechanicScreen').default;
+    const RSACreateComplaintScreen = require('../screens/dashboard/rsa/RSACreateComplaintScreen').default;
+    const RSAPaymentsScreen = require('../screens/dashboard/rsa/RSAPaymentsScreen').default;
+    const RSARegisteredScreen = require('../screens/dashboard/rsa/RSARegisteredScreen').default;
+    const RSACarServiceEnquiryScreen = require('../screens/dashboard/rsa/RSACarServiceEnquiryScreen').default;
+    const RSAManagerReportsScreen = require('../screens/dashboard/rsa/RSAManagerReportsScreen').default;
+    const RSAManagerSettingsScreen = require('../screens/dashboard/rsa/RSAManagerSettingsScreen').default;
+    const RSASessionsScreen = require('../screens/dashboard/rsa/RSASessionsScreen').default;
+    const RSAMembershipCustomerScreen = require('../screens/dashboard/rsa/RSAMembershipCustomerScreen').default;
     
     return (
       <Stack.Navigator screenOptions={screenOptions}>
@@ -797,6 +820,46 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="AddMechanic" 
           component={AddMechanicScreen}
           options={{ title: 'Add Mechanic' }}
+        />
+        <Stack.Screen
+          name="RSACreateComplaint"
+          component={RSACreateComplaintScreen}
+          options={{ title: 'Create Complaint' }}
+        />
+        <Stack.Screen
+          name="RSAPayments"
+          component={RSAPaymentsScreen}
+          options={{ title: 'Payments' }}
+        />
+        <Stack.Screen
+          name="RSARegistered"
+          component={RSARegisteredScreen}
+          options={{ title: 'Registered' }}
+        />
+        <Stack.Screen
+          name="RSACarServiceEnquiry"
+          component={RSACarServiceEnquiryScreen}
+          options={{ title: 'Car Service Enquiry' }}
+        />
+        <Stack.Screen
+          name="RSAManagerReports"
+          component={RSAManagerReportsScreen}
+          options={{ title: 'Reports' }}
+        />
+        <Stack.Screen
+          name="RSAManagerSettings"
+          component={RSAManagerSettingsScreen}
+          options={{ title: 'Settings' }}
+        />
+        <Stack.Screen
+          name="RSASessions"
+          component={RSASessionsScreen}
+          options={{ title: 'RSA Sessions' }}
+        />
+        <Stack.Screen
+          name="RSAMembershipCustomer"
+          component={RSAMembershipCustomerScreen}
+          options={{ title: 'Membership Customer' }}
         />
       </Stack.Navigator>
     );

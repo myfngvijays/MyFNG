@@ -46,32 +46,32 @@ export default function DynamicFOMO() {
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 text-sm animate-fade-in-up" style={{animationDelay: '0.5s'}}>
+    <div className="flex flex-nowrap items-center justify-center lg:justify-start gap-2 sm:gap-4 text-sm animate-fade-in-up" style={{animationDelay: '0.5s'}}>
       {/* Active Users - Dynamic */}
-      <div className="flex items-center gap-2 rounded-full bg-white/85 backdrop-blur border border-gray-200 shadow-sm px-4 py-2 transition-all duration-300">
+      <div className="flex items-center gap-1.5 sm:gap-2 rounded-full bg-white/85 backdrop-blur border border-gray-200 shadow-sm px-3 sm:px-4 py-2 transition-all duration-300 whitespace-nowrap">
         <div className="relative flex items-center">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <div className="absolute w-2 h-2 bg-green-500 rounded-full animate-ping"></div>
         </div>
         <Users className="w-4 h-4 text-green-600" />
-        <span className="text-gray-900 font-semibold">
+        <span className="text-gray-900 font-semibold text-xs sm:text-sm">
           {activeUsers.toLocaleString()} Active Now
         </span>
       </div>
 
       {/* Slots Left - Dynamic with Urgency Color */}
       <div
-        className={`flex items-center gap-2 rounded-full bg-white/85 backdrop-blur border shadow-sm px-4 py-2 transition-all duration-500 ${
+        className={`flex items-center gap-1.5 sm:gap-2 rounded-full bg-white/85 backdrop-blur border shadow-sm px-3 sm:px-4 py-2 transition-all duration-500 whitespace-nowrap ${
           slotsLeft <= 2 ? 'border-red-300 animate-pulse' : 'border-gray-200'
         }`}
       >
         <AlertCircle className={`w-4 h-4 ${
           slotsLeft <= 2 ? 'text-red-600' : 'text-orange-600'
         }`} />
-        <span className="text-gray-900 font-semibold">
+        <span className="text-gray-900 font-semibold text-xs sm:text-sm">
           Only <span className={`font-bold ${
             slotsLeft <= 2 ? 'text-red-700' : 'text-orange-700'
-          }`}>{slotsLeft}</span> slots left today!
+          }`}>{slotsLeft}</span> slots left<span className="hidden sm:inline"> today!</span>
         </span>
       </div>
     </div>

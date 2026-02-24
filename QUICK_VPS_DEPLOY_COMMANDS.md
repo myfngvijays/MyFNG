@@ -97,7 +97,7 @@ sudo nano /etc/nginx/sites-available/myfng
 # Paste this:
 server {
     listen 80;
-    server_name myfng.cloud www.myfng.cloud;
+    server_name myfng.in www.myfng.in;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -107,6 +107,13 @@ server {
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
     }
+}
+
+# Keep old domain alive with permanent redirect
+server {
+    listen 80;
+    server_name myfng.cloud www.myfng.cloud;
+    return 301 https://myfng.in$request_uri;
 }
 
 # Save: Ctrl+X, then Y, then Enter
@@ -122,14 +129,17 @@ sudo systemctl reload nginx
 # Install Certbot
 sudo apt install -y certbot python3-certbot-nginx
 
-# Get SSL certificate
+# Get SSL certificate for primary domain
+sudo certbot --nginx -d myfng.in -d www.myfng.in
+
+# Optional: keep certificate for old cloud redirect host as well
 sudo certbot --nginx -d myfng.cloud -d www.myfng.cloud
 
 # Follow prompts and select "Redirect HTTP to HTTPS"
 ```
 
-### Step 7: Configure DNS in Hostinger
-1. Go to Hostinger Dashboard → Domains → myfng.cloud → DNS
+### Step 7: Configure DNS in GoDaddy
+1. Go to GoDaddy Dashboard → Domains → myfng.in → DNS
 2. Add A Record:
    - Type: A
    - Name: @
@@ -195,9 +205,10 @@ pm2 restart myfng-web
 
 After deployment, test these URLs:
 
-1. **http://myfng.cloud** → Should redirect to HTTPS
-2. **https://myfng.cloud** → Should load homepage
-3. **https://myfng.cloud/login** → Should load login page
+1. **http://myfng.in** → Should redirect to HTTPS
+2. **https://myfng.in** → Should load homepage
+3. **https://myfng.in/login** → Should load login page
+4. **https://myfng.cloud/login** → Should 301 redirect to `https://myfng.in/login`
 4. **Login as Lead Manager** → Check if 400 errors are gone!
 
 ---
@@ -218,7 +229,7 @@ pm2 restart myfng-web
 
 ### Domain not resolving
 ```bash
-ping myfng.cloud
+ping myfng.in
 # If no response, wait 30 mins for DNS propagation
 ```
 
@@ -238,11 +249,12 @@ sudo certbot certificates
 - [ ] Nginx configured
 - [ ] DNS records added (A records for @ and www)
 - [ ] SSL certificate installed
-- [ ] https://myfng.cloud loads successfully
+- [ ] https://myfng.in loads successfully
+- [ ] https://myfng.cloud redirects to https://myfng.in
 - [ ] Login working
 - [ ] No 400 errors in console!
 
 ---
 
-**🎉 Deployment Complete! Access your app at: https://myfng.cloud**
+**Deployment Complete! Access your app at: https://myfng.in**
 

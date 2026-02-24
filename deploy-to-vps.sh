@@ -111,7 +111,7 @@ echo "   2. Update Supabase keys: nano $VPS_PATH/.env.local"
 echo "   3. Restart app: pm2 restart myfng-web"
 echo "   4. Setup Nginx (follow guide in HOSTINGER_VPS_DEPLOYMENT_COMPLETE.md)"
 echo "   5. Setup SSL certificate"
-echo "   6. Access: https://myfng.cloud"
+echo "   6. Access: https://myfng.in"
 echo ""
 echo -e "${GREEN}✅ All Done!${NC}"
 

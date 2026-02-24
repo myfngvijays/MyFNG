@@ -35,12 +35,7 @@ import {
   AlertCircle,
   Droplets,
   Calendar,
-  LifeBuoy,
-  BookOpen,
-  LogIn,
-  Home,
   Wrench,
-  Info
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -664,7 +659,7 @@ export default function HomePage() {
       <Navbar />
 
       {/* Header AI Search Bar (full-width, under navbar) */}
-      <div className="w-full mt-16 sm:mt-20 md:mt-24 bg-white/70 backdrop-blur border-b border-gray-200/70">
+      <div className="hidden w-full mt-16 sm:mt-20 md:mt-24 bg-white/70 backdrop-blur border-b border-gray-200/70">
         <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <form
             onSubmit={(e) => {
@@ -708,7 +703,7 @@ export default function HomePage() {
       </div>
 
       {/* 1. Hero Section: AI-Powered & Futuristic - Updated Clean Look */}
-      <section className="relative pt-14 pb-16 lg:pt-20 lg:pb-24 overflow-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50">
+      <section className="relative pt-14 pb-10 sm:pb-12 lg:pt-20 lg:pb-24 overflow-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50">
         {/* Background Elements */}
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
         <div className="absolute top-0 right-0 w-full lg:w-1/2 h-full bg-gradient-to-l from-blue-100/40 to-transparent transform skew-x-12 translate-x-1/4"></div>
@@ -718,7 +713,7 @@ export default function HomePage() {
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl animate-float" style={{animationDelay: '1.5s'}}></div>
 
         <div className="container mx-auto px-4 sm:px-6 relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-12 lg:gap-14">
+          <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-6 sm:gap-8 lg:gap-14">
             
             {/* Left Content – higher z so buttons are never covered by right visual */}
             <div className="lg:col-span-6 text-center lg:text-left w-full relative z-20">
@@ -754,7 +749,7 @@ export default function HomePage() {
                     setChatDraft('I want to book a car service.');
                     window.location.href = '/ai-booking';
                   }}
-                  className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-blue-900 bg-white border border-blue-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                  className="hidden btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-blue-900 bg-white border border-blue-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   <Bot className="w-5 h-5" />
                   Book via MY FNG AI
@@ -762,7 +757,7 @@ export default function HomePage() {
 
                 <Link
                   href="/workshops"
-                  className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-gray-900 bg-white/70 backdrop-blur border border-gray-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:bg-white hover:text-blue-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                  className="hidden btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-gray-900 bg-white/70 backdrop-blur border border-gray-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:bg-white hover:text-blue-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   <MapPin className="w-5 h-5" />
                   Find Verified Workshops
@@ -780,7 +775,7 @@ export default function HomePage() {
             </div>
 
             {/* Right Visual */}
-            <div className="lg:col-span-6 relative w-full mt-10 lg:mt-0 min-w-0">
+            <div className="lg:col-span-6 relative w-full mt-4 sm:mt-6 lg:mt-0 min-w-0">
               <div className="relative z-10 perspective-1000">
                 {/* Main Image - Using the clean futuristic car image */}
                 <div className="relative z-10 rounded-3xl overflow-hidden shadow-2xl shadow-blue-500/20 bg-white p-2 border border-white/50 backdrop-blur-sm">
@@ -896,9 +891,13 @@ export default function HomePage() {
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-8 sm:mb-10 md:mb-12">
             <AIFeatureBadge text="Live Platform Metrics" />
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-3 sm:mt-4 mb-3 sm:mb-4 text-brand-secondary">Trusted by Thousands of Car Owners</h2>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-3 sm:mt-4 mb-3 sm:mb-4 text-brand-secondary">
+              Trusted by Thousands of
+              <br className="sm:hidden" /> Car Owners
+            </h2>
             <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto px-2 sm:px-0">
-              India's fast-growing AI-powered car service booking platform.
+              India&apos;s fast-growing AI-powered car service booking
+              <br className="sm:hidden" /> platform.
             </p>
           </div>
           <LiveStats />
@@ -1001,7 +1000,10 @@ export default function HomePage() {
         <div className="container mx-auto px-4 sm:px-6">
           <div className="text-center mb-12 sm:mb-16">
             <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">How It Works</span>
-            <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">How MY FNG Manages Your Car Service</h2>
+            <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold mt-3 mb-4 text-gray-900">
+              How MY FNG Manages
+              <br className="sm:hidden" /> Your Car Service
+            </h2>
             <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto">
               From booking to delivery, every step is coordinated, documented, and supported by MY FNG.
             </p>
@@ -1125,7 +1127,7 @@ export default function HomePage() {
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
             <span className="text-brand-primary font-bold tracking-wider uppercase text-xs sm:text-sm">Why Choose Us</span>
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">Why Choose MY FNG?</h2>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-white">Why Choose MY FNG?</h2>
             <p className="text-sm sm:text-base text-gray-600 mt-3 sm:mt-4 max-w-2xl mx-auto px-4">
               India's most transparent, AI-powered car service platform - built for reliability, not guesswork.
             </p>
@@ -1292,20 +1294,15 @@ export default function HomePage() {
                         key={i.id}
                         type="button"
                         // No click/hover behavior: content & color stay constant
-                        className="group text-left rounded-2xl sm:rounded-3xl border transition-all duration-300 p-4 sm:p-5 border-white/60 bg-white/70 backdrop-blur hover:bg-white hover:border-gray-200 hover:shadow-lg"
+                        className="group text-center rounded-2xl sm:rounded-3xl border transition-all duration-300 p-4 sm:p-5 border-white/60 bg-white/70 backdrop-blur hover:bg-white hover:border-gray-200 hover:shadow-lg"
                         aria-pressed={false}
                       >
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start justify-center gap-3">
                           <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center ${i.pill}`}>
                             <Icon className="w-6 h-6" />
                           </div>
-                          <span
-                            className="hidden sm:inline-flex text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-gray-200 bg-white text-gray-600"
-                          >
-                            Choose
-                          </span>
                         </div>
-                        <div className="mt-3">
+                        <div className="mt-3 text-center">
                           <div className="text-sm sm:text-lg font-extrabold text-gray-900 leading-snug">{i.title}</div>
                           <div className="mt-1 text-[12px] sm:text-sm text-gray-600 leading-relaxed">{i.desc}</div>
                         </div>
@@ -1330,7 +1327,7 @@ export default function HomePage() {
                           </span>
                         </div>
 
-                        <h3 className="mt-5 text-2xl sm:text-3xl font-extrabold leading-tight">Complete Transparency</h3>
+                        <h3 className="mt-5 text-2xl sm:text-3xl font-extrabold leading-tight text-white">Complete Transparency</h3>
                         <p className="mt-3 text-white/85 text-sm sm:text-base leading-relaxed">
                           See what's happening with your car.
                           <br />
@@ -1360,15 +1357,15 @@ export default function HomePage() {
                         return (
                           <div
                             key={f.id}
-                            className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl"
+                            className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-lg border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl text-center flex flex-col items-center"
                           >
                             <div
-                              className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl ${f.bg} ${f.color} transition-transform group-hover:scale-110`}
+                              className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl ${f.bg} ${f.color} transition-transform group-hover:scale-110 mx-auto`}
                             >
                               <Icon className="h-6 w-6" />
                             </div>
-                            <h3 className="mb-2 text-lg font-extrabold text-gray-900">{f.title}</h3>
-                            <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
+                            <h3 className="mb-2 text-lg font-extrabold text-gray-900 text-center">{f.title}</h3>
+                            <p className="text-sm text-gray-500 leading-relaxed text-center max-w-[34ch] mx-auto">{f.desc}</p>
                           </div>
                         );
                       })}
@@ -1464,7 +1461,7 @@ export default function HomePage() {
                 {/* CTA */}
                 <div className="flex flex-col items-center lg:items-start gap-3 animate-fade-in-up" style={{ animationDelay: '0.35s' }}>
                   <Link
-                    href="/roadside-assistance"
+                    href="/rsa_landing"
                     className="inline-flex items-center justify-center gap-3 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white text-sm sm:text-lg font-bold px-7 sm:px-10 py-3.5 sm:py-4 rounded-2xl shadow-2xl shadow-red-500/40 transition-all transform hover:-translate-y-0.5 animate-pulse-glow"
                   >
                     <Radio className="w-5 h-5 animate-pulse" />
@@ -1532,7 +1529,7 @@ export default function HomePage() {
 
                 {/* Mobile only: compact “View all” */}
                 <div className="sm:hidden mt-3 flex justify-center">
-                  <Link href="/roadside-assistance" className="text-sm font-semibold text-orange-200 hover:text-white underline underline-offset-4">
+                  <Link href="/rsa_landing" className="text-sm font-semibold text-orange-200 hover:text-white underline underline-offset-4">
                     View all roadside services →
               </Link>
                 </div>
@@ -1669,7 +1666,7 @@ export default function HomePage() {
 
             const featured = reviews[0];
             const rest = reviews.slice(1);
-            const avgRating = '4.9';
+            const avgRating = '4.8';
             const totalReviews = '10,000+';
             const cities = '50+';
             const response = '25 min';
@@ -1700,7 +1697,7 @@ export default function HomePage() {
                         <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Cities</div>
                         <MapPin className="w-4 h-4 text-purple-600" />
                       </div>
-                      <div className="mt-1 text-2xl font-extrabold text-gray-900">{cities}+</div>
+                      <div className="mt-1 text-2xl font-extrabold text-gray-900">{cities}</div>
                       <div className="mt-1 text-xs text-gray-500">Pan-India network</div>
                     </div>
                     <div className="rounded-2xl bg-white border border-gray-100 p-4">
@@ -1787,7 +1784,7 @@ export default function HomePage() {
       )}
 
       {/* Floating Chatbot – above mobile bottom bar when visible (lg:hidden) */}
-      <div className="fixed bottom-28 right-4 z-50 flex flex-col items-end gap-2 lg:bottom-6 lg:right-6">
+      <div className="hidden fixed bottom-28 right-4 z-50 flex flex-col items-end gap-2 lg:bottom-6 lg:right-6">
         <Link
           href="/ai-booking"
           className="bg-brand-primary hover:bg-brand-primary-hover text-white px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2 sm:gap-3 group border-2 sm:border-4 border-white/20 animate-bounce-slow"
@@ -2100,76 +2097,10 @@ export default function HomePage() {
 
       <Footer />
 
-      {/* Mobile Bottom Bar (app-style) – safe-area so not cut off on notched screens */}
-      <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
-        <div className="mx-auto max-w-md px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="rounded-2xl border border-gray-200 bg-white/90 backdrop-blur shadow-2xl overflow-hidden">
-            <div className="flex overflow-x-auto">
-              <Link
-                href="/"
-                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
-              >
-                <Home className="w-5 h-5" />
-                <span className="text-[11px] font-semibold">Home</span>
-              </Link>
-              <Link
-                href="/services"
-                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
-              >
-                <Wrench className="w-5 h-5" />
-                <span className="text-[11px] font-semibold">Services</span>
-              </Link>
-              <Link
-                href="/about"
-                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
-              >
-                <Info className="w-5 h-5" />
-                <span className="text-[11px] font-semibold">About</span>
-              </Link>
-              <Link
-                href="/roadside-assistance"
-                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
-              >
-                <LifeBuoy className="w-5 h-5" />
-                <span className="text-[11px] font-semibold">Roadside</span>
-              </Link>
-              <Link
-                href="/blogs"
-                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
-              >
-                <BookOpen className="w-5 h-5" />
-                <span className="text-[11px] font-semibold">Blog</span>
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  setChatDraft('I want to book a car service.');
-                  window.location.href = '/ai-booking';
-                }}
-                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
-              >
-                <Bot className="w-5 h-5" />
-                <span className="text-[11px] font-semibold">AI Booking</span>
-              </button>
-              <Link
-                href="/customer/login"
-                className="flex min-w-[88px] flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:text-brand-primary"
-              >
-                <LogIn className="w-5 h-5" />
-                <span className="text-[11px] font-semibold">Login</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Booking Form Modal */}
       {isBookingFormOpen && (
         <BookingForm onClose={() => setIsBookingFormOpen(false)} />
       )}
-
-      {/* Spacer so content isn't hidden behind bottom bar + floating buttons on mobile */}
-      <div className="h-32 lg:h-0 lg:hidden" aria-hidden="true" />
 
     </div>
   );

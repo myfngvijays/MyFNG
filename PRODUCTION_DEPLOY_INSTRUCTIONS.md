@@ -105,12 +105,12 @@ After rebuilding, check:
 1. `.next` folder exists
 2. `.next/static` folder has CSS/JS files
 3. Server logs show "Ready" message
-4. Visit `https://myfng.cloud` and check browser console for errors
+4. Visit `https://myfng.in` and check browser console for errors
 
 ---
 
 **Note:** The 404 errors are happening because:
-- Browser is requesting: `https://myfng.cloud/_next/static/css/...`
+- Browser is requesting: `https://myfng.in/_next/static/css/...`
 - Server doesn't have these files (old build or missing `.next` folder)
 - Solution: Rebuild and deploy the `.next` folder
 

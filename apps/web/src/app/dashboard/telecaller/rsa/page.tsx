@@ -285,6 +285,8 @@ function leadRowClass(value: string) {
 function paymentStatusBadgeClass(value: string) {
   const s = String(value || '').trim().toUpperCase();
   if (s === 'SUCCESS' || s === 'PAID') return 'bg-green-100 text-green-700 border-green-200';
+  if (s === 'REFUNDED') return 'bg-purple-100 text-purple-700 border-purple-200';
+  if (s === 'PARTIALLY_REFUNDED') return 'bg-indigo-100 text-indigo-700 border-indigo-200';
   if (s === 'CREATED') return 'bg-blue-100 text-blue-700 border-blue-200';
   if (s === 'FAILED') return 'bg-red-100 text-red-700 border-red-200';
   if (s === 'CANCELLED' || s === 'CANCELED') return 'bg-red-100 text-red-700 border-red-200';
@@ -297,6 +299,8 @@ function paymentStatusLabel(value: string) {
   if (s === 'LINK_GENERATED') return 'Link Generated';
   if (s === 'CREATED') return 'Pending Payment';
   if (s === 'SUCCESS') return 'Paid';
+  if (s === 'REFUNDED') return 'Refunded';
+  if (s === 'PARTIALLY_REFUNDED') return 'Partially Refunded';
   if (s === 'FAILED') return 'Failed';
   if (s === 'CANCELLED' || s === 'CANCELED') return 'Cancelled';
   return statusLabel(value || 'Unknown');

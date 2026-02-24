@@ -20,6 +20,7 @@ export default function CustomerOrderDetailScreen({ navigation, route }: any) {
   const orderId = String(route?.params?.orderId || '');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<OrderDetailResponse | null>(null);
+  const [showAllChecklist, setShowAllChecklist] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -53,13 +54,70 @@ export default function CustomerOrderDetailScreen({ navigation, route }: any) {
     }
   }, [data?.checklist?.checklist_items]);
 
-  const status = String(order?.status || 'PENDING').toUpperCase();
+  const toReadable = (value: string) =>
+    String(value || '')
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+  const statusRaw = String(order?.status || 'PENDING').toUpperCase();
+  const invoiceStatusRaw = String(invoice?.payment_status || 'PENDING').toUpperCase();
+  const statusMeta = (() => {
+    if (['DELIVERED', 'COMPLETED', 'CLOSED'].includes(statusRaw)) {
+      return { bg: '#ECFDF3', text: '#166534' };
+    }
+    if (['CANCELLED', 'REJECTED'].includes(statusRaw)) {
+      return { bg: '#FEF2F2', text: '#991B1B' };
+    }
+    if (['READY_FOR_BILLING', 'QC_APPROVED', 'IN_PROGRESS'].includes(statusRaw)) {
+      return { bg: '#EFF6FF', text: '#1E3A8A' };
+    }
+    return { bg: '#F3F4F6', text: '#334155' };
+  })();
+
   const amount =
     Number(invoice?.final_amount || 0) ||
     Number(order?.invoice_amount || 0) ||
     Number(order?.actual_amount || 0) ||
     Number(order?.estimated_amount || 0) ||
     0;
+  const checklistPreviewCount = 12;
+  const visibleChecklist = showAllChecklist ? checklistItems : checklistItems.slice(0, checklistPreviewCount);
+
+  const normalizeMediaSection = (m: any) => {
+    const type = String(m?.type || '').toUpperCase();
+    const url = String(m?.url || '').toUpperCase();
+    const note = String(m?.note || '').toUpperCase();
+    const text = `${type} ${url} ${note}`;
+
+    if (text.includes('BEFORE_') || text.includes('/BEFORE/') || text.includes('VEHICLE-PHOTOS')) {
+      return 'Before Inspection';
+    }
+    if (text.includes('DURING_') || text.includes('/DURING/')) {
+      return 'During Service';
+    }
+    if (text.includes('AFTER_') || text.includes('/AFTER/')) {
+      return 'After Service';
+    }
+    if (text.includes('QC') || text.includes('PROOF') || text.includes('DELIVERY')) {
+      return 'QC / Delivery Proof';
+    }
+    return 'Other Photos';
+  };
+
+  const mediaSections = useMemo(() => {
+    const grouped: Record<string, any[]> = {
+      'Before Inspection': [],
+      'During Service': [],
+      'After Service': [],
+      'QC / Delivery Proof': [],
+      'Other Photos': [],
+    };
+    for (const media of data?.media || []) {
+      grouped[normalizeMediaSection(media)].push(media);
+    }
+    return Object.entries(grouped).filter(([, items]) => items.length > 0);
+  }, [data?.media]);
 
   if (loading) {
     return (
@@ -88,28 +146,32 @@ export default function CustomerOrderDetailScreen({ navigation, route }: any) {
     <View style={styles.container}>
       <DashboardHeader title={order?.lead_number || 'Order Details'} onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.card}>
+        <View style={[styles.card, styles.heroCard]}>
           <View style={styles.rowBetween}>
             <Text style={styles.serviceText}>{order?.service_display || order?.service_type || 'Service'}</Text>
-            <View style={styles.statusPill}>
-              <Text style={styles.statusText}>{status}</Text>
+            <View style={[styles.statusPill, { backgroundColor: statusMeta.bg }]}>
+              <Text style={[styles.statusText, { color: statusMeta.text }]}>{toReadable(statusRaw)}</Text>
             </View>
           </View>
           <Text style={styles.meta}>{order?.vehicle_number || 'Vehicle'} • {formatDateDMY(order?.created_at)}</Text>
           <Text style={styles.amount}>Amount: {amount > 0 ? `₹${amount.toFixed(2)}` : 'Pending'}</Text>
           {invoice?.invoice_number ? (
-            <Text style={styles.meta}>Invoice: {invoice.invoice_number} ({invoice.payment_status || 'PENDING'})</Text>
+            <Text style={styles.meta}>Invoice: {invoice.invoice_number} ({toReadable(invoiceStatusRaw)})</Text>
           ) : null}
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Checklist</Text>
+          <View style={styles.rowBetween}>
+            <Text style={styles.sectionTitle}>Checklist</Text>
+            {data?.checklist ? (
+              <Text style={styles.sectionMeta}>
+                {Number(data.checklist.completed_items || 0)}/{Number(data.checklist.total_items || checklistItems.length || 0)}
+              </Text>
+            ) : null}
+          </View>
           {data?.checklist ? (
             <>
-              <Text style={styles.meta}>
-                {Number(data.checklist.completed_items || 0)}/{Number(data.checklist.total_items || checklistItems.length || 0)} completed
-              </Text>
-              {checklistItems.slice(0, 20).map((item: any, idx: number) => {
+              {visibleChecklist.map((item: any, idx: number) => {
                 const done = String(item?.status || '').toUpperCase() === 'COMPLETED';
                 return (
                   <View key={`${item?.id || idx}`} style={styles.listRow}>
@@ -118,8 +180,15 @@ export default function CustomerOrderDetailScreen({ navigation, route }: any) {
                   </View>
                 );
               })}
-              {checklistItems.length > 20 ? (
-                <Text style={styles.meta}>+{checklistItems.length - 20} more items</Text>
+              {!showAllChecklist && checklistItems.length > checklistPreviewCount ? (
+                <TouchableOpacity onPress={() => setShowAllChecklist(true)}>
+                  <Text style={styles.moreLink}>+{checklistItems.length - checklistPreviewCount} more checklist points</Text>
+                </TouchableOpacity>
+              ) : null}
+              {showAllChecklist && checklistItems.length > checklistPreviewCount ? (
+                <TouchableOpacity onPress={() => setShowAllChecklist(false)}>
+                  <Text style={styles.moreLink}>Show less checklist points</Text>
+                </TouchableOpacity>
               ) : null}
             </>
           ) : (
@@ -128,23 +197,39 @@ export default function CustomerOrderDetailScreen({ navigation, route }: any) {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Photos & Proof</Text>
-          {data.media && data.media.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRow}>
-              {data.media.slice(0, 30).map((m) => (
-                <TouchableOpacity key={m.id} onPress={() => { void Linking.openURL(m.url); }} style={styles.mediaCard}>
-                  <Image source={{ uri: m.url }} style={styles.mediaImage} resizeMode="cover" />
-                  <Text numberOfLines={1} style={styles.mediaLabel}>{m.type || 'PHOTO'}</Text>
-                </TouchableOpacity>
+          <View style={styles.rowBetween}>
+            <Text style={styles.sectionTitle}>Photos & Proof</Text>
+            <Text style={styles.sectionMeta}>{(data.media || []).length}</Text>
+          </View>
+          {mediaSections.length > 0 ? (
+            <View style={styles.sectionStack}>
+              {mediaSections.map(([section, items]) => (
+                <View key={section} style={styles.mediaSectionWrap}>
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.mediaSectionTitle}>{section}</Text>
+                    <Text style={styles.sectionMeta}>{items.length}</Text>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRow}>
+                    {items.slice(0, 40).map((m: any) => (
+                      <TouchableOpacity key={m.id} onPress={() => { void Linking.openURL(m.url); }} style={styles.mediaCard}>
+                        <Image source={{ uri: m.url }} style={styles.mediaImage} resizeMode="cover" />
+                        <Text numberOfLines={1} style={styles.mediaLabel}>{String(m.type || 'PHOTO').replace(/_/g, ' ')}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
               ))}
-            </ScrollView>
+            </View>
           ) : (
             <Text style={styles.meta}>No media uploaded yet.</Text>
           )}
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Service Timeline</Text>
+          <View style={styles.rowBetween}>
+            <Text style={styles.sectionTitle}>Service Timeline</Text>
+            <Text style={styles.sectionMeta}>{(data.activities || []).length}</Text>
+          </View>
           {(data.activities || []).length > 0 ? (
             (data.activities || []).slice(0, 25).map((a: any) => (
               <View key={a.id} style={styles.timelineItem}>
@@ -181,16 +266,30 @@ const styles = StyleSheet.create({
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
   loadingText: { color: COLORS.textSecondary, fontSize: SIZES.sm },
   emptyText: { color: COLORS.textSecondary, fontSize: SIZES.md },
-  card: { backgroundColor: COLORS.white, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.sm },
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#E8EDF5',
+  },
+  heroCard: { backgroundColor: '#F9FBFF', borderColor: '#D9E6FF' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   serviceText: { flex: 1, fontSize: SIZES.md, fontWeight: '800', color: COLORS.textHeading },
   meta: { marginTop: 6, color: COLORS.textSecondary, fontSize: SIZES.sm },
   amount: { marginTop: 8, color: COLORS.success, fontSize: SIZES.md, fontWeight: '800' },
-  statusPill: { backgroundColor: '#EFF6FF', borderRadius: 18, paddingHorizontal: 10, paddingVertical: 4 },
-  statusText: { color: '#1E3A8A', fontSize: 11, fontWeight: '700' },
+  statusPill: { borderRadius: 18, paddingHorizontal: 10, paddingVertical: 4 },
+  statusText: { fontSize: 11, fontWeight: '700' },
   sectionTitle: { fontSize: SIZES.md, fontWeight: '800', color: COLORS.textHeading, marginBottom: 8 },
+  sectionMeta: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  moreLink: { marginTop: 4, color: COLORS.primary, fontSize: SIZES.sm, fontWeight: '700' },
   listRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   listText: { flex: 1, color: COLORS.textHeading, fontSize: SIZES.sm },
+  sectionStack: { gap: 12 },
+  mediaSectionWrap: { borderTopWidth: 1, borderTopColor: '#EEF2F7', paddingTop: 10 },
+  mediaSectionTitle: { fontSize: SIZES.sm, fontWeight: '800', color: COLORS.textHeading },
   mediaRow: { gap: 10, paddingVertical: 4 },
   mediaCard: { width: 120 },
   mediaImage: { width: 120, height: 90, borderRadius: 10, backgroundColor: '#E5E7EB' },

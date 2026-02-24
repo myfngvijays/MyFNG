@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Car, Clock, TrendingUp } from 'lucide-react';
+import { Users, Car, Clock, Star } from 'lucide-react';
 
 export default function LiveStats() {
   /**
@@ -78,9 +78,9 @@ export default function LiveStats() {
       bgColor: 'bg-purple-500/10'
     },
     {
-      icon: TrendingUp,
+      icon: Star,
       label: 'Customer Rating',
-      value: '⭐ 4.7 / 5',
+      value: '4.8',
       suffix: '',
       color: 'text-orange-500',
       bgColor: 'bg-orange-500/10'
@@ -94,10 +94,10 @@ export default function LiveStats() {
         return (
           <div
             key={index}
-            className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all animate-fade-in-up border border-gray-100"
+            className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all animate-fade-in-up border border-gray-100 text-center"
             style={{ animationDelay: `${index * 0.1}s` }}
           >
-            <div className={`w-12 h-12 rounded-xl ${stat.bgColor} flex items-center justify-center mb-4`}>
+            <div className={`w-12 h-12 rounded-xl ${stat.bgColor} flex items-center justify-center mb-4 mx-auto`}>
               <Icon className={`w-6 h-6 ${stat.color}`} />
             </div>
             <div className="text-3xl font-bold text-brand-secondary mb-1">

@@ -30,6 +30,9 @@ const { width } = Dimensions.get('window');
 export default function TelecallerDashboard() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
+  const [screenHistory, setScreenHistory] = useState<string[]>([]);
+  const [screenParamsHistory, setScreenParamsHistory] = useState<any[]>([]);
+  const [screenParams, setScreenParams] = useState<any>({});
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -238,16 +241,52 @@ export default function TelecallerDashboard() {
     await supabase.auth.signOut();
   };
 
+  const getTabForScreen = (screen: string) => {
+    if (screen === 'leads' || screen === 'TelecallerLeadDetail') return 'leads';
+    if (screen === 'enquiryLeads') return 'enquiryLeads';
+    if (screen === 'telecallerRsa') return 'telecallerRsa';
+    if (screen === 'profile') return 'profile';
+    return 'dashboard';
+  };
+
   // Simple navigation object
   const navigation = {
     navigate: (screen: string, params?: any) => {
+      setScreenHistory((prev) => (screen !== currentScreen ? [...prev, currentScreen] : prev));
+      setScreenParamsHistory((prev) => (screen !== currentScreen ? [...prev, screenParams || {}] : prev));
       setCurrentScreen(screen);
+      setScreenParams(params || {});
       if (params?.leadId) {
         setSelectedLeadId(params.leadId);
       }
     },
     goBack: () => {
-      setCurrentScreen('dashboard');
+      if (screenHistory.length === 0) {
+        setCurrentScreen('dashboard');
+        setSelectedLeadId(null);
+        setScreenParams({});
+        return;
+      }
+      const previousScreen = screenHistory[screenHistory.length - 1];
+      const previousParams = screenParamsHistory[screenParamsHistory.length - 1] || {};
+      setScreenHistory((prev) => prev.slice(0, -1));
+      setScreenParamsHistory((prev) => prev.slice(0, -1));
+      setCurrentScreen(previousScreen);
+      setScreenParams(previousParams);
+      if (previousParams?.leadId) {
+        setSelectedLeadId(previousParams.leadId);
+      } else if (previousScreen !== 'TelecallerLeadDetail') {
+        setSelectedLeadId(null);
+      }
+    }
+  };
+
+  const handleTabChange = (tab: string) => {
+    setScreenHistory([]);
+    setScreenParamsHistory([]);
+    setCurrentScreen(tab);
+    setScreenParams({});
+    if (tab !== 'leads') {
       setSelectedLeadId(null);
     }
   };
@@ -280,6 +319,21 @@ export default function TelecallerDashboard() {
   if (currentScreen === 'enquiryLeads') {
     const Screen = require('./telecaller/TelecallerEnquiryLeadsScreen').default;
     return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'telecallerRsa') {
+    const Screen = require('./telecaller/TelecallerRSAScreen').default;
+    return <Screen navigation={navigation} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'TelecallerRSACreateComplaint') {
+    const Screen = require('./telecaller/TelecallerRSACreateComplaintScreen').default;
+    return <Screen navigation={navigation} route={{ params: screenParams || {} }} />;
+  }
+
+  if (currentScreen === 'TelecallerRSAComplaintDetail') {
+    const Screen = require('./telecaller/TelecallerRSAComplaintDetailScreen').default;
+    return <Screen navigation={navigation} route={{ params: screenParams || {} }} />;
   }
 
   // Main Dashboard Screen
@@ -379,7 +433,7 @@ export default function TelecallerDashboard() {
           <View style={styles.actionsGrid}>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
-              onPress={() => setCurrentScreen('leads')}
+              onPress={() => navigation.navigate('leads')}
             >
               <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📞</Text>
               <Text style={styles.actionButtonText}>View Queue</Text>
@@ -387,7 +441,7 @@ export default function TelecallerDashboard() {
 
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: COLORS.indigo }]}
-              onPress={() => setCurrentScreen('enquiryLeads')}
+              onPress={() => navigation.navigate('enquiryLeads')}
             >
               <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>🧾</Text>
               <Text style={styles.actionButtonText}>Enquiry Leads</Text>
@@ -395,7 +449,7 @@ export default function TelecallerDashboard() {
 
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: COLORS.green }]}
-              onPress={() => setCurrentScreen('createLead')}
+              onPress={() => navigation.navigate('createLead')}
             >
               <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>➕</Text>
               <Text style={styles.actionButtonText}>Create Lead</Text>
@@ -403,7 +457,7 @@ export default function TelecallerDashboard() {
 
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: COLORS.orange }]}
-              onPress={() => setCurrentScreen('followups')}
+              onPress={() => navigation.navigate('followups')}
             >
               <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📅</Text>
               <Text style={styles.actionButtonText}>Follow-ups</Text>
@@ -411,7 +465,7 @@ export default function TelecallerDashboard() {
 
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: COLORS.purple }]}
-              onPress={() => setCurrentScreen('scripts')}
+              onPress={() => navigation.navigate('scripts')}
             >
               <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📋</Text>
               <Text style={styles.actionButtonText}>Call Scripts</Text>
@@ -419,10 +473,18 @@ export default function TelecallerDashboard() {
 
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: COLORS.gray[700] }]}
-              onPress={() => setCurrentScreen('profile')}
+              onPress={() => navigation.navigate('profile')}
             >
               <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>👤</Text>
               <Text style={styles.actionButtonText}>My Profile</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: COLORS.red }]}
+              onPress={() => navigation.navigate('telecallerRsa')}
+            >
+              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>🚨</Text>
+              <Text style={styles.actionButtonText}>RSA Module</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -507,13 +569,13 @@ export default function TelecallerDashboard() {
       )}
 
       <BottomNav 
-        activeTab="dashboard" 
-        onTabChange={setCurrentScreen}
+        activeTab={getTabForScreen(currentScreen)}
+        onTabChange={handleTabChange}
         tabs={[
           { id: 'dashboard', label: 'Home', icon: 'home' },
           { id: 'leads', label: 'Leads', icon: 'clipboard' },
           { id: 'enquiryLeads', label: 'Enquiry', icon: 'file' },
-          { id: 'followups', label: 'Follow-ups', icon: 'calendar' },
+          { id: 'telecallerRsa', label: 'RSA', icon: 'alert-circle' },
           { id: 'profile', label: 'Profile', icon: 'account' },
         ]}
       />
