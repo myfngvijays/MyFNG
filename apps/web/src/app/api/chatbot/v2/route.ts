@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, saveSession } from '@/lib/chatbot_v2/session';
 import { logChatActivity } from '@/lib/chatbot_v2/telecrm';
-import { handleChatError } from '@/lib/chatbot_v2/error-handler';
+import { handleChatError, logError } from '@/lib/chatbot_v2/error-handler';
 import { CHATBOT_TOOLS, executeToolCall } from '@/lib/chatbot_v2/chatbot-tools';
 import { SYSTEM_PROMPT } from '@/lib/chatbot_v2/chatbot-system-prompt';
 
@@ -29,6 +29,10 @@ type ChatMessage = {
 
 async function createCompletion(messages: ChatMessage[]) {
   const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('OpenAI API key is missing');
+  }
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -55,10 +59,12 @@ async function createCompletion(messages: ChatMessage[]) {
 }
 
 function getSessionId(body: V2Request) {
-  const fromContext = String(body?.context?.conversationId || '').trim();
-  if (fromContext) return fromContext;
   const fromBody = String(body?.session_id || '').trim();
   if (fromBody) return fromBody;
+
+  const fromContext = String(body?.context?.conversationId || '').trim();
+  if (fromContext) return fromContext;
+
   return `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
@@ -67,35 +73,13 @@ export async function POST(req: NextRequest) {
   const message = String(body?.message || '').trim();
   const sessionId = getSessionId(body || {});
 
-  if (!message) {
-    return NextResponse.json(
-      {
-        type: 'answer',
-        message: 'Message missing hai.',
-        cta: 'Aapko kis cheez me help chahiye?',
-        assistantMessage: 'Message missing hai.',
-        data: { contextPatch: { conversationId: sessionId } },
-      },
-      { status: 400 }
-    );
-  }
-
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json(
-      {
-        type: 'answer',
-        message: 'Chatbot temporarily unavailable.',
-        cta: 'Please try again shortly.',
-        assistantMessage: 'Chatbot temporarily unavailable.',
-        data: { contextPatch: { conversationId: sessionId } },
-      },
-      { status: 503 }
-    );
+  if (!sessionId || !message) {
+    return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
   }
 
   try {
     const sessionData = await getSession(sessionId);
-    const history = Array.isArray(sessionData.history) ? sessionData.history : [];
+    const history = sessionData.history || [];
 
     const messages: ChatMessage[] = [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -108,13 +92,13 @@ export async function POST(req: NextRequest) {
 
     let assistantMessage = await createCompletion(messages);
     let toolCalls = assistantMessage?.tool_calls || [];
-    let finalResponse = String(assistantMessage?.content || '').trim();
+    let finalResponse = String(assistantMessage?.content || '');
 
-    let iteration = 0;
     const maxIterations = 5;
+    let iteration = 0;
 
     while (toolCalls.length > 0 && iteration < maxIterations) {
-      iteration += 1;
+      iteration++;
       messages.push({
         role: 'assistant',
         content: String(assistantMessage?.content || ''),
@@ -122,12 +106,13 @@ export async function POST(req: NextRequest) {
       });
 
       for (const toolCall of toolCalls) {
-        if (toolCall.type && toolCall.type !== 'function') continue;
-        if (!toolCall.function?.name) continue;
+        const toolName = toolCall?.function?.name;
+        if (!toolName) continue;
 
-        const toolName = toolCall.function.name;
-        const toolArgs = JSON.parse(toolCall.function.arguments || '{}');
-        if (toolName === 'create_booking') toolArgs.session_id = sessionId;
+        const toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
+        if (toolName === 'create_booking') {
+          toolArgs.session_id = sessionId;
+        }
 
         const toolResult = await executeToolCall(toolName, toolArgs);
         messages.push({
@@ -139,31 +124,30 @@ export async function POST(req: NextRequest) {
 
       assistantMessage = await createCompletion(messages);
       toolCalls = assistantMessage?.tool_calls || [];
-      finalResponse = String(assistantMessage?.content || '').trim();
+      finalResponse = String(assistantMessage?.content || '');
     }
 
-    if (!finalResponse) {
+    if (!finalResponse || finalResponse.trim() === '') {
       finalResponse = "I'm here to help! Could you please rephrase your question?";
     }
 
-    const nextHistory = [...history, { role: 'user', content: message }, { role: 'assistant', content: finalResponse }].slice(-20);
-    await saveSession(sessionId, { history: nextHistory });
+    history.push({ role: 'user', content: message });
+    history.push({ role: 'assistant', content: finalResponse });
+    sessionData.history = history.slice(-20);
+    await saveSession(sessionId, sessionData);
 
-    void logChatActivity(sessionId, message, 'user');
-    void logChatActivity(sessionId, finalResponse, 'bot');
+    void logChatActivity(sessionId, message, 'user').catch((err) => {
+      logError('TeleCRM user message logging', err, { sessionId });
+    });
+    void logChatActivity(sessionId, finalResponse, 'bot').catch((err) => {
+      logError('TeleCRM bot message logging', err, { sessionId });
+    });
 
     return NextResponse.json({
-      type: 'answer',
-      intent: 'llm_managed',
-      message: finalResponse,
-      cta: '',
-      assistantMessage: finalResponse,
       session_id: sessionId,
-      data: {
-        contextPatch: {
-          conversationId: sessionId,
-        },
-      },
+      response: finalResponse,
+      sources: [],
+      intent: 'llm_managed',
     });
   } catch (error) {
     return handleChatError(error, sessionId);
