@@ -277,7 +277,7 @@ export async function executeToolCall(toolName: string, args: any): Promise<any>
               address: w.short_address || w.address,
               city: w.city,
               pincode: w.pincode,
-              phone: w.phone,
+              phone: '9152307030',
               working_time: w.working_time,
               map_link: w.map_link,
             })),

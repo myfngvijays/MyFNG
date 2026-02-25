@@ -64,8 +64,16 @@ const nextConfig = {
       // SEO continuity: old MyFNG uses /blogs/*
       { source: '/blog', destination: '/blogs', permanent: true },
       { source: '/blog/:slug', destination: '/blogs/:slug', permanent: true },
-      // Ads/deep-link continuity for periodic service page
+      // Legacy services URLs -> canonical marketing URLs
       { source: '/services/periodic-service', destination: '/car-services/periodic-car-service', permanent: true },
+      { source: '/services/engine-service', destination: '/car-services/car-engine-service', permanent: true },
+      { source: '/services/ac-service', destination: '/car-services/car-ac-service', permanent: true },
+      { source: '/services/battery-service', destination: '/car-services/car-battery', permanent: true },
+      { source: '/services/brake-service', destination: '/car-services/car-brake-service', permanent: true },
+      { source: '/services/clutch-service', destination: '/car-services/car-clutch-service', permanent: true },
+      { source: '/services/tyre-wheel-care', destination: '/car-services/tyre-wheel-care', permanent: true },
+      { source: '/services/detailing-service', destination: '/car-services/car-detailing-service', permanent: true },
+      { source: '/services/denting-painting', destination: '/car-services/car-denting-painting', permanent: true },
       // RSA canonical URL
       { source: '/rsa_landing', destination: '/car-roadside-assitance', permanent: true },
       { source: '/roadside-assistance', destination: '/car-roadside-assitance', permanent: true },

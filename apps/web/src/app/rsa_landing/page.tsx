@@ -176,6 +176,7 @@ export default function RsaLandingPage() {
     .rsa-landing .btn{border:1px solid var(--border);background: rgba(255,255,255,.06);color:#fff;padding:10px 14px;border-radius:14px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s ease;display:inline-flex;gap:8px;align-items:center;justify-content:center;white-space:nowrap}
     .rsa-landing .btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.10)}
     .rsa-landing .btn.primary{background: linear-gradient(135deg, var(--brand2), var(--brand));border: none;box-shadow: 0 16px 40px rgba(255,77,46,.22);color:#2a0a07}
+    .rsa-landing .btn.whatsapp{background:linear-gradient(135deg,#25D366,#128C7E);box-shadow:0 16px 40px rgba(18,140,126,.28);color:#ffffff}
     .rsa-landing .btn.primary:hover{filter:brightness(1.05)}
     .rsa-landing .btn.small{padding:9px 12px;border-radius:12px}
     .rsa-landing .hero{position:relative;overflow:hidden;padding: 34px 0 28px;background: radial-gradient(600px 420px at 12% 25%, rgba(246, 84, 22, 0.24), transparent 70%),radial-gradient(560px 400px at 78% 40%, rgba(145, 26, 18, 0.26), transparent 75%),linear-gradient(110deg,#571008 0%,#63140a 34%,#6f180d 58%,#7d1b12 100%)}
@@ -183,9 +184,10 @@ export default function RsaLandingPage() {
     .rsa-landing .hero-grid{position:relative;z-index:2;display:grid;grid-template-columns: 1.04fr .96fr;gap:20px;align-items:stretch}
     .rsa-landing .badge{display:inline-flex;gap:8px;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.18);color:rgba(255,255,255,.84);font-size:12px;font-weight:600;width:fit-content}
     .rsa-landing .dot{width:8px;height:8px;border-radius:50%;background:#ff6a46;box-shadow:0 0 0 4px rgba(255,106,70,.18)}
-    .rsa-landing h1{margin:14px 0 10px;font-size:56px;line-height:1.03;letter-spacing:-1px}
+    .rsa-landing h1{margin:14px 0 10px;font-size:25px;line-height:1.2;letter-spacing:-.3px}
     .rsa-landing .gradient-text{background: linear-gradient(135deg,#ffa037,#ff6f2f 55%,#ff4d2e);-webkit-background-clip:text;background-clip:text;color:transparent}
     .rsa-landing .lead{color:rgba(255,255,255,.84);font-size:16px;line-height:1.55;margin:0 0 14px;max-width:590px}
+    .rsa-landing .lead-location{display:inline}
     .rsa-landing .chips{display:flex;gap:8px;flex-wrap:wrap;margin: 10px 0 0}
     .rsa-landing .chip{display:inline-flex;gap:7px;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.18);font-size:12px;font-weight:700;color:rgba(255,255,255,.92)}
     .rsa-landing .hero-actions{display:none}
@@ -194,7 +196,8 @@ export default function RsaLandingPage() {
     .rsa-landing .stat strong{display:block;font-size:29px;color:#ffffff;line-height:1.2}
     .rsa-landing .stat span{color:rgba(255,255,255,.68);font-size:12px}
     .rsa-landing .card{border:1px solid rgba(255,255,255,.11);background: linear-gradient(180deg,#11192f 0%,#0f1629 100%);border-radius: 20px;box-shadow: var(--shadow);padding:16px}
-    .rsa-landing .card h3{margin:0 0 4px;font-size:30px;color:#ffffff}
+    .rsa-landing .card h3{margin:0 0 4px;font-size:24px;color:#ffffff}
+    .rsa-landing .hero-copy{display:flex;flex-direction:column;justify-content:center;height:100%}
     .rsa-landing .card p{margin:0 0 12px;color:rgba(255,255,255,.68);font-size:13px}
     .rsa-landing .form{display:grid;gap:9px;margin-top:10px}
     .rsa-landing .input{width:100%;padding:11px 12px;border-radius:11px;border:1px solid rgba(255,255,255,.09);background: rgba(255,255,255,.04);color:#ffffff;outline:none;font-size:13px}
@@ -256,8 +259,8 @@ export default function RsaLandingPage() {
     .rsa-landing .marquee-track{display:flex;gap:18px;width:max-content;animation:rsa-scroll 70s linear infinite}
     .rsa-landing section[id], .rsa-landing aside[id]{scroll-margin-top:88px}
     @keyframes rsa-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-    @media (max-width: 980px){.rsa-landing .hero{padding:24px 0 24px}.rsa-landing .hero-grid{grid-template-columns:1fr;gap:14px}.rsa-landing h1{font-size:42px}.rsa-landing .lead{font-size:23px}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .grid-3{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:repeat(2,1fr)}.rsa-landing .pricing{grid-template-columns:1fr}.rsa-landing .plan-grid{grid-template-columns:repeat(2,1fr)}.rsa-landing .testimonials{grid-template-columns:repeat(2,1fr)}.rsa-landing .nav-links{display:none}}
-    @media (max-width: 560px){.rsa-landing h1{font-size:30px}.rsa-landing .form-row{grid-template-columns:1fr}.rsa-landing .grid-3,.rsa-landing .grid-4,.rsa-landing .plan-grid{grid-template-columns:1fr}.rsa-landing .steps{grid-template-columns:1fr}.rsa-landing .testimonials{grid-template-columns:1fr}.rsa-landing .stats{grid-template-columns:1fr}}
+    @media (max-width: 980px){.rsa-landing .hero{padding:24px 0 24px}.rsa-landing .hero-grid{grid-template-columns:1fr;gap:14px}.rsa-landing h1{font-size:32px}.rsa-landing .lead{font-size:16px}.rsa-landing .hero-copy{justify-content:flex-start}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .grid-3{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:repeat(2,1fr)}.rsa-landing .pricing{grid-template-columns:1fr}.rsa-landing .plan-grid{grid-template-columns:repeat(2,1fr)}.rsa-landing .testimonials{grid-template-columns:repeat(2,1fr)}.rsa-landing .nav-links{display:none}}
+    @media (max-width: 560px){.rsa-landing h1{font-size:32px}.rsa-landing .lead{font-size:16px;line-height:1.5;max-width:340px}.rsa-landing .lead-location{display:block}.rsa-landing .form-row{grid-template-columns:1fr}.rsa-landing .grid-3,.rsa-landing .grid-4,.rsa-landing .plan-grid{grid-template-columns:1fr}.rsa-landing .steps{grid-template-columns:1fr}.rsa-landing .testimonials{grid-template-columns:1fr}.rsa-landing .stats{grid-template-columns:repeat(2,1fr)}.rsa-landing .stat strong{font-size:24px}.rsa-landing #services .section-title,.rsa-landing #process .section-title{justify-content:center;text-align:center}.rsa-landing #services .section-title p,.rsa-landing #process .section-title p{margin-left:auto;margin-right:auto}.rsa-landing #services .feature,.rsa-landing #process .step{text-align:center}.rsa-landing #services .feature .icon,.rsa-landing #process .step b{margin-left:auto;margin-right:auto}}
   `}} />
       <div className="rsa-landing">
         <header>
@@ -276,7 +279,7 @@ export default function RsaLandingPage() {
               </nav>
               <div className="nav-cta">
                 <a className="btn small" href={`tel:+${RSA_WHATSAPP}`}>📞 Call</a>
-                <a className="btn small primary" href={`https://wa.me/${RSA_WHATSAPP}`} target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
+                <a className="btn small primary whatsapp" href={`https://wa.me/${RSA_WHATSAPP}`} target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
               </div>
             </div>
           </div>
@@ -285,10 +288,10 @@ export default function RsaLandingPage() {
         <main className="hero">
           <div className="container">
             <div className="hero-grid">
-              <div>
+              <div className="hero-copy">
                 <div className="badge"><span className="dot" />24×7 Emergency Support • AI-Powered Emergency Dispatch</div>
                 <h1>Stuck on the Road?<br /><span className="gradient-text">We&apos;re Just a Tap Away!</span></h1>
-                <p className="lead">Car breakdown? Flat tyre? Battery dead? MYFNG roadside assistance connects you with verified technicians in <b>under 30 minutes</b> (subject to location).</p>
+                <p className="lead">Car breakdown? Flat tyre? Battery dead? MYFNG roadside assistance connects you with verified technicians in <b>under 30 minutes</b> <span className="lead-location">(subject to location).</span></p>
                 <div className="chips">
                   <div className="chip">⏱ Under 30 Min</div>
                   <div className="chip">🛡 Trusted Technicians</div>
@@ -439,7 +442,7 @@ export default function RsaLandingPage() {
                 </ul>
                 <div style={{ marginTop: 12 }}>
                   <a
-                    className="btn primary"
+                    className="btn primary whatsapp"
                     href={`https://wa.me/${RSA_WHATSAPP}`}
                     target="_blank"
                     rel="noopener noreferrer"

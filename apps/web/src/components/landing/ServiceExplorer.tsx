@@ -108,7 +108,7 @@ function BottomSheet({
           <div className="mt-2 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Preview</div>
-              <div className="truncate text-base font-bold text-gray-900">{title}</div>
+              <div className="text-sm sm:text-base font-bold text-gray-900 leading-tight line-clamp-2 break-words">{title}</div>
             </div>
             <button
               ref={closeBtnRef}
@@ -248,7 +248,7 @@ export default function ServiceExplorer({
                               </div>
                               <div className="min-w-0">
                                 <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Featured</div>
-                                <div className="text-xl sm:text-2xl font-extrabold text-gray-900 truncate">
+                                <div className="text-lg sm:text-2xl font-extrabold text-gray-900 leading-tight line-clamp-2 break-words">
                                   {active.title}
                                 </div>
                               </div>
@@ -365,8 +365,8 @@ export default function ServiceExplorer({
                         </div>
 
                         <div className="p-4">
-                          <div className="font-extrabold text-gray-900 truncate">{s.title}</div>
-                          <div className="mt-1 text-sm text-gray-600 line-clamp-2">{s.desc}</div>
+                          <div className="font-extrabold text-sm sm:text-base text-gray-900 leading-tight line-clamp-2 break-words min-h-[2.4rem]">{s.title}</div>
+                          <div className="mt-1 text-xs sm:text-sm text-gray-600 line-clamp-2">{s.desc}</div>
 
                           <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
                             <span className="inline-flex items-center gap-1">

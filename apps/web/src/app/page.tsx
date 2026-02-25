@@ -87,6 +87,7 @@ export default function HomePage() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isBookingFormOpen, setIsBookingFormOpen] = useState(false);
   const [activeStep, setActiveStep] = useState(0); // Added for How It Works section
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   type WhyIntent = 'instant' | 'save' | 'control' | 'trust';
   const [whyIntent, setWhyIntent] = useState<WhyIntent>('instant');
   const [headerAiQuery, setHeaderAiQuery] = useState('');
@@ -798,7 +799,7 @@ export default function HomePage() {
                     setChatDraft('I want to book a car service.');
                     window.location.href = '/ai-booking';
                   }}
-                  className="hidden btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-blue-900 bg-white border border-blue-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                  className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-blue-900 bg-white border border-blue-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   <Bot className="w-5 h-5" />
                   Book via MY FNG AI
@@ -1056,7 +1057,7 @@ export default function HomePage() {
               How MY FNG Manages
               <br className="sm:hidden" /> Your Car Service
             </h2>
-            <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto">
+            <p className="text-[13px] leading-5 sm:text-lg sm:leading-7 text-gray-600 max-w-2xl mx-auto">
               From booking to delivery, every step is coordinated, documented, and supported by MY FNG.
             </p>
           </div>
@@ -1338,7 +1339,7 @@ export default function HomePage() {
             return (
               <div className="mt-12 max-w-7xl mx-auto">
                 {/* Intent tiles */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                   {intents.map((i) => {
                     const Icon = i.icon;
                     return (
@@ -1346,17 +1347,17 @@ export default function HomePage() {
                         key={i.id}
                         type="button"
                         // No click/hover behavior: content & color stay constant
-                        className="group text-center rounded-2xl sm:rounded-3xl border transition-all duration-300 p-4 sm:p-5 border-white/60 bg-white/70 backdrop-blur hover:bg-white hover:border-gray-200 hover:shadow-lg"
+                        className="group text-center rounded-2xl sm:rounded-3xl border transition-all duration-300 p-3 sm:p-5 border-white/60 bg-white/70 backdrop-blur hover:bg-white hover:border-gray-200 hover:shadow-lg"
                         aria-pressed={false}
                       >
                         <div className="flex items-start justify-center gap-3">
-                          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center ${i.pill}`}>
-                            <Icon className="w-6 h-6" />
+                          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center ${i.pill}`}>
+                            <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
                           </div>
                         </div>
                         <div className="mt-3 text-center">
-                          <div className="text-sm sm:text-lg font-extrabold text-gray-900 leading-snug">{i.title}</div>
-                          <div className="mt-1 text-[12px] sm:text-sm text-gray-600 leading-relaxed">{i.desc}</div>
+                          <div className="text-[13px] sm:text-lg font-extrabold text-gray-900 leading-snug">{i.title}</div>
+                          <div className="mt-1 text-[11px] sm:text-sm text-gray-600 leading-relaxed line-clamp-2">{i.desc}</div>
                         </div>
                       </button>
                     );
@@ -1514,11 +1515,10 @@ export default function HomePage() {
                 <div className="flex flex-col items-center lg:items-start gap-3 animate-fade-in-up" style={{ animationDelay: '0.35s' }}>
                   <Link
                     href="/car-roadside-assitance"
-                    className="inline-flex items-center justify-center gap-3 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white text-sm sm:text-lg font-bold px-7 sm:px-10 py-3.5 sm:py-4 rounded-2xl shadow-2xl shadow-red-500/40 transition-all transform hover:-translate-y-0.5 animate-pulse-glow"
+                    className="inline-flex items-center justify-center gap-3 bg-gradient-to-r from-orange-500 to-red-600 text-white text-sm sm:text-lg font-bold px-7 sm:px-10 py-3.5 sm:py-4 rounded-2xl shadow-2xl shadow-red-500/40 transition-all transform hover:-translate-y-0.5 animate-pulse"
                   >
                     <Radio className="w-5 h-5 animate-pulse" />
-                    Request Emergency Help
-                    <ArrowRight className="w-5 h-5" />
+                    Request Emergency Help →
                   </Link>
                   <p className="text-gray-400 text-xs sm:text-sm text-center lg:text-left">
                     Available in 50+ cities across India • 24/7 Support
@@ -1790,30 +1790,46 @@ export default function HomePage() {
           </div>
 
           <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-            <FAQItem 
-              question="How does AI-powered booking work?"
-              answer="Simply chat with our AI assistant, provide your vehicle details, and get instant transparent pricing. Book your service directly without any employee interaction."
-            />
-            <FAQItem 
-              question="Is the pricing really transparent?"
-              answer="Yes! Our AI shows you exactly what you'll pay upfront. No hidden charges, no surprises. You see the complete breakdown before booking."
-            />
-            <FAQItem 
-              question="How long does a typical service take?"
-              answer="Service duration varies by type. Basic service takes 2-3 hours, premium service takes 4-5 hours, and comprehensive service takes 6-8 hours."
-            />
-            <FAQItem 
-              question="Do you provide warranty on services?"
-              answer="Yes, all our services come with warranty. Labour warranty is typically 1 month or 1,000 km, and parts warranty varies by component."
-            />
-            <FAQItem 
-              question="Can I track my service in real-time?"
-              answer="You’ll receive service updates, including photos and videos of car service, after the car service completed."
-            />
-            <FAQItem 
-              question="What car brands do you service?"
-              answer="We service all major car brands including Maruti Suzuki, Hyundai, Tata, Mahindra, Honda, Toyota, Ford, Volkswagen, BMW, Mercedes-Benz, Audi, and many more."
-            />
+            {[
+              {
+                question: 'How does AI-powered booking work?',
+                answer:
+                  'Simply chat with our AI assistant, provide your vehicle details, and get instant transparent pricing. Book your service directly without any employee interaction.',
+              },
+              {
+                question: 'Is the pricing really transparent?',
+                answer:
+                  "Yes! Our AI shows you exactly what you'll pay upfront. No hidden charges, no surprises. You see the complete breakdown before booking.",
+              },
+              {
+                question: 'How long does a typical service take?',
+                answer:
+                  'Service duration varies by type. Basic service takes 2-3 hours, premium service takes 4-5 hours, and comprehensive service takes 6-8 hours.',
+              },
+              {
+                question: 'Do you provide warranty on services?',
+                answer:
+                  'Yes, all our services come with warranty. Labour warranty is typically 1 month or 1,000 km, and parts warranty varies by component.',
+              },
+              {
+                question: 'Can I track my service in real-time?',
+                answer:
+                  'You’ll receive service updates, including photos and videos of car service, after the car service completed.',
+              },
+              {
+                question: 'What car brands do you service?',
+                answer:
+                  'We service all major car brands including Maruti Suzuki, Hyundai, Tata, Mahindra, Honda, Toyota, Ford, Volkswagen, BMW, Mercedes-Benz, Audi, and many more.',
+              },
+            ].map((faq, idx) => (
+              <FAQItem
+                key={faq.question}
+                question={faq.question}
+                answer={faq.answer}
+                isOpen={openFaqIndex === idx}
+                onToggle={() => setOpenFaqIndex((prev) => (prev === idx ? null : idx))}
+              />
+            ))}
           </div>
         </div>
       </section>
@@ -1836,7 +1852,7 @@ export default function HomePage() {
       )}
 
       {/* Floating Chatbot – above mobile bottom bar when visible (lg:hidden) */}
-      <div className="hidden fixed bottom-28 right-4 z-50 flex flex-col items-end gap-2 lg:bottom-6 lg:right-6">
+      <div className="fixed bottom-28 right-4 z-50 flex flex-col items-end gap-2 lg:hidden">
         <Link
           href="/ai-booking"
           className="bg-brand-primary hover:bg-brand-primary-hover text-white px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2 sm:gap-3 group border-2 sm:border-4 border-white/20 animate-bounce-slow"
@@ -2564,13 +2580,21 @@ function TestimonialCard({
   );
 }
 
-function FAQItem({ question, answer }: { question: string; answer: string }) {
-  const [isOpen, setIsOpen] = useState(false);
-  
+function FAQItem({
+  question,
+  answer,
+  isOpen,
+  onToggle,
+}: {
+  question: string;
+  answer: string;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
   return (
     <div className="bg-white rounded-lg sm:rounded-xl shadow-md border border-gray-100 overflow-hidden">
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={onToggle}
         className="w-full p-4 sm:p-5 md:p-6 flex items-center justify-between text-left hover:bg-gray-50 transition gap-2 sm:gap-4"
       >
         <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0">

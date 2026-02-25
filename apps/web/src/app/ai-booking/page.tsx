@@ -671,11 +671,14 @@ function AIBookingPageInner() {
                       }
                     >
                       {m.text.split('\n').map((line, idx) => {
-                        const urlMatch = line.match(/(https?:\/\/[^\s]+)/i);
-                        if (urlMatch?.[1]) {
-                          const url = urlMatch[1];
-                          const before = line.slice(0, urlMatch.index || 0);
-                          const after = line.slice((urlMatch.index || 0) + url.length);
+                        const mdLinkMatch = line.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/i);
+                        if (mdLinkMatch?.[1] && mdLinkMatch?.[2]) {
+                          const full = mdLinkMatch[0];
+                          const label = mdLinkMatch[1];
+                          const url = mdLinkMatch[2];
+                          const start = line.indexOf(full);
+                          const before = start >= 0 ? line.slice(0, start) : '';
+                          const after = start >= 0 ? line.slice(start + full.length) : '';
                           return (
                             <span key={idx}>
                               {before}
@@ -685,7 +688,33 @@ function AIBookingPageInner() {
                                 rel="noreferrer"
                                 className={isUser ? 'underline text-white' : 'underline text-brand-primary'}
                               >
-                                {url}
+                                {label}
+                              </a>
+                              {after}
+                              <br />
+                            </span>
+                          );
+                        }
+
+                        const urlMatch = line.match(/(https?:\/\/[^\s]+)/i);
+                        if (urlMatch?.[1]) {
+                          // Chat text often contains markdown "(url)" and regex captures trailing ")".
+                          // Strip only trailing punctuation from href and keep it in visible text.
+                          const rawUrl = urlMatch[1];
+                          const cleanUrl = rawUrl.replace(/[)\],.]+$/g, '');
+                          const trailingJunk = rawUrl.slice(cleanUrl.length);
+                          const before = line.slice(0, urlMatch.index || 0);
+                          const after = (trailingJunk + line.slice((urlMatch.index || 0) + rawUrl.length)).replace(/^\)/, '');
+                          return (
+                            <span key={idx}>
+                              {before}
+                              <a
+                                href={cleanUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={isUser ? 'underline text-white' : 'underline text-brand-primary'}
+                              >
+                                {cleanUrl}
                               </a>
                               {after}
                               <br />

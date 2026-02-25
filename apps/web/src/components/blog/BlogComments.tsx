@@ -14,7 +14,12 @@ type CommentRow = {
 
 function fmt(dt: string) {
   try {
-    return new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return new Intl.DateTimeFormat('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata',
+    }).format(new Date(dt));
   } catch {
     return '';
   }

@@ -101,7 +101,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
     });
   };
 
-  const popularServices = ['Car AC Service', 'Car Battery Service', 'Car Brake Service', 'Car Engine Service', 'Periodic Car Service'];
+  const popularServices = ['Car AC Service', 'Car Battery Service', 'Car Brake Service', 'Car Engine Service', 'Periodic Car Service', 'Car Detailing Service'];
 
   return (
     <div className="min-h-screen bg-white">
@@ -225,7 +225,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
 
                     {/* Service Image (square-first layout for uploaded creatives) */}
                     <div className="bg-gradient-to-br from-gray-100 to-gray-200 p-4 sm:p-5 md:p-6">
-                      <div className="relative mx-auto w-full max-w-[420px] aspect-square overflow-hidden rounded-2xl border border-white/70 shadow-lg">
+                      <div className="relative w-full aspect-[3/2] overflow-hidden rounded-2xl border border-white/70 shadow-lg">
                         <Image
                           src={selectedService.image}
                           alt={selectedService.title}
@@ -236,52 +236,53 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                     </div>
 
                     {/* Content */}
-                    <div className="p-8">
+                    <div className="p-4 sm:p-8">
                       {/* Big Icon + Title */}
-                      <div className="flex items-start gap-6 mb-6">
-                        <div className="flex-shrink-0 w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-xl">
+                      <div className="mb-4 sm:mb-6">
+                        <div className="flex items-start gap-3 sm:gap-6">
+                          <div className="flex-shrink-0 w-14 h-14 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-xl">
                           {(() => {
                             const IconComponent = selectedService.icon;
-                            return <IconComponent className="w-10 h-10" />;
+                              return <IconComponent className="w-7 h-7 sm:w-10 sm:h-10" />;
                           })()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">{selectedService.title}</h2>
+                          </div>
                         </div>
-
-                        <div className="flex-1">
-                          <h2 className="text-3xl font-bold text-gray-900 mb-2">{selectedService.title}</h2>
-                          <p className="text-lg text-gray-600">{selectedService.longDescription}</p>
-                        </div>
+                        <p className="mt-3 sm:mt-4 text-base sm:text-lg text-gray-600 leading-relaxed">{selectedService.longDescription}</p>
                       </div>
 
                       {/* Micro Highlights */}
-                      <div className="grid grid-cols-3 gap-4 mb-8 p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-100">
+                      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6 sm:mb-8 p-3 sm:p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-100">
                         <div className="text-center">
                           <div className="flex justify-center mb-2">
-                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
-                              <IndianRupee className="w-5 h-5 text-blue-600" />
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
+                              <IndianRupee className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                             </div>
                           </div>
-                          <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Starting From</p>
-                          <p className="text-xl font-bold text-gray-900">{getServiceDisplayMeta(selectedService).priceFrom}</p>
+                          <p className="text-[10px] text-gray-600 uppercase tracking-wide mb-1">Starting From</p>
+                          <p className="text-base sm:text-xl font-bold text-gray-900 leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-0">{getServiceDisplayMeta(selectedService).priceFrom}</p>
                         </div>
 
                         <div className="text-center">
                           <div className="flex justify-center mb-2">
-                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
-                              <Clock className="w-5 h-5 text-purple-600" />
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
+                              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
                             </div>
                           </div>
-                          <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Avg. Time</p>
-                          <p className="text-xl font-bold text-gray-900">{selectedService.duration}</p>
+                          <p className="text-[10px] text-gray-600 uppercase tracking-wide mb-1">Avg. Time</p>
+                          <p className="text-base sm:text-xl font-bold text-gray-900 leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-0">{selectedService.duration}</p>
                         </div>
 
                         <div className="text-center">
                           <div className="flex justify-center mb-2">
-                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
-                              <ShieldCheck className="w-5 h-5 text-green-600" />
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
+                              <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                             </div>
                           </div>
-                          <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Warranty</p>
-                          <p className="text-xl font-bold text-gray-900">{getServiceDisplayMeta(selectedService).warranty}</p>
+                          <p className="text-[10px] text-gray-600 uppercase tracking-wide mb-1">Warranty</p>
+                          <p className="text-base sm:text-xl font-bold text-gray-900 leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-0">{getServiceDisplayMeta(selectedService).warranty}</p>
                         </div>
                       </div>
 
@@ -347,7 +348,9 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                             const IconComponent = service.icon;
                             return <IconComponent className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />;
                           })()}
-                          <span className="font-medium text-gray-900 text-sm sm:text-base truncate">{service.title}</span>
+                          <span className="font-medium text-gray-900 text-xs sm:text-base whitespace-nowrap overflow-hidden text-ellipsis">
+                            {service.title}
+                          </span>
                         </button>
                       );
                     })}

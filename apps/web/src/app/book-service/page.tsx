@@ -83,6 +83,7 @@ export default function BookServicePage() {
   const [serviceChecklistTemplates, setServiceChecklistTemplates] = useState<
     Record<string, { title?: string; points?: number; items: any[] }>
   >({});
+  const [selectedOilType, setSelectedOilType] = useState<'semi' | 'full'>('semi');
   const [bookingPrefillApplied, setBookingPrefillApplied] = useState(false);
   const [bookingPrefillParams, setBookingPrefillParams] = useState<{ category?: string; query?: string } | null>(null);
   const [servicePricing, setServicePricing] = useState<Record<string, number>>({});
@@ -319,20 +320,74 @@ export default function BookServicePage() {
     setLoadingWorkshops(true);
     try {
       const supabase = createClient();
-      const { data: workshopsData, error } = await supabase
-        .from('workshops')
-        .select('id, name, address, city, state, pincode, phone, email, contact_person')
-        .eq('is_active', true)
-        .eq('is_verified', true)
-        .ilike('city', `%${formData.city.name}%`)
-        .order('name');
-      
-      if (error) {
-        console.error('Error fetching workshops:', error);
-        setWorkshops([]);
-      } else {
-        setWorkshops(workshopsData || []);
+      const cityName = String(formData.city?.name || '').trim();
+      const stateName = String(formData.city?.state || '').trim();
+      const selectedCityLower = cityName.toLowerCase();
+
+      const escapeForOrFilter = (value: string) => value.replace(/[\(\),]/g, ' ').trim();
+      const cityTerm = escapeForOrFilter(cityName);
+      const stateTerm = escapeForOrFilter(stateName);
+
+      const cityOrClause = [
+        cityTerm ? `city.ilike.*${cityTerm}*` : '',
+        cityTerm ? `address.ilike.*${cityTerm}*` : '',
+        stateTerm ? `state.ilike.*${stateTerm}*` : '',
+      ]
+        .filter(Boolean)
+        .join(',');
+
+      const runWorkshopQuery = async (verifiedOnly: boolean) => {
+        let query = supabase
+          .from('workshops')
+          .select('id, name, address, city, state, pincode, phone, email, contact_person')
+          .order('name')
+          .limit(5);
+
+        if (verifiedOnly) {
+          query = query.eq('is_verified', true);
+        }
+        if (cityOrClause) {
+          query = query.or(cityOrClause);
+        }
+        return query;
+      };
+
+      const filterToSelectedCity = (rows: any[] = []) => {
+        if (!selectedCityLower) return rows;
+        return rows.filter((w: any) => String(w?.city || '').toLowerCase().includes(selectedCityLower));
+      };
+
+      // Primary: same area/city + verified (top 5)
+      let { data: primaryData, error: primaryError } = await runWorkshopQuery(true);
+
+      // If schema doesn't have is_verified, retry without that filter.
+      if (primaryError && primaryError.code === '42703') {
+        const retry = await runWorkshopQuery(false);
+        primaryData = retry.data;
+        primaryError = retry.error;
       }
+
+      if (primaryError) {
+        console.error('Error fetching workshops:', primaryError);
+        setWorkshops([]);
+        return;
+      }
+
+      // Fallback: same area/city without verified-only restriction
+      const strictPrimary = filterToSelectedCity(primaryData || []);
+      if (strictPrimary.length === 0) {
+        const { data: fallbackData, error: fallbackError } = await runWorkshopQuery(false);
+        if (fallbackError) {
+          console.error('Error fetching fallback workshops:', fallbackError);
+          setWorkshops([]);
+          return;
+        }
+        const strictFallback = filterToSelectedCity(fallbackData || []);
+        setWorkshops(strictFallback.slice(0, 5));
+        return;
+      }
+
+      setWorkshops(strictPrimary.slice(0, 5));
     } catch (error) {
       console.error('Error fetching workshops:', error);
       setWorkshops([]);
@@ -1305,14 +1360,19 @@ export default function BookServicePage() {
   const isLastStep = currentStep === steps.length - 1;
   
   // Helper functions for date selection (Step 4)
-  // Always get today's date in India timezone (IST - UTC+5:30)
+  // Always compute "today" using IST calendar date.
   const getIndiaDate = () => {
-    const now = new Date();
-    // Get IST date string (Asia/Kolkata timezone)
-    const istDateStr = formatDateTime(now);
-    // Parse it back to get the correct date
-    const [month, day, year] = istDateStr.split('/');
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).formatToParts(new Date());
+
+    const day = Number(parts.find((p) => p.type === 'day')?.value || '1');
+    const month = Number(parts.find((p) => p.type === 'month')?.value || '1');
+    const year = Number(parts.find((p) => p.type === 'year')?.value || '1970');
+    return new Date(year, month - 1, day);
   };
   
   const getCurrentDate = () => {
@@ -1349,27 +1409,39 @@ export default function BookServicePage() {
     const d2 = new Date(dateStr2 + 'T00:00:00+05:30'); // IST
     return d1.getTime() === d2.getTime();
   };
+
+  const formatISTDayMonth = (dateStr: string) => {
+    const date = new Date(dateStr + 'T00:00:00+05:30');
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: 'numeric',
+      month: 'short',
+    }).format(date);
+  };
+
+  const formatISTWithWeekday = (dateStr: string) => {
+    const date = new Date(dateStr + 'T00:00:00+05:30');
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    }).format(date);
+  };
   
   const formatDateDisplay = (dateStr: string) => {
     if (!dateStr) return '';
     const todayIST = getCurrentDate();
     const tomorrowIST = getNextDate();
     const dayAfterIST = getNextNextDate();
-    
-    // Parse date and format in IST timezone
-    const date = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone issues
-    const istDateStr = formatDateTime(date);
-    
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const [dayName, monthName, day] = istDateStr.split(' ');
-    
+
     if (compareISTDates(dateStr, todayIST)) return 'Today';
     if (compareISTDates(dateStr, tomorrowIST)) return 'Tomorrow';
     if (compareISTDates(dateStr, dayAfterIST)) {
-      return `${dayName}, ${day} ${monthName}`;
+      return formatISTWithWeekday(dateStr);
     }
-    
-    return `${dayName}, ${day} ${monthName}`;
+
+    return formatISTWithWeekday(dateStr);
   };
   
   // Format date for button labels (shorter format)
@@ -1378,24 +1450,18 @@ export default function BookServicePage() {
     const todayIST = getCurrentDate();
     const tomorrowIST = getNextDate();
     const dayAfterIST = getNextNextDate();
-    
-    // Parse date and format in IST timezone
-    const date = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone issues
-    const istDateStr = formatDateTime(date);
-    
-    const [dayName, monthName, day] = istDateStr.split(' ');
-    
+
     if (compareISTDates(dateStr, todayIST)) {
-      return `Today, ${day} ${monthName}`;
+      return `Today, ${formatISTDayMonth(dateStr)}`;
     }
     if (compareISTDates(dateStr, tomorrowIST)) {
-      return `Tomorrow, ${day} ${monthName}`;
+      return `Tomorrow, ${formatISTDayMonth(dateStr)}`;
     }
     if (compareISTDates(dateStr, dayAfterIST)) {
-      return `${dayName}, ${day} ${monthName}`;
+      return formatISTWithWeekday(dateStr);
     }
-    
-    return `${dayName}, ${day} ${monthName}`;
+
+    return formatISTWithWeekday(dateStr);
   };
   
   // Generate time slots: 9 AM to 9 PM (hourly) - Display as "hh:mm am/pm - hh:mm am/pm"
@@ -1455,9 +1521,39 @@ export default function BookServicePage() {
   }, [formData.selectedServices, couponMeta]);
 
   const activeCategoryId = selectedCategory || serviceCategories[0]?.id || null;
+  const isPeriodicCategory = String(activeCategoryId || '').toUpperCase() === 'PERIODIC SERVICE';
+  const showReferencePlanUi = isPeriodicCategory;
   const activeCategoryServices = activeCategoryId ? serviceTypes.filter((s: any) => s.category === activeCategoryId) : [];
-  // Show everything in selected category (no search)
-  const filteredCategoryServices = activeCategoryServices;
+  const getOilTypeForService = (service: any): 'semi' | 'full' | 'unknown' => {
+    const text = `${String(service?.name || '')} ${String(service?.description || '')}`.toLowerCase();
+
+    const hasSemi =
+      text.includes('semi synthetic') ||
+      text.includes('semi-synthetic') ||
+      text.includes('(semi)') ||
+      /\bsemi\b/.test(text);
+
+    const hasFull =
+      text.includes('fully synthetic') ||
+      text.includes('full synthetic') ||
+      text.includes('synthetic full') ||
+      text.includes('(fully)') ||
+      text.includes('(full)') ||
+      /\bfully\b/.test(text) ||
+      /\bfull\b/.test(text);
+
+    // If both keywords appear in a generic description, don't guess.
+    if (hasSemi && hasFull) return 'unknown';
+    if (hasFull) return 'full';
+    if (hasSemi) return 'semi';
+    return 'unknown';
+  };
+  const filteredCategoryServices = activeCategoryServices.filter((service: any) => {
+    if (!isPeriodicCategory) return true;
+    const oilType = getOilTypeForService(service);
+    if (oilType === 'unknown') return false;
+    return oilType === selectedOilType;
+  });
 
   const sortedByPrice = [...filteredCategoryServices].sort((a: any, b: any) => {
     const pa = servicePricing[a?.id] ?? Number.POSITIVE_INFINITY;
@@ -1466,6 +1562,48 @@ export default function BookServicePage() {
   });
 
   const pickPlanServices = () => {
+    if (isPeriodicCategory) {
+      const getPeriodicRank = (serviceName: string) => {
+        const name = String(serviceName || '').toLowerCase();
+        if (name.includes('basic')) return 0;
+        if (name.includes('general')) return 1;
+        if (name.includes('premium')) return 2;
+        if (name.includes('platinum')) return 3;
+        return 99;
+      };
+
+      const periodicSorted = [...sortedByPrice].sort((a: any, b: any) => {
+        const ra = getPeriodicRank(a?.name);
+        const rb = getPeriodicRank(b?.name);
+        if (ra !== rb) return ra - rb;
+        const pa = Number(a?.points || 0);
+        const pb = Number(b?.points || 0);
+        return pa - pb;
+      });
+
+      const chosenByRank = new Map<number, any>();
+      for (const service of periodicSorted) {
+        const rank = getPeriodicRank(service?.name);
+        if (rank >= 0 && rank <= 3 && !chosenByRank.has(rank)) {
+          chosenByRank.set(rank, service);
+        }
+      }
+
+      const picked: any[] = [];
+      [0, 1, 2, 3].forEach((rank) => {
+        const s = chosenByRank.get(rank);
+        if (s) picked.push(s);
+      });
+
+      for (const s of periodicSorted) {
+        if (picked.length >= 4) break;
+        if (!picked.find((x) => String(x?.id) === String(s?.id))) {
+          picked.push(s);
+        }
+      }
+      return picked.slice(0, 4);
+    }
+
     if (sortedByPrice.length <= 4) return sortedByPrice;
     const low = sortedByPrice[0];
     const q1 = sortedByPrice[Math.floor((sortedByPrice.length - 1) * 0.33)];
@@ -1529,10 +1667,20 @@ export default function BookServicePage() {
     return { name, category: category || undefined };
   };
 
-  const getChecklistPreview = (service: any, limit: number) => {
+  const getPointsFromServiceName = (name: string): number => {
+    const match = String(name || '').match(/(\d+)\s*points?/i);
+    return match ? Number(match[1]) : 0;
+  };
+
+  const getActualServicePoints = (service: any, checklistPoints?: number): number => {
+    const fromName = getPointsFromServiceName(String(service?.name || ''));
+    if (isPeriodicCategory && fromName > 0) return fromName;
+    return Number(service?.points) || Number(checklistPoints) || fromName || 0;
+  };
+
+  const getChecklistUniqueItems = (service: any) => {
     const c = getChecklistForService(service);
     const normalized = (c.items || []).map(normalizeChecklistItem).filter(Boolean) as Array<{ name: string; category?: string }>;
-    // de-dup by name (case-insensitive)
     const seen = new Set<string>();
     const unique: Array<{ name: string; category?: string }> = [];
     for (const n of normalized) {
@@ -1540,9 +1688,35 @@ export default function BookServicePage() {
       if (seen.has(key)) continue;
       seen.add(key);
       unique.push(n);
-      if (unique.length >= limit) break;
     }
-    return { ...c, preview: unique, totalCount: normalized.length };
+    return { ...c, unique };
+  };
+
+  const getChecklistPreview = (service: any, limit: number) => {
+    const c = getChecklistUniqueItems(service);
+    return { ...c, preview: c.unique.slice(0, limit), totalCount: c.unique.length };
+  };
+
+  const getPeriodicChecklistPreview = (service: any, allPeriodicPlans: any[], limit: number) => {
+    const current = getChecklistUniqueItems(service);
+    const sortedPlans = [...allPeriodicPlans].sort((a: any, b: any) => {
+      const pa = getActualServicePoints(a);
+      const pb = getActualServicePoints(b);
+      return pa - pb;
+    });
+    const currentIdx = sortedPlans.findIndex((s: any) => String(s?.id) === String(service?.id));
+    if (currentIdx <= 0) {
+      const basePreview = current.unique.slice(0, limit);
+      return { ...current, preview: basePreview, totalCount: current.unique.length, newCount: basePreview.length };
+    }
+
+    const prevPlan = sortedPlans[currentIdx - 1];
+    const prev = getChecklistUniqueItems(prevPlan);
+    const prevSet = new Set(prev.unique.map((it) => it.name.toLowerCase()));
+    const onlyNew = current.unique.filter((it) => !prevSet.has(it.name.toLowerCase()));
+    const preview = (onlyNew.length > 0 ? onlyNew : current.unique).slice(0, limit);
+
+    return { ...current, preview, totalCount: current.unique.length, newCount: onlyNew.length };
   };
 
   const handleServiceToggle = (serviceId: string) => {
@@ -1920,34 +2094,91 @@ export default function BookServicePage() {
                           <div className="text-center py-10 bg-white rounded-2xl border border-gray-200">
                             <Search className="w-10 h-10 text-gray-400 mx-auto mb-3" />
                             <p className="text-gray-700 font-semibold">No services found</p>
-                            <p className="text-xs text-gray-500 mt-1">Try a different keyword or change category</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {isPeriodicCategory
+                                ? 'Selected oil type me service available nahi hai. Switch change karke dekhiye.'
+                                : 'Try a different keyword or change category'}
+                            </p>
                               </div>
                             ) : (
                           <>
-                            {/* Plans (organized: Basic / Standard / Comprehensive) */}
+                            {/* Plans */}
                             <div className="mb-5 sm:mb-7">
                               <div className="flex items-center justify-between mb-3">
                                 <div className="text-sm font-extrabold text-gray-900">Plans</div>
-                                <div className="text-xs text-gray-500">{filteredCategoryServices.length} services in this category</div>
+                                {!showReferencePlanUi ? (
+                                  <div className="text-xs text-gray-500">{filteredCategoryServices.length} services in this category</div>
+                                ) : null}
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
+                              {showReferencePlanUi && (
+                                <div className="mb-6 rounded-3xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                    <div>
+                                      <div className="text-base font-extrabold text-gray-900">Select Oil Type</div>
+                                      <div className="text-xs text-gray-500">Choose engine oil preference</div>
+                                    </div>
+                                    <div className="inline-flex rounded-full bg-white p-1 shadow-sm border border-gray-200">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedOilType('semi')}
+                                        className={`rounded-full px-5 py-2 text-xs font-bold transition-all ${
+                                          selectedOilType === 'semi'
+                                            ? 'bg-brand-primary text-white shadow'
+                                            : 'text-gray-600 hover:text-gray-800'
+                                        }`}
+                                      >
+                                        Semi-Synthetic
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedOilType('full')}
+                                        className={`rounded-full px-5 py-2 text-xs font-bold transition-all ${
+                                          selectedOilType === 'full'
+                                            ? 'bg-brand-primary text-white shadow'
+                                            : 'text-gray-600 hover:text-gray-800'
+                                        }`}
+                                      >
+                                        Fully-Synthetic
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 ${showReferencePlanUi ? 'gap-5' : 'gap-4 sm:gap-5'}`}>
                                 {planServices.map((service: any, idx: number) => {
                                   const isSelected = formData.selectedServices.includes(service.id);
                                   const price = servicePricing[service.id] || 0;
-                                  const checklist = getChecklistPreview(service, 6);
+                                  const checklist = showReferencePlanUi
+                                    ? getPeriodicChecklistPreview(service, planServices, 6)
+                                    : getChecklistPreview(service, 6);
                                   const items = checklist.preview;
                                   const eta = getEtaLabelFromPoints(Number(service.points) || checklist.points);
                                   const planLabel =
                                     idx === 0 ? 'Basic' : idx === 1 ? 'Standard' : idx === 2 ? 'Premium' : 'Comprehensive';
+                                  const serviceNameLower = String(service?.name || '').toLowerCase();
+                                  const periodicTitleFromName =
+                                    serviceNameLower.includes('basic')
+                                      ? 'Basic Service'
+                                      : serviceNameLower.includes('general')
+                                        ? 'General Service'
+                                        : serviceNameLower.includes('premium')
+                                          ? 'Premium Service'
+                                          : serviceNameLower.includes('platinum')
+                                            ? 'Platinum Service'
+                                            : service.name;
+                                  const displayTitle = showReferencePlanUi ? periodicTitleFromName : service.name;
+                                  const pointsValue = getActualServicePoints(service, checklist.points);
                                   
                                   return (
                               <div
                                       key={service.id}
-                                      className={`relative rounded-2xl border-2 bg-white p-5 sm:p-6 shadow-sm transition-all h-full ${
+                                      className={`relative border-2 bg-white shadow-sm transition-all h-full flex flex-col ${
+                                        showReferencePlanUi ? 'rounded-3xl p-5 sm:p-6' : 'rounded-2xl p-5 sm:p-6'
+                                      } ${
                                         isSelected ? 'border-brand-primary shadow-lg' : 'border-gray-200 hover:border-brand-primary/50 hover:shadow-md'
                                       }`}
                                     >
-                                {idx === 1 && (
+                                {!showReferencePlanUi && idx === 1 && (
                                   <div className="absolute left-5 right-5 -top-3">
                                     <div className="mx-auto w-fit rounded-full bg-gradient-to-r from-brand-primary to-brand-secondary px-4 py-1 text-xs font-extrabold text-white shadow">
                                       MOST POPULAR
@@ -1957,22 +2188,29 @@ export default function BookServicePage() {
 
                                       <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
-                                          <div className="inline-flex items-center gap-2">
-                                            <span className="text-xs font-extrabold tracking-wide uppercase text-gray-600">{planLabel}</span>
-                                            {isSelected ? (
-                                              <span className="text-[11px] font-extrabold text-white bg-brand-primary px-2 py-0.5 rounded-full">
-                                                Selected
-                                              </span>
-                                            ) : null}
-                                          </div>
-                                          <div className="mt-1 text-lg font-extrabold text-gray-900 break-words">{service.name}</div>
+                                          {!showReferencePlanUi ? (
+                                            <div className="inline-flex items-center gap-2">
+                                              <span className="text-xs font-extrabold tracking-wide uppercase text-gray-600">{planLabel}</span>
+                                              {isSelected ? (
+                                                <span className="text-[11px] font-extrabold text-white bg-brand-primary px-2 py-0.5 rounded-full">
+                                                  Selected
+                                                </span>
+                                              ) : null}
+                                            </div>
+                                          ) : null}
+                                          <div className={`${showReferencePlanUi ? 'mt-1 text-[32px] leading-[1.15]' : 'mt-1 text-lg'} font-extrabold text-gray-900 break-words`}>{displayTitle}</div>
+                                          {showReferencePlanUi ? (
+                                            <div className="mt-1 text-base font-bold text-brand-primary">
+                                              {pointsValue > 0 ? `${pointsValue} Activity Points` : 'Activity Points Included'}
+                                            </div>
+                                          ) : null}
                                           <div className="mt-2 flex items-center gap-2 text-xs text-gray-600 flex-wrap">
-                                      {eta ? (
+                                      {!showReferencePlanUi && eta ? (
                                         <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1">
                                           <Clock className="w-3.5 h-3.5" /> {eta}
                                         </span>
                                       ) : null}
-                                      {service.points ? (
+                                      {!showReferencePlanUi && service.points ? (
                                         <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1">
                                           <CheckCircle className="w-3.5 h-3.5" /> {service.points} pts
                                         </span>
@@ -1982,29 +2220,34 @@ export default function BookServicePage() {
                                   <button
                                     type="button"
                                     onClick={() => setDetailsService({ service, checklistTemplate: checklist, price })}
-                                    className="text-xs font-bold text-brand-primary hover:text-brand-secondary underline underline-offset-4"
+                                    className={`${showReferencePlanUi ? 'mt-2' : ''} text-xs font-bold text-brand-primary hover:text-brand-secondary underline underline-offset-4`}
                                   >
-                                    View checklist
+                                    {showReferencePlanUi ? 'View all points' : 'View checklist'}
                                   </button>
                                 </div>
 
                                       <div className="mt-4">
                                         <div className="flex items-center justify-between mb-2">
-                                          <div className="text-xs font-bold text-gray-700">What you get</div>
-                                          {checklist.source === 'fallback' ? (
+                                          <div className="text-xs font-bold text-gray-700">{showReferencePlanUi ? 'Includes' : 'What you get'}</div>
+                                          {showReferencePlanUi && Number((checklist as any).newCount || 0) > 0 ? (
+                                            <span className="text-[10px] font-bold text-brand-primary">
+                                              +{Number((checklist as any).newCount)} new points
+                                            </span>
+                                          ) : null}
+                                          {!showReferencePlanUi && checklist.source === 'fallback' ? (
                                             <span className="text-[10px] font-bold text-gray-500">Standard</span>
-                                          ) : (
+                                          ) : !showReferencePlanUi ? (
                                             <span className="text-[10px] font-bold text-green-700">Official</span>
-                                          )}
+                                          ) : null}
                                         </div>
-                                        <div className="space-y-2">
+                                        <div className={`${showReferencePlanUi ? 'space-y-2.5' : 'space-y-2'}`}>
                                   {items.length > 0 ? (
                                     items.map((it: any, i: number) => (
-                                      <div key={`${it?.name || ''}-${i}`} className="flex items-start gap-2 text-sm text-gray-700">
-                                        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                                      <div key={`${it?.name || ''}-${i}`} className={`flex items-start gap-2 ${showReferencePlanUi ? 'text-[15px]' : 'text-sm'} text-gray-700`}>
+                                        <CheckCircle className={`${showReferencePlanUi ? 'w-[18px] h-[18px]' : 'w-4 h-4'} text-green-600 flex-shrink-0 mt-0.5`} />
                                         <span className="break-words">
                                           {it?.name || String(it)}
-                                          {it?.category ? (
+                                          {!showReferencePlanUi && it?.category ? (
                                             <span className="ml-2 text-[10px] font-bold text-gray-400">{it.category}</span>
                                           ) : null}
                                         </span>
@@ -2016,10 +2259,10 @@ export default function BookServicePage() {
                                         </div>
                                 </div>
 
-                                <div className="mt-6 pt-4 border-t border-gray-200 flex items-end justify-between gap-3">
+                                <div className={`mt-auto pt-4 border-t border-gray-200 ${showReferencePlanUi ? 'min-h-[88px] flex flex-col items-start gap-3' : 'flex items-end justify-between gap-3'}`}>
                                   <div>
-                                    <div className="text-xs text-gray-500">Total for {formData.city?.name}</div>
-                                    <div className="text-xl font-extrabold text-gray-900">
+                                    <div className="text-xs text-gray-500">{showReferencePlanUi ? 'Estimated package price' : `Total for ${formData.city?.name}`}</div>
+                                    <div className={`${showReferencePlanUi ? 'text-[42px] leading-none mt-1' : 'text-xl'} font-extrabold text-gray-900`}>
                                       {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'Price on request'}
                                     </div>
                                   </div>
@@ -2032,13 +2275,21 @@ export default function BookServicePage() {
                                             }
                                             handleNext();
                                           }}
-                                          className={`px-4 py-2.5 rounded-xl font-extrabold text-sm transition-all ${
-                                      isSelected
+                                          className={`font-extrabold text-sm transition-all ${
+                                      showReferencePlanUi
+                                        ? `px-5 py-2.5 rounded-full self-start ${
+                                            isSelected
+                                              ? 'bg-brand-primary text-white'
+                                              : 'bg-brand-primary text-white hover:bg-brand-secondary'
+                                          }`
+                                        : `px-4 py-2.5 rounded-xl ${
+                                            isSelected
                                               ? 'bg-brand-primary text-white'
                                               : 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-md shadow-brand-primary/20 hover:shadow-lg hover:shadow-brand-primary/30'
+                                          }`
                                     }`}
                                   >
-                                    {isSelected ? 'Continue' : 'Select'}
+                                    {showReferencePlanUi ? (isSelected ? 'Continue' : 'Select Package') : (isSelected ? 'Continue' : 'Select')}
                                   </button>
                                 </div>
                               </div>
@@ -2048,7 +2299,7 @@ export default function BookServicePage() {
                             </div>
 
                             {/* More services (same card layout as plans) */}
-                            {remainingServices.length > 0 && (
+                            {!showReferencePlanUi && remainingServices.length > 0 && (
                               <div className="mt-6">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="text-sm font-extrabold text-gray-900">More services</div>
@@ -2603,7 +2854,11 @@ export default function BookServicePage() {
                               <p className="text-xs text-gray-500">No active workshops found in {formData.city?.name || 'selected city'}</p>
                             </div>
                           ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                            <div>
+                              <p className="mb-3 text-xs font-semibold text-gray-500">
+                                Showing up to 5 workshops near {formData.city?.name || 'your selected area'}
+                              </p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                               {workshops.map((workshop) => {
                                 const isSelected = formData.selectedWorkshop?.id === workshop.id;
                                 return (
@@ -2625,32 +2880,23 @@ export default function BookServicePage() {
                                           {workshop.name}
                                         </h4>
                                         <div className="space-y-1 text-xs sm:text-sm">
-                                          {workshop.address && (
-                                            <p className={`flex items-start gap-2 ${
-                                              isSelected ? 'text-green-700' : 'text-gray-600'
-                                            }`}>
-                                              <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                                              <span className="break-words">{workshop.address}</span>
-                                            </p>
-                                          )}
                                           {(workshop.city || workshop.state || workshop.pincode) && (
                                             <p className={isSelected ? 'text-green-600' : 'text-gray-500'}>
                                               {[workshop.city, workshop.state, workshop.pincode].filter(Boolean).join(', ')}
                                             </p>
                                           )}
-                                          {workshop.phone && (
-                                            <p className={`flex items-center gap-2 ${
+                                          <p
+                                            className={`flex items-center gap-2 ${
                                               isSelected ? 'text-green-700' : 'text-gray-600'
-                                            }`}>
+                                            }`}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              window.location.href = 'tel:9152307030';
+                                            }}
+                                          >
                                               <Phone className="w-4 h-4" />
-                                              {workshop.phone}
+                                              <span className="underline underline-offset-2 cursor-pointer">9152307030</span>
                                             </p>
-                                          )}
-                                          {workshop.contact_person && (
-                                            <p className={isSelected ? 'text-green-600' : 'text-gray-500'}>
-                                              Contact: {workshop.contact_person}
-                                            </p>
-                                          )}
                                         </div>
                                       </div>
                                       {isSelected && (
@@ -2660,6 +2906,7 @@ export default function BookServicePage() {
                                   </button>
                                 );
                               })}
+                              </div>
                             </div>
                           )}
                         </div>

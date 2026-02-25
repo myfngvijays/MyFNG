@@ -143,6 +143,12 @@ const navigationItems: NavItem[] = [
     description: 'Review & add answers to KB'
   },
   {
+    name: 'Admin AI Chat',
+    href: '/dashboard/super_admin/admin-ai-chat',
+    icon: MessageSquare,
+    description: 'Chat with MY FNG AI'
+  },
+  {
     name: 'Audit Logs',
     href: '/dashboard/super_admin/audit-logs',
     icon: FileText,

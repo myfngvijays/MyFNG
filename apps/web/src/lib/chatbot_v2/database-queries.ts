@@ -59,6 +59,7 @@ export async function getPricing({ service, city, carModel, limit = 5 }: Pricing
 
 export async function getWorkshops({ city, limit = 5 }: WorkshopParams) {
   if (!supabase) return [];
+  const DEFAULT_WORKSHOP_PHONE = '9152307030';
 
   try {
     // Check if input is a PIN code (6 digits)
@@ -81,7 +82,7 @@ export async function getWorkshops({ city, limit = 5 }: WorkshopParams) {
       }
 
       console.log(`[DB] Found ${data?.length || 0} workshops for PIN ${city}`);
-      return data || [];
+      return (data || []).map((w: any) => ({ ...w, phone: DEFAULT_WORKSHOP_PHONE }));
     }
 
     // Fuzzy city name match
@@ -99,7 +100,7 @@ export async function getWorkshops({ city, limit = 5 }: WorkshopParams) {
       return [];
     }
 
-    return data || [];
+    return (data || []).map((w: any) => ({ ...w, phone: DEFAULT_WORKSHOP_PHONE }));
   } catch (err) {
     console.error('Unexpected error in getWorkshops:', err);
     return [];

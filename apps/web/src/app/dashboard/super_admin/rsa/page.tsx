@@ -63,6 +63,7 @@ type SarvCallRow = {
   created_at: string;
   assigned_user_id: string | null;
   assigned_role: string | null;
+  city?: string | null;
   assignee_name?: string | null;
   assignee_email?: string | null;
   assignee_phone?: string | null;
@@ -450,6 +451,17 @@ export default function SuperAdminRSASettingsPage() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
   const [reportCalls, setReportCalls] = useState<SarvCallRow[]>([]);
+  const [reportOverviewAll, setReportOverviewAll] = useState<{
+    totalCalls: number;
+    totalCustomers: number;
+    dispositions: Array<{ name: string; total: number }>;
+    cities: Array<{ name: string; total: number }>;
+  } | null>(null);
+  const [reportDrilldownOpen, setReportDrilldownOpen] = useState(false);
+  const [reportDrilldownLoading, setReportDrilldownLoading] = useState(false);
+  const [reportDrilldownError, setReportDrilldownError] = useState('');
+  const [reportDrilldownTitle, setReportDrilldownTitle] = useState('');
+  const [reportDrilldownRows, setReportDrilldownRows] = useState<SarvCallRow[]>([]);
   const [reportPage, setReportPage] = useState(1);
   const [reportTotal, setReportTotal] = useState(0);
   const [reportJumpPage, setReportJumpPage] = useState('1');
@@ -616,6 +628,54 @@ export default function SuperAdminRSASettingsPage() {
   }, [reportCalls, reportRatingFilter]);
 
   const groupedReportCalls = useMemo(() => groupCallsByCustomer(filteredReportCalls), [filteredReportCalls]);
+  const reportOverview = useMemo(() => {
+    const calls = Array.isArray(filteredReportCalls) ? filteredReportCalls : [];
+    const dispositionCounts = new Map<string, number>();
+    const cityCounts = new Map<string, number>();
+    const customers = new Set<string>();
+
+    const addCount = (map: Map<string, number>, key: string) => {
+      map.set(key, (map.get(key) || 0) + 1);
+    };
+
+    const getCityLabel = (row: any) => {
+      const candidates = [
+        row?.city,
+        row?.customer_city,
+        row?.lead_city,
+        row?.location_city,
+        row?.district,
+        row?.circle,
+        row?.state,
+      ];
+      const hit = candidates
+        .map((v) => String(v || '').trim())
+        .find((v) => v.length > 0);
+      return hit || 'Unknown';
+    };
+
+    for (const row of calls as any[]) {
+      const customer = String(row?.cnumber || '').trim();
+      if (customer) customers.add(customer);
+
+      const disposition = String(row?.disposition || row?.disposition_category || '').trim() || 'Unspecified';
+      addCount(dispositionCounts, disposition);
+      addCount(cityCounts, getCityLabel(row));
+    }
+
+    const sortRows = (map: Map<string, number>) =>
+      Array.from(map.entries())
+        .map(([name, total]) => ({ name, total }))
+        .sort((a, b) => b.total - a.total);
+
+    return {
+      totalCalls: calls.length,
+      totalCustomers: customers.size,
+      dispositions: sortRows(dispositionCounts),
+      cities: sortRows(cityCounts),
+    };
+  }, [filteredReportCalls]);
+  const activeReportOverview = reportRatingFilter ? reportOverview : reportOverviewAll || reportOverview;
 
   const telecallerOptions = useMemo(() => telecallers, [telecallers]);
 
@@ -745,6 +805,7 @@ export default function SuperAdminRSASettingsPage() {
       if (reportFilters.q.trim()) {
         params.set('q', reportFilters.q.trim());
       }
+      params.set('include_overview', 'true');
       params.set('limit', String(reportFilters.limit));
       params.set('page', String(reportPage));
 
@@ -753,6 +814,16 @@ export default function SuperAdminRSASettingsPage() {
       if (!res.ok) throw new Error(json?.error || 'Failed to load calls');
       setReportCalls(Array.isArray(json?.calls) ? json.calls : []);
       setReportTotal(Number(json?.pagination?.total || 0));
+      setReportOverviewAll(
+        json?.overview
+          ? {
+              totalCalls: Number(json.overview.totalCalls || 0),
+              totalCustomers: Number(json.overview.totalCustomers || 0),
+              dispositions: Array.isArray(json.overview.dispositions) ? json.overview.dispositions : [],
+              cities: Array.isArray(json.overview.cities) ? json.overview.cities : [],
+            }
+          : null
+      );
       if (json?.audits && typeof json.audits === 'object') {
         setAuditByCallId((prev) => ({ ...prev, ...(json.audits as Record<string, SarvCallAudit | null>) }));
       }
@@ -760,9 +831,71 @@ export default function SuperAdminRSASettingsPage() {
       setReportError(e?.message || 'Failed to load calls');
       setReportCalls([]);
       setReportTotal(0);
+      setReportOverviewAll(null);
     } finally {
       setReportLoading(false);
     }
+  };
+
+  const openReportDrilldown = async (type: 'disposition' | 'city', value: string) => {
+    setReportDrilldownOpen(true);
+    setReportDrilldownLoading(true);
+    setReportDrilldownError('');
+    setReportDrilldownRows([]);
+    setReportDrilldownTitle(`${type === 'disposition' ? 'Disposition' : 'City'}: ${value}`);
+    try {
+      const params = new URLSearchParams();
+      if (reportFilters.from) {
+        params.set('from', new Date(`${reportFilters.from}T00:00:00`).toISOString());
+      }
+      if (reportFilters.to) {
+        params.set('to', new Date(`${reportFilters.to}T23:59:59`).toISOString());
+      }
+      if (reportFilters.assignee_role) {
+        params.set('assignee_role', reportFilters.assignee_role);
+      }
+      if (reportFilters.assignee_id) {
+        params.set('assignee_id', reportFilters.assignee_id);
+      }
+      if (reportFilters.has_recording) {
+        params.set('has_recording', 'true');
+      }
+      if (reportFilters.q.trim()) {
+        params.set('q', reportFilters.q.trim());
+      }
+      params.set('all_rows', 'true');
+      params.set(type, value);
+
+      const res = await fetch(`/api/super_admin/sarv-calls?${params.toString()}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load calls');
+      let rows = Array.isArray(json?.calls) ? (json.calls as SarvCallRow[]) : [];
+      const f = String(reportRatingFilter || '').trim();
+      if (f) {
+        if (f === 'unrated') {
+          rows = rows.filter((c: any) => deriveCallRating(c?.summary) == null);
+        } else {
+          const n = Number(f);
+          if (Number.isFinite(n) && n >= 1 && n <= 5) {
+            rows = rows.filter((c: any) => deriveCallRating(c?.summary) === n);
+          }
+        }
+      }
+      setReportDrilldownRows(rows);
+    } catch (e: any) {
+      setReportDrilldownError(e?.message || 'Failed to load calls');
+      setReportDrilldownRows([]);
+    } finally {
+      setReportDrilldownLoading(false);
+    }
+  };
+
+  const closeReportDrilldown = () => {
+    setReportDrilldownOpen(false);
+    setReportDrilldownLoading(false);
+    setReportDrilldownError('');
+    setReportDrilldownTitle('');
+    setReportDrilldownRows([]);
   };
 
   const openSummary = (call: SarvCallRow) => {
@@ -2041,6 +2174,57 @@ export default function SuperAdminRSASettingsPage() {
 
           <div className="bg-white rounded-lg shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-800">Overview (Current Filter)</h2>
+              <div className="text-xs text-gray-500">
+                {activeReportOverview.totalCalls} calls • {activeReportOverview.totalCustomers} customers
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-md border border-gray-200">
+                <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-b bg-gray-50">Disposition</div>
+                <div className="max-h-56 overflow-y-auto">
+                  {activeReportOverview.dispositions.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-gray-500">No disposition data.</div>
+                  ) : (
+                    activeReportOverview.dispositions.map((row) => (
+                      <button
+                        key={row.name}
+                        type="button"
+                        onClick={() => openReportDrilldown('disposition', row.name)}
+                        className="w-full px-3 py-2 text-xs border-b last:border-b-0 flex items-center justify-between hover:bg-gray-50 text-left"
+                      >
+                        <span className="text-gray-700 truncate pr-3">{row.name}</span>
+                        <span className="font-semibold text-gray-900">{row.total}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="rounded-md border border-gray-200">
+                <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-b bg-gray-50">City</div>
+                <div className="max-h-56 overflow-y-auto">
+                  {activeReportOverview.cities.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-gray-500">No city data.</div>
+                  ) : (
+                    activeReportOverview.cities.map((row) => (
+                      <button
+                        key={row.name}
+                        type="button"
+                        onClick={() => openReportDrilldown('city', row.name)}
+                        className="w-full px-3 py-2 text-xs border-b last:border-b-0 flex items-center justify-between hover:bg-gray-50 text-left"
+                      >
+                        <span className="text-gray-700 truncate pr-3">{row.name}</span>
+                        <span className="font-semibold text-gray-900">{row.total}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-800">Call Report</h2>
               <div className="text-xs text-gray-500">
                 {reportLoading
@@ -2100,7 +2284,10 @@ export default function SuperAdminRSASettingsPage() {
                                 <button
                                   type="button"
                                   className="text-blue-600 hover:text-blue-700 font-semibold"
-                                  onClick={() => openSummary(row)}
+                                  onClick={() => {
+                                    closeReportDrilldown();
+                                    openSummary(row);
+                                  }}
                                 >
                                   View Summary
                                 </button>
@@ -3580,9 +3767,103 @@ export default function SuperAdminRSASettingsPage() {
         </div>
       ) : null}
 
+      {reportDrilldownOpen ? (
+        <div className="fixed inset-0 z-[6000] flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white w-full max-w-6xl max-h-[82vh] rounded-xl shadow-lg overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">{reportDrilldownTitle || 'Calls'}</div>
+                <div className="text-xs text-gray-500">{reportDrilldownRows.length} calls</div>
+              </div>
+              <button type="button" className="btn btn-outline text-xs px-3 py-1.5" onClick={closeReportDrilldown}>
+                Close
+              </button>
+            </div>
+            <div className="p-4 overflow-auto">
+              {reportDrilldownLoading ? (
+                <div className="text-sm text-gray-500">Loading calls…</div>
+              ) : reportDrilldownError ? (
+                <div className="text-sm text-red-600">{reportDrilldownError}</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs sm:text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-600 border-b">
+                        <th className="py-2 pr-3">Call Time</th>
+                        <th className="py-2 pr-3">Employee</th>
+                        <th className="py-2 pr-3">Designation</th>
+                        <th className="py-2 pr-3">Customer</th>
+                        <th className="py-2 pr-3">Talk</th>
+                        <th className="py-2 pr-3">Disposition</th>
+                        <th className="py-2 pr-3">Summary</th>
+                        <th className="py-2 pr-3">Recording</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportDrilldownRows.length === 0 ? (
+                        <tr>
+                          <td className="py-3 text-gray-500" colSpan={8}>
+                            No calls found.
+                          </td>
+                        </tr>
+                      ) : (
+                        reportDrilldownRows.map((row) => (
+                          <tr key={row.id} className="border-b last:border-b-0 align-top">
+                            <td className="py-2 pr-3 whitespace-nowrap">
+                              {formatDateTime(row.custanswerstime || row.sarv_created_at || row.created_at)}
+                            </td>
+                            <td className="py-2 pr-3">
+                              {row.assignee_name || row.assignee_email || row.assignee_phone || row.assigned_user_id || '—'}
+                            </td>
+                            <td className="py-2 pr-3">{row.assigned_role || '—'}</td>
+                            <td className="py-2 pr-3">{row.cnumber || '—'}</td>
+                            <td className="py-2 pr-3">{formatDuration(row.talkduration)}</td>
+                            <td className="py-2 pr-3">{row.disposition || row.disposition_category || '—'}</td>
+                            <td className="py-2 pr-3">
+                              {row.summary ? (
+                                <button
+                                  type="button"
+                                  className="text-blue-600 hover:text-blue-700 font-semibold"
+                                  onClick={() => openSummary(row)}
+                                >
+                                  View Summary
+                                </button>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                            <td className="py-2 pr-3">
+                              {row.recording_url ? (
+                                <div className="flex flex-col gap-2">
+                                  <a
+                                    className="text-blue-600 hover:text-blue-700 text-xs font-semibold"
+                                    href={row.recording_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    Download
+                                  </a>
+                                  <audio controls preload="none" src={row.recording_url} className="w-72 min-w-[16rem] max-w-full h-10" />
+                                </div>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Summary modal should render regardless of selected tab */}
       {summaryOpen ? (
-        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/40 px-4">
           <div className="bg-white w-full max-w-4xl max-h-[80vh] rounded-xl shadow-lg overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <div>

@@ -76,6 +76,7 @@ Would you like to proceed with booking? 😊
 When user asks about workshops:
 - Ask for 6-digit PIN code if not provided
 - Call \`search_workshops\` with PIN code
+- In workshop results, ALWAYS show phone as **9152307030** (do not show any other number)
 - **Present workshops in this EXACT beautiful format:**
 
 \`\`\`

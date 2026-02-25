@@ -376,11 +376,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const fbHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
   const liHref = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`;
 
-  const followFacebook = process.env.NEXT_PUBLIC_SOCIAL_FACEBOOK_URL || 'https://www.facebook.com/myfngcarservices';
-  const followInstagram = process.env.NEXT_PUBLIC_SOCIAL_INSTAGRAM_URL || 'https://www.instagram.com/myfngcarservices';
-  const followYoutube = process.env.NEXT_PUBLIC_SOCIAL_YOUTUBE_URL || '';
-  const followLinkedin = process.env.NEXT_PUBLIC_SOCIAL_LINKEDIN_URL || 'https://www.linkedin.com/company/myfngcarservices';
-  const followX = process.env.NEXT_PUBLIC_SOCIAL_X_URL || '';
+  const followFacebook = 'https://www.facebook.com/myfngcarservices';
+  const followInstagram = 'https://www.instagram.com/myfngcarservices';
+  const followYoutube = 'https://youtube.com/channel/UCil_RltFnCtXeAha5TrNtew/';
+  const followLinkedin = 'https://linkedin.com/company/myfngcarservices';
+  const followX = 'https://x.com/myfngcarservice';
   const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || '';
   const isExactHtmlStylePage = transformed.slug === 'what-to-do-when-you-need-towing-service-near-me-in-pune';
   const htmlStyleQuote = highlightQuote || 'Ignoring early engine warning signs can lead to expensive repairs later.';
@@ -421,7 +421,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .main-content li{margin:6px 0;}
           .blog-html-wrap .tags{margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
           .blog-html-wrap .tags span{background:#eef2f7;padding:8px 14px;border-radius:20px;font-size:13px;}
-          .blog-html-wrap .faq{margin-top:25px;}
+          .blog-html-wrap .faq{margin-top:34px;padding-top:6px;}
+          .blog-html-wrap .faq h2{margin:0 0 16px;font-size:26px;line-height:1.2;color:#0a4ea3;}
           .blog-html-wrap .faq-item{background:#fff;border-radius:12px;margin-bottom:12px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,0.05);}
           .blog-html-wrap .faq-question{display:flex;justify-content:space-between;align-items:center;}
           .blog-html-wrap .faq-item h4{font-size:17px;font-weight:600;margin-bottom:8px;}
@@ -629,11 +630,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 ) : null}
 
                 <div className="comment-box">
-                  <h3>Comments</h3>
-                  <input placeholder="Name" />
-                  <input placeholder="Email (optional)" />
-                  <textarea rows={4} placeholder="Write a comment..." />
-                  <button type="button">Post Comment</button>
+                  <BlogComments blogId={transformed.id} initialComments={(comments || []) as BlogComment[]} />
                 </div>
               </div>
 
@@ -666,17 +663,17 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   <h3>Book Your Service</h3>
                   <div className="service-slider">
                     <div className="service-slide active">
-                      <img src="https://myfng.in/assets/images/packages/basic_service_package_image.webp" alt="Periodic Car Service" />
+                      <img src="https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Periodic_Service.png" alt="Periodic Car Service" />
                       <h4>Periodic Car Service</h4>
                       <a href="/book-service" className="book-btn">Book Now</a>
                     </div>
                     <div className="service-slide">
-                      <img src="https://myfng.in/assets/images/packages/ac_performance_package_image.webp" alt="Car AC Service" />
+                      <img src="https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_AC_Service.png" alt="Car AC Service" />
                       <h4>Car AC Service</h4>
                       <a href="/book-service" className="book-btn">Book Now</a>
                     </div>
                     <div className="service-slide">
-                      <img src="https://myfng.in/assets/images/packages/brake_booster_replacement.webp" alt="Brake Service" />
+                      <img src="https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Brake_Service.png" alt="Brake Service" />
                       <h4>Brake Service</h4>
                       <a href="/book-service" className="book-btn">Book Now</a>
                     </div>

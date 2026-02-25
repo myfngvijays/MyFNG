@@ -1,10 +1,11 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { Activity, ArrowRight, Calendar, CheckCircle, Shield } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { findServiceBySlug } from '@/lib/services/catalog';
+import { findServiceBySlug, makeShortDescription } from '@/lib/services/catalog';
 
 const MARKETING_SLUG_TO_INTERNAL: Record<string, string> = {
   'periodic-car-service': 'periodic-service',
@@ -17,6 +18,40 @@ const MARKETING_SLUG_TO_INTERNAL: Record<string, string> = {
   'car-detailing-service': 'detailing-service',
   'car-denting-painting': 'denting-painting',
 };
+
+export async function generateMetadata(
+  { params }: { params: Promise<{ slug: string }> }
+): Promise<Metadata> {
+  const { slug: marketingSlug } = await params;
+  const internalSlug = MARKETING_SLUG_TO_INTERNAL[marketingSlug];
+  const service = internalSlug ? findServiceBySlug(internalSlug) : null;
+
+  if (!service) return {};
+
+  const canonicalUrl = `https://myfng.in/car-services/${marketingSlug}`;
+
+  return {
+    title: `${service.title} | MyFNG`,
+    description: makeShortDescription(service.longDescription) || service.description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title: `${service.title} | MyFNG`,
+      description: makeShortDescription(service.longDescription) || service.description,
+      url: canonicalUrl,
+      siteName: 'MyFNG',
+      type: 'website',
+      images: service.image ? [{ url: service.image, alt: service.title }] : undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${service.title} | MyFNG`,
+      description: makeShortDescription(service.longDescription) || service.description,
+      images: service.image ? [service.image] : undefined,
+    },
+  };
+}
 
 export default async function CarServiceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug: marketingSlug } = await params;
