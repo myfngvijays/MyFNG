@@ -74,7 +74,21 @@ export async function POST(req: NextRequest) {
   const sessionId = getSessionId(body || {});
 
   if (!sessionId || !message) {
-    return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+    return NextResponse.json(
+      {
+        type: 'answer',
+        intent: 'llm_managed',
+        conversationId: sessionId,
+        session_id: sessionId,
+        response: 'Message missing hai.',
+        message: 'Message missing hai.',
+        assistantMessage: 'Message missing hai.',
+        cta: 'Aapko kis cheez me help chahiye?',
+        contextPatch: { conversationId: sessionId },
+        data: { conversationId: sessionId, contextPatch: { conversationId: sessionId } },
+      },
+      { status: 400 }
+    );
   }
 
   try {
@@ -144,8 +158,22 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({
+      type: 'answer',
+      conversationId: sessionId,
       session_id: sessionId,
       response: finalResponse,
+      message: finalResponse,
+      assistantMessage: finalResponse,
+      cta: '',
+      contextPatch: {
+        conversationId: sessionId,
+      },
+      data: {
+        conversationId: sessionId,
+        contextPatch: {
+          conversationId: sessionId,
+        },
+      },
       sources: [],
       intent: 'llm_managed',
     });

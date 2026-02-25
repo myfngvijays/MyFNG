@@ -38,8 +38,14 @@ export function handleChatError(error: unknown, sessionId: string): NextResponse
   if (error instanceof ChatbotError) {
     return NextResponse.json(
       {
+        type: 'answer',
+        conversationId: sessionId,
         session_id: sessionId,
+        assistantMessage: error.userMessage,
+        message: error.userMessage,
         response: error.userMessage,
+        contextPatch: { conversationId: sessionId },
+        data: { conversationId: sessionId, contextPatch: { conversationId: sessionId } },
         sources: [],
         error: error.code,
       },
@@ -50,8 +56,14 @@ export function handleChatError(error: unknown, sessionId: string): NextResponse
   // Handle OpenAI errors
   if (error instanceof Error && error.message.includes('OpenAI')) {
     return NextResponse.json({
+      type: 'answer',
+      conversationId: sessionId,
       session_id: sessionId,
+      assistantMessage: FALLBACK_RESPONSES.openai_error,
+      message: FALLBACK_RESPONSES.openai_error,
       response: FALLBACK_RESPONSES.openai_error,
+      contextPatch: { conversationId: sessionId },
+      data: { conversationId: sessionId, contextPatch: { conversationId: sessionId } },
       sources: [],
       error: 'openai_error',
     });
@@ -60,8 +72,14 @@ export function handleChatError(error: unknown, sessionId: string): NextResponse
   // Handle database errors
   if (error instanceof Error && (error.message.includes('Supabase') || error.message.includes('database'))) {
     return NextResponse.json({
+      type: 'answer',
+      conversationId: sessionId,
       session_id: sessionId,
+      assistantMessage: FALLBACK_RESPONSES.database_error,
+      message: FALLBACK_RESPONSES.database_error,
       response: FALLBACK_RESPONSES.database_error,
+      contextPatch: { conversationId: sessionId },
+      data: { conversationId: sessionId, contextPatch: { conversationId: sessionId } },
       sources: [],
       error: 'database_error',
     });
@@ -70,8 +88,14 @@ export function handleChatError(error: unknown, sessionId: string): NextResponse
   // Handle timeout errors
   if (error instanceof Error && error.message.includes('timeout')) {
     return NextResponse.json({
+      type: 'answer',
+      conversationId: sessionId,
       session_id: sessionId,
+      assistantMessage: FALLBACK_RESPONSES.timeout,
+      message: FALLBACK_RESPONSES.timeout,
       response: FALLBACK_RESPONSES.timeout,
+      contextPatch: { conversationId: sessionId },
+      data: { conversationId: sessionId, contextPatch: { conversationId: sessionId } },
       sources: [],
       error: 'timeout',
     });
@@ -79,8 +103,14 @@ export function handleChatError(error: unknown, sessionId: string): NextResponse
 
   // Unknown error - use generic fallback
   return NextResponse.json({
+    type: 'answer',
+    conversationId: sessionId,
     session_id: sessionId,
+    assistantMessage: FALLBACK_RESPONSES.unknown,
+    message: FALLBACK_RESPONSES.unknown,
     response: FALLBACK_RESPONSES.unknown,
+    contextPatch: { conversationId: sessionId },
+    data: { conversationId: sessionId, contextPatch: { conversationId: sessionId } },
     sources: [],
     error: 'unknown',
   });
