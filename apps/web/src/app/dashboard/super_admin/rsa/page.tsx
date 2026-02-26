@@ -6,14 +6,60 @@ import GoogleStateHeatmapMap, { type GoogleStateHeatmapPoint } from '@/component
 import StateHeatmapLeafletVanillaMap, { type StateHeatmapPoint as LeafletStatePoint } from '@/components/maps/StateHeatmapLeafletVanillaMap';
 import {
   CartesianGrid,
+  Cell,
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip as ReTooltip,
   XAxis,
   YAxis,
 } from 'recharts';
+
+const DISPOSITION_PIE_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316', '#64748b'];
+const DID_PIE_COLORS = ['#2563eb', '#0ea5e9', '#10b981', '#22c55e', '#f59e0b', '#f97316', '#ef4444', '#8b5cf6', '#14b8a6'];
+const DISPOSITION_LABEL_MIN_PERCENT = 0.02;
+const FLOW_BUCKET_OPTIONS = [
+  { label: '15m', minutes: 15 },
+  { label: '30m', minutes: 30 },
+  { label: '60m', minutes: 60 },
+  { label: '4h', minutes: 240 },
+  { label: '8h', minutes: 480 },
+  { label: '12h', minutes: 720 },
+  { label: '24h', minutes: 1440 },
+];
+
+function renderDispositionPieLabel(props: any) {
+  const {
+    cx,
+    cy,
+    midAngle,
+    outerRadius,
+    percent,
+    name,
+    fill,
+  } = props || {};
+  if (!percent || percent < DISPOSITION_LABEL_MIN_PERCENT) return null;
+
+  const RADIAN = Math.PI / 180;
+  const startX = cx + outerRadius * Math.cos(-midAngle * RADIAN);
+  const startY = cy + outerRadius * Math.sin(-midAngle * RADIAN);
+  const bendX = cx + (outerRadius + 14) * Math.cos(-midAngle * RADIAN);
+  const bendY = cy + (outerRadius + 14) * Math.sin(-midAngle * RADIAN);
+  const endX = bendX + (bendX >= cx ? 12 : -12);
+  const textAnchor = bendX >= cx ? 'start' : 'end';
+
+  return (
+    <g>
+      <path d={`M${startX},${startY}L${bendX},${bendY}L${endX},${bendY}`} stroke={fill} fill="none" strokeWidth={1.25} />
+      <text x={endX + (bendX >= cx ? 3 : -3)} y={bendY} textAnchor={textAnchor} dominantBaseline="central" fontSize={11} fill="#374151">
+        {`${String(name)} ${Math.round(percent * 100)}%`}
+      </text>
+    </g>
+  );
+}
 
 type Telecaller = {
   id: string;
@@ -42,6 +88,7 @@ type SarvCallRow = {
   id: string;
   callid: string;
   cnumber: string | null;
+  did?: string | null;
   callstatus: number | null;
   ctype: string | null;
   ivrstime: string | null;
@@ -79,6 +126,24 @@ type SarvCallAudit = {
   audited_at: string | null;
   updated_at?: string | null;
   created_at?: string | null;
+};
+
+type ReportOverviewSummary = {
+  totalCalls: number;
+  totalCustomers: number;
+  dispositions: Array<{ name: string; total: number }>;
+  dids: Array<{ name: string; total: number }>;
+  employees: Array<{ name: string; total: number }>;
+  cities: Array<{ name: string; total: number }>;
+  call_flow: {
+    granularity: 'bucket';
+    bucket_minutes: number;
+    points: Array<{
+      bucket: string;
+      total: number;
+      call_types?: Array<{ name: string; total: number; percent: number }>;
+    }>;
+  };
 };
 
 type OverviewBreakdownRow = {
@@ -453,6 +518,60 @@ function formatHours(value?: number | null) {
   return `${hours.toFixed(1)}h`;
 }
 
+function toISTBucketKey(value: string | number | Date | null | undefined, bucketMinutes: number) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const bucketMs = Math.max(1, bucketMinutes) * 60 * 1000;
+  const istOffsetMs = 330 * 60 * 1000;
+  const istMs = date.getTime() + istOffsetMs;
+  const flooredIstMs = Math.floor(istMs / bucketMs) * bucketMs;
+  const flooredUtcMs = flooredIstMs - istOffsetMs;
+  const floored = new Date(flooredUtcMs);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(floored);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  const hour = get('hour');
+  const minute = get('minute');
+  if (!year || !month || !day) return null;
+  if (bucketMinutes >= 1440) return `${year}-${month}-${day}`;
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function shortFlowBucketLabel(bucket: string, bucketMinutes: number) {
+  const raw = String(bucket || '').trim();
+  if (!raw) return bucket;
+  if (bucketMinutes >= 1440) {
+    const parts = raw.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+    return raw;
+  }
+  const [datePart, timePart] = raw.split(' ');
+  const dateBits = String(datePart || '').split('-');
+  if (dateBits.length === 3) return `${dateBits[2]}/${dateBits[1]} ${timePart || ''}`.trim();
+  return raw;
+}
+
+function normalizeCallType(value?: string | null) {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return 'Unknown';
+  if (raw === 'IBD' || raw === 'INBOUND' || raw === 'IN') return 'Inbound';
+  if (raw === 'OBD' || raw === 'OUTBOUND' || raw === 'OUT') return 'Outbound';
+  if (raw === 'MISSED') return 'Missed';
+  if (raw === 'IVR') return 'IVR';
+  return raw;
+}
+
 function addDays(value: Date, days: number) {
   const next = new Date(value);
   next.setDate(next.getDate() + days);
@@ -470,12 +589,7 @@ export default function SuperAdminRSASettingsPage() {
   const [reportError, setReportError] = useState('');
   const [reportExportLoading, setReportExportLoading] = useState(false);
   const [reportCalls, setReportCalls] = useState<SarvCallRow[]>([]);
-  const [reportOverviewAll, setReportOverviewAll] = useState<{
-    totalCalls: number;
-    totalCustomers: number;
-    dispositions: Array<{ name: string; total: number }>;
-    cities: Array<{ name: string; total: number }>;
-  } | null>(null);
+  const [reportOverviewAll, setReportOverviewAll] = useState<ReportOverviewSummary | null>(null);
   const [reportDrilldownOpen, setReportDrilldownOpen] = useState(false);
   const [reportDrilldownLoading, setReportDrilldownLoading] = useState(false);
   const [reportDrilldownError, setReportDrilldownError] = useState('');
@@ -484,6 +598,8 @@ export default function SuperAdminRSASettingsPage() {
   const [reportPage, setReportPage] = useState(1);
   const [reportTotal, setReportTotal] = useState(0);
   const [reportJumpPage, setReportJumpPage] = useState('1');
+  const [reportDispositionHoverName, setReportDispositionHoverName] = useState<string | null>(null);
+  const [reportFlowBucketMinutes, setReportFlowBucketMinutes] = useState<number>(1440);
   const [reportAssignees, setReportAssignees] = useState<Telecaller[]>([]);
   const [expandedCustomers, setExpandedCustomers] = useState<Record<string, boolean>>({});
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -650,7 +766,11 @@ export default function SuperAdminRSASettingsPage() {
   const reportOverview = useMemo(() => {
     const calls = Array.isArray(filteredReportCalls) ? filteredReportCalls : [];
     const dispositionCounts = new Map<string, number>();
+    const didCounts = new Map<string, number>();
+    const employeeCounts = new Map<string, number>();
     const cityCounts = new Map<string, number>();
+    const flowCounts = new Map<string, number>();
+    const flowTypeCounts = new Map<string, Map<string, number>>();
     const customers = new Set<string>();
 
     const addCount = (map: Map<string, number>, key: string) => {
@@ -679,7 +799,24 @@ export default function SuperAdminRSASettingsPage() {
 
       const disposition = String(row?.disposition || row?.disposition_category || '').trim() || 'Unspecified';
       addCount(dispositionCounts, disposition);
+      addCount(didCounts, String(row?.did || '').trim() || 'Unknown');
+      const employee =
+        String(row?.assignee_name || '').trim() ||
+        String(row?.assignee_email || '').trim() ||
+        String(row?.assigned_user_id || '').trim() ||
+        'Unassigned';
+      addCount(employeeCounts, employee);
       addCount(cityCounts, getCityLabel(row));
+      const bucket = toISTBucketKey(
+        row?.created_at || row?.custanswerstime || row?.sarv_created_at,
+        reportFlowBucketMinutes
+      );
+      if (bucket) {
+        addCount(flowCounts, bucket);
+        const byType = flowTypeCounts.get(bucket) || new Map<string, number>();
+        addCount(byType, normalizeCallType(row?.ctype));
+        flowTypeCounts.set(bucket, byType);
+      }
     }
 
     const sortRows = (map: Map<string, number>) =>
@@ -691,9 +828,28 @@ export default function SuperAdminRSASettingsPage() {
       totalCalls: calls.length,
       totalCustomers: customers.size,
       dispositions: sortRows(dispositionCounts),
+      dids: sortRows(didCounts),
+      employees: sortRows(employeeCounts),
       cities: sortRows(cityCounts),
+      call_flow: {
+        granularity: 'bucket' as const,
+        bucket_minutes: reportFlowBucketMinutes,
+        points: Array.from(flowCounts.entries())
+          .map(([bucket, total]) => {
+            const typeMap = flowTypeCounts.get(bucket) || new Map<string, number>();
+            const call_types = Array.from(typeMap.entries())
+              .map(([name, count]) => ({
+                name,
+                total: count,
+                percent: total > 0 ? Number(((count * 100) / total).toFixed(1)) : 0,
+              }))
+              .sort((a, b) => b.total - a.total);
+            return { bucket, total, call_types };
+          })
+          .sort((a, b) => a.bucket.localeCompare(b.bucket)),
+      },
     };
-  }, [filteredReportCalls]);
+  }, [filteredReportCalls, reportFlowBucketMinutes]);
   const activeReportOverview = reportRatingFilter ? reportOverview : reportOverviewAll || reportOverview;
 
   const telecallerOptions = useMemo(() => telecallers, [telecallers]);
@@ -843,6 +999,7 @@ export default function SuperAdminRSASettingsPage() {
     if (options?.city) {
       params.set('city', options.city);
     }
+    params.set('flow_bucket', String(reportFlowBucketMinutes));
     return params;
   };
 
@@ -867,7 +1024,27 @@ export default function SuperAdminRSASettingsPage() {
               totalCalls: Number(json.overview.totalCalls || 0),
               totalCustomers: Number(json.overview.totalCustomers || 0),
               dispositions: Array.isArray(json.overview.dispositions) ? json.overview.dispositions : [],
+              dids: Array.isArray(json.overview.dids) ? json.overview.dids : [],
+              employees: Array.isArray(json.overview.employees) ? json.overview.employees : [],
               cities: Array.isArray(json.overview.cities) ? json.overview.cities : [],
+              call_flow:
+                json.overview.call_flow && Array.isArray(json.overview.call_flow.points)
+                  ? {
+                      granularity: 'bucket',
+                      bucket_minutes: Number(json.overview.call_flow.bucket_minutes || reportFlowBucketMinutes),
+                      points: json.overview.call_flow.points.map((point: any) => ({
+                        bucket: String(point?.bucket || ''),
+                        total: Number(point?.total || 0),
+                        call_types: Array.isArray(point?.call_types)
+                          ? point.call_types.map((ct: any) => ({
+                              name: String(ct?.name || 'Unknown'),
+                              total: Number(ct?.total || 0),
+                              percent: Number(ct?.percent || 0),
+                            }))
+                          : [],
+                      })),
+                    }
+                  : { granularity: 'bucket', bucket_minutes: reportFlowBucketMinutes, points: [] },
             }
           : null
       );
@@ -950,6 +1127,8 @@ export default function SuperAdminRSASettingsPage() {
         'created_at',
         'call_id',
         'customer_number',
+        'did_number',
+        'call_type',
         'employee_name',
         'employee_role',
         'talk_duration_seconds',
@@ -976,6 +1155,8 @@ export default function SuperAdminRSASettingsPage() {
           row.created_at || '',
           row.callid || '',
           row.cnumber || '',
+          row.did || '',
+          normalizeCallType(row.ctype),
           row.assignee_name || row.assignee_email || row.assignee_phone || row.assigned_user_id || '',
           row.assigned_role || '',
           row.talkduration ?? '',
@@ -1481,7 +1662,7 @@ export default function SuperAdminRSASettingsPage() {
       setReportAssignees([]);
     }
     loadReport();
-  }, [tab, reportFilters, reportPage]);
+  }, [tab, reportFilters, reportPage, reportFlowBucketMinutes]);
 
   useEffect(() => {
     setReportJumpPage(String(reportPage));
@@ -2318,21 +2499,78 @@ export default function SuperAdminRSASettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="rounded-md border border-gray-200">
                 <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-b bg-gray-50">Disposition</div>
-                <div className="max-h-56 overflow-y-auto">
+                <div className="h-72 p-2 relative">
                   {activeReportOverview.dispositions.length === 0 ? (
                     <div className="px-3 py-3 text-xs text-gray-500">No disposition data.</div>
                   ) : (
-                    activeReportOverview.dispositions.map((row) => (
-                      <button
-                        key={row.name}
-                        type="button"
-                        onClick={() => openReportDrilldown('disposition', row.name)}
-                        className="w-full px-3 py-2 text-xs border-b last:border-b-0 flex items-center justify-between hover:bg-gray-50 text-left"
-                      >
-                        <span className="text-gray-700 truncate pr-3">{row.name}</span>
-                        <span className="font-semibold text-gray-900">{row.total}</span>
-                      </button>
-                    ))
+                    <>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={activeReportOverview.dispositions}
+                            dataKey="total"
+                            nameKey="name"
+                            cx="42%"
+                            cy="46%"
+                            outerRadius={82}
+                            labelLine={false}
+                            label={renderDispositionPieLabel}
+                            onMouseEnter={(entry: any) => {
+                              const value = String(entry?.name || '').trim();
+                              setReportDispositionHoverName(value || null);
+                            }}
+                            onMouseLeave={() => setReportDispositionHoverName(null)}
+                            onClick={(entry: any) => {
+                              const value = String(entry?.name || '').trim();
+                              if (value) openReportDrilldown('disposition', value);
+                            }}
+                          >
+                            {activeReportOverview.dispositions.map((row, idx) => {
+                              const isDimmed =
+                                reportDispositionHoverName &&
+                                row.name !== reportDispositionHoverName;
+                              return (
+                                <Cell
+                                  key={`disposition-${row.name}`}
+                                  fill={DISPOSITION_PIE_COLORS[idx % DISPOSITION_PIE_COLORS.length]}
+                                  opacity={isDimmed ? 0.35 : 1}
+                                  stroke={row.name === reportDispositionHoverName ? '#111827' : 'none'}
+                                  strokeWidth={row.name === reportDispositionHoverName ? 2 : 0}
+                                />
+                              );
+                            })}
+                          </Pie>
+                          <Legend
+                            verticalAlign="bottom"
+                            height={64}
+                            wrapperStyle={{ fontSize: 12, lineHeight: '16px' }}
+                            formatter={(value) => (
+                              <button
+                                type="button"
+                                className="text-xs text-gray-700 hover:text-blue-700"
+                                onMouseEnter={() => setReportDispositionHoverName(String(value))}
+                                onMouseLeave={() => setReportDispositionHoverName(null)}
+                                onClick={() => openReportDrilldown('disposition', String(value))}
+                              >
+                                {String(value)}
+                              </button>
+                            )}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      {(() => {
+                        if (!reportDispositionHoverName) return null;
+                        const row = activeReportOverview.dispositions.find(
+                          (item) => item.name === reportDispositionHoverName
+                        );
+                        if (!row) return null;
+                        return (
+                          <div className="absolute top-11 left-1/2 -translate-x-1/2 pointer-events-none rounded-md bg-white/95 border border-gray-200 px-2 py-1 text-xs text-gray-800 shadow-sm">
+                            {row.name}: <span className="font-semibold">{row.total}</span> calls
+                          </div>
+                        );
+                      })()}
+                    </>
                   )}
                 </div>
               </div>
@@ -2353,6 +2591,179 @@ export default function SuperAdminRSASettingsPage() {
                         <span className="font-semibold text-gray-900">{row.total}</span>
                       </button>
                     ))
+                  )}
+                </div>
+              </div>
+              <div className="rounded-md border border-gray-200">
+                <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-b bg-gray-50">DID % Share</div>
+                <div className="h-72 p-2">
+                  {activeReportOverview.dids.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-gray-500">No DID data.</div>
+                  ) : (
+                    (() => {
+                      const source = activeReportOverview.dids;
+                      const top = source.slice(0, 8);
+                      const otherTotal = source.slice(8).reduce((sum, row) => sum + Number(row.total || 0), 0);
+                      const data = otherTotal > 0 ? [...top, { name: 'Others', total: otherTotal }] : top;
+                      const total = data.reduce((sum, row) => sum + Number(row.total || 0), 0);
+                      return (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={data}
+                              dataKey="total"
+                              nameKey="name"
+                              cx="50%"
+                              cy="42%"
+                              innerRadius={34}
+                              outerRadius={78}
+                              labelLine={false}
+                              label={false}
+                            >
+                              {data.map((row, idx) => (
+                                <Cell key={`did-${row.name}`} fill={DID_PIE_COLORS[idx % DID_PIE_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <ReTooltip
+                              formatter={(value: any, _name: any, item: any) => [String(value), String(item?.payload?.name || 'DID')]}
+                            />
+                            <Legend
+                              verticalAlign="bottom"
+                              height={88}
+                              wrapperStyle={{ fontSize: 12, lineHeight: '16px' }}
+                              formatter={(value, entry: any) => {
+                                const rowTotal = Number(
+                                  entry?.payload?.payload?.total ??
+                                    entry?.payload?.total ??
+                                    0
+                                );
+                                const pct = total > 0 ? Math.round((rowTotal * 100) / total) : 0;
+                                return `${String(value)} ${pct}% (${rowTotal})`;
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      );
+                    })()
+                  )}
+                </div>
+              </div>
+              <div className="rounded-md border border-gray-200">
+                <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-b bg-gray-50">Employee Talk Share</div>
+                <div className="h-72 p-2">
+                  {activeReportOverview.employees.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-gray-500">No employee data.</div>
+                  ) : (
+                    (() => {
+                      const source = activeReportOverview.employees;
+                      const top = source.slice(0, 8);
+                      const otherTotal = source.slice(8).reduce((sum, row) => sum + Number(row.total || 0), 0);
+                      const data = otherTotal > 0 ? [...top, { name: 'Others', total: otherTotal }] : top;
+                      const total = data.reduce((sum, row) => sum + Number(row.total || 0), 0);
+                      return (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={data}
+                              dataKey="total"
+                              nameKey="name"
+                              cx="50%"
+                              cy="42%"
+                              innerRadius={34}
+                              outerRadius={78}
+                              label={false}
+                              labelLine={false}
+                            >
+                              {data.map((row, idx) => (
+                                <Cell key={`employee-share-${row.name}`} fill={DID_PIE_COLORS[idx % DID_PIE_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <ReTooltip formatter={(value: any, _name: any, item: any) => [String(value), String(item?.payload?.name || 'Employee')]} />
+                            <Legend
+                              verticalAlign="bottom"
+                              height={88}
+                              wrapperStyle={{ fontSize: 12, lineHeight: '16px' }}
+                              formatter={(value, entry: any) => {
+                                const rowTotal = Number(
+                                  entry?.payload?.payload?.total ??
+                                    entry?.payload?.total ??
+                                    0
+                                );
+                                const pct = total > 0 ? Math.round((rowTotal * 100) / total) : 0;
+                                return `${String(value)} ${pct}% (${rowTotal})`;
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      );
+                    })()
+                  )}
+                </div>
+              </div>
+              <div className="rounded-md border border-gray-200 md:col-span-2">
+                <div className="px-3 py-2 border-b bg-gray-50 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs font-semibold text-gray-700">
+                    Call Flow ({reportFlowBucketMinutes >= 60 ? `${Math.floor(reportFlowBucketMinutes / 60)}h` : `${reportFlowBucketMinutes}m`} buckets)
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {FLOW_BUCKET_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.minutes}
+                        type="button"
+                        onClick={() => setReportFlowBucketMinutes(opt.minutes)}
+                        className={`px-2 py-1 text-[11px] rounded border ${
+                          reportFlowBucketMinutes === opt.minutes
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="h-64 p-3">
+                  {activeReportOverview.call_flow.points.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-gray-500">No call flow data.</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={activeReportOverview.call_flow.points}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="bucket"
+                          tick={{ fontSize: 11 }}
+                          tickFormatter={(value) =>
+                            shortFlowBucketLabel(String(value), activeReportOverview.call_flow.bucket_minutes)
+                          }
+                        />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                        <ReTooltip
+                          content={({ active, payload, label }) => {
+                            if (!active || !payload || payload.length === 0) return null;
+                            const point = payload[0]?.payload as any;
+                            const types = Array.isArray(point?.call_types) ? point.call_types : [];
+                            return (
+                              <div className="rounded-md border border-gray-200 bg-white px-3 py-2 shadow-sm text-xs">
+                                <div className="text-gray-600 mb-1">
+                                  Bucket: {String(label)}
+                                </div>
+                                <div className="font-semibold text-gray-900 mb-1">Calls: {Number(point?.total || 0)}</div>
+                                {types.length ? (
+                                  <div className="space-y-0.5">
+                                    {types.slice(0, 5).map((ct: any) => (
+                                      <div key={String(ct.name)} className="text-gray-700">
+                                        {String(ct.name)}: {Number(ct.total || 0)} ({Number(ct.percent || 0)}%)
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          }}
+                        />
+                        <Line type="monotone" dataKey="total" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
                   )}
                 </div>
               </div>
@@ -2378,6 +2789,7 @@ export default function SuperAdminRSASettingsPage() {
                     <th className="py-2 pr-3">Employee</th>
                     <th className="py-2 pr-3">Role</th>
                     <th className="py-2 pr-3">Customer</th>
+                    <th className="py-2 pr-3">Call Type</th>
                     <th className="py-2 pr-3">Talk</th>
                     <th className="py-2 pr-3">Disposition</th>
                     <th className="py-2 pr-3">Summary</th>
@@ -2388,7 +2800,7 @@ export default function SuperAdminRSASettingsPage() {
                 <tbody>
                   {groupedReportCalls.length === 0 ? (
                     <tr>
-                      <td className="py-3 text-gray-500" colSpan={9}>
+                      <td className="py-3 text-gray-500" colSpan={10}>
                         No calls found.
                       </td>
                     </tr>
@@ -2413,6 +2825,7 @@ export default function SuperAdminRSASettingsPage() {
                             </td>
                             <td className="py-2 pr-3">{row.assigned_role || '—'}</td>
                             <td className="py-2 pr-3">{row.cnumber || '—'}</td>
+                            <td className="py-2 pr-3">{normalizeCallType(row.ctype)}</td>
                             <td className="py-2 pr-3">{formatDuration(row.talkduration)}</td>
                             <td className="py-2 pr-3">{row.disposition || row.disposition_category || '—'}</td>
                             <td className="py-2 pr-3">
@@ -2502,6 +2915,7 @@ export default function SuperAdminRSASettingsPage() {
                                 {group.customer} • {group.calls.length} calls
                               </button>
                             </td>
+                            <td className="py-2 pr-3">{normalizeCallType(latest.ctype)}</td>
                             <td className="py-2 pr-3">{formatDuration(latest.talkduration)}</td>
                             <td className="py-2 pr-3">
                               {latest.disposition || latest.disposition_category || '—'}
@@ -2553,6 +2967,7 @@ export default function SuperAdminRSASettingsPage() {
                                   </td>
                                   <td className="py-2 pr-3">{row.assigned_role || '—'}</td>
                                   <td className="py-2 pr-3">{row.cnumber || '—'}</td>
+                                  <td className="py-2 pr-3">{normalizeCallType(row.ctype)}</td>
                                   <td className="py-2 pr-3">{formatDuration(row.talkduration)}</td>
                                   <td className="py-2 pr-3">
                                     {row.disposition || row.disposition_category || '—'}
@@ -3929,6 +4344,7 @@ export default function SuperAdminRSASettingsPage() {
                         <th className="py-2 pr-3">Employee</th>
                         <th className="py-2 pr-3">Designation</th>
                         <th className="py-2 pr-3">Customer</th>
+                        <th className="py-2 pr-3">Call Type</th>
                         <th className="py-2 pr-3">Talk</th>
                         <th className="py-2 pr-3">Disposition</th>
                         <th className="py-2 pr-3">Summary</th>
@@ -3938,7 +4354,7 @@ export default function SuperAdminRSASettingsPage() {
                     <tbody>
                       {reportDrilldownRows.length === 0 ? (
                         <tr>
-                          <td className="py-3 text-gray-500" colSpan={8}>
+                          <td className="py-3 text-gray-500" colSpan={9}>
                             No calls found.
                           </td>
                         </tr>
@@ -3953,6 +4369,7 @@ export default function SuperAdminRSASettingsPage() {
                             </td>
                             <td className="py-2 pr-3">{row.assigned_role || '—'}</td>
                             <td className="py-2 pr-3">{row.cnumber || '—'}</td>
+                            <td className="py-2 pr-3">{normalizeCallType(row.ctype)}</td>
                             <td className="py-2 pr-3">{formatDuration(row.talkduration)}</td>
                             <td className="py-2 pr-3">{row.disposition || row.disposition_category || '—'}</td>
                             <td className="py-2 pr-3">

@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useEffect } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
-import { formatDateTimeISTAssumeUTC } from '@/lib/utils';
+import { formatDateTimeIST, formatDateTimeISTAssumeUTC } from '@/lib/utils';
 import {
   AlertCircle, Clock, CheckCircle, XCircle, Users,
   Search, Filter, Eye, ChevronRight, Wrench, MapPin
@@ -16,6 +16,7 @@ type SarvCallRow = {
   id: string;
   callid: string;
   cnumber: string | null;
+  did: string | null;
   callstatus: number | null;
   ctype: string | null;
   ivrstime: string | null;
@@ -33,6 +34,16 @@ type SarvCallRow = {
   disposition_category: string | null;
   disposition_note: string | null;
   disposition_updated_at: string | null;
+  previous_disposition: string | null;
+  previous_disposition_category: string | null;
+  previous_disposition_note: string | null;
+  previous_disposition_callid: string | null;
+  previous_disposition_at: string | null;
+  previous_disposition_assigned_user_id: string | null;
+  previous_disposition_assigned_user_name: string | null;
+  previous_disposition_summary: string | null;
+  previous_disposition_talkduration: number | null;
+  previous_disposition_recording_url: string | null;
   sarv_created_at: string | null;
   created_at: string;
 };
@@ -75,6 +86,32 @@ function formatDuration(seconds?: number | null) {
   const mins = Math.floor(total / 60);
   const secs = Math.floor(total % 60);
   return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+function normalizeCallType(value: string | null | undefined) {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return '—';
+  if (raw === 'IBD' || raw === 'INBOUND' || raw === 'IN') return 'Inbound';
+  if (raw === 'OBD' || raw === 'OUTBOUND' || raw === 'OUT') return 'Outbound';
+  if (raw === 'MISSED') return 'Missed';
+  if (raw === 'IVR') return 'IVR';
+  return raw;
+}
+
+function formatSarvCallDateTime(value: string | number | Date | null | undefined): string {
+  if (typeof value !== 'string') return formatDateTimeIST(value);
+  const raw = value.trim();
+  if (!raw) return '';
+
+  const hasTimezone = /([zZ]|[+\-]\d{2}(:?\d{2})?)$/.test(raw);
+  if (hasTimezone) return formatDateTimeIST(raw);
+
+  const looksLikeDateTime =
+    /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?$/.test(raw);
+  if (!looksLikeDateTime) return formatDateTimeIST(raw);
+
+  // SARV naive datetime values are already in IST; pin +05:30 so they are not shifted again.
+  return formatDateTimeIST(`${raw.replace(' ', 'T')}+05:30`);
 }
 
 function groupCallsByCustomer(calls: SarvCallRow[]) {
@@ -262,6 +299,8 @@ export default function RSAManagerDashboard() {
   const [citySuggestOpen, setCitySuggestOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryCall, setSummaryCall] = useState<SarvCallRow | null>(null);
+  const [previousDetailsOpen, setPreviousDetailsOpen] = useState(false);
+  const [previousDetailsCall, setPreviousDetailsCall] = useState<SarvCallRow | null>(null);
   const [transcriptionView, setTranscriptionView] = useState<'raw' | 'split'>('raw');
   const [swapSpeakers, setSwapSpeakers] = useState(false);
   const [expandedCustomers, setExpandedCustomers] = useState<Record<string, boolean>>({});
@@ -307,13 +346,13 @@ export default function RSAManagerDashboard() {
       const res = await fetch('/api/rsa/cities');
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to load cities');
-      const normalized = Array.isArray(json?.cities)
+      const normalized: string[] = Array.isArray(json?.cities)
         ? json.cities
             .map((c: string) => titleCase(c))
             .filter((c: string) => c)
         : [];
-      const unique = Array.from(new Set(normalized.map((c) => c.toLowerCase()))).map(
-        (lc) => normalized.find((c) => c.toLowerCase() === lc) as string
+      const unique = Array.from(new Set(normalized.map((c: string) => c.toLowerCase()))).map(
+        (lc: string) => normalized.find((c: string) => c.toLowerCase() === lc) as string
       );
       setCities(unique);
     } catch {
@@ -400,6 +439,47 @@ export default function RSAManagerDashboard() {
     setSummaryCall(null);
     setTranscriptionView('raw');
     setSwapSpeakers(false);
+  };
+
+  const openPreviousDetails = (call: SarvCallRow) => {
+    setPreviousDetailsCall(call);
+    setPreviousDetailsOpen(true);
+  };
+
+  const closePreviousDetails = () => {
+    setPreviousDetailsOpen(false);
+    setPreviousDetailsCall(null);
+  };
+
+  const jumpToPreviousCall = (call: SarvCallRow) => {
+    const prevCallId = String(call.previous_disposition_callid || '').trim();
+    if (!prevCallId) return;
+    setCallPage(1);
+    setCallFilters((f) => ({ ...f, q: prevCallId }));
+    setPreviousDetailsOpen(false);
+  };
+
+  const renderDispositionCell = (call: SarvCallRow) => {
+    const current = call.disposition || call.disposition_category || '';
+    const previous = call.previous_disposition || call.previous_disposition_category || '';
+    if (!previous) {
+      return <div>{current || '—'}</div>;
+    }
+    const agent = String(call.previous_disposition_assigned_user_name || '').trim() || 'Unknown Agent';
+    const time = formatSarvCallDateTime(call.previous_disposition_at);
+    return (
+      <div className="space-y-0.5">
+        <div>{current || '—'}</div>
+        <button
+          type="button"
+          className="text-[11px] text-blue-600 hover:text-blue-700 text-left"
+          onClick={() => openPreviousDetails(call)}
+          title="View previous call details"
+        >
+          Prev: {previous} • {agent} • {time || '—'}
+        </button>
+      </div>
+    );
   };
 
   const openAudit = async (call: SarvCallRow) => {
@@ -680,6 +760,8 @@ export default function RSAManagerDashboard() {
                         <tr className="text-left text-gray-600 border-b">
                           <th className="py-2 pr-3">Call Time</th>
                           <th className="py-2 pr-3">Customer</th>
+                          <th className="py-2 pr-3">Call Type</th>
+                          <th className="py-2 pr-3">DID Number</th>
                           <th className="py-2 pr-3">Talk</th>
                           <th className="py-2 pr-3">Disposition</th>
                           <th className="py-2 pr-3">Summary</th>
@@ -698,12 +780,14 @@ export default function RSAManagerDashboard() {
                             return (
                               <tr key={call.id} className="border-b last:border-b-0 align-top">
                                 <td className="py-2 pr-3 whitespace-nowrap">
-                                  {formatDateTimeISTAssumeUTC(call.custanswerstime || call.sarv_created_at || call.created_at)}
+                                  {formatSarvCallDateTime(call.custanswerstime || call.sarv_created_at || call.created_at)}
                                 </td>
                                 <td className="py-2 pr-3">{call.cnumber || '—'}</td>
+                                <td className="py-2 pr-3">{normalizeCallType(call.ctype)}</td>
+                                <td className="py-2 pr-3">{call.did || '—'}</td>
                                 <td className="py-2 pr-3">{formatDuration(call.talkduration)}</td>
                                 <td className="py-2 pr-3">
-                                  {call.disposition || call.disposition_category || '—'}
+                                  {renderDispositionCell(call)}
                                 </td>
                                 <td className="py-2 pr-3">
                                   {call.summary ? (
@@ -774,7 +858,7 @@ export default function RSAManagerDashboard() {
                             <Fragment key={group.customer}>
                               <tr key={`${group.customer}-header`} className="border-b bg-gray-50">
                                 <td className="py-2 pr-3 whitespace-nowrap">
-                                  {formatDateTimeISTAssumeUTC(latest.custanswerstime || latest.sarv_created_at || latest.created_at)}
+                                  {formatSarvCallDateTime(latest.custanswerstime || latest.sarv_created_at || latest.created_at)}
                                 </td>
                                 <td className="py-2 pr-3 font-semibold">
                                   <button
@@ -790,9 +874,11 @@ export default function RSAManagerDashboard() {
                                     {group.customer} • {group.calls.length} calls
                                   </button>
                                 </td>
+                                <td className="py-2 pr-3">{normalizeCallType(latest.ctype)}</td>
+                                <td className="py-2 pr-3">{latest.did || '—'}</td>
                                 <td className="py-2 pr-3">{formatDuration(latest.talkduration)}</td>
                                 <td className="py-2 pr-3">
-                                  {latest.disposition || latest.disposition_category || '—'}
+                                  {renderDispositionCell(latest)}
                                 </td>
                                 <td className="py-2 pr-3">
                                   {latest.summary ? (
@@ -831,14 +917,16 @@ export default function RSAManagerDashboard() {
                                       return (
                                     <tr key={call.id} className="border-b last:border-b-0 align-top">
                                       <td className="py-2 pr-3 whitespace-nowrap">
-                                        {formatDateTimeISTAssumeUTC(
+                                        {formatSarvCallDateTime(
                                           call.custanswerstime || call.sarv_created_at || call.created_at
                                         )}
                                       </td>
                                       <td className="py-2 pr-3">{call.cnumber || '—'}</td>
+                                      <td className="py-2 pr-3">{normalizeCallType(call.ctype)}</td>
+                                      <td className="py-2 pr-3">{call.did || '—'}</td>
                                       <td className="py-2 pr-3">{formatDuration(call.talkduration)}</td>
                                       <td className="py-2 pr-3">
-                                        {call.disposition || call.disposition_category || '—'}
+                                        {renderDispositionCell(call)}
                                       </td>
                                       <td className="py-2 pr-3">
                                         {call.summary ? (
@@ -1372,9 +1460,9 @@ export default function RSAManagerDashboard() {
                         const trimmed = line.trim();
                         const m = trimmed.match(/^(Customer|Employee)\s*:\s*(.*)$/i);
                         if (m) {
-                          current = m[1].toLowerCase() as any;
+                          current = m[1].toLowerCase() === 'customer' ? 'customer' : 'employee';
                           const rest = (m[2] || '').trim();
-                          if (rest) speaker[current].push(rest);
+                          if (rest && current) speaker[current].push(rest);
                           continue;
                         }
                         if (current) speaker[current].push(line);
@@ -1674,6 +1762,139 @@ export default function RSAManagerDashboard() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {previousDetailsOpen && previousDetailsCall ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 sm:px-4 py-4 sm:py-6">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="bg-blue-700 text-white px-4 sm:px-5 py-3 sm:py-4 flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="text-lg font-semibold">Previous Call Details</div>
+                <div className="text-xs opacity-90 truncate">
+                  Customer: {previousDetailsCall.cnumber || '—'}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="text-white/80 hover:text-white text-xl"
+                onClick={closePreviousDetails}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="rounded-lg border bg-blue-50 p-3 sm:p-4">
+                <div className="text-xs text-gray-600">Previous Disposition</div>
+                <div className="text-base font-semibold text-gray-900">
+                  {previousDetailsCall.previous_disposition ||
+                    previousDetailsCall.previous_disposition_category ||
+                    '—'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="rounded-lg border p-3 bg-white">
+                  <div className="text-xs text-gray-600">Agent</div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {previousDetailsCall.previous_disposition_assigned_user_name || 'Unknown Agent'}
+                  </div>
+                </div>
+                <div className="rounded-lg border p-3 bg-white">
+                  <div className="text-xs text-gray-600">Previous Call Time</div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {formatSarvCallDateTime(previousDetailsCall.previous_disposition_at)}
+                  </div>
+                </div>
+                <div className="rounded-lg border p-3 bg-white">
+                  <div className="text-xs text-gray-600">Talk Duration</div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {formatDuration(previousDetailsCall.previous_disposition_talkduration)}
+                  </div>
+                </div>
+              </div>
+
+              {(() => {
+                const extras = parseDispositionExtras(previousDetailsCall.previous_disposition_note);
+                const serviceType = String(extras.service_type || '').trim();
+                const price = String(extras.price || '').trim();
+                const city = String(extras.city || '').trim();
+                const note = String(extras.note || previousDetailsCall.previous_disposition_note || '').trim();
+                return (
+                  <div className="rounded-lg border p-3 bg-white">
+                    <div className="text-xs text-gray-600 mb-2">Notes</div>
+                    {(serviceType || price || city) ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+                        <div className="rounded border bg-gray-50 px-2 py-1.5">
+                          <div className="text-[10px] text-gray-500">Service</div>
+                          <div className="text-xs font-medium text-gray-900">{serviceType || '—'}</div>
+                        </div>
+                        <div className="rounded border bg-gray-50 px-2 py-1.5">
+                          <div className="text-[10px] text-gray-500">Price</div>
+                          <div className="text-xs font-medium text-gray-900">{price || '—'}</div>
+                        </div>
+                        <div className="rounded border bg-gray-50 px-2 py-1.5">
+                          <div className="text-[10px] text-gray-500">City</div>
+                          <div className="text-xs font-medium text-gray-900">{city || '—'}</div>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="text-sm text-gray-900 whitespace-pre-wrap break-words">
+                      {note || '—'}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="rounded-lg border p-3 bg-white">
+                <div className="text-xs text-gray-600 mb-2">Summary</div>
+                <div className="max-h-72 overflow-y-auto rounded border bg-gray-50 p-3 text-xs sm:text-sm text-gray-900 whitespace-pre-wrap break-words">
+                  {previousDetailsCall.previous_disposition_summary || '—'}
+                </div>
+              </div>
+
+              {previousDetailsCall.previous_disposition_recording_url ? (
+                <div className="rounded-lg border p-3 bg-white">
+                  <div className="text-xs text-gray-600 mb-2">Recording</div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <a
+                      className="text-blue-600 hover:text-blue-700 text-xs font-semibold"
+                      href={previousDetailsCall.previous_disposition_recording_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open / Download Recording
+                    </a>
+                    <audio
+                      controls
+                      preload="none"
+                      src={previousDetailsCall.previous_disposition_recording_url}
+                      className="w-full sm:w-96 h-10"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-4 sm:px-5 py-3 border-t bg-white">
+                <button
+                  type="button"
+                  className="btn btn-outline text-sm px-4 py-2"
+                  onClick={closePreviousDetails}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary text-sm px-4 py-2"
+                  onClick={() => jumpToPreviousCall(previousDetailsCall)}
+                  disabled={!String(previousDetailsCall.previous_disposition_callid || '').trim()}
+                >
+                  Open Related Call
+                </button>
+            </div>
+            </div>
+          </div>
       ) : null}
 
       {auditOpen ? (

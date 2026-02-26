@@ -60,6 +60,72 @@ function digits10(value?: string | null) {
   return d.length <= 10 ? d : d.slice(-10);
 }
 
+function getISTParts(value?: string | Date | null) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  const hour = get('hour');
+  if (!year || !month || !day || !hour) return null;
+  return { dayKey: `${year}-${month}-${day}`, hourKey: `${year}-${month}-${day} ${hour}:00` };
+}
+
+function incrementCount(map: Map<string, number>, key: string) {
+  map.set(key, (map.get(key) || 0) + 1);
+}
+
+function normalizeCallType(value?: string | null) {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return 'Unknown';
+  if (raw === 'IBD' || raw === 'INBOUND' || raw === 'IN') return 'Inbound';
+  if (raw === 'OBD' || raw === 'OUTBOUND' || raw === 'OUT') return 'Outbound';
+  if (raw === 'MISSED') return 'Missed';
+  if (raw === 'IVR') return 'IVR';
+  return raw;
+}
+
+function toISTBucketLabel(dateValue: string | Date, bucketMinutes: number): string | null {
+  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  if (!Number.isFinite(date.getTime())) return null;
+
+  const offsetMs = 330 * 60 * 1000;
+  const bucketMs = Math.max(1, bucketMinutes) * 60 * 1000;
+  const istMs = date.getTime() + offsetMs;
+  const flooredIstMs = Math.floor(istMs / bucketMs) * bucketMs;
+  const flooredUtcMs = flooredIstMs - offsetMs;
+  const flooredDate = new Date(flooredUtcMs);
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(flooredDate);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  const yyyy = get('year');
+  const mm = get('month');
+  const dd = get('day');
+  const hh = get('hour');
+  const min = get('minute');
+  if (!yyyy || !mm || !dd) return null;
+  if (bucketMinutes >= 1440) return `${yyyy}-${mm}-${dd}`;
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -88,6 +154,9 @@ export async function GET(request: NextRequest) {
     const allRowsMode = searchParams.get('all_rows') === 'true';
     const dispositionFilter = String(searchParams.get('disposition') || '').trim();
     const cityFilter = String(searchParams.get('city') || '').trim();
+    const allowedBuckets = new Set([15, 30, 60, 240, 480, 720, 1440]);
+    const parsedFlowBucket = Number(searchParams.get('flow_bucket') || 1440);
+    const flowBucketMinutes = allowedBuckets.has(parsedFlowBucket) ? parsedFlowBucket : 1440;
     if (assigneeRole && !['TELECALLER', 'RSA_MANAGER'].includes(assigneeRole)) {
       return NextResponse.json({ error: 'Invalid assignee_role filter' }, { status: 400 });
     }
@@ -121,6 +190,7 @@ export async function GET(request: NextRequest) {
       id,
       callid,
       cnumber,
+      did,
       callstatus,
       ctype,
       ivrstime,
@@ -376,7 +446,7 @@ export async function GET(request: NextRequest) {
         const pageQuery = applyReportFilters(
           db
             .from('sarv_calls')
-            .select('id, cnumber, disposition, disposition_category', { count: offset === 0 ? 'exact' : undefined })
+            .select('id, cnumber, did, ctype, disposition, disposition_category, created_at, assigned_user_id', { count: offset === 0 ? 'exact' : undefined })
             .order('created_at', { ascending: false })
             .range(offset, offset + pageSize - 1)
         );
@@ -399,28 +469,86 @@ export async function GET(request: NextRequest) {
         const allCityByCallId = await buildCityByCallId(allIds);
         const dispositionCounts = new Map<string, number>();
         const cityCounts = new Map<string, number>();
+        const didCounts = new Map<string, number>();
+        const employeeCounts = new Map<string, number>();
+        const flowCounts = new Map<string, number>();
+        const flowTypeCounts = new Map<string, Map<string, number>>();
         const customerSet = new Set<string>();
+        const overviewAssigneeIds = Array.from(
+          new Set(
+            allRows
+              .map((r: any) => String(r?.assigned_user_id || '').trim())
+              .filter(Boolean)
+          )
+        );
+        const overviewAssigneeLabelById = new Map<string, string>();
+        if (overviewAssigneeIds.length > 0) {
+          const { data: assignees } = await db
+            .from('users_login')
+            .select('id, full_name, email')
+            .in('id', overviewAssigneeIds);
+          for (const row of assignees || []) {
+            const id = String((row as any)?.id || '').trim();
+            const label =
+              String((row as any)?.full_name || '').trim() ||
+              String((row as any)?.email || '').trim() ||
+              id;
+            if (id && label) overviewAssigneeLabelById.set(id, label);
+          }
+        }
         for (const row of allRows) {
           const customer = String((row as any)?.cnumber || '').trim();
           if (customer) customerSet.add(customer);
           const disposition = String((row as any)?.disposition || (row as any)?.disposition_category || '').trim() || 'Unspecified';
-          dispositionCounts.set(disposition, (dispositionCounts.get(disposition) || 0) + 1);
+          incrementCount(dispositionCounts, disposition);
+          const did = String((row as any)?.did || '').trim() || 'Unknown';
+          incrementCount(didCounts, did);
+          const assigneeId = String((row as any)?.assigned_user_id || '').trim();
+          const assigneeLabel = (assigneeId ? overviewAssigneeLabelById.get(assigneeId) : '') || 'Unassigned';
+          incrementCount(employeeCounts, assigneeLabel);
           const callId = String((row as any)?.id || '').trim();
           const city =
             allCityByCallId.get(callId) ||
             cityByPhone.get(digits10((row as any)?.cnumber)) ||
             'Unknown';
-          cityCounts.set(city, (cityCounts.get(city) || 0) + 1);
+          incrementCount(cityCounts, city);
+          const bucket = toISTBucketLabel((row as any)?.created_at, flowBucketMinutes);
+          if (bucket) {
+            incrementCount(flowCounts, bucket);
+            const byType = flowTypeCounts.get(bucket) || new Map<string, number>();
+            incrementCount(byType, normalizeCallType((row as any)?.ctype));
+            flowTypeCounts.set(bucket, byType);
+          }
         }
         const toRows = (map: Map<string, number>) =>
           Array.from(map.entries())
             .map(([name, total]) => ({ name, total }))
             .sort((a, b) => b.total - a.total);
+        const callFlow = Array.from(flowCounts.entries())
+          .map(([bucket, total]) => {
+            const typeMap = flowTypeCounts.get(bucket) || new Map<string, number>();
+            const call_types = Array.from(typeMap.entries())
+              .map(([name, count]) => ({
+                name,
+                total: count,
+                percent: total > 0 ? Number(((count * 100) / total).toFixed(1)) : 0,
+              }))
+              .sort((a, b) => b.total - a.total);
+            return { bucket, total, call_types };
+          })
+          .sort((a, b) => a.bucket.localeCompare(b.bucket));
         overview = {
           totalCalls: allRows.length,
           totalCustomers: customerSet.size,
           dispositions: toRows(dispositionCounts),
+          dids: toRows(didCounts),
+          employees: toRows(employeeCounts),
           cities: toRows(cityCounts),
+          call_flow: {
+            granularity: 'bucket',
+            bucket_minutes: flowBucketMinutes,
+            points: callFlow,
+          },
         };
       }
     }

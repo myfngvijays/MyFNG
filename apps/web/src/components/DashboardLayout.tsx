@@ -230,7 +230,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
     // Kick once immediately so active session reflects quickly after tab/window switch.
     sendHeartbeat();
-    const t = setInterval(sendHeartbeat, 10000);
+    const t = setInterval(sendHeartbeat, 120000);
     const onVisible = () => {
       if (document.visibilityState === 'visible') sendHeartbeat();
     };
