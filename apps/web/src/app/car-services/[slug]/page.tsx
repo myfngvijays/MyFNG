@@ -11,6 +11,7 @@ const MARKETING_SLUG_TO_INTERNAL: Record<string, string> = {
   'periodic-car-service': 'periodic-service',
   'car-engine-service': 'engine-service',
   'car-ac-service': 'ac-service',
+  'car-battery-service': 'battery-service',
   'car-battery': 'battery-service',
   'car-brake-service': 'brake-service',
   'car-clutch-service': 'clutch-service',

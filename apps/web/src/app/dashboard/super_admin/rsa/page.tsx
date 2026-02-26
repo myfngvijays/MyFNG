@@ -294,6 +294,24 @@ function deriveCallRating(summary?: string | null) {
   return null;
 }
 
+function csvEscape(value: unknown) {
+  const raw =
+    value === null || value === undefined
+      ? ''
+      : typeof value === 'string'
+        ? value
+        : typeof value === 'number' || typeof value === 'boolean'
+          ? String(value)
+          : JSON.stringify(value);
+  return `"${raw.replace(/"/g, '""')}"`;
+}
+
+function flattenMultilineForSpreadsheet(value?: string | null) {
+  const text = String(value || '');
+  if (!text) return '';
+  return text.replace(/[\r\n]+/g, ' | ').replace(/\t+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+}
+
 function groupCallsByCustomer(calls: SarvCallRow[]) {
   const map = new Map<string, SarvCallRow[]>();
   for (const call of calls) {
@@ -450,6 +468,7 @@ export default function SuperAdminRSASettingsPage() {
   const [backfillLoading, setBackfillLoading] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
+  const [reportExportLoading, setReportExportLoading] = useState(false);
   const [reportCalls, setReportCalls] = useState<SarvCallRow[]>([]);
   const [reportOverviewAll, setReportOverviewAll] = useState<{
     totalCalls: number;
@@ -782,32 +801,60 @@ export default function SuperAdminRSASettingsPage() {
     }
   };
 
+  const buildReportParams = (options?: {
+    includeOverview?: boolean;
+    allRows?: boolean;
+    page?: number;
+    limit?: number;
+    disposition?: string;
+    city?: string;
+  }) => {
+    const params = new URLSearchParams();
+    if (reportFilters.from) {
+      params.set('from', new Date(`${reportFilters.from}T00:00:00`).toISOString());
+    }
+    if (reportFilters.to) {
+      params.set('to', new Date(`${reportFilters.to}T23:59:59`).toISOString());
+    }
+    if (reportFilters.assignee_role) {
+      params.set('assignee_role', reportFilters.assignee_role);
+    }
+    if (reportFilters.assignee_id) {
+      params.set('assignee_id', reportFilters.assignee_id);
+    }
+    if (reportFilters.has_recording) {
+      params.set('has_recording', 'true');
+    }
+    if (reportFilters.q.trim()) {
+      params.set('q', reportFilters.q.trim());
+    }
+    if (options?.includeOverview) {
+      params.set('include_overview', 'true');
+    }
+    if (options?.allRows) {
+      params.set('all_rows', 'true');
+    } else {
+      params.set('limit', String(options?.limit ?? reportFilters.limit));
+      params.set('page', String(options?.page ?? reportPage));
+    }
+    if (options?.disposition) {
+      params.set('disposition', options.disposition);
+    }
+    if (options?.city) {
+      params.set('city', options.city);
+    }
+    return params;
+  };
+
   const loadReport = async () => {
     setReportLoading(true);
     setReportError('');
     try {
-      const params = new URLSearchParams();
-      if (reportFilters.from) {
-        params.set('from', new Date(`${reportFilters.from}T00:00:00`).toISOString());
-      }
-      if (reportFilters.to) {
-        params.set('to', new Date(`${reportFilters.to}T23:59:59`).toISOString());
-      }
-      if (reportFilters.assignee_role) {
-        params.set('assignee_role', reportFilters.assignee_role);
-      }
-      if (reportFilters.assignee_id) {
-        params.set('assignee_id', reportFilters.assignee_id);
-      }
-      if (reportFilters.has_recording) {
-        params.set('has_recording', 'true');
-      }
-      if (reportFilters.q.trim()) {
-        params.set('q', reportFilters.q.trim());
-      }
-      params.set('include_overview', 'true');
-      params.set('limit', String(reportFilters.limit));
-      params.set('page', String(reportPage));
+      const params = buildReportParams({
+        includeOverview: true,
+        limit: reportFilters.limit,
+        page: reportPage,
+      });
 
       const res = await fetch(`/api/super_admin/sarv-calls?${params.toString()}`);
       const json = await res.json().catch(() => ({}));
@@ -844,27 +891,11 @@ export default function SuperAdminRSASettingsPage() {
     setReportDrilldownRows([]);
     setReportDrilldownTitle(`${type === 'disposition' ? 'Disposition' : 'City'}: ${value}`);
     try {
-      const params = new URLSearchParams();
-      if (reportFilters.from) {
-        params.set('from', new Date(`${reportFilters.from}T00:00:00`).toISOString());
-      }
-      if (reportFilters.to) {
-        params.set('to', new Date(`${reportFilters.to}T23:59:59`).toISOString());
-      }
-      if (reportFilters.assignee_role) {
-        params.set('assignee_role', reportFilters.assignee_role);
-      }
-      if (reportFilters.assignee_id) {
-        params.set('assignee_id', reportFilters.assignee_id);
-      }
-      if (reportFilters.has_recording) {
-        params.set('has_recording', 'true');
-      }
-      if (reportFilters.q.trim()) {
-        params.set('q', reportFilters.q.trim());
-      }
-      params.set('all_rows', 'true');
-      params.set(type, value);
+      const params = buildReportParams({
+        allRows: true,
+        disposition: type === 'disposition' ? value : undefined,
+        city: type === 'city' ? value : undefined,
+      });
 
       const res = await fetch(`/api/super_admin/sarv-calls?${params.toString()}`);
       const json = await res.json().catch(() => ({}));
@@ -887,6 +918,100 @@ export default function SuperAdminRSASettingsPage() {
       setReportDrilldownRows([]);
     } finally {
       setReportDrilldownLoading(false);
+    }
+  };
+
+  const exportReportCSV = async (options?: { excelSafe?: boolean }) => {
+    const excelSafe = options?.excelSafe === true;
+    setReportExportLoading(true);
+    setReportError('');
+    try {
+      const params = buildReportParams({ allRows: true });
+      const res = await fetch(`/api/super_admin/sarv-calls?${params.toString()}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to export call report');
+
+      let rows = Array.isArray(json?.calls) ? (json.calls as SarvCallRow[]) : [];
+      const f = String(reportRatingFilter || '').trim();
+      if (f) {
+        if (f === 'unrated') {
+          rows = rows.filter((c: any) => deriveCallRating(c?.summary) == null);
+        } else {
+          const n = Number(f);
+          if (Number.isFinite(n) && n >= 1 && n <= 5) {
+            rows = rows.filter((c: any) => deriveCallRating(c?.summary) === n);
+          }
+        }
+      }
+
+      const audits = json?.audits && typeof json.audits === 'object' ? (json.audits as Record<string, SarvCallAudit | null>) : {};
+      const headers = [
+        'call_time',
+        'created_at',
+        'call_id',
+        'customer_number',
+        'employee_name',
+        'employee_role',
+        'talk_duration_seconds',
+        'talk_duration',
+        'disposition',
+        'disposition_category',
+        'city',
+        'call_rating',
+        'has_recording',
+        'recording_url',
+        'audit_status',
+        'audit_score',
+        'audit_feedback',
+      ];
+
+      const csvLines: string[] = [];
+      csvLines.push(headers.map(csvEscape).join(','));
+      for (const row of rows) {
+        const audit = audits[String(row?.id || '')] || null;
+        const callTime = row.custanswerstime || row.sarv_created_at || row.created_at;
+        const rating = deriveCallRating(row.summary);
+        const values = [
+          formatDateTime(callTime),
+          row.created_at || '',
+          row.callid || '',
+          row.cnumber || '',
+          row.assignee_name || row.assignee_email || row.assignee_phone || row.assigned_user_id || '',
+          row.assigned_role || '',
+          row.talkduration ?? '',
+          formatDuration(row.talkduration),
+          row.disposition || '',
+          row.disposition_category || '',
+          row.city || '',
+          rating ?? '',
+          row.recording_url ? 'yes' : 'no',
+          row.recording_url || '',
+          audit?.audit_status || '',
+          audit?.audit_score ?? '',
+          audit?.feedback || '',
+        ];
+        const sanitizedValues = excelSafe
+          ? values.map((value) => (typeof value === 'string' ? flattenMultilineForSpreadsheet(value) : value))
+          : values;
+        csvLines.push(sanitizedValues.map(csvEscape).join(','));
+      }
+
+      const fromPart = String(reportFilters.from || 'from').replace(/[^\d-]/g, '') || 'from';
+      const toPart = String(reportFilters.to || 'to').replace(/[^\d-]/g, '') || 'to';
+      const csv = `\uFEFF${csvLines.join('\n')}`;
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rsa-call-report-excel-safe-${fromPart}-to-${toPart}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setReportError(e?.message || 'Failed to export call report');
+    } finally {
+      setReportExportLoading(false);
     }
   };
 
@@ -2168,6 +2293,17 @@ export default function SuperAdminRSASettingsPage() {
                   />
                   Has recording
                 </label>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  className="btn btn-outline text-xs px-3 py-2"
+                  onClick={() => exportReportCSV({ excelSafe: true })}
+                  disabled={reportLoading || reportExportLoading}
+                  title="Export filtered call report CSV (Excel-safe)"
+                >
+                  {reportExportLoading ? 'Exporting...' : 'Export CSV'}
+                </button>
               </div>
             </div>
           </div>

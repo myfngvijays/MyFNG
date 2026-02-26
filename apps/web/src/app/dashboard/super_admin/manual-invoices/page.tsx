@@ -9,6 +9,8 @@ export default function ManualInvoicesPage() {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [autoLoading, setAutoLoading] = useState(false);
+  const [creatingSingle, setCreatingSingle] = useState(false);
+  const [singleCreateLocked, setSingleCreateLocked] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState<any>({
     invoice_number: '',
@@ -125,7 +127,9 @@ export default function ManualInvoicesPage() {
   }
 
   async function handleSingleCreate() {
+    if (creatingSingle || singleCreateLocked) return;
     setMessage(null);
+    setCreatingSingle(true);
     try {
       // If invoice_number is empty, auto-fill before create (best effort)
       if (!String(form.invoice_number || '').trim()) {
@@ -142,11 +146,14 @@ export default function ManualInvoicesPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Create failed');
       setMessage('Manual invoice created.');
+      setSingleCreateLocked(true);
       // Move to next number for the next invoice
       setForm((prev: any) => ({ ...prev, invoice_number: '' }));
       await fillNextInvoiceNumber(true);
     } catch (e: any) {
       setMessage(e?.message || 'Create failed');
+    } finally {
+      setCreatingSingle(false);
     }
   }
 
@@ -179,7 +186,7 @@ export default function ManualInvoicesPage() {
           </label>
           <label className="text-xs text-gray-600 flex flex-col gap-1">
             Invoice Date
-            <input className="border rounded-md px-2 py-2 text-sm" placeholder="YYYY-MM-DD"
+            <input className="border rounded-md px-2 py-2 text-sm" type="date"
               value={form.invoice_date} onChange={(e) => {
                 const v = e.target.value;
                 setForm({ ...form, invoice_date: v });
@@ -192,7 +199,7 @@ export default function ManualInvoicesPage() {
           </label>
           <label className="text-xs text-gray-600 flex flex-col gap-1">
             Due Date
-            <input className="border rounded-md px-2 py-2 text-sm" placeholder="YYYY-MM-DD"
+            <input className="border rounded-md px-2 py-2 text-sm" type="date"
               value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
           </label>
         </div>
@@ -335,7 +342,18 @@ export default function ManualInvoicesPage() {
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setForm((prev: any) => ({ ...prev, items: [...prev.items, { item_name: '', item_description: '', hsn_sac_code: '', qty: 1, unit_price: 0, tax_percent: 0, discount: 0 }] }))}
               className="btn btn-secondary text-xs">Add Item</button>
-            <button onClick={handleSingleCreate} className="btn btn-primary text-sm">Create Paid Invoice</button>
+            <button
+              onClick={handleSingleCreate}
+              disabled={creatingSingle || singleCreateLocked}
+              className={
+                singleCreateLocked
+                  ? 'text-sm px-4 py-2 rounded-md bg-green-600 text-white cursor-not-allowed opacity-95'
+                  : 'btn btn-primary text-sm disabled:opacity-60 disabled:cursor-not-allowed'
+              }
+              title={singleCreateLocked ? 'Invoice already created successfully' : 'Create paid invoice'}
+            >
+              {creatingSingle ? 'Creating...' : singleCreateLocked ? 'Invoice Created' : 'Create Paid Invoice'}
+            </button>
           </div>
         </div>
       </div>

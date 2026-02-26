@@ -36,14 +36,45 @@ function fiscalYearLabel(date: Date) {
 function normalizeDateInput(value: string): string | null {
   const raw = String(value || '').trim();
   if (!raw) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-  if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) {
-    const [dd, mm, yyyy] = raw.split('-');
-    return `${yyyy}-${mm}-${dd}`;
+  const asIsoDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (asIsoDate) return `${asIsoDate[1]}-${asIsoDate[2]}-${asIsoDate[3]}`;
+
+  const asIsoDateTime = raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if (asIsoDateTime) return `${asIsoDateTime[1]}-${asIsoDateTime[2]}-${asIsoDateTime[3]}`;
+
+  const asDmy = raw.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+  if (asDmy) {
+    const dd = Number(asDmy[1]);
+    const mm = Number(asDmy[2]);
+    const yyyy = Number(asDmy[3]);
+    const dt = new Date(Date.UTC(yyyy, mm - 1, dd));
+    if (dt.getUTCFullYear() === yyyy && dt.getUTCMonth() === mm - 1 && dt.getUTCDate() === dd) {
+      return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    }
   }
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
-    const [dd, mm, yyyy] = raw.split('/');
-    return `${yyyy}-${mm}-${dd}`;
+
+  // Loose fallback for quick entry like "25" or "25/02"
+  const now = new Date();
+  const dayOnly = raw.match(/^(\d{1,2})$/);
+  if (dayOnly) {
+    const dd = Number(dayOnly[1]);
+    const mm = now.getUTCMonth() + 1;
+    const yyyy = now.getUTCFullYear();
+    const dt = new Date(Date.UTC(yyyy, mm - 1, dd));
+    if (dt.getUTCFullYear() === yyyy && dt.getUTCMonth() === mm - 1 && dt.getUTCDate() === dd) {
+      return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    }
+  }
+
+  const dayMonth = raw.match(/^(\d{1,2})[-\/](\d{1,2})$/);
+  if (dayMonth) {
+    const dd = Number(dayMonth[1]);
+    const mm = Number(dayMonth[2]);
+    const yyyy = now.getUTCFullYear();
+    const dt = new Date(Date.UTC(yyyy, mm - 1, dd));
+    if (dt.getUTCFullYear() === yyyy && dt.getUTCMonth() === mm - 1 && dt.getUTCDate() === dd) {
+      return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    }
   }
   return null;
 }

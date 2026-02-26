@@ -61,6 +61,13 @@ const nextConfig = {
 
   async redirects() {
     return [
+      // Canonical marketing URLs (requested mappings)
+      { source: '/services', destination: '/car-services', permanent: true },
+      { source: '/car-services/car-battery', destination: '/car-services/car-battery-service', permanent: true },
+      { source: '/about', destination: '/about-us', permanent: true },
+      { source: '/contact', destination: '/contact-us', permanent: true },
+      { source: '/faq', destination: '/faqs', permanent: true },
+
       // SEO continuity: old MyFNG uses /blogs/*
       { source: '/blog', destination: '/blogs', permanent: true },
       { source: '/blog/:slug', destination: '/blogs/:slug', permanent: true },

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, FileDown, FileText, Loader2, Download, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, FileDown, FileText, Loader2, Download, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type ManualInvoice = {
   id: string;
@@ -37,6 +37,7 @@ export default function CreatedManualInvoicesClient() {
   const [q, setQ] = useState<string>('');
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [downloading, setDownloading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const [initialized, setInitialized] = useState(false);
 
@@ -176,6 +177,38 @@ export default function CreatedManualInvoicesClient() {
       setMessage(e?.message || 'Failed to download ZIP');
     } finally {
       window.setTimeout(() => setDownloading(false), 1500);
+    }
+  }
+
+  async function deleteInvoice(inv: ManualInvoice) {
+    if (deletingId) return;
+    const invoiceLabel = inv.invoice_number || inv.id;
+    const ok = window.confirm(`Delete invoice ${invoiceLabel}? This action cannot be undone.`);
+    if (!ok) return;
+
+    setDeletingId(inv.id);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/manual-invoices/${encodeURIComponent(inv.id)}`, {
+        method: 'DELETE',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to delete invoice');
+
+      setSelected((prev) => {
+        if (!prev[inv.id]) return prev;
+        const next = { ...prev };
+        delete next[inv.id];
+        return next;
+      });
+
+      const targetPage = invoices.length <= 1 && page > 1 ? page - 1 : page;
+      await fetchInvoices(targetPage, pageSize);
+      setMessage(`Invoice ${invoiceLabel} deleted.`);
+    } catch (e: any) {
+      setMessage(e?.message || 'Failed to delete invoice');
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -415,6 +448,16 @@ export default function CreatedManualInvoicesClient() {
                         <FileDown className="w-4 h-4" />
                         PDF
                       </a>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-red-600 hover:underline disabled:text-gray-400"
+                        onClick={() => deleteInvoice(inv)}
+                        disabled={Boolean(deletingId)}
+                        title="Delete invoice"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        {deletingId === inv.id ? 'Deleting...' : 'Delete'}
+                      </button>
                     </div>
                   </td>
                 </tr>

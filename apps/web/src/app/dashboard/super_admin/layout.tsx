@@ -7,10 +7,12 @@ import {
   LayoutDashboard,
   Users,
   Store,
+  Building2,
   DollarSign,
   Settings,
   BarChart3,
   Shield,
+  Activity,
   LogOut,
   Menu,
   X,
@@ -23,7 +25,10 @@ import {
   History,
   FileCheck,
   ClipboardCheck,
+  Wrench,
   Car,
+  Globe,
+  Bot,
   MessageSquare,
   Image as ImageIcon,
   Ticket
@@ -31,13 +36,18 @@ import {
 
 type NavItem = {
   name: string;
+  isSection?: boolean;
   href?: string;
-  icon: any;
-  description: string;
+  icon?: any;
+  description?: string;
   children?: Array<{ name: string; href: string; icon: any; description: string }>;
 };
 
 const navigationItems: NavItem[] = [
+  {
+    name: 'Overview',
+    isSection: true,
+  },
   {
     name: 'Dashboard',
     href: '/dashboard/super_admin',
@@ -45,10 +55,18 @@ const navigationItems: NavItem[] = [
     description: 'Overview & Metrics'
   },
   {
+    name: 'Operations',
+    isSection: true,
+  },
+  {
     name: 'Workshops',
     href: '/dashboard/super_admin/workshops',
-    icon: Store,
+    icon: Building2,
     description: 'Workshop Management'
+  },
+  {
+    name: 'Catalog & Pricing',
+    isSection: true,
   },
   {
     name: 'Products & Inventory',
@@ -59,7 +77,7 @@ const navigationItems: NavItem[] = [
   {
     name: 'Service Packages',
     href: '/dashboard/super_admin/inventory/packages',
-    icon: Package,
+    icon: Wrench,
     description: 'Manage Service Packages'
   },
   {
@@ -88,7 +106,7 @@ const navigationItems: NavItem[] = [
   },
   {
     name: 'Website Images',
-    icon: Car,
+    icon: Globe,
     description: 'Manage website & app images'
     ,
     children: [
@@ -107,6 +125,10 @@ const navigationItems: NavItem[] = [
     ],
   },
   {
+    name: 'People & Billing',
+    isSection: true,
+  },
+  {
     name: 'Users',
     href: '/dashboard/super_admin/users',
     icon: Users,
@@ -123,6 +145,10 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/telecaller-distribution',
     icon: Users,
     description: 'Auto-assignment allocation settings'
+  },
+  {
+    name: 'Intelligence & Support',
+    isSection: true,
   },
   {
     name: 'RSA',
@@ -145,13 +171,17 @@ const navigationItems: NavItem[] = [
   {
     name: 'Admin AI Chat',
     href: '/dashboard/super_admin/admin-ai-chat',
-    icon: MessageSquare,
+    icon: Bot,
     description: 'Chat with MY FNG AI'
+  },
+  {
+    name: 'System & Governance',
+    isSection: true,
   },
   {
     name: 'Audit Logs',
     href: '/dashboard/super_admin/audit-logs',
-    icon: FileText,
+    icon: Activity,
     description: 'System Activity Tracking'
   },
   {
@@ -274,6 +304,18 @@ export default function SuperAdminLayout({
         <nav className="flex-1 min-h-0 overflow-y-auto py-6 px-3">
           <div className="space-y-2">
             {navigationItems.map((item) => {
+              if (item.isSection) {
+                return sidebarOpen ? (
+                  <div key={`section-${item.name}`} className="px-3 pt-3 first:pt-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-100/85">
+                      {item.name}
+                    </div>
+                  </div>
+                ) : (
+                  <div key={`section-${item.name}`} className="h-1.5" />
+                );
+              }
+
               const Icon = item.icon;
               const active = item.href ? isActive(item.href) : isGroupActive(item);
 
@@ -437,6 +479,16 @@ export default function SuperAdminLayout({
             <nav className="flex-1 min-h-0 overflow-y-auto py-6 px-3">
               <div className="space-y-2">
                 {navigationItems.map((item) => {
+                  if (item.isSection) {
+                    return (
+                      <div key={`mobile-section-${item.name}`} className="px-3 pt-3 first:pt-0">
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-100/85">
+                          {item.name}
+                        </div>
+                      </div>
+                    );
+                  }
+
                   const Icon = item.icon;
               const active = item.href ? isActive(item.href) : isGroupActive(item);
 
