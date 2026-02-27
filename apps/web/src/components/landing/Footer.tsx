@@ -59,8 +59,8 @@ export default function Footer() {
               <li><Link href="/partner" className="hover:text-white transition">My FNG Partner</Link></li>
               <li><Link href="/work" className="hover:text-white transition">Our Work</Link></li>
               <li><Link href="/faq" className="hover:text-white transition">FAQ</Link></li>
-              <li><Link href="/terms" className="hover:text-white transition">Terms and Condition</Link></li>
-              <li><Link href="/privacy" className="hover:text-white transition">Privacy</Link></li>
+              <li><Link href="/terms-and-conditions" className="hover:text-white transition">Terms and Condition</Link></li>
+              <li><Link href="/privacy-policy" className="hover:text-white transition">Privacy</Link></li>
             </ul>
             <Link
               href="/pay-now"
