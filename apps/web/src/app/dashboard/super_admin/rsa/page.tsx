@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import GoogleEmbedMap from '@/components/maps/GoogleEmbedMap';
 import GoogleStateHeatmapMap, { type GoogleStateHeatmapPoint } from '@/components/maps/GoogleStateHeatmapMap';
 import StateHeatmapLeafletVanillaMap, { type StateHeatmapPoint as LeafletStatePoint } from '@/components/maps/StateHeatmapLeafletVanillaMap';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 import {
   CartesianGrid,
   Cell,
@@ -749,6 +750,9 @@ export default function SuperAdminRSASettingsPage() {
   const [sessionsList, setSessionsList] = useState<{ id: string; aansh_id: number; user_id: string; assignee_role: string; expires_at: string; user_name?: string; user_email?: string }[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionRemovingId, setSessionRemovingId] = useState<string>('');
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
+  const [waPreviewMessage, setWaPreviewMessage] = useState('');
 
   const filteredReportCalls = useMemo(() => {
     const list = Array.isArray(reportCalls) ? reportCalls : [];
@@ -763,6 +767,18 @@ export default function SuperAdminRSASettingsPage() {
   }, [reportCalls, reportRatingFilter]);
 
   const groupedReportCalls = useMemo(() => groupCallsByCustomer(filteredReportCalls), [filteredReportCalls]);
+  const openWhatsAppPreview = (phone: string | null | undefined, row?: SarvCallRow | null) => {
+    const value = String(phone || '').trim();
+    if (!value) return;
+    const summary = String(row?.summary || '').trim();
+    const disposition = String(row?.disposition || row?.disposition_category || '').trim();
+    const suggested =
+      summary ||
+      (disposition ? `Hi, aapke recent call (${disposition}) ke follow-up ke liye message kar raha hoon.` : '');
+    setWaPreviewPhone(value);
+    setWaPreviewMessage(suggested);
+    setWaPreviewOpen(true);
+  };
   const reportOverview = useMemo(() => {
     const calls = Array.isArray(filteredReportCalls) ? filteredReportCalls : [];
     const dispositionCounts = new Map<string, number>();
@@ -2824,7 +2840,20 @@ export default function SuperAdminRSASettingsPage() {
                                 '—'}
                             </td>
                             <td className="py-2 pr-3">{row.assigned_role || '—'}</td>
-                            <td className="py-2 pr-3">{row.cnumber || '—'}</td>
+                            <td className="py-2 pr-3">
+                              {row.cnumber ? (
+                                <button
+                                  type="button"
+                                  className="text-green-700 hover:text-green-800 font-semibold underline underline-offset-2"
+                                  onClick={() => openWhatsAppPreview(row.cnumber, row)}
+                                  title="Open WhatsApp style chat preview"
+                                >
+                                  {row.cnumber}
+                                </button>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td className="py-2 pr-3">{normalizeCallType(row.ctype)}</td>
                             <td className="py-2 pr-3">{formatDuration(row.talkduration)}</td>
                             <td className="py-2 pr-3">{row.disposition || row.disposition_category || '—'}</td>
@@ -2904,13 +2933,9 @@ export default function SuperAdminRSASettingsPage() {
                             <td className="py-2 pr-3 font-semibold">
                               <button
                                 type="button"
-                                className="text-left"
-                                onClick={() =>
-                                  setExpandedCustomers((prev) => ({
-                                    ...prev,
-                                    [group.customer]: !isOpen,
-                                  }))
-                                }
+                                className="text-left text-green-700 hover:text-green-800 underline underline-offset-2"
+                                onClick={() => openWhatsAppPreview(group.customer, latest)}
+                                title="Open WhatsApp style chat preview"
                               >
                                 {group.customer} • {group.calls.length} calls
                               </button>
@@ -2966,7 +2991,20 @@ export default function SuperAdminRSASettingsPage() {
                                       '—'}
                                   </td>
                                   <td className="py-2 pr-3">{row.assigned_role || '—'}</td>
-                                  <td className="py-2 pr-3">{row.cnumber || '—'}</td>
+                                  <td className="py-2 pr-3">
+                                    {row.cnumber ? (
+                                      <button
+                                        type="button"
+                                        className="text-green-700 hover:text-green-800 font-semibold underline underline-offset-2"
+                                        onClick={() => openWhatsAppPreview(row.cnumber, row)}
+                                        title="Open WhatsApp style chat preview"
+                                      >
+                                        {row.cnumber}
+                                      </button>
+                                    ) : (
+                                      '—'
+                                    )}
+                                  </td>
                                   <td className="py-2 pr-3">{normalizeCallType(row.ctype)}</td>
                                   <td className="py-2 pr-3">{formatDuration(row.talkduration)}</td>
                                   <td className="py-2 pr-3">
@@ -4368,7 +4406,20 @@ export default function SuperAdminRSASettingsPage() {
                               {row.assignee_name || row.assignee_email || row.assignee_phone || row.assigned_user_id || '—'}
                             </td>
                             <td className="py-2 pr-3">{row.assigned_role || '—'}</td>
-                            <td className="py-2 pr-3">{row.cnumber || '—'}</td>
+                            <td className="py-2 pr-3">
+                              {row.cnumber ? (
+                                <button
+                                  type="button"
+                                  className="text-green-700 hover:text-green-800 font-semibold underline underline-offset-2"
+                                  onClick={() => openWhatsAppPreview(row.cnumber, row)}
+                                  title="Open WhatsApp style chat preview"
+                                >
+                                  {row.cnumber}
+                                </button>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td className="py-2 pr-3">{normalizeCallType(row.ctype)}</td>
                             <td className="py-2 pr-3">{formatDuration(row.talkduration)}</td>
                             <td className="py-2 pr-3">{row.disposition || row.disposition_category || '—'}</td>
@@ -5136,6 +5187,13 @@ export default function SuperAdminRSASettingsPage() {
           </div>
         </div>
       ) : null}
+      <WhatsAppMobilePreviewModal
+        isOpen={waPreviewOpen}
+        phoneNumber={waPreviewPhone}
+        title="WhatsApp Chat"
+        previewMessage={waPreviewMessage}
+        onClose={() => setWaPreviewOpen(false)}
+      />
     </div>
   );
 }

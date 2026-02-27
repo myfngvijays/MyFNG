@@ -141,7 +141,7 @@ export default function TelecallerDistributionPage() {
 
   function buildSamplePayload() {
     const base: Record<string, any> = {
-      lead_type: 'CAR_SERVICE',
+      lead_type: 'NORMAL',
       customer_phone: '9999999999',
     };
     const optional: Record<string, any> = {

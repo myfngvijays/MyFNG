@@ -599,7 +599,7 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
             lead_number: leadNumber,
             created_from: 'WEB',
             status: 'NEW',
-            lead_type: 'CAR_SERVICE',
+            lead_type: 'NORMAL',
             lead_source: 'Website',
             customer_name: formData.customerName,
             customer_phone: formData.customerPhone,

@@ -1,97 +1,194 @@
 /**
- * WhatsApp Business API Service
- * Phase 1.2 - Invoice Sharing
- * Purpose: Send invoices via WhatsApp Business API
+ * WhatsApp Business Cloud API service
+ * Server-only service used by API routes.
  */
 
-import { createClient } from '@/lib/supabase/client';
-
-// WhatsApp Configuration
-const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v18.0';
+const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0';
 const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
 const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';
-const WHATSAPP_BUSINESS_ACCOUNT_ID = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '';
+
+export type WhatsAppSendResult = {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+  statusCode?: number;
+  raw?: unknown;
+};
+
+type TemplateBodyParam = { type: 'text'; text: string };
+
+type MediaMessageInput = {
+  phoneNumber: string;
+  mediaType: 'image' | 'document';
+  mediaUrl: string;
+  caption?: string;
+  filename?: string;
+};
+
+type TemplateMessageInput = {
+  phoneNumber: string;
+  templateName: string;
+  templateParams?: string[];
+  languageCode?: string;
+};
+
+function assertWhatsAppConfig(): string | null {
+  if (!WHATSAPP_PHONE_NUMBER_ID) return 'WHATSAPP_PHONE_NUMBER_ID is not configured';
+  if (!WHATSAPP_ACCESS_TOKEN) return 'WHATSAPP_ACCESS_TOKEN is not configured';
+  return null;
+}
+
+export function normalizePhoneNumber(phoneNumber: string): string {
+  const digits = phoneNumber.replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('91') ? digits : `91${digits}`;
+}
+
+async function parseCloudApiError(response: Response): Promise<{ message: string; raw?: unknown }> {
+  try {
+    const payload = await response.json();
+    const message =
+      payload?.error?.error_user_msg ||
+      payload?.error?.message ||
+      `WhatsApp API request failed (${response.status})`;
+    return { message, raw: payload };
+  } catch {
+    return { message: `WhatsApp API request failed (${response.status})` };
+  }
+}
+
+async function sendMessagePayload(payload: unknown): Promise<WhatsAppSendResult> {
+  const configError = assertWhatsAppConfig();
+  if (configError) {
+    return { success: false, error: configError };
+  }
+
+  try {
+    const response = await fetch(`${WHATSAPP_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const parsed = await parseCloudApiError(response);
+      return {
+        success: false,
+        error: parsed.message,
+        statusCode: response.status,
+        raw: parsed.raw,
+      };
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      messageId: data?.messages?.[0]?.id,
+      statusCode: response.status,
+      raw: data,
+    };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Failed to call WhatsApp API' };
+  }
+}
+
+export async function sendTextMessage(phoneNumber: string, message: string): Promise<WhatsAppSendResult> {
+  const to = normalizePhoneNumber(phoneNumber);
+  if (!to) return { success: false, error: 'Invalid recipient phone number' };
+  if (!message?.trim()) return { success: false, error: 'Message body is required' };
+
+  return sendMessagePayload({
+    messaging_product: 'whatsapp',
+    to,
+    type: 'text',
+    text: { body: message.trim() },
+  });
+}
+
+export async function sendMediaMessage(input: MediaMessageInput): Promise<WhatsAppSendResult> {
+  const to = normalizePhoneNumber(input.phoneNumber);
+  if (!to) return { success: false, error: 'Invalid recipient phone number' };
+  if (!input.mediaUrl?.trim()) return { success: false, error: 'Media URL is required' };
+
+  if (input.mediaType === 'image') {
+    return sendMessagePayload({
+      messaging_product: 'whatsapp',
+      to,
+      type: 'image',
+      image: {
+        link: input.mediaUrl.trim(),
+        caption: input.caption?.trim() || undefined,
+      },
+    });
+  }
+
+  return sendMessagePayload({
+    messaging_product: 'whatsapp',
+    to,
+    type: 'document',
+    document: {
+      link: input.mediaUrl.trim(),
+      caption: input.caption?.trim() || undefined,
+      filename: input.filename?.trim() || undefined,
+    },
+  });
+}
+
+export async function sendTemplateMessage(input: TemplateMessageInput): Promise<WhatsAppSendResult> {
+  const to = normalizePhoneNumber(input.phoneNumber);
+  if (!to) return { success: false, error: 'Invalid recipient phone number' };
+  if (!input.templateName?.trim()) return { success: false, error: 'Template name is required' };
+
+  const bodyParams = (input.templateParams || [])
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .map((text): TemplateBodyParam => ({ type: 'text', text }));
+
+  return sendMessagePayload({
+    messaging_product: 'whatsapp',
+    to,
+    type: 'template',
+    template: {
+      name: input.templateName.trim(),
+      language: { code: input.languageCode || 'en' },
+      components:
+        bodyParams.length > 0
+          ? [
+              {
+                type: 'body',
+                parameters: bodyParams,
+              },
+            ]
+          : undefined,
+    },
+  });
+}
 
 /**
- * Send WhatsApp message
+ * Backward-compatible wrapper used by existing invoice routes.
  */
 export async function sendWhatsAppMessage(
   phoneNumber: string,
   message: string,
   templateName?: string,
   templateParams?: string[]
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  try {
-    // Clean phone number (remove +, spaces, etc.)
-    const cleanPhone = phoneNumber.replace(/\D/g, '');
-    
-    // Add country code if not present
-    const fullPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
-
-    // If template is provided, use template message
-    if (templateName && templateParams) {
-      const response = await fetch(`${WHATSAPP_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: fullPhone,
-          type: 'template',
-          template: {
-            name: templateName,
-            language: { code: 'en' },
-            components: templateParams.map((param, index) => ({
-              type: 'body',
-              parameters: [{ type: 'text', text: param }],
-            })),
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('WhatsApp API Error:', errorData);
-        return { success: false, error: errorData.error?.message || 'Failed to send WhatsApp message' };
-      }
-
-      const data = await response.json();
-      return { success: true, messageId: data.messages?.[0]?.id };
-    } else {
-      // Send text message
-      const response = await fetch(`${WHATSAPP_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: fullPhone,
-          type: 'text',
-          text: { body: message },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('WhatsApp API Error:', errorData);
-        return { success: false, error: errorData.error?.message || 'Failed to send WhatsApp message' };
-      }
-
-      const data = await response.json();
-      return { success: true, messageId: data.messages?.[0]?.id };
-    }
-  } catch (error: any) {
-    console.error('Error sending WhatsApp message:', error);
-    return { success: false, error: error.message };
+): Promise<WhatsAppSendResult> {
+  if (templateName) {
+    return sendTemplateMessage({
+      phoneNumber,
+      templateName,
+      templateParams,
+      languageCode: 'en',
+    });
   }
+  return sendTextMessage(phoneNumber, message);
 }
 
 /**
- * Send invoice via WhatsApp with media
+ * Backward-compatible invoice helper used by billing flow.
  */
 export async function sendInvoiceViaWhatsApp(
   phoneNumber: string,
@@ -99,80 +196,50 @@ export async function sendInvoiceViaWhatsApp(
   amount: number,
   invoiceLink: string,
   pdfUrl?: string
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  try {
-    const message = `📄 *Invoice ${invoiceNumber}*\n\n` +
-      `Amount: ₹${amount.toFixed(2)}\n\n` +
-      `View & Pay: ${invoiceLink}\n\n` +
-      `Thank you for your business!`;
+): Promise<WhatsAppSendResult> {
+  const message =
+    `Invoice ${invoiceNumber}\n\n` +
+    `Amount: INR ${amount.toFixed(2)}\n\n` +
+    `View & Pay: ${invoiceLink}\n\n` +
+    'Thank you for your business.';
 
-    // If PDF URL is provided, send as document
-    if (pdfUrl) {
-      const cleanPhone = phoneNumber.replace(/\D/g, '');
-      const fullPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
-
-      const response = await fetch(`${WHATSAPP_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: fullPhone,
-          type: 'document',
-          document: {
-            link: pdfUrl,
-            filename: `Invoice-${invoiceNumber}.pdf`,
-            caption: message,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        return { success: false, error: errorData.error?.message || 'Failed to send WhatsApp document' };
-      }
-
-      const data = await response.json();
-      return { success: true, messageId: data.messages?.[0]?.id };
-    } else {
-      // Send text message with link
-      return await sendWhatsAppMessage(phoneNumber, message);
-    }
-  } catch (error: any) {
-    console.error('Error sending invoice via WhatsApp:', error);
-    return { success: false, error: error.message };
+  if (pdfUrl) {
+    return sendMediaMessage({
+      phoneNumber,
+      mediaType: 'document',
+      mediaUrl: pdfUrl,
+      filename: `Invoice-${invoiceNumber}.pdf`,
+      caption: message,
+    });
   }
+
+  return sendTextMessage(phoneNumber, message);
 }
 
 /**
- * Check WhatsApp message status
+ * Legacy status method retained for compatibility.
+ * WhatsApp Cloud API recommends webhook-driven status tracking.
  */
 export async function checkWhatsAppMessageStatus(messageId: string): Promise<{
   status: string;
   delivered_at?: string;
   read_at?: string;
 }> {
+  const configError = assertWhatsAppConfig();
+  if (configError) return { status: 'error' };
+
   try {
     const response = await fetch(`${WHATSAPP_API_URL}/${messageId}`, {
-      headers: {
-        'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-      },
+      headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
     });
-
-    if (!response.ok) {
-      throw new Error('Failed to check message status');
-    }
-
+    if (!response.ok) return { status: 'error' };
     const data = await response.json();
     return {
-      status: data.status || 'unknown',
-      delivered_at: data.delivered_at,
-      read_at: data.read_at,
+      status: data?.status || 'unknown',
+      delivered_at: data?.delivered_at,
+      read_at: data?.read_at,
     };
-  } catch (error: any) {
-    console.error('Error checking WhatsApp message status:', error);
+  } catch {
     return { status: 'error' };
   }
 }

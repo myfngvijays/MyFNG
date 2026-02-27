@@ -249,6 +249,7 @@ function buildDispositionNote(form: { note: string; service_type: string; price:
   return note || null;
 }
 import Link from 'next/link';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 
 export default function RSAManagerDashboard() {
   const supabase = getBrowserClient();
@@ -309,8 +310,24 @@ export default function RSAManagerDashboard() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState('');
   const [auditByCallId, setAuditByCallId] = useState<Record<string, SarvCallAudit | null>>({});
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
+  const [waPreviewMessage, setWaPreviewMessage] = useState('');
 
   const groupedCalls = useMemo(() => groupCallsByCustomer(calls), [calls]);
+
+  const openWhatsAppPreview = (phone: string | null | undefined, call?: SarvCallRow | null) => {
+    const value = String(phone || '').trim();
+    if (!value) return;
+    const summary = String(call?.summary || '').trim();
+    const disposition = String(call?.disposition || call?.disposition_category || '').trim();
+    const suggested =
+      summary ||
+      (disposition ? `Hi, regarding your recent call (${disposition}), hum aapki मदद ke liye available hain.` : '');
+    setWaPreviewPhone(value);
+    setWaPreviewMessage(suggested);
+    setWaPreviewOpen(true);
+  };
 
   useEffect(() => {
     fetchUser();
@@ -782,7 +799,20 @@ export default function RSAManagerDashboard() {
                                 <td className="py-2 pr-3 whitespace-nowrap">
                                   {formatSarvCallDateTime(call.custanswerstime || call.sarv_created_at || call.created_at)}
                                 </td>
-                                <td className="py-2 pr-3">{call.cnumber || '—'}</td>
+                                <td className="py-2 pr-3">
+                                  {call.cnumber ? (
+                                    <button
+                                      type="button"
+                                      className="text-green-700 hover:text-green-800 font-semibold underline underline-offset-2"
+                                      onClick={() => openWhatsAppPreview(call.cnumber, call)}
+                                      title="Open WhatsApp style chat preview"
+                                    >
+                                      {call.cnumber}
+                                    </button>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
                                 <td className="py-2 pr-3">{normalizeCallType(call.ctype)}</td>
                                 <td className="py-2 pr-3">{call.did || '—'}</td>
                                 <td className="py-2 pr-3">{formatDuration(call.talkduration)}</td>
@@ -863,13 +893,9 @@ export default function RSAManagerDashboard() {
                                 <td className="py-2 pr-3 font-semibold">
                                   <button
                                     type="button"
-                                    className="text-left"
-                                    onClick={() =>
-                                      setExpandedCustomers((prev) => ({
-                                        ...prev,
-                                        [group.customer]: !isOpen,
-                                      }))
-                                    }
+                                    className="text-left text-green-700 hover:text-green-800 underline underline-offset-2"
+                                    onClick={() => openWhatsAppPreview(group.customer, latest)}
+                                    title="Open WhatsApp style chat preview"
                                   >
                                     {group.customer} • {group.calls.length} calls
                                   </button>
@@ -921,7 +947,20 @@ export default function RSAManagerDashboard() {
                                           call.custanswerstime || call.sarv_created_at || call.created_at
                                         )}
                                       </td>
-                                      <td className="py-2 pr-3">{call.cnumber || '—'}</td>
+                                      <td className="py-2 pr-3">
+                                        {call.cnumber ? (
+                                          <button
+                                            type="button"
+                                            className="text-green-700 hover:text-green-800 font-semibold underline underline-offset-2"
+                                            onClick={() => openWhatsAppPreview(call.cnumber, call)}
+                                            title="Open WhatsApp style chat preview"
+                                          >
+                                            {call.cnumber}
+                                          </button>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </td>
                                       <td className="py-2 pr-3">{normalizeCallType(call.ctype)}</td>
                                       <td className="py-2 pr-3">{call.did || '—'}</td>
                                       <td className="py-2 pr-3">{formatDuration(call.talkduration)}</td>
@@ -1964,6 +2003,13 @@ export default function RSAManagerDashboard() {
           </div>
         </div>
       ) : null}
+      <WhatsAppMobilePreviewModal
+        isOpen={waPreviewOpen}
+        phoneNumber={waPreviewPhone}
+        title="WhatsApp Chat"
+        previewMessage={waPreviewMessage}
+        onClose={() => setWaPreviewOpen(false)}
+      />
     </DashboardLayout>
   );
 }

@@ -121,7 +121,7 @@ function BookingDetailsContent() {
             lead_number: leadNumber,
             created_from: 'WEB',
             status: 'NEW',
-            lead_type: 'CAR_SERVICE',
+            lead_type: 'NORMAL',
             lead_source: 'Website',
             customer_name: formData.customer_name || null,
             customer_phone: formData.customer_phone || null,

@@ -199,24 +199,24 @@ export default function ServiceExplorer({
               Verified services. Clear pricing. One simple booking.
             </p>
 
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <div className="mt-8 mx-auto grid w-full max-w-xl grid-cols-2 gap-3 sm:flex sm:w-auto sm:max-w-none sm:items-center sm:justify-center">
               <button
                 type="button"
                 onClick={onQuickBook}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-white font-semibold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-blue-100/80 bg-white/55 px-6 py-3 text-brand-primary font-semibold shadow-lg shadow-blue-500/20 backdrop-blur-md hover:bg-white/70 transition-all"
               >
                 Quick Book <ArrowRight className="w-5 h-5" />
               </button>
               <button
                 type="button"
                 onClick={onAskAI}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-white/80 backdrop-blur border border-gray-200 px-6 py-3 text-gray-900 font-semibold hover:border-blue-200 hover:text-blue-700 transition-all"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/80 px-6 py-3 text-gray-900 font-semibold backdrop-blur hover:border-blue-200 hover:text-blue-700 transition-all"
               >
                 Ask MY FNG AI <Sparkles className="w-5 h-5" />
               </button>
               <Link
                 href="/services"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/70 px-6 py-3 text-gray-900 font-semibold hover:border-gray-300 transition-all"
+                className="col-span-2 w-full sm:col-span-1 sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/70 px-6 py-3 text-gray-900 font-semibold hover:border-gray-300 transition-all"
               >
                 Explore All Services <ArrowRight className="w-5 h-5" />
               </Link>

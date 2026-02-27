@@ -323,9 +323,42 @@ export async function POST(
               sharing_method: 'WHATSAPP',
               recipient_phone: invoice.lead.customer_phone,
               sharing_status: 'SENT',
+              provider_message_id: (whatsappResult as any).messageId || null,
+              message_type: 'MEDIA',
+              media_url: pdfUrl,
               sharing_link: shortUrl,
               shared_at: now,
             });
+
+          await supabase
+            .from('whatsapp_messages')
+            .upsert(
+              {
+                provider_message_id: (whatsappResult as any).messageId || null,
+                direction: 'OUTBOUND',
+                message_type: 'MEDIA',
+                lead_id: invoice.lead_id,
+                invoice_id: invoiceId,
+                recipient_phone: invoice.lead.customer_phone,
+                media_url: pdfUrl,
+                status: 'SENT',
+                status_at: now,
+                payload: {
+                  source: 'billing_invoice_send',
+                  invoice_number: invoice.invoice_number,
+                  short_url: shortUrl,
+                },
+                meta: {
+                  actor_id: userProfile.id,
+                  role_code: roleCode,
+                },
+                created_by: userProfile.id,
+                updated_at: now,
+              },
+              {
+                onConflict: 'provider_message_id',
+              }
+            );
 
           const whatsappResponse: { success: boolean; message: string; messageId?: string } = { 
             success: true, 
@@ -336,6 +369,31 @@ export async function POST(
           }
           results.whatsapp = whatsappResponse;
         } else {
+          await supabase
+            .from('whatsapp_messages')
+            .insert({
+              direction: 'OUTBOUND',
+              message_type: 'MEDIA',
+              lead_id: invoice.lead_id,
+              invoice_id: invoiceId,
+              recipient_phone: invoice.lead.customer_phone,
+              media_url: pdfUrl,
+              status: 'FAILED',
+              status_at: now,
+              error_message: whatsappResult.error || 'Failed to send WhatsApp message',
+              payload: {
+                source: 'billing_invoice_send',
+                invoice_number: invoice.invoice_number,
+                short_url: shortUrl,
+              },
+              meta: {
+                actor_id: userProfile.id,
+                role_code: roleCode,
+              },
+              created_by: userProfile.id,
+              updated_at: now,
+            });
+
           results.whatsapp = { 
             success: false, 
             message: whatsappResult.error || 'Failed to send WhatsApp message' 

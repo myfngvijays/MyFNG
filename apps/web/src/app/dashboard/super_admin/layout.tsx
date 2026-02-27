@@ -175,6 +175,12 @@ const navigationItems: NavItem[] = [
     description: 'Chat with MY FNG AI'
   },
   {
+    name: 'WhatsApp Templates',
+    href: '/dashboard/super_admin/whatsapp-templates',
+    icon: MessageSquare,
+    description: 'Create/manage WhatsApp templates'
+  },
+  {
     name: 'System & Governance',
     isSection: true,
   },

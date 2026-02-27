@@ -336,7 +336,12 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         const normalizedRole = role.toLowerCase();
         const normalizedUserRole = roleCode.toLowerCase();
         const superAdminOverride = normalizedUserRole === 'super_admin';
-        if (!superAdminOverride && normalizedUserRole !== normalizedRole && normalizedRole !== 'sub_admin') {
+        if (
+          !superAdminOverride &&
+          normalizedUserRole !== normalizedRole &&
+          normalizedRole !== 'sub_admin' &&
+          normalizedRole !== 'subadmin'
+        ) {
           router.push(`/dashboard/${roleCode.toLowerCase()}`);
         }
       } else {
@@ -438,6 +443,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/super_admin/coupons', icon: <Tag className="w-5 h-5" />, label: 'Coupons' },
         { href: '/dashboard/super_admin/manual-invoices', icon: <FileText className="w-5 h-5" />, label: 'Manual Invoices' },
         { href: '/dashboard/super_admin/telecaller-distribution', icon: <Phone className="w-5 h-5" />, label: 'Telecaller Distribution' },
+        { href: '/dashboard/super_admin/whatsapp-templates', icon: <MessageSquare className="w-5 h-5" />, label: 'WhatsApp Templates' },
         { href: '/dashboard/super_admin/lead-history', icon: <ClipboardList className="w-5 h-5" />, label: 'Lead History' },
         { href: '/dashboard/super_admin/kb-manager', icon: <ClipboardList className="w-5 h-5" />, label: 'KB Manager' },
         { href: '/dashboard/super_admin/kb-questions', icon: <ClipboardList className="w-5 h-5" />, label: 'KB Questions' },
@@ -551,10 +557,15 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       'SUB_ADMIN': [
         { href: '/dashboard/sub_admin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/sub_admin/team', icon: <Users className="w-5 h-5" />, label: 'Team Management' },
+        { href: '/dashboard/sub_admin/whatsapp-templates', icon: <MessageSquare className="w-5 h-5" />, label: 'WhatsApp Templates' },
         { href: '/dashboard/sub_admin/leads', icon: <FileText className="w-5 h-5" />, label: 'Leads' },
         { href: '/dashboard/sub_admin/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
         { href: '/dashboard/sub_admin/performance', icon: <TrendingUp className="w-5 h-5" />, label: 'Performance' },
         { href: '/dashboard/sub_admin/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
+      ],
+      'SUBADMIN': [
+        { href: '/dashboard/subadmin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/sub_admin/whatsapp-templates', icon: <MessageSquare className="w-5 h-5" />, label: 'WhatsApp Templates' },
       ],
       'AUDITOR': [
         { href: '/dashboard/auditor', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
@@ -714,7 +725,11 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       </aside>
 
       {/* Main Content */}
-      <main className={`${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} pt-14 sm:pt-16 min-h-screen`}>
+      <main
+        className={`${
+          sidebarOpen ? 'ml-56 sm:ml-64' : 'ml-0'
+        } ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} pt-14 sm:pt-16 min-h-screen transition-all duration-300`}
+      >
         <div className="p-3 sm:p-4 md:p-6">
           {children}
         </div>

@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import SendWhatsAppModal from '@/components/shared/SendWhatsAppModal';
 
 export default function CSELeadDetailPage() {
   const router = useRouter();
@@ -41,6 +42,7 @@ export default function CSELeadDetailPage() {
   const [saving, setSaving] = useState(false);
   const [lead, setLead] = useState<any>(null);
   const [tickets, setTickets] = useState<any[]>([]);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'customer' | 'vehicle' | 'service' | 'pickup' | 'progress' | 'invoice' | 'tickets'>('overview');
 
@@ -806,7 +808,10 @@ export default function CSELeadDetailPage() {
                         <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         Email Invoice
                       </button>
-                      <button className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white text-xs sm:text-sm rounded-lg hover:bg-blue-700">
+                      <button
+                        onClick={() => setShowWhatsAppModal(true)}
+                        className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white text-xs sm:text-sm rounded-lg hover:bg-blue-700"
+                      >
                         <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         Send via WhatsApp
                       </button>
@@ -874,6 +879,15 @@ export default function CSELeadDetailPage() {
           </div>
         </div>
       </div>
+      <SendWhatsAppModal
+        isOpen={showWhatsAppModal}
+        onClose={() => setShowWhatsAppModal(false)}
+        leadId={leadId}
+        leadNumber={lead?.lead_number}
+        defaultPhone={lead?.customer_phone}
+        defaultCustomerName={lead?.customer_name}
+        invoiceId={lead?.invoice?.id}
+      />
     </DashboardLayout>
   );
 }

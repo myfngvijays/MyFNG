@@ -157,7 +157,6 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                 <div className="lg:col-span-5 lg:sticky lg:top-24 lg:self-start">
                   <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-100 p-6 max-h-[70vh] overflow-y-auto">
                     <h2 className="text-xl font-bold text-gray-900 mb-4">Browse all services</h2>
-                    <p className="text-sm text-gray-500 mb-6">Auto-scrolling • hover to pause</p>
 
                     <div className="space-y-3">
                       {services.map((service) => {
@@ -239,14 +238,14 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                     <div className="p-4 sm:p-8">
                       {/* Big Icon + Title */}
                       <div className="mb-4 sm:mb-6">
-                        <div className="flex items-start gap-3 sm:gap-6">
+                        <div className="flex items-center justify-center gap-3 sm:gap-6 text-center">
                           <div className="flex-shrink-0 w-14 h-14 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-xl">
                           {(() => {
                             const IconComponent = selectedService.icon;
                               return <IconComponent className="w-7 h-7 sm:w-10 sm:h-10" />;
                           })()}
                           </div>
-                          <div className="flex-1 min-w-0">
+                          <div className="min-w-0">
                             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">{selectedService.title}</h2>
                           </div>
                         </div>

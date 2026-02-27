@@ -172,7 +172,7 @@ export default function CreateLeadPage() {
             lead_number: leadNumber,
             created_from: 'WEB',
             status: 'NEW',
-            lead_type: 'CAR_SERVICE',
+            lead_type: 'NORMAL',
             lead_source: 'Website',
             customer_name: customer.full_name,
             customer_email: customer.email,

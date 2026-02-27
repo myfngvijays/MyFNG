@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { LEAD_SOURCES, LEAD_TYPES } from '@/lib/enquiry/createLead';
-import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
+import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 
 type BookingPayload = {
   lead?: Record<string, any>;
@@ -35,6 +34,100 @@ function normalizePhone(phone: string | null | undefined) {
 
 function generateLeadNumber() {
   return `L-${Date.now().toString().slice(-8)}`;
+}
+
+const EXTERNAL_AUTOUPDATE_URL =
+  'https://022os10kr2.execute-api.ap-south-1.amazonaws.com/enterprise/66f6bc6faf29b5a6f29c9bbf/autoupdatelead';
+const EXTERNAL_AUTOUPDATE_BEARER =
+  '398fc0c7-ee90-4992-b214-4063f9f7ad031727771960659:e9580bb4-cb6f-47ff-81fb-847e5a98a5a2';
+
+async function pushLeadToExternalApi(leadRow: Record<string, any>) {
+  const phoneDigits = String(leadRow.customer_phone || '').replace(/\D/g, '').slice(-10);
+  const serviceTypeIds = Array.isArray(leadRow.service_type_ids) ? leadRow.service_type_ids : [];
+  const payload = {
+    fields: {
+      // Core contact
+      Name: String(leadRow.customer_name || '').trim() || 'Website Lead',
+      Phone: phoneDigits ? `+91${phoneDigits}` : null,
+      Email: leadRow.customer_email || null,
+
+      // Lead identifiers
+      LEADTAG: 'Website',
+      LeadSource: leadRow.lead_source || 'Website',
+      LeadNumber: leadRow.lead_number || null,
+      LeadType: leadRow.lead_type || null,
+      LeadStatus: leadRow.status || null,
+
+      // Vehicle/service
+      carModel: String(leadRow.vehicle_model || '').trim() || null,
+      VehicleMake: leadRow.vehicle_make || null,
+      VehicleModel: leadRow.vehicle_model || null,
+      VehicleVariant: leadRow.vehicle_variant || null,
+      VehicleNumber: leadRow.vehicle_number || null,
+      ServiceType: leadRow.service_type || null,
+      ServiceTypeIds: serviceTypeIds,
+
+      // Location/schedule
+      City: leadRow.city || null,
+      State: leadRow.state || null,
+      Pincode: leadRow.pincode || null,
+      Address: leadRow.address || leadRow.customer_address || null,
+      PickupRequired: typeof leadRow.pickup_required === 'boolean' ? leadRow.pickup_required : null,
+      PickupAddress: leadRow.pickup_address || null,
+      PreferredSlotStart: leadRow.preferred_slot_start || null,
+
+      // Commercial
+      EstimatedAmount: leadRow.estimated_amount ?? null,
+      PaymentMode: leadRow.payment_mode || null,
+      PaymentStatus: leadRow.payment_status || null,
+      CouponCode: leadRow.coupon_code || null,
+      DiscountAmount: leadRow.discount_amount ?? null,
+
+      // Metadata
+      CreatedFrom: leadRow.created_from || 'WEB',
+      CreatedAt: leadRow.created_at || null,
+    },
+    actions: [
+      {
+        type: 'SYSTEM_NOTE',
+        text: 'Lead Source: delhi_service',
+      },
+    ],
+  };
+
+  const res = await fetch(EXTERNAL_AUTOUPDATE_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${EXTERNAL_AUTOUPDATE_BEARER}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`External API failed: ${res.status} ${body || ''}`.trim());
+  }
+}
+
+function toServiceLeadType(input: string) {
+  const raw = String(input || '').trim().toUpperCase();
+  if (raw === 'CAR_SERVICE') return 'NORMAL';
+  if (raw === 'HOME_CAR_SERVICE') return 'HOME_SERVICE';
+  if (raw === 'RSA') return 'RSA';
+  if (raw === 'NORMAL') return 'NORMAL';
+  if (raw === 'HOME_SERVICE') return 'HOME_SERVICE';
+  return null;
+}
+
+function toEnquiryLeadType(input: string) {
+  const raw = String(input || '').trim().toUpperCase();
+  if (raw === 'CAR_SERVICE') return 'CAR_SERVICE';
+  if (raw === 'HOME_CAR_SERVICE') return 'HOME_CAR_SERVICE';
+  if (raw === 'RSA') return 'RSA';
+  if (raw === 'NORMAL') return 'CAR_SERVICE';
+  if (raw === 'HOME_SERVICE') return 'HOME_CAR_SERVICE';
+  return null;
 }
 
 function findFreeServicePrice(
@@ -102,9 +195,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: adminError || 'Admin client not configured' }, { status: 500 });
     }
 
-    const leadType = String(lead?.lead_type || 'CAR_SERVICE').trim();
+    const serviceLeadType = toServiceLeadType(String(lead?.lead_type || 'NORMAL'));
+    const enquiryLeadType = toEnquiryLeadType(String(lead?.lead_type || 'NORMAL'));
     const leadSource = String(lead?.lead_source || 'Website').trim();
-    if (!LEAD_TYPES.includes(leadType as any)) {
+    if (!serviceLeadType || !enquiryLeadType) {
       return NextResponse.json({ error: 'Invalid lead_type' }, { status: 400 });
     }
     if (!LEAD_SOURCES.includes(leadSource as any)) {
@@ -115,6 +209,17 @@ export async function POST(request: NextRequest) {
     if (!customerPhone) {
       return NextResponse.json({ error: 'customer_phone is required' }, { status: 400 });
     }
+    const customerName = String(lead?.customer_name || '').trim() || `Customer_${customerPhone.slice(-4)}`;
+    const vehicleNumber = String(lead?.vehicle_number || '').trim().toUpperCase() || 'NA';
+    const serviceType =
+      String(
+        lead?.service_type ||
+          (Array.isArray(lead?.service_type_ids) && lead.service_type_ids.length > 0 ? 'CAR_SERVICE' : '') ||
+          lead?.problem_description ||
+          'CAR_SERVICE'
+      )
+        .trim()
+        .slice(0, 100) || 'CAR_SERVICE';
 
     const nowIso = new Date().toISOString();
     const leadNumber = String(lead?.lead_number || generateLeadNumber());
@@ -218,17 +323,16 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    const { telecallerId, reason } = await pickTelecallerWeightedRoundRobin();
-    const assignedAt = telecallerId ? nowIso : null;
-    const leadStatus = telecallerId ? 'ASSIGNED' : 'NEW';
-
     const serviceLeadPayload = {
       ...lead,
       lead_number: leadNumber,
-      lead_type: leadType,
+      lead_type: serviceLeadType,
       lead_source: leadSource,
       status: lead?.status || 'NEW',
+      customer_name: customerName,
       customer_phone: customerPhone,
+      vehicle_number: vehicleNumber,
+      service_type: serviceType,
       coupon_code: couponCode,
       discount_amount: discountAmount,
       coupon_meta: couponMeta,
@@ -245,66 +349,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: leadError.message }, { status: 500 });
     }
 
-    const history: any[] = [{ type: 'CREATED', at: nowIso, lead_type: leadType, lead_source: leadSource }];
-    if (telecallerId) {
-      history.push({ type: 'ASSIGNED', at: nowIso, mode: 'AUTO', telecaller_id: telecallerId });
-    } else if (reason) {
-      history.push({ type: 'ASSIGNMENT_SKIPPED', at: nowIso, reason });
-    }
-
-    const enquiryPayload = {
-      kind: 'LEAD',
-      lead_number: leadNumber,
-      lead_type: leadType,
-      lead_status: leadStatus,
-      lead_priority: String(lead?.lead_priority || 'NORMAL').toUpperCase(),
-      lead_source: leadSource,
-      lead_source_other_note: lead?.lead_source_other_note || null,
-
-      customer_name: lead?.customer_name || null,
-      customer_phone: customerPhone,
-      customer_alt_phone: lead?.customer_alt_phone || null,
-      customer_email: lead?.customer_email || null,
-      customer_address: lead?.customer_address || null,
-      customer_city: lead?.customer_city || lead?.city || null,
-      customer_pincode: lead?.customer_pincode || null,
-      customer_lat: lead?.customer_lat || null,
-      customer_lng: lead?.customer_lng || null,
-
-      vehicle_number: lead?.vehicle_number || null,
-      vehicle_make: lead?.vehicle_make || null,
-      vehicle_model: lead?.vehicle_model || null,
-      vehicle_variant: lead?.vehicle_variant || null,
-      vehicle_fuel_type: lead?.vehicle_fuel_type || null,
-
-      problem_description: lead?.problem_description || null,
-      pickup_required: Boolean(lead?.pickup_required),
-      preferred_slot_start: lead?.preferred_slot_start || null,
-      preferred_slot_end: lead?.preferred_slot_end || null,
-
-      assigned_telecaller_id: telecallerId,
-      assigned_at: assignedAt,
-      assignment_mode: 'AUTO',
-      history,
-      meta: {
-        ...(reason ? { assignment_error: reason } : {}),
-        service_lead_id: serviceLead?.id || null,
-        coupon: couponMeta || null,
-      },
-      created_at: nowIso,
-      updated_at: nowIso,
-    };
-
-    const { data: enquiryLead, error: enquiryError } = await supabaseAdmin
-      .from('enquiry_hub')
-      .insert(enquiryPayload)
-      .select()
-      .single();
-
-    if (enquiryError) {
-      return NextResponse.json({ error: enquiryError.message }, { status: 500 });
-    }
-
     if (couponMeta?.coupon_id) {
       await supabaseAdmin.from('coupon_redemptions').insert({
         coupon_id: couponMeta.coupon_id,
@@ -319,11 +363,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Fire external lead sync after successful lead creation.
+    try {
+      await pushLeadToExternalApi(serviceLead as Record<string, any>);
+    } catch (err) {
+      console.error('[bookings/create] external sync failed:', err);
+    }
+
     return NextResponse.json(
       {
         success: true,
         lead: serviceLead,
-        enquiry: enquiryLead,
         coupon: couponMeta,
       },
       { status: 201 }

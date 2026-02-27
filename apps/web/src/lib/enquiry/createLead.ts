@@ -13,7 +13,17 @@ export const LEAD_SOURCES = [
   'Other',
 ] as const;
 
-export const LEAD_TYPES = ['CAR_SERVICE', 'HOME_CAR_SERVICE', 'RSA'] as const;
+export const LEAD_TYPES = ['CAR_SERVICE', 'HOME_CAR_SERVICE', 'RSA', 'NORMAL', 'HOME_SERVICE'] as const;
+
+function toEnquiryLeadType(input: string) {
+  const raw = String(input || '').trim().toUpperCase();
+  if (raw === 'CAR_SERVICE') return 'CAR_SERVICE';
+  if (raw === 'HOME_CAR_SERVICE') return 'HOME_CAR_SERVICE';
+  if (raw === 'RSA') return 'RSA';
+  if (raw === 'NORMAL') return 'CAR_SERVICE';
+  if (raw === 'HOME_SERVICE') return 'HOME_CAR_SERVICE';
+  return null;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -33,12 +43,12 @@ type CreateLeadInput = {
 };
 
 export async function createLeadFromBody({ body, leadSourceOverride }: CreateLeadInput) {
-  const leadType = String(body?.lead_type || '').trim();
+  const leadType = toEnquiryLeadType(String(body?.lead_type || 'CAR_SERVICE'));
   const leadSource = String(leadSourceOverride ?? body?.lead_source ?? '').trim();
   const otherNoteRaw = String(body?.lead_source_other_note || '').trim();
   const customerPhone = String(body?.customer_phone || '').replace(/\D/g, '').slice(-10);
 
-  if (!LEAD_TYPES.includes(leadType as any)) {
+  if (!leadType) {
     throw new ApiError('Invalid lead_type', 400);
   }
   if (!LEAD_SOURCES.includes(leadSource as any)) {

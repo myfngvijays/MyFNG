@@ -27,7 +27,6 @@ import {
   Award,
   TrendingUp,
   Heart,
-  HelpCircle,
   Quote,
   Loader2,
   Sparkles,
@@ -1730,35 +1729,35 @@ export default function HomePage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                     <div className="rounded-2xl bg-white border border-gray-100 p-4">
                       <div className="flex items-center justify-between">
-                        <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Avg rating</div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-black">Avg rating</div>
                         <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
                       </div>
-                      <div className="mt-1 text-2xl font-extrabold text-gray-900">{avgRating}</div>
-                      <div className="mt-1 text-xs text-gray-500">Trusted by customers</div>
+                      <div className="mt-1 text-2xl font-extrabold text-[#023d95]">{avgRating}</div>
+                      <div className="mt-1 text-xs text-black">Trusted by customers</div>
                     </div>
                     <div className="rounded-2xl bg-white border border-gray-100 p-4">
                       <div className="flex items-center justify-between">
-                        <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Reviews</div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-black">Reviews</div>
                         <Users className="w-4 h-4 text-blue-600" />
                       </div>
-                      <div className="mt-1 text-2xl font-extrabold text-gray-900">{totalReviews}</div>
-                      <div className="mt-1 text-xs text-gray-500">Verified feedback</div>
+                      <div className="mt-1 text-2xl font-extrabold text-[#023d95]">{totalReviews}</div>
+                      <div className="mt-1 text-xs text-black">Verified feedback</div>
                     </div>
                     <div className="rounded-2xl bg-white border border-gray-100 p-4">
                       <div className="flex items-center justify-between">
-                        <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Cities</div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-black">Cities</div>
                         <MapPin className="w-4 h-4 text-purple-600" />
                       </div>
-                      <div className="mt-1 text-2xl font-extrabold text-gray-900">{cities}</div>
-                      <div className="mt-1 text-xs text-gray-500">Pan-India network</div>
+                      <div className="mt-1 text-2xl font-extrabold text-[#023d95]">{cities}</div>
+                      <div className="mt-1 text-xs text-black">Pan-India network</div>
                     </div>
                     <div className="rounded-2xl bg-white border border-gray-100 p-4">
                       <div className="flex items-center justify-between">
-                        <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Support</div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-black">Support</div>
                         <Clock className="w-4 h-4 text-green-600" />
                       </div>
-                      <div className="mt-1 text-2xl font-extrabold text-gray-900">{response}</div>
-                      <div className="mt-1 text-xs text-gray-500">Average response</div>
+                      <div className="mt-1 text-2xl font-extrabold text-[#023d95]">{response}</div>
+                      <div className="mt-1 text-xs text-black">Average response</div>
                     </div>
                   </div>
                 </div>
@@ -1782,7 +1781,7 @@ export default function HomePage() {
       <section className="py-12 sm:py-16 md:py-20 bg-white">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
-            <AIFeatureBadge text="FAQ" />
+            <AIFeatureBadge text="FAQs" />
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mt-2 text-brand-secondary">Frequently Asked Questions</h2>
             <p className="text-sm sm:text-base text-gray-600 mt-3 sm:mt-4 px-4">
               Got questions? We've got answers
@@ -1838,30 +1837,20 @@ export default function HomePage() {
 
       {/* Floating Quick Book – above mobile bottom bar when visible (lg:hidden) */}
       {!isChatOpen && (
-        <div className="fixed bottom-44 right-4 z-50 lg:bottom-24 lg:right-6">
+        <div className="fixed bottom-[5.25rem] right-3 z-50 lg:hidden">
           <button
             type="button"
             onClick={() => setIsBookingFormOpen(true)}
-            className="bg-white/95 hover:bg-white text-brand-primary px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2 sm:gap-3 group border-2 sm:border-4 border-brand-primary/15 backdrop-blur"
+            className="bg-white/30 text-brand-primary px-4 py-2.5 rounded-full shadow-xl shadow-blue-500/15 transition-all transform hover:scale-105 flex items-center gap-2 group border border-white/70 backdrop-blur-lg hover:bg-white/40"
           >
-            <Zap className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 group-hover:rotate-12 transition-transform flex-shrink-0" />
-            <span className="font-semibold text-xs sm:text-sm md:text-base">Quick Book</span>
-            <ArrowRight className="w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5 opacity-70 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+            <Zap className="w-5 h-5 group-hover:rotate-12 transition-transform flex-shrink-0" />
+            <span className="font-semibold text-sm">Quick Book</span>
+            <ArrowRight className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity flex-shrink-0" />
           </button>
         </div>
       )}
 
-      {/* Floating Chatbot – above mobile bottom bar when visible (lg:hidden) */}
-      <div className="fixed bottom-28 right-4 z-50 flex flex-col items-end gap-2 lg:hidden">
-        <Link
-          href="/ai-booking"
-          className="bg-brand-primary hover:bg-brand-primary-hover text-white px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2 sm:gap-3 group border-2 sm:border-4 border-white/20 animate-bounce-slow"
-        >
-          <Bot className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 group-hover:rotate-12 transition-transform flex-shrink-0" />
-          <span className="font-semibold text-xs sm:text-sm md:text-base hidden sm:inline">MY FNG AI</span>
-          <span className="font-semibold text-xs sm:hidden">AI</span>
-        </Link>
-      </div>
+      {/* Floating AI button hidden for mobile by request */}
 
       {/* Chatbot Modal */}
       {false && (
@@ -2598,7 +2587,6 @@ function FAQItem({
         className="w-full p-4 sm:p-5 md:p-6 flex items-center justify-between text-left hover:bg-gray-50 transition gap-2 sm:gap-4"
       >
         <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0">
-          <HelpCircle className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 text-brand-primary flex-shrink-0" />
           <span
             className="font-bold text-sm sm:text-base text-gray-900 whitespace-normal leading-snug overflow-hidden min-h-[2.6em] max-w-none [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
           >

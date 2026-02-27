@@ -114,7 +114,7 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
                 {/* Features */}
                 <div className="mb-6 sm:mb-7 md:mb-8">
                   <h3 className="text-lg sm:text-xl font-bold text-brand-secondary mb-3 sm:mb-4">What's Included:</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     {service.features.map((feature, idx) => (
                       <div key={idx} className="flex items-start gap-2 sm:gap-3">
                         <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0 mt-0.5" />
@@ -158,20 +158,34 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
       </section>
 
       {/* CTA Section */}
-      <section className="py-12 sm:py-16 md:py-20 bg-gradient-to-br from-brand-primary to-brand-secondary text-white">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6 text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-3 sm:mb-4">Ready to Book {service.title}?</h2>
-          <p className="text-base sm:text-lg md:text-xl text-blue-100 mb-6 sm:mb-7 md:mb-8 max-w-2xl mx-auto px-4">
-            Get transparent pricing, expert service, and AI-powered booking. Book now and experience the MyFNG difference.
-          </p>
-          <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-4">
-            <Link href="/book-service" className="btn btn-white text-sm sm:text-base md:text-lg px-6 sm:px-7 md:px-8 py-2.5 sm:py-3 md:py-4">
-              Book Service Now
-              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-1.5 sm:ml-2" />
-            </Link>
-            <Link href="/contact" className="btn btn-outline-white text-sm sm:text-base md:text-lg px-6 sm:px-7 md:px-8 py-2.5 sm:py-3 md:py-4">
-              Contact Us
-            </Link>
+      <section className="relative overflow-hidden py-12 sm:py-16 md:py-20 bg-gradient-to-br from-[#0a4fb4] via-[#0643a4] to-[#023d95] text-white">
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-15" />
+        <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute -bottom-28 -left-20 h-72 w-72 rounded-full bg-cyan-300/15 blur-3xl" />
+
+        <div className="container relative z-10 mx-auto px-3 sm:px-4 md:px-6">
+          <div className="mx-auto max-w-4xl rounded-3xl border border-white/25 bg-white/10 backdrop-blur-xl shadow-2xl shadow-black/25 p-6 sm:p-8 md:p-10 text-center">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-3 sm:mb-4">
+              Ready to Book {service.title}?
+            </h2>
+            <p className="text-base sm:text-lg md:text-xl text-blue-50/90 mb-6 sm:mb-7 md:mb-8 max-w-2xl mx-auto px-2 sm:px-4">
+              Get transparent pricing, expert service, and AI-powered booking. Book now and experience the MyFNG difference.
+            </p>
+            <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-4">
+              <Link
+                href="/book-service"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/70 bg-white text-[#023d95] font-bold text-sm sm:text-base md:text-lg px-6 sm:px-7 md:px-8 py-2.5 sm:py-3 md:py-4 shadow-lg shadow-black/20 hover:bg-blue-50 transition-all"
+              >
+                Book Service Now
+                <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+              </Link>
+              <Link
+                href="/contact"
+                className="inline-flex items-center justify-center rounded-xl border border-white/60 bg-white/10 text-white font-semibold text-sm sm:text-base md:text-lg px-6 sm:px-7 md:px-8 py-2.5 sm:py-3 md:py-4 backdrop-blur hover:bg-white/20 transition-all"
+              >
+                Contact Us
+              </Link>
+            </div>
           </div>
         </div>
       </section>

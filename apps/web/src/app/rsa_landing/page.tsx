@@ -81,6 +81,25 @@ const RSA_PLAN_TERMS = [
   'Ambulance service is provided in case of accidents only and is subject to availability.',
 ] as const;
 
+const RSA_FAQS = [
+  {
+    question: 'Is MYFNG RSA available 24×7?',
+    answer: 'Yes. MYFNG roadside assistance is available 24×7 for emergency support.',
+  },
+  {
+    question: 'Do you provide towing and on-road repairs?',
+    answer: 'Yes. We provide towing and minor roadside repairs depending on the issue.',
+  },
+  {
+    question: 'How can I book RSA quickly?',
+    answer: 'You can submit the request form or WhatsApp us to get help immediately.',
+  },
+  {
+    question: 'Do you offer live tracking?',
+    answer: 'Yes. Live GPS tracking is available to track technician in real-time.',
+  },
+] as const;
+
 function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
   e.preventDefault();
   const form = e.currentTarget;
@@ -103,6 +122,7 @@ export default function RsaLandingPage() {
   const [locationValue, setLocationValue] = useState('');
   const [locating, setLocating] = useState(false);
   const [selectedRsaService, setSelectedRsaService] = useState('');
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   const scrollToSection = (
     e: React.MouseEvent<HTMLAnchorElement>,
@@ -165,13 +185,13 @@ export default function RsaLandingPage() {
     .rsa-landing .price{color:#ffffff}
     .rsa-landing select.input{color:#ffffff}
     .rsa-landing select.input option{color:#1a1a1a;background:#fff}
-    .rsa-landing .container{max-width:1180px;margin:auto;padding:0 18px}
-    .rsa-landing header{position:sticky;top:0;z-index:50;background: rgba(15, 7, 7, .55);backdrop-filter: blur(14px);border-bottom:1px solid var(--border)}
-    .rsa-landing .nav{display:flex;align-items:center;justify-content:space-between;padding:14px 0;gap:14px}
-    .rsa-landing .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.3px}
-    .rsa-landing .brand-logo{height:34px;width:auto;display:block}
-    .rsa-landing .nav-links{display:flex;gap:18px;align-items:center;font-size:14px;color:rgba(255,255,255,.75)}
-    .rsa-landing .nav-links a:hover{color:#fff}
+    .rsa-landing .container{max-width:1180px;margin:auto;padding:0 12px}
+    .rsa-landing header{position:sticky;top:0;z-index:50;background: rgba(255,255,255,.96);backdrop-filter: blur(14px);border-bottom:1px solid rgba(12,24,52,.12)}
+    .rsa-landing .nav{display:flex;align-items:center;justify-content:space-between;padding:8px 0;gap:10px}
+    .rsa-landing .brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:.3px}
+    .rsa-landing .brand-logo{height:28px;width:auto;display:block}
+    .rsa-landing .nav-links{display:flex;gap:18px;align-items:center;font-size:14px;color:rgba(12,24,52,.72)}
+    .rsa-landing .nav-links a:hover{color:#0a3f95}
     .rsa-landing .nav-cta{display:flex;gap:10px;align-items:center}
     .rsa-landing .btn{border:1px solid var(--border);background: rgba(255,255,255,.06);color:#fff;padding:10px 14px;border-radius:14px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s ease;display:inline-flex;gap:8px;align-items:center;justify-content:center;white-space:nowrap}
     .rsa-landing .btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.10)}
@@ -206,7 +226,7 @@ export default function RsaLandingPage() {
     .rsa-landing .form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .rsa-landing .location-wrap{position:relative}
     .rsa-landing .location-wrap .input{padding-right:42px}
-    .rsa-landing .loc-btn{position:absolute;right:7px;top:7px;height:28px;width:28px;border:none;border-radius:8px;background:linear-gradient(135deg,#ff8a00,#ff4d2e);color:#140806;font-weight:800;cursor:pointer}
+    .rsa-landing .loc-btn{position:absolute;right:7px;top:7px;height:28px;width:28px;border:1px solid rgba(255,255,255,.92);border-radius:8px;background:#ffffff;color:#ff4d2e;font-weight:800;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.2)}
     .rsa-landing .send-btn{border:none;border-radius:11px;padding:12px 14px;background:linear-gradient(90deg,#ff960f 0%,#ff6f18 55%,#ff4d2e 100%);font-size:16px;font-weight:800;color:#1e0a07;cursor:pointer}
     .rsa-landing .send-btn:hover{filter:brightness(1.04)}
     .rsa-landing .note{margin-top:10px;font-size:12px;color:rgba(255,255,255,.70)}
@@ -254,21 +274,29 @@ export default function RsaLandingPage() {
     .rsa-landing summary{cursor:pointer;font-weight:700;list-style:none}
     .rsa-landing summary::-webkit-details-marker{display:none}
     .rsa-landing details p{color:rgba(255,255,255,.70);font-size:13px;line-height:1.7;margin:10px 0 0}
+    .rsa-landing .faq-item{border:1px solid rgba(255,255,255,.10);background: rgba(255,255,255,.05);border-radius: var(--radius);padding:14px 16px}
+    .rsa-landing .faq-item + .faq-item{margin-top:10px}
+    .rsa-landing .faq-question{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;border:none;background:transparent;color:#ffffff;font-weight:700;text-align:left;cursor:pointer;font-size:20px;padding:0}
+    .rsa-landing .faq-answer{color:rgba(255,255,255,.70);font-size:18px;line-height:1.7;margin:10px 0 0}
+    .rsa-landing .faq-chevron{font-size:12px;opacity:.9;transition:transform .2s ease}
+    .rsa-landing .faq-chevron.open{transform:rotate(180deg)}
     .rsa-landing footer{padding: 26px 0;border-top:1px solid rgba(255,255,255,.10);color:rgba(255,255,255,.65);font-size:13px;background:#070b14}
     .rsa-landing .marquee{overflow:hidden;position:relative}
     .rsa-landing .marquee-track{display:flex;gap:18px;width:max-content;animation:rsa-scroll 70s linear infinite}
     .rsa-landing section[id], .rsa-landing aside[id]{scroll-margin-top:88px}
     @keyframes rsa-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+    @media (min-width: 640px){.rsa-landing .container{padding:0 16px}.rsa-landing .nav{padding:12px 0;gap:12px}.rsa-landing .brand-logo{height:32px}}
+    @media (min-width: 768px){.rsa-landing .container{padding:0 24px}.rsa-landing .nav{padding:16px 0}.rsa-landing .brand-logo{height:40px}}
     @media (max-width: 980px){.rsa-landing .hero{padding:24px 0 24px}.rsa-landing .hero-grid{grid-template-columns:1fr;gap:14px}.rsa-landing h1{font-size:32px}.rsa-landing .lead{font-size:16px}.rsa-landing .hero-copy{justify-content:flex-start}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .grid-3{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:repeat(2,1fr)}.rsa-landing .pricing{grid-template-columns:1fr}.rsa-landing .plan-grid{grid-template-columns:repeat(2,1fr)}.rsa-landing .testimonials{grid-template-columns:repeat(2,1fr)}.rsa-landing .nav-links{display:none}}
-    @media (max-width: 560px){.rsa-landing h1{font-size:32px}.rsa-landing .lead{font-size:16px;line-height:1.5;max-width:340px}.rsa-landing .lead-location{display:block}.rsa-landing .form-row{grid-template-columns:1fr}.rsa-landing .grid-3,.rsa-landing .grid-4,.rsa-landing .plan-grid{grid-template-columns:1fr}.rsa-landing .steps{grid-template-columns:1fr}.rsa-landing .testimonials{grid-template-columns:1fr}.rsa-landing .stats{grid-template-columns:repeat(2,1fr)}.rsa-landing .stat strong{font-size:24px}.rsa-landing #services .section-title,.rsa-landing #process .section-title{justify-content:center;text-align:center}.rsa-landing #services .section-title p,.rsa-landing #process .section-title p{margin-left:auto;margin-right:auto}.rsa-landing #services .feature,.rsa-landing #process .step{text-align:center}.rsa-landing #services .feature .icon,.rsa-landing #process .step b{margin-left:auto;margin-right:auto}}
+    @media (max-width: 560px){.rsa-landing h1{font-size:32px}.rsa-landing .lead{font-size:15px;line-height:1.5;max-width:100%}.rsa-landing .lead-location{display:inline}.rsa-landing .form-row{grid-template-columns:1fr}.rsa-landing .grid-3,.rsa-landing .plan-grid{grid-template-columns:1fr}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:1fr}.rsa-landing .testimonials{grid-template-columns:1fr}.rsa-landing .stats{grid-template-columns:repeat(2,1fr)}.rsa-landing .stat strong{font-size:24px}.rsa-landing #services .section-title,.rsa-landing #process .section-title{justify-content:center;text-align:center}.rsa-landing #services .section-title h2{font-size:25px;line-height:1.15;letter-spacing:-.6px;white-space:nowrap}.rsa-landing #services .section-title p,.rsa-landing #process .section-title p{margin-left:auto;margin-right:auto}.rsa-landing #services .feature,.rsa-landing #process .step{text-align:center}.rsa-landing #services .feature .icon,.rsa-landing #process .step b{margin-left:auto;margin-right:auto}.rsa-landing .faq-question{font-size:14px}.rsa-landing .faq-answer{font-size:13px}}
   `}} />
       <div className="rsa-landing">
         <header>
           <div className="container">
             <div className="nav">
-              <div className="brand">
+              <a className="brand" href="/" aria-label="Go to homepage">
                 <img src="/logo.png" alt="MY FNG" className="brand-logo" />
-              </div>
+              </a>
               <nav className="nav-links">
                 <a href="#services" onClick={(e) => scrollToSection(e, 'services')}>Services</a>
                 <a href="#pricing" onClick={(e) => scrollToSection(e, 'pricing')}>Pricing</a>
@@ -376,8 +404,8 @@ export default function RsaLandingPage() {
             <div className="section-title"><div><h2>Roadside Assistance Services</h2><p>Quick on‑road solutions for every car emergency.</p></div></div>
             <div className="grid-4">
               <div className="feature"><div className="icon">⚡</div><h4>Battery Jumpstart</h4><p>Instant battery start at your location.</p></div>
-              <div className="feature"><div className="icon">🚗</div><h4>Car Towing Services</h4><p>Safe towing to nearest workshop.</p></div>
               <div className="feature"><div className="icon">⛽</div><h4>Fuel Delivery</h4><p>Emergency petrol/diesel delivery.</p></div>
+              <div className="feature"><div className="icon">🚗</div><h4>Car Towing Services</h4><p>Safe towing to nearest workshop.</p></div>
               <div className="feature"><div className="icon">🧯</div><h4>Accidental Car Towing</h4><p>Accident vehicle recovery & transport.</p></div>
               <div className="feature"><div className="icon">🛠</div><h4>Roadside Assistance</h4><p>Minor on‑road repairs support.</p></div>
               <div className="feature"><div className="icon">📍</div><h4>Car Tracking Services</h4><p>Live location and tracking support.</p></div>
@@ -556,23 +584,23 @@ export default function RsaLandingPage() {
 
         <section id="faq">
           <div className="container">
-            <div className="section-title"><div><h2>FAQ</h2><p>Frequently asked questions about MYFNG Roadside Assistance.</p></div></div>
-            <details open>
-              <summary>Is MYFNG RSA available 24×7?</summary>
-              <p>Yes. MYFNG roadside assistance is available 24×7 for emergency support.</p>
-            </details>
-            <details>
-              <summary>Do you provide towing and on-road repairs?</summary>
-              <p>Yes. We provide towing and minor roadside repairs depending on the issue.</p>
-            </details>
-            <details>
-              <summary>How can I book RSA quickly?</summary>
-              <p>You can submit the request form or WhatsApp us to get help immediately.</p>
-            </details>
-            <details>
-              <summary>Do you offer live tracking?</summary>
-              <p>Yes. Live GPS tracking is available to track technician in real-time.</p>
-            </details>
+            <div className="section-title"><div><h2>FAQs</h2><p>Frequently asked questions about MYFNG Roadside Assistance.</p></div></div>
+            {RSA_FAQS.map((faq, idx) => {
+              const isOpen = openFaqIndex === idx;
+              return (
+                <div key={faq.question} className="faq-item">
+                  <button
+                    type="button"
+                    className="faq-question"
+                    onClick={() => setOpenFaqIndex((prev) => (prev === idx ? null : idx))}
+                  >
+                    <span>{faq.question}</span>
+                    <span className={`faq-chevron ${isOpen ? 'open' : ''}`}>⌄</span>
+                  </button>
+                  {isOpen ? <p className="faq-answer">{faq.answer}</p> : null}
+                </div>
+              );
+            })}
           </div>
         </section>
 

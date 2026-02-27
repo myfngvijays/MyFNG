@@ -16,6 +16,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: 'Home', href: '/', icon: Home, matchPrefixes: ['/'] },
   { label: 'Services', href: '/services', icon: Wrench, matchPrefixes: ['/services', '/car-services'] },
+  { label: 'AI Booking', href: '/ai-booking', icon: Bot, matchPrefixes: ['/ai-booking'] },
   {
     label: 'Roadside',
     href: '/car-roadside-assitance',
@@ -23,7 +24,6 @@ const navItems: NavItem[] = [
     matchPrefixes: ['/car-roadside-assitance', '/roadside-assistance', '/rsa_landing'],
   },
   { label: 'Contact', href: '/contact', icon: Phone, matchPrefixes: ['/contact', '/customer/login', '/login'] },
-  { label: 'AI Booking', href: '/ai-booking', icon: Bot, matchPrefixes: ['/ai-booking'] },
 ];
 
 function isItemActive(pathname: string, item: NavItem): boolean {
@@ -37,6 +37,7 @@ function isItemActive(pathname: string, item: NavItem): boolean {
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const [isEmbed, setIsEmbed] = useState(false);
+  const isRsaPage = pathname === '/car-roadside-assitance' || pathname.startsWith('/car-roadside-assitance/');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -50,7 +51,11 @@ export default function MobileBottomNav() {
     <>
       <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
         <div className="mx-auto max-w-md px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="rounded-2xl border border-[#6f8fe6] bg-[#1f3f98]/95 backdrop-blur shadow-2xl overflow-hidden">
+          <div
+            className={`rounded-2xl backdrop-blur shadow-2xl overflow-hidden ${
+              isRsaPage ? 'border border-[#1d2e5a] bg-black/95' : 'border border-[#6f8fe6] bg-[#1f3f98]/95'
+            }`}
+          >
             <div className="grid grid-cols-5">
               {navItems.map((item) => {
                 const active = isItemActive(pathname, item);

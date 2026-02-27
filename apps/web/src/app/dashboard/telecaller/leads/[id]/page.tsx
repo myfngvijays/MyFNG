@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
+import SendWhatsAppModal from '@/components/shared/SendWhatsAppModal';
 
 export default function LeadDetailPage() {
   const params = useParams();
@@ -23,6 +24,7 @@ export default function LeadDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showCallLogForm, setShowCallLogForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
   const SHOW_SERVICE_ADDONS = false;
@@ -775,7 +777,10 @@ export default function LeadDetailPage() {
             <div className="card p-3 sm:p-4 md:p-5">
               <h3 className="font-bold mb-2 sm:mb-3 text-base sm:text-lg">Quick Actions</h3>
               <div className="space-y-2">
-                <button className="btn btn-outline w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2">
+                <button
+                  onClick={() => setShowWhatsAppModal(true)}
+                  className="btn btn-outline w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2"
+                >
                   <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   Send WhatsApp
                 </button>
@@ -788,6 +793,14 @@ export default function LeadDetailPage() {
           </div>
         </div>
       </div>
+      <SendWhatsAppModal
+        isOpen={showWhatsAppModal}
+        onClose={() => setShowWhatsAppModal(false)}
+        leadId={leadId}
+        leadNumber={lead?.lead_number}
+        defaultPhone={lead?.customer_phone}
+        defaultCustomerName={lead?.customer_name}
+      />
     </DashboardLayout>
   );
 }

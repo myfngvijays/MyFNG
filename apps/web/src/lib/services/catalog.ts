@@ -1,4 +1,4 @@
-import { Activity, Battery, Car, Shield, Sparkles, Wrench, Zap } from 'lucide-react';
+import { Activity, Battery, Circle, Disc3, Paintbrush, Snowflake, Sparkles, Wrench, Zap } from 'lucide-react';
 
 const SERVICE_IMAGE_BASE_URL =
   'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public';
@@ -97,7 +97,7 @@ export const DEFAULT_SERVICES: Service[] = [
     slug: 'ac-service',
     title: 'Car AC Service',
     bookPrefill: { category: 'AC SERVICE', query: 'AC' },
-    icon: Shield,
+    icon: Snowflake,
     description: 'Faster cooling, cleaner air, and reliable AC performance.',
     longDescription:
       'Beat the heat with MyFNG Car AC Service, designed to deliver faster cooling, cleaner air, and consistent performance. We inspect, clean, and optimise your car’s AC system to prevent weak cooling, bad odour, and sudden AC failures.',
@@ -145,7 +145,7 @@ export const DEFAULT_SERVICES: Service[] = [
     slug: 'brake-service',
     title: 'Car Brake Service',
     bookPrefill: { category: 'BRAKE SERVICE', query: 'BRAKE' },
-    icon: Shield,
+    icon: Disc3,
     description: 'Responsive braking with inspection, cleaning & precise adjustments.',
     longDescription:
       'Your car’s safety depends on its brakes. MyFNG Car Brake Service ensures responsive braking, reduced stopping distance, and complete driving confidence through detailed inspection, cleaning, and precise adjustments. We identify early brake wear and fix issues before they turn into expensive or dangerous failures.',
@@ -193,7 +193,7 @@ export const DEFAULT_SERVICES: Service[] = [
     slug: 'tyre-wheel-care',
     title: 'Car Tyre & Wheel Care',
     bookPrefill: { category: 'TYRE & WHEEL CARE', query: 'TYRE' },
-    icon: Car,
+    icon: Circle,
     description: 'Alignment & tyre care for better grip, steering control, and longer tyre life.',
     longDescription:
       'Safe handling and smooth rides start with healthy tyres and well-aligned wheels. MyFNG Car Tyre & Wheel Care service improves road grip, steering control, and tyre life through precise inspection and corrective maintenance. We help prevent uneven tyre wear, vibrations, and poor fuel efficiency with a standardised care process.',
@@ -241,7 +241,7 @@ export const DEFAULT_SERVICES: Service[] = [
     slug: 'denting-painting',
     title: 'Car Denting & Painting',
     bookPrefill: { category: 'DENTING PAINTING', query: 'PAINT' },
-    icon: Car,
+    icon: Paintbrush,
     description: 'Dent repair + paint matching to restore body strength and resale value.',
     longDescription:
       'Dents and scratches don’t just spoil your car’s look—they can weaken body panels and lead to rust over time. MyFNG Car Denting & Painting service restores your car’s body strength, paint finish, and resale value using professional repair and paint-matching techniques. We ensure precise dent removal and a smooth, factory-like paint finish through a standardised repair process.',
