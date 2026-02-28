@@ -13,6 +13,15 @@ interface WhatsAppMobilePreviewModalProps {
   onClose: () => void;
 }
 
+type TemplateOption = {
+  id: string;
+  template_name: string;
+  display_name: string | null;
+  language_code: string;
+  variable_keys: string[];
+  is_active: boolean;
+};
+
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
@@ -28,7 +37,6 @@ export default function WhatsAppMobilePreviewModal({
   onClose,
 }: WhatsAppMobilePreviewModalProps) {
   const waPhone = normalizePhone(phoneNumber);
-  const openUrl = waPhone ? `https://wa.me/${waPhone}` : '#';
 
   const [historyLoading, setHistoryLoading] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
@@ -39,6 +47,8 @@ export default function WhatsAppMobilePreviewModal({
   const [caption, setCaption] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [templateParams, setTemplateParams] = useState('');
+  const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
   const [sending, setSending] = useState(false);
 
   const composerMessage = useMemo(
@@ -57,6 +67,19 @@ export default function WhatsAppMobilePreviewModal({
       .catch(() => setMessages([]))
       .finally(() => setHistoryLoading(false));
   }, [isOpen, waPhone]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setTemplatesLoading(true);
+    fetch('/api/whatsapp/templates')
+      .then((res) => res.json())
+      .then((data) => {
+        const rows = Array.isArray(data?.templates) ? data.templates : [];
+        setTemplateOptions(rows.filter((row: any) => Boolean(row?.is_active)));
+      })
+      .catch(() => setTemplateOptions([]))
+      .finally(() => setTemplatesLoading(false));
+  }, [isOpen]);
 
   const refreshConversation = async () => {
     if (!waPhone) return;
@@ -126,7 +149,7 @@ export default function WhatsAppMobilePreviewModal({
         toast.error(data?.error || 'Send failed');
         return;
       }
-      toast.success('WhatsApp message sent');
+      toast.success('Message sent to WhatsApp API');
       setTextMessage('');
       setCaption('');
       await refreshConversation();
@@ -141,8 +164,8 @@ export default function WhatsAppMobilePreviewModal({
 
   return (
     <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-[340px] rounded-3xl bg-gray-900 p-1.5 shadow-2xl">
-        <div className="rounded-[1.25rem] bg-[#efeae2] overflow-hidden border border-black/20">
+      <div className="w-[340px] max-w-[92vw] h-[640px] max-h-[90vh] rounded-3xl bg-gray-900 p-1.5 shadow-2xl">
+        <div className="h-full rounded-[1.25rem] bg-[#efeae2] overflow-hidden border border-black/20 flex flex-col">
           <div className="bg-[#075e54] text-white px-3 py-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <div className="h-7 w-7 rounded-full bg-white/20 flex items-center justify-center">
@@ -166,10 +189,7 @@ export default function WhatsAppMobilePreviewModal({
             </div>
           </div>
 
-          <div className="px-2.5 py-3 space-y-2 max-h-[46vh] overflow-y-auto bg-[url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22 viewBox=%220 0 40 40%22%3E%3Cg fill=%22%23000000%22 fill-opacity=%220.03%22%3E%3Cpath d=%22M20 20c0-5.5 4.5-10 10-10v20c-5.5 0-10-4.5-10-10z%22/%3E%3C/g%3E%3C/svg%3E')]">
-            <div className="max-w-[85%] rounded-lg bg-white px-3 py-2 text-xs text-gray-700 shadow">
-              Hello, aap MyFNG support se connected hain.
-            </div>
+          <div className="flex-1 min-h-0 px-2.5 py-3 space-y-2 overflow-y-auto bg-[url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22 viewBox=%220 0 40 40%22%3E%3Cg fill=%22%23000000%22 fill-opacity=%220.03%22%3E%3Cpath d=%22M20 20c0-5.5 4.5-10 10-10v20c-5.5 0-10-4.5-10-10z%22/%3E%3C/g%3E%3C/svg%3E')]">
             {historyLoading ? <div className="text-[11px] text-gray-600">Loading chat…</div> : null}
             {messages.map((msg) => {
               const direction = String(msg?.direction || '').toUpperCase();
@@ -196,11 +216,6 @@ export default function WhatsAppMobilePreviewModal({
                 </div>
               );
             })}
-            {messages.length === 0 && !historyLoading ? (
-              <div className="ml-auto max-w-[85%] rounded-lg bg-[#dcf8c6] px-3 py-2 text-xs text-gray-800 shadow">
-                {composerMessage}
-              </div>
-            ) : null}
           </div>
 
           <div className="bg-[#f0f2f5] border-t px-2.5 py-2 space-y-2">
@@ -268,11 +283,26 @@ export default function WhatsAppMobilePreviewModal({
 
             {activeType === 'template' ? (
               <div className="space-y-1.5">
+                <select
+                  className="w-full rounded-md border bg-white px-2 py-1 text-[11px]"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  disabled={templatesLoading}
+                >
+                  <option value="">
+                    {templatesLoading ? 'Loading templates...' : 'Select approved template'}
+                  </option>
+                  {templateOptions.map((row) => (
+                    <option key={row.id} value={row.template_name}>
+                      {(row.display_name || row.template_name) + ` (${row.language_code.toUpperCase()})`}
+                    </option>
+                  ))}
+                </select>
                 <input
                   className="w-full rounded-md border bg-white px-2 py-1 text-[11px]"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="Template name"
+                  placeholder="Or type template name manually"
                 />
                 <input
                   className="w-full rounded-md border bg-white px-2 py-1 text-[11px]"
@@ -280,18 +310,13 @@ export default function WhatsAppMobilePreviewModal({
                   onChange={(e) => setTemplateParams(e.target.value)}
                   placeholder="Params comma separated"
                 />
+                <p className="text-[10px] text-gray-500">
+                  Delivery depends on approved template and WhatsApp policy checks.
+                </p>
               </div>
             ) : null}
 
-            <div className="flex items-center justify-between gap-2">
-              <a
-                href={openUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-full px-3 py-1.5 text-[11px] font-semibold text-white bg-[#128C7E] hover:bg-[#0f7a6e]"
-              >
-                Open Web
-              </a>
+            <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={handleSend}

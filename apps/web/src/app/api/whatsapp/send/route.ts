@@ -209,40 +209,50 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Full WhatsApp archive row (outbound).
-    await db.from('whatsapp_messages').upsert(
-      {
-        provider_message_id: result.messageId || null,
-        direction: 'OUTBOUND',
-        message_type: messageType.toUpperCase(),
-        lead_id: leadId || null,
-        invoice_id: invoiceId,
-        sender_phone: null,
-        recipient_phone: recipientPhone,
-        template_name: templateNameForLog,
-        template_language: messageType === 'template' ? String(body?.language || 'en') : null,
-        text_body: messageType === 'text' ? messageForLog : null,
-        media_url: mediaUrlForLog,
-        media_caption: messageType === 'media' ? String(body?.caption || '') || null : null,
-        status: result.success ? 'SENT' : 'FAILED',
-        status_at: now,
-        error_message: result.success ? null : result.error || 'Unknown WhatsApp error',
-        payload: {
-          request: requestPayload,
-          response: result.raw || null,
-        },
-        meta: {
-          role_code: roleCode,
-          actor_id: userProfile.id,
-          actor_name: userProfile.full_name || null,
-        },
-        created_by: userProfile.id,
-        updated_at: now,
+    // Full WhatsApp archive row (outbound). Use plain insert so logging does not depend on unique index presence.
+    const archivePayload = {
+      provider_message_id: result.messageId || null,
+      direction: 'OUTBOUND',
+      message_type: messageType.toUpperCase(),
+      lead_id: leadId || null,
+      invoice_id: invoiceId,
+      sender_phone: null,
+      recipient_phone: recipientPhone,
+      template_name: templateNameForLog,
+      template_language: messageType === 'template' ? String(body?.language || 'en') : null,
+      text_body: messageType === 'text' ? messageForLog : null,
+      media_url: mediaUrlForLog,
+      media_caption: messageType === 'media' ? String(body?.caption || '') || null : null,
+      status: result.success ? 'SENT' : 'FAILED',
+      status_at: now,
+      error_message: result.success ? null : result.error || 'Unknown WhatsApp error',
+      payload: {
+        request: requestPayload,
+        response: result.raw || null,
       },
-      {
-        onConflict: 'provider_message_id',
-      }
-    );
+      meta: {
+        role_code: roleCode,
+        actor_id: userProfile.id,
+        actor_name: userProfile.full_name || null,
+      },
+      created_by: userProfile.id,
+      updated_at: now,
+    };
+
+    const { error: archiveError } = await db.from('whatsapp_messages').insert(archivePayload);
+    if (archiveError) {
+      console.error('Failed to archive outbound WhatsApp message:', archiveError);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `WhatsApp API call succeeded but message archive failed: ${archiveError.message || 'unknown db error'}`,
+          lead_id: leadId || null,
+          message_type: messageType,
+          message_id: result.messageId || null,
+        },
+        { status: 500 }
+      );
+    }
 
     if (!result.success) {
       return NextResponse.json(

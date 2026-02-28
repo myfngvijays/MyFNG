@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 const WHATSAPP_WEBHOOK_VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '';
 const WHATSAPP_APP_SECRET = process.env.WHATSAPP_APP_SECRET || '';
@@ -87,10 +88,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const db: any = supabase;
+  const { supabaseAdmin } = getSupabaseAdmin();
+  const db: any = supabaseAdmin || (await createClient());
   const now = new Date().toISOString();
-  const { data: webhookEvent } = await db
+  const { data: webhookEvent, error: webhookInsertError } = await db
     .from('whatsapp_webhook_events')
     .insert({
       event_type: 'messages',
@@ -101,8 +102,17 @@ export async function POST(request: NextRequest) {
     .select('id')
     .maybeSingle();
 
+  if (webhookInsertError) {
+    console.error('Failed to insert webhook event:', webhookInsertError);
+    return NextResponse.json(
+      { error: `Webhook insert failed: ${webhookInsertError.message || 'unknown db error'}` },
+      { status: 500 }
+    );
+  }
+
   const entries = Array.isArray(body?.entry) ? body.entry : [];
   let updatedCount = 0;
+  let invoiceUpdatedCount = 0;
   let skippedCount = 0;
   let inboundCount = 0;
 
@@ -177,8 +187,24 @@ export async function POST(request: NextRequest) {
         const statusAt = parseIsoTimestamp(statusItem?.timestamp);
         const errorMessage = statusItem?.errors?.[0]?.details || statusItem?.errors?.[0]?.title || null;
 
-        await db.from('whatsapp_messages').upsert(
-          {
+        // Update existing outbound/inbound archive row with latest delivery status.
+        const { data: updatedMsg } = await db
+          .from('whatsapp_messages')
+          .update({
+            status: mappedStatus,
+            status_at: statusAt || now,
+            error_message: mappedStatus === 'FAILED' ? errorMessage : null,
+            updated_at: now,
+          })
+          .eq('provider_message_id', providerMessageId)
+          .select('id')
+          .maybeSingle();
+
+        if (updatedMsg?.id) {
+          updatedCount += 1;
+        } else {
+          // Keep unmatched status payload archived for tracing.
+          await db.from('whatsapp_messages').insert({
             provider_message_id: providerMessageId,
             direction: 'STATUS',
             message_type: 'STATUS',
@@ -190,11 +216,8 @@ export async function POST(request: NextRequest) {
               status_raw: statusItem?.status || null,
             },
             updated_at: now,
-          },
-          {
-            onConflict: 'provider_message_id',
-          }
-        );
+          });
+        }
 
         // Idempotency check: if status already matches and no new timestamps, skip update.
         const { data: existingLogRaw, error: existingError } = await db
@@ -213,19 +236,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (!existingLog) {
-          // Keep unmatched payload for debugging/tracing.
-          await db.from('notification_logs').insert({
-            recipient: providerMessageId,
-            type: 'WHATSAPP_WEBHOOK',
-            message: JSON.stringify({
-              status: statusItem?.status,
-              timestamp: statusItem?.timestamp,
-              errors: statusItem?.errors || [],
-            }),
-            status: 'RECEIVED',
-            sent_at: new Date().toISOString(),
-          });
-          skippedCount += 1;
+          // Status can belong to non-invoice sends; don't treat as failure/skip.
           continue;
         }
 
@@ -255,20 +266,23 @@ export async function POST(request: NextRequest) {
           .from('invoice_sharing_logs')
           .update(nextUpdate)
           .eq('id', existingLog.id);
-        updatedCount += 1;
+        invoiceUpdatedCount += 1;
       }
     }
   }
 
   if (webhookEvent?.id) {
-    await db
+    const { error: webhookUpdateError } = await db
       .from('whatsapp_webhook_events')
       .update({
         processed_at: new Date().toISOString(),
         process_status: 'PROCESSED',
-        process_note: `inbound:${inboundCount}, status_updated:${updatedCount}, skipped:${skippedCount}`,
+        process_note: `inbound:${inboundCount}, status_updated:${updatedCount}, invoice_updated:${invoiceUpdatedCount}, skipped:${skippedCount}`,
       })
       .eq('id', webhookEvent.id);
+    if (webhookUpdateError) {
+      console.error('Failed to update webhook event:', webhookUpdateError);
+    }
   }
 
   return NextResponse.json({

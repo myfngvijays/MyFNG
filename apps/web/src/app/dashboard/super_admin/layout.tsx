@@ -175,10 +175,30 @@ const navigationItems: NavItem[] = [
     description: 'Chat with MY FNG AI'
   },
   {
-    name: 'WhatsApp Templates',
-    href: '/dashboard/super_admin/whatsapp-templates',
+    name: 'WhatsApp',
     icon: MessageSquare,
-    description: 'Create/manage WhatsApp templates'
+    description: 'Templates, dashboard & bot flow'
+    ,
+    children: [
+      {
+        name: 'WhatsApp Templates',
+        href: '/dashboard/super_admin/whatsapp-templates',
+        icon: MessageSquare,
+        description: 'Create/manage WhatsApp templates',
+      },
+      {
+        name: 'WhatsApp Dashboard',
+        href: '/dashboard/super_admin/whatsapp-dashboard',
+        icon: BarChart3,
+        description: 'Delivery & messaging overview',
+      },
+      {
+        name: 'Bot Flow',
+        href: '/dashboard/super_admin/bot-flow',
+        icon: Bot,
+        description: 'Configure WhatsApp bot flow',
+      },
+    ],
   },
   {
     name: 'System & Governance',
@@ -236,9 +256,12 @@ export default function SuperAdminLayout({
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useMemo(() => getBrowserClient(), []);
-  const [sidebarOpen, setSidebarOpen] = useState(true); // Start expanded by default
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Start collapsed; expand on hover
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [websiteImagesOpen, setWebsiteImagesOpen] = useState(true);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    'Website Images': true,
+    WhatsApp: true,
+  });
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to logout?')) {
@@ -271,17 +294,19 @@ export default function SuperAdminLayout({
 
       {/* Sidebar - Desktop */}
       <aside
+        onMouseEnter={() => setSidebarOpen(true)}
+        onMouseLeave={() => setSidebarOpen(false)}
         className={`
           hidden lg:flex flex-col
           ${sidebarOpen ? 'w-72' : 'w-20'}
           bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 text-white
-          transition-all duration-300 ease-in-out
+          transition-all duration-700 ease-in-out
           shadow-2xl
         `}
       >
         {/* Header */}
         <div className="p-6 border-b border-blue-400/30">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center">
             {sidebarOpen ? (
               <div>
                 <div className="flex items-center gap-2">
@@ -293,16 +318,6 @@ export default function SuperAdminLayout({
             ) : (
               <Shield className="w-8 h-8 mx-auto text-yellow-300" />
             )}
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-1.5 hover:bg-blue-500/50 rounded-lg transition-colors"
-            >
-              <ChevronRight
-                className={`w-5 h-5 transition-transform ${
-                  sidebarOpen ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
           </div>
         </div>
 
@@ -325,8 +340,9 @@ export default function SuperAdminLayout({
               const Icon = item.icon;
               const active = item.href ? isActive(item.href) : isGroupActive(item);
 
-              // Dropdown group: Website Images
+              // Dropdown group: Website Images / WhatsApp
               if (item.children?.length) {
+                const isOpen = Boolean(openGroups[item.name]);
                 return (
                   <div key={item.name} className="space-y-2">
                     <button
@@ -336,7 +352,7 @@ export default function SuperAdminLayout({
                           router.push(item.children![0].href);
                           return;
                         }
-                        setWebsiteImagesOpen((v) => !v);
+                        setOpenGroups((prev) => ({ ...prev, [item.name]: !prev[item.name] }));
                       }}
                       className={`
                         w-full flex items-center gap-3 px-4 py-3 rounded-lg
@@ -361,14 +377,14 @@ export default function SuperAdminLayout({
                       )}
                       {sidebarOpen ? (
                         <ChevronRight
-                          className={`w-5 h-5 transition-transform ${websiteImagesOpen ? 'rotate-90' : ''} ${
+                          className={`w-5 h-5 transition-transform ${isOpen ? 'rotate-90' : ''} ${
                             active ? 'text-blue-700' : 'text-white'
                           }`}
                         />
                       ) : null}
                     </button>
 
-                    {sidebarOpen && websiteImagesOpen ? (
+                    {sidebarOpen && isOpen ? (
                       <div className="ml-2 space-y-2">
                         {item.children.map((c) => {
                           const ChildIcon = c.icon;
@@ -499,10 +515,11 @@ export default function SuperAdminLayout({
               const active = item.href ? isActive(item.href) : isGroupActive(item);
 
               if (item.children?.length) {
+                const isOpen = Boolean(openGroups[item.name]);
                 return (
                   <div key={item.name} className="space-y-2">
                     <button
-                      onClick={() => setWebsiteImagesOpen((v) => !v)}
+                      onClick={() => setOpenGroups((prev) => ({ ...prev, [item.name]: !prev[item.name] }))}
                       className={`
                         w-full flex items-center gap-3 px-4 py-3 rounded-lg
                         transition-all duration-200
@@ -522,10 +539,10 @@ export default function SuperAdminLayout({
                           {item.description}
                         </div>
                       </div>
-                      <ChevronRight className={`w-5 h-5 transition-transform ${websiteImagesOpen ? 'rotate-90' : ''}`} />
+                      <ChevronRight className={`w-5 h-5 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
                     </button>
 
-                    {websiteImagesOpen ? (
+                    {isOpen ? (
                       <div className="ml-2 space-y-2">
                         {item.children.map((c) => {
                           const ChildIcon = c.icon;

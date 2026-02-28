@@ -8,7 +8,6 @@ import {
   LogOut, 
   Menu, 
   X,
-  ChevronRight,
   Home,
   Users,
   User,
@@ -40,7 +39,6 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
 import NotificationBell from '@/components/NotificationBell';
 
-const SIDEBAR_COLLAPSED_KEY = 'myfng:dashboardSidebarCollapsed';
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
 const AANSH_OPTIONAL_SKIP_KEY = 'myfng:aansh_optional_skip';
 
@@ -91,6 +89,13 @@ interface DashboardLayoutProps {
   role: string;
 }
 
+type MenuItem = {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+  children?: MenuItem[];
+};
+
 export default function DashboardLayout({ children, role }: DashboardLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -104,13 +109,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     }
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    // Desktop: collapse/expand. Persisted across navigations.
-    try {
-      const raw = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-      return raw === '1';
-    } catch {
-      return false;
-    }
+    // Desktop: start collapsed and expand on hover.
+    return true;
   });
   const [loading, setLoading] = useState(true);
 
@@ -128,14 +128,6 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   useEffect(() => {
     checkAuth();
   }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0');
-    } catch {
-      // ignore
-    }
-  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (!eligibleForAansh || loading) return;
@@ -433,7 +425,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   const getMenuItems = () => {
     const roleCode = role.toUpperCase();
     
-    const menus: Record<string, Array<{ href: string; icon: React.ReactNode; label: string }>> = {
+    const menus: Record<string, MenuItem[]> = {
       'SUPER_ADMIN': [
         { href: '/dashboard/super_admin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/super_admin/users', icon: <Users className="w-5 h-5" />, label: 'User Management' },
@@ -443,7 +435,16 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/super_admin/coupons', icon: <Tag className="w-5 h-5" />, label: 'Coupons' },
         { href: '/dashboard/super_admin/manual-invoices', icon: <FileText className="w-5 h-5" />, label: 'Manual Invoices' },
         { href: '/dashboard/super_admin/telecaller-distribution', icon: <Phone className="w-5 h-5" />, label: 'Telecaller Distribution' },
-        { href: '/dashboard/super_admin/whatsapp-templates', icon: <MessageSquare className="w-5 h-5" />, label: 'WhatsApp Templates' },
+        {
+          href: '/dashboard/super_admin/whatsapp-templates',
+          icon: <MessageSquare className="w-5 h-5" />,
+          label: 'WhatsApp',
+          children: [
+            { href: '/dashboard/super_admin/whatsapp-templates', icon: <MessageSquare className="w-5 h-5" />, label: 'WhatsApp Templates' },
+            { href: '/dashboard/super_admin/whatsapp-dashboard', icon: <BarChart3 className="w-5 h-5" />, label: 'WhatsApp Dashboard' },
+            { href: '/dashboard/super_admin/bot-flow', icon: <Activity className="w-5 h-5" />, label: 'Bot Flow' },
+          ],
+        },
         { href: '/dashboard/super_admin/lead-history', icon: <ClipboardList className="w-5 h-5" />, label: 'Lead History' },
         { href: '/dashboard/super_admin/kb-manager', icon: <ClipboardList className="w-5 h-5" />, label: 'KB Manager' },
         { href: '/dashboard/super_admin/kb-questions', icon: <ClipboardList className="w-5 h-5" />, label: 'KB Questions' },
@@ -621,6 +622,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     );
   }
 
+  const menuItems = getMenuItems();
+
   return (
     <div className="min-h-screen bg-background-grey">
       {/* Header */}
@@ -635,17 +638,6 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
               {sidebarOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
 
-            <button
-              onClick={() => setSidebarCollapsed((v) => !v)}
-              className="hidden lg:inline-flex p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"
-              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              <ChevronRight
-                className={`w-5 h-5 transition-transform ${sidebarCollapsed ? '' : 'rotate-180'}`}
-              />
-            </button>
-            
             <Link href="/" className="flex items-center gap-1.5 sm:gap-2 min-w-0">
               <Wrench className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-brand-fng flex-shrink-0" />
               <span className="text-lg sm:text-xl md:text-2xl font-bold whitespace-nowrap">
@@ -689,7 +681,13 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-14 sm:top-16 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-all duration-300 ease-in-out lg:translate-x-0 w-56 sm:w-64 ${
+        onMouseEnter={() => {
+          if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSidebarCollapsed(false);
+        }}
+        onMouseLeave={() => {
+          if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSidebarCollapsed(true);
+        }}
+        className={`fixed left-0 top-14 sm:top-16 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-all duration-700 ease-in-out lg:translate-x-0 w-56 sm:w-64 ${
           sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'
         } z-30 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -697,18 +695,51 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       >
         <div className="h-full flex flex-col overflow-hidden">
           <nav className="flex-1 overflow-y-auto overscroll-contain p-2 sm:p-3 md:p-4 space-y-1 sm:space-y-2">
-            {getMenuItems().map((item) => (
-              <NavLink 
-                key={item.href} 
-                href={item.href} 
-                icon={item.icon}
-                active={pathname === item.href}
-                collapsed={sidebarCollapsed}
-                label={item.label}
-              >
-                {item.label}
-              </NavLink>
-            ))}
+            {menuItems.map((item) => {
+              if (item.children && item.children.length > 0) {
+                const childActive = item.children.some((child) => pathname === child.href);
+                return (
+                  <div key={item.label} className="space-y-1">
+                    <div
+                      className={`flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg text-sm sm:text-base ${
+                        childActive ? 'bg-white/15 text-white font-semibold' : 'text-white/90 font-medium'
+                      } ${sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}`}
+                      title={sidebarCollapsed ? item.label : undefined}
+                    >
+                      <span className="flex-shrink-0">{item.icon}</span>
+                      <span className={`${sidebarCollapsed ? 'lg:hidden' : ''} truncate`}>{item.label}</span>
+                    </div>
+                    <div className={`${sidebarCollapsed ? 'lg:hidden' : ''} ml-4 sm:ml-5 space-y-1`}>
+                      {item.children.map((child) => (
+                        <NavLink
+                          key={child.href}
+                          href={child.href}
+                          icon={child.icon}
+                          active={pathname === child.href}
+                          collapsed={false}
+                          label={child.label}
+                        >
+                          {child.label}
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <NavLink
+                  key={item.href}
+                  href={item.href}
+                  icon={item.icon}
+                  active={pathname === item.href}
+                  collapsed={sidebarCollapsed}
+                  label={item.label}
+                >
+                  {item.label}
+                </NavLink>
+              );
+            })}
           </nav>
           <div className="p-2 sm:p-3 md:p-4 border-t border-blue-500/30">
             <button
@@ -728,7 +759,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       <main
         className={`${
           sidebarOpen ? 'ml-56 sm:ml-64' : 'ml-0'
-        } ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} pt-14 sm:pt-16 min-h-screen transition-all duration-300`}
+        } ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} pt-14 sm:pt-16 min-h-screen transition-all duration-700`}
       >
         <div className="p-3 sm:p-4 md:p-6">
           {children}

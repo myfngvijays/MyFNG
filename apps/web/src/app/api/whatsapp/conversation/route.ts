@@ -61,6 +61,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Valid phone is required' }, { status: 400 });
     }
 
+    // Pull a wider recent window, then strictly filter by normalized phone.
+    // This avoids loose partial matches from ilike on formatted phone values.
     const { data, error } = await db
       .from('whatsapp_messages')
       .select(
@@ -68,16 +70,22 @@ export async function GET(request: NextRequest) {
       )
       .or(`sender_phone.ilike.%${normalized}%,recipient_phone.ilike.%${normalized}%`)
       .order('created_at', { ascending: false })
-      .limit(limit);
+      .limit(Math.max(limit * 5, 120));
 
     if (error) {
       return NextResponse.json({ error: error.message || 'Failed to fetch conversation' }, { status: 500 });
     }
 
+    const strictMatches = (data || []).filter((row: any) => {
+      const sender = normalizePhone(String(row?.sender_phone || ''));
+      const recipient = normalizePhone(String(row?.recipient_phone || ''));
+      return sender === normalized || recipient === normalized;
+    });
+
     return NextResponse.json({
       success: true,
       phone: normalized,
-      messages: (data || []).reverse(),
+      messages: strictMatches.slice(0, limit).reverse(),
     });
   } catch (error: any) {
     return NextResponse.json(
