@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
   let invoiceUpdatedCount = 0;
   let skippedCount = 0;
   let inboundCount = 0;
+  let failedCount = 0;
 
   for (const entry of entries) {
     const changes = Array.isArray(entry?.changes) ? entry.changes : [];
@@ -148,30 +149,43 @@ export async function POST(request: NextRequest) {
             ? mediaObj.caption || null
             : null;
 
-        await db.from('whatsapp_messages').upsert(
-          {
-            provider_message_id: providerMessageId || null,
-            direction: 'INBOUND',
-            message_type: messageType.toUpperCase(),
-            sender_phone: senderPhone,
-            recipient_phone: waMetadata?.display_phone_number || null,
-            text_body: textBody,
-            media_mime_type:
-              mediaObj && typeof mediaObj === 'object' ? mediaObj.mime_type || null : null,
-            media_caption: mediaCaption,
-            status: 'RECEIVED',
-            status_at: statusAt || now,
-            payload: inbound,
-            meta: {
-              profile_name: profileName,
-              metadata: waMetadata || {},
-            },
-            updated_at: now,
+        const inboundRow = {
+          provider_message_id: providerMessageId || null,
+          direction: 'INBOUND',
+          message_type: messageType.toUpperCase(),
+          sender_phone: senderPhone,
+          recipient_phone: waMetadata?.display_phone_number || null,
+          text_body: textBody,
+          media_mime_type: mediaObj && typeof mediaObj === 'object' ? mediaObj.mime_type || null : null,
+          media_caption: mediaCaption,
+          status: 'RECEIVED',
+          status_at: statusAt || now,
+          payload: inbound,
+          meta: {
+            profile_name: profileName,
+            metadata: waMetadata || {},
           },
-          {
-            onConflict: 'provider_message_id',
+          updated_at: now,
+        };
+
+        const { error: inboundUpsertError } = await db.from('whatsapp_messages').upsert(inboundRow, {
+          onConflict: 'provider_message_id',
+        });
+
+        if (inboundUpsertError) {
+          // Fallback: plain insert helps when DB lacks/changes unique conflict config.
+          const { error: inboundInsertError } = await db.from('whatsapp_messages').insert(inboundRow);
+          if (inboundInsertError) {
+            failedCount += 1;
+            console.error('Failed to store inbound WhatsApp message:', {
+              providerMessageId,
+              upsertError: inboundUpsertError,
+              insertError: inboundInsertError,
+            });
+            continue;
           }
-        );
+        }
+
         inboundCount += 1;
       }
 
@@ -277,7 +291,7 @@ export async function POST(request: NextRequest) {
       .update({
         processed_at: new Date().toISOString(),
         process_status: 'PROCESSED',
-        process_note: `inbound:${inboundCount}, status_updated:${updatedCount}, invoice_updated:${invoiceUpdatedCount}, skipped:${skippedCount}`,
+        process_note: `inbound:${inboundCount}, status_updated:${updatedCount}, invoice_updated:${invoiceUpdatedCount}, skipped:${skippedCount}, failed:${failedCount}`,
       })
       .eq('id', webhookEvent.id);
     if (webhookUpdateError) {
@@ -290,5 +304,6 @@ export async function POST(request: NextRequest) {
     inbound: inboundCount,
     updated: updatedCount,
     skipped: skippedCount,
+    failed: failedCount,
   });
 }

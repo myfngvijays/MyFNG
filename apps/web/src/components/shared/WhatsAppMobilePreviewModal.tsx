@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Camera, MessageCircle, Mic, Paperclip, Phone, Send, Video, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Camera, Check, CheckCheck, MessageCircle, Mic, Paperclip, Phone, Send, Video, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { createClient } from '@/lib/supabase/client';
 
 interface WhatsAppMobilePreviewModalProps {
   isOpen: boolean;
@@ -26,6 +27,17 @@ function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
   return digits.startsWith('91') ? digits : `91${digits}`;
+}
+
+function formatMessageTime(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function normalizeDeliveryStatus(value: string | null | undefined): string {
+  return String(value || '').trim().toUpperCase();
 }
 
 export default function WhatsAppMobilePreviewModal({
@@ -59,16 +71,6 @@ export default function WhatsAppMobilePreviewModal({
   );
 
   useEffect(() => {
-    if (!isOpen || !waPhone) return;
-    setHistoryLoading(true);
-    fetch(`/api/whatsapp/conversation?phone=${encodeURIComponent(waPhone)}&limit=40`)
-      .then((res) => res.json())
-      .then((data) => setMessages(Array.isArray(data?.messages) ? data.messages : []))
-      .catch(() => setMessages([]))
-      .finally(() => setHistoryLoading(false));
-  }, [isOpen, waPhone]);
-
-  useEffect(() => {
     if (!isOpen) return;
     setTemplatesLoading(true);
     fetch('/api/whatsapp/templates')
@@ -81,7 +83,7 @@ export default function WhatsAppMobilePreviewModal({
       .finally(() => setTemplatesLoading(false));
   }, [isOpen]);
 
-  const refreshConversation = async () => {
+  const refreshConversation = useCallback(async () => {
     if (!waPhone) return;
     try {
       const res = await fetch(`/api/whatsapp/conversation?phone=${encodeURIComponent(waPhone)}&limit=40`);
@@ -90,7 +92,41 @@ export default function WhatsAppMobilePreviewModal({
     } catch {
       // ignore
     }
-  };
+  }, [waPhone]);
+
+  useEffect(() => {
+    if (!isOpen || !waPhone) return;
+    let isMounted = true;
+
+    const loadInitialConversation = async () => {
+      setHistoryLoading(true);
+      await refreshConversation();
+      if (isMounted) setHistoryLoading(false);
+    };
+    void loadInitialConversation();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`wa-chat-${waPhone}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'whatsapp_messages' },
+        (payload) => {
+          const row: any = payload.new || payload.old || {};
+          const sender = normalizePhone(String(row?.sender_phone || ''));
+          const recipient = normalizePhone(String(row?.recipient_phone || ''));
+          if (sender === waPhone || recipient === waPhone) {
+            void refreshConversation();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      channel.unsubscribe();
+    };
+  }, [isOpen, waPhone, refreshConversation]);
 
   const handleSend = async () => {
     if (!waPhone) {
@@ -164,15 +200,18 @@ export default function WhatsAppMobilePreviewModal({
 
   return (
     <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-[340px] max-w-[92vw] h-[640px] max-h-[90vh] rounded-3xl bg-gray-900 p-1.5 shadow-2xl">
-        <div className="h-full rounded-[1.25rem] bg-[#efeae2] overflow-hidden border border-black/20 flex flex-col">
-          <div className="bg-[#075e54] text-white px-3 py-2.5 flex items-center justify-between">
+      <div className="w-[360px] max-w-[94vw] h-[680px] max-h-[92vh] rounded-[2.25rem] bg-[#111b21] p-2 shadow-[0_22px_50px_rgba(0,0,0,0.5)]">
+        <div className="h-full rounded-[1.85rem] bg-[#efeae2] overflow-hidden border border-black/30 flex flex-col">
+          <div className="h-5 bg-[#111b21] flex items-center justify-center">
+            <div className="h-1.5 w-20 rounded-full bg-[#2f3b43]" />
+          </div>
+          <div className="bg-[#005c4b] text-white px-3 py-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="h-7 w-7 rounded-full bg-white/20 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                 <MessageCircle className="h-3.5 w-3.5" />
               </div>
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold truncate">{title || 'Customer Chat'}</p>
+                <p className="text-[13px] font-semibold truncate">{title || 'WhatsApp Chat'}</p>
                 <p className="text-[11px] text-white/80 truncate">{phoneNumber || '—'}</p>
               </div>
             </div>
@@ -184,41 +223,66 @@ export default function WhatsAppMobilePreviewModal({
                 <Video className="h-3.5 w-3.5" />
               </button>
               <button type="button" className="rounded-md p-1 hover:bg-white/10" onClick={onClose} aria-label="Close WhatsApp preview">
-              <X className="h-4 w-4" />
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 px-2.5 py-3 space-y-2 overflow-y-auto bg-[url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22 viewBox=%220 0 40 40%22%3E%3Cg fill=%22%23000000%22 fill-opacity=%220.03%22%3E%3Cpath d=%22M20 20c0-5.5 4.5-10 10-10v20c-5.5 0-10-4.5-10-10z%22/%3E%3C/g%3E%3C/svg%3E')]">
-            {historyLoading ? <div className="text-[11px] text-gray-600">Loading chat…</div> : null}
+          <div className="flex-1 min-h-0 px-2.5 py-3 space-y-2 overflow-y-auto bg-[url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%2264%22 viewBox=%220 0 64 64%22%3E%3Cg fill=%22%23111b21%22 fill-opacity=%220.04%22%3E%3Ccircle cx=%2210%22 cy=%2210%22 r=%221.5%22/%3E%3Ccircle cx=%2238%22 cy=%2226%22 r=%221.5%22/%3E%3Ccircle cx=%2218%22 cy=%2248%22 r=%221.5%22/%3E%3C/g%3E%3C/svg%3E')]">
+            {historyLoading ? <div className="text-[11px] text-gray-600">Loading chat...</div> : null}
             {messages.map((msg) => {
               const direction = String(msg?.direction || '').toUpperCase();
               const isOutbound = direction === 'OUTBOUND';
               const isStatus = direction === 'STATUS';
+              const deliveryStatus = normalizeDeliveryStatus(msg?.status);
               const text =
                 msg?.text_body ||
                 (msg?.template_name ? `Template: ${msg.template_name}` : '') ||
                 (msg?.media_url ? `${msg?.media_caption || 'Media'}\n${msg.media_url}` : '') ||
                 msg?.status ||
                 'Message';
+              const timeLabel = formatMessageTime(msg?.status_at || msg?.updated_at || msg?.created_at);
               return (
                 <div
                   key={msg.id}
-                  className={`max-w-[86%] rounded-lg px-2.5 py-2 text-[11px] leading-4 shadow whitespace-pre-wrap ${
+                  className={`relative max-w-[86%] rounded-lg px-2.5 py-2 text-[11px] leading-4 shadow-sm whitespace-pre-wrap ${
                     isStatus
-                      ? 'mx-auto bg-gray-100 text-gray-600 text-center'
+                      ? 'mx-auto bg-[#d9dfe3] text-[#54656f] text-center'
                       : isOutbound
-                      ? 'ml-auto bg-[#dcf8c6] text-gray-800'
-                      : 'bg-white text-gray-700'
+                      ? 'ml-auto bg-[#d9fdd3] text-[#111b21]'
+                      : 'bg-white text-[#111b21]'
                   }`}
                 >
-                  {text}
+                  {!isStatus ? (
+                    <span
+                      aria-hidden
+                      className={`absolute top-0 h-0 w-0 border-[6px] border-transparent ${
+                        isOutbound
+                          ? 'right-[-6px] border-l-[#d9fdd3] border-t-[#d9fdd3]'
+                          : 'left-[-6px] border-r-white border-t-white'
+                      }`}
+                    />
+                  ) : null}
+                  <p>{text}</p>
+                  {!isStatus ? (
+                    <div className="mt-1 flex items-center justify-end gap-1 text-[10px] leading-none text-[#667781]">
+                      <span>{timeLabel}</span>
+                      {isOutbound && deliveryStatus === 'SENT' ? <Check className="h-3 w-3" /> : null}
+                      {isOutbound && deliveryStatus === 'DELIVERED' ? <CheckCheck className="h-3 w-3" /> : null}
+                      {isOutbound && deliveryStatus === 'VIEWED' ? (
+                        <CheckCheck className="h-3 w-3 text-[#53bdeb]" />
+                      ) : null}
+                      {isOutbound && deliveryStatus === 'FAILED' ? (
+                        <span className="font-semibold text-[#d93025]">!</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
           </div>
 
-          <div className="bg-[#f0f2f5] border-t px-2.5 py-2 space-y-2">
+          <div className="bg-[#f0f2f5] border-t border-black/10 px-2.5 py-2 space-y-2">
             <div className="flex items-center gap-1">
               {(['text', 'media', 'template'] as const).map((type) => (
                 <button
@@ -236,19 +300,19 @@ export default function WhatsAppMobilePreviewModal({
 
             {activeType === 'text' ? (
               <div className="flex items-center gap-1.5">
-                <button type="button" className="text-gray-500">
+                <button type="button" className="text-[#54656f]">
                   <Paperclip className="h-4 w-4" />
                 </button>
                 <input
-                  className="flex-1 rounded-full border bg-white px-3 py-2 text-xs"
+                  className="flex-1 rounded-full border border-transparent bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#25D366]/30"
                   value={textMessage}
                   onChange={(e) => setTextMessage(e.target.value)}
                   placeholder="Type a message..."
                 />
-                <button type="button" className="text-gray-500">
+                <button type="button" className="text-[#54656f]">
                   <Camera className="h-4 w-4" />
                 </button>
-                <button type="button" className="text-gray-500">
+                <button type="button" className="text-[#54656f]">
                   <Mic className="h-4 w-4" />
                 </button>
               </div>
@@ -321,12 +385,9 @@ export default function WhatsAppMobilePreviewModal({
                 type="button"
                 onClick={handleSend}
                 disabled={sending}
-                className="rounded-full px-3 py-1.5 text-[11px] font-semibold text-white bg-[#25D366] hover:bg-[#1ebe5c] disabled:opacity-60"
+                className="h-9 w-9 rounded-full inline-flex items-center justify-center text-white bg-[#25D366] hover:bg-[#1ebe5c] disabled:opacity-60"
               >
-                <span className="inline-flex items-center gap-1">
-                  <Send className="h-3 w-3" />
-                  {sending ? 'Sending...' : 'Send'}
-                </span>
+                <Send className="h-3.5 w-3.5" />
               </button>
             </div>
 
