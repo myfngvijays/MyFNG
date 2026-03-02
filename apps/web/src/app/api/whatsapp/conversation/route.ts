@@ -55,37 +55,74 @@ export async function GET(request: NextRequest) {
     const phoneRaw = String(request.nextUrl.searchParams.get('phone') || '').trim();
     const limitRaw = Number(request.nextUrl.searchParams.get('limit') || 40);
     const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(100, Math.floor(limitRaw))) : 40;
+    const beforeCreatedAtRaw = String(
+      request.nextUrl.searchParams.get('before_created_at') || ''
+    ).trim();
+    const beforeCreatedAt = beforeCreatedAtRaw ? new Date(beforeCreatedAtRaw).toISOString() : null;
 
     const normalized = normalizePhone(phoneRaw);
     if (!normalized) {
       return NextResponse.json({ error: 'Valid phone is required' }, { status: 400 });
     }
 
-    // Pull a wider recent window, then strictly filter by normalized phone.
-    // This avoids loose partial matches from ilike on formatted phone values.
-    const { data, error } = await db
-      .from('whatsapp_messages')
-      .select(
-        'id, provider_message_id, direction, message_type, sender_phone, recipient_phone, template_name, text_body, media_url, media_caption, status, status_at, created_at'
-      )
-      .or(`sender_phone.ilike.%${normalized}%,recipient_phone.ilike.%${normalized}%`)
-      .order('created_at', { ascending: false })
-      .limit(Math.max(limit * 5, 120));
+    // Cursor-based fetch with strict normalized filtering for large chats.
+    const fetchBatchSize = Math.max(limit * 5, 120);
+    const strictMatches: any[] = [];
+    let cursorCreatedAt: string | null = beforeCreatedAt;
+    let hasMore = false;
+    let safety = 0;
 
-    if (error) {
-      return NextResponse.json({ error: error.message || 'Failed to fetch conversation' }, { status: 500 });
+    while (strictMatches.length < limit + 1 && safety < 6) {
+      safety += 1;
+
+      let query = db
+        .from('whatsapp_messages')
+        .select(
+          'id, provider_message_id, direction, message_type, sender_phone, recipient_phone, template_name, text_body, media_url, media_mime_type, media_caption, payload, status, status_at, created_at'
+        )
+        .or(`sender_phone.ilike.%${normalized}%,recipient_phone.ilike.%${normalized}%`)
+        .order('created_at', { ascending: false })
+        .limit(fetchBatchSize);
+
+      if (cursorCreatedAt) {
+        query = query.lt('created_at', cursorCreatedAt);
+      }
+
+      const { data: batch, error } = await query;
+      if (error) {
+        return NextResponse.json(
+          { error: error.message || 'Failed to fetch conversation' },
+          { status: 500 }
+        );
+      }
+
+      const rows = batch || [];
+      if (rows.length === 0) break;
+
+      const strictBatch = rows.filter((row: any) => {
+        const sender = normalizePhone(String(row?.sender_phone || ''));
+        const recipient = normalizePhone(String(row?.recipient_phone || ''));
+        return sender === normalized || recipient === normalized;
+      });
+      strictMatches.push(...strictBatch);
+
+      const lastRow = rows[rows.length - 1];
+      cursorCreatedAt = String(lastRow?.created_at || '').trim() || null;
+
+      if (rows.length < fetchBatchSize) break;
+      if (!cursorCreatedAt) break;
     }
 
-    const strictMatches = (data || []).filter((row: any) => {
-      const sender = normalizePhone(String(row?.sender_phone || ''));
-      const recipient = normalizePhone(String(row?.recipient_phone || ''));
-      return sender === normalized || recipient === normalized;
-    });
+    hasMore = strictMatches.length > limit;
+    const selected = strictMatches.slice(0, limit);
+    const nextCursor = selected.length > 0 ? selected[selected.length - 1]?.created_at || null : null;
 
     return NextResponse.json({
       success: true,
       phone: normalized,
-      messages: strictMatches.slice(0, limit).reverse(),
+      messages: selected.reverse(),
+      has_more: hasMore,
+      next_before_created_at: hasMore ? nextCursor : null,
     });
   } catch (error: any) {
     return NextResponse.json(

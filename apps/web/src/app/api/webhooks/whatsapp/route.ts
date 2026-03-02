@@ -144,6 +144,8 @@ export async function POST(request: NextRequest) {
             : null;
 
         const mediaObj = (inbound as any)?.[messageType] || null;
+        const mediaId =
+          mediaObj && typeof mediaObj === 'object' ? String(mediaObj.id || '').trim() : '';
         const mediaCaption =
           mediaObj && typeof mediaObj === 'object'
             ? mediaObj.caption || null
@@ -156,6 +158,7 @@ export async function POST(request: NextRequest) {
           sender_phone: senderPhone,
           recipient_phone: waMetadata?.display_phone_number || null,
           text_body: textBody,
+          media_url: mediaId ? `/api/whatsapp/media/${encodeURIComponent(mediaId)}` : null,
           media_mime_type: mediaObj && typeof mediaObj === 'object' ? mediaObj.mime_type || null : null,
           media_caption: mediaCaption,
           status: 'RECEIVED',
