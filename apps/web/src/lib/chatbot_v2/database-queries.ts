@@ -71,7 +71,7 @@ export async function getWorkshops({ city, limit = 5 }: WorkshopParams) {
 
       const { data, error } = await supabase
         .from('workshops')
-        .select('id, name, workshop_name, short_address, address, city, pincode, service_pincode, phone, working_time, map_link')
+        .select('id, name, workshop_name, short_address, address, city, pincode, service_pincode, phone, working_time, map_link, near_area_google_map')
         .eq('is_verified', true)
         .ilike('service_pincode', `%${city}%`)
         .limit(limit);
@@ -90,7 +90,7 @@ export async function getWorkshops({ city, limit = 5 }: WorkshopParams) {
 
     const { data, error } = await supabase
       .from('workshops')
-      .select('id, name, workshop_name, short_address, address, city, pincode, service_pincode, phone, working_time, map_link')
+      .select('id, name, workshop_name, short_address, address, city, pincode, service_pincode, phone, working_time, map_link, near_area_google_map')
       .eq('is_verified', true)
       .ilike('city', `%${city}%`)
       .limit(limit);

@@ -340,7 +340,7 @@ export default function BookServicePage() {
       const runWorkshopQuery = async (verifiedOnly: boolean) => {
         let query = supabase
           .from('workshops')
-          .select('id, name, address, city, state, pincode, phone, email, contact_person')
+          .select('id, name, workshop_name, near_area_google_map, address, city, state, pincode, phone, email, contact_person')
           .order('name')
           .limit(5);
 
@@ -2982,7 +2982,7 @@ export default function BookServicePage() {
                                         <h4 className={`font-bold text-base sm:text-lg mb-1 ${
                                           isSelected ? 'text-green-700' : 'text-gray-800'
                                         }`}>
-                                          {workshop.name}
+                                          {workshop.workshop_name || workshop.name}
                                         </h4>
                                         <div className="space-y-1 text-xs sm:text-sm">
                                           {(workshop.city || workshop.state || workshop.pincode) && (
@@ -2990,18 +2990,20 @@ export default function BookServicePage() {
                                               {[workshop.city, workshop.state, workshop.pincode].filter(Boolean).join(', ')}
                                             </p>
                                           )}
-                                          <p
-                                            className={`flex items-center gap-2 ${
-                                              isSelected ? 'text-green-700' : 'text-gray-600'
-                                            }`}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              window.location.href = 'tel:9152307030';
-                                            }}
-                                          >
-                                              <Phone className="w-4 h-4" />
-                                              <span className="underline underline-offset-2 cursor-pointer">9152307030</span>
-                                            </p>
+                                          {workshop.near_area_google_map && (
+                                            <a
+                                              href={workshop.near_area_google_map}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className={`flex items-center gap-2 underline underline-offset-2 ${
+                                                isSelected ? 'text-green-700' : 'text-gray-600'
+                                              }`}
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <MapPin className="w-4 h-4" />
+                                              <span className="cursor-pointer">View map</span>
+                                            </a>
+                                          )}
                                         </div>
                                       </div>
                                       {isSelected && (
@@ -3058,7 +3060,9 @@ export default function BookServicePage() {
                       {!formData.pickupRequired && formData.selectedWorkshop && (
                         <div className="flex items-start justify-between gap-3">
                           <span className="text-gray-600 shrink-0">Workshop:</span>
-                          <span className="font-semibold text-right break-words">{formData.selectedWorkshop.name}</span>
+                          <span className="font-semibold text-right break-words">
+                            {formData.selectedWorkshop.workshop_name || formData.selectedWorkshop.name}
+                          </span>
                         </div>
                       )}
                     </div>

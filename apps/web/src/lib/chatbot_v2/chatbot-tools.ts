@@ -279,7 +279,7 @@ export async function executeToolCall(toolName: string, args: any): Promise<any>
               pincode: w.pincode,
               phone: '9152307030',
               working_time: w.working_time,
-              map_link: w.map_link,
+              map_link: w.near_area_google_map,
             })),
           };
         } else {
