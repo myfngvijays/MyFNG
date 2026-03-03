@@ -464,6 +464,7 @@ export default function SuperAdminWhatsAppChatPage() {
   } | null>(null);
   const [activeCallElapsed, setActiveCallElapsed] = useState(0);
   const [callMuted, setCallMuted] = useState(false);
+  const dismissedCallIdsRef = useRef<Set<string>>(new Set());
   const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
   const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
   const [draftMessage, setDraftMessage] = useState('');
@@ -639,47 +640,39 @@ export default function SuperAdminWhatsAppChatPage() {
     return () => window.clearInterval(interval);
   }, [callPermissionCooldownUntil]);
 
-  // Poll DB for active incoming calls — catches calls that started before page load
-  // or when realtime event was missed.
+  // Poll DB for active incoming calls — only show if very recent and not dismissed
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
       if (cancelled) return;
       try {
-        // Only show popup for calls that started in the last 3 minutes
-        const cutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+        const cutoff = new Date(Date.now() - 30_000).toISOString();
         const { data } = await supabase
           .from('whatsapp_call_logs')
           .select('id, customer_phone, call_status, direction')
           .eq('direction', 'INBOUND')
-          .in('call_status', ['RINGING', 'INITIATED', 'NEGOTIATING'])
+          .in('call_status', ['RINGING', 'INITIATED'])
           .gte('created_at', cutoff)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
         if (cancelled) return;
-        if (data?.id) {
+        if (data?.id && !dismissedCallIdsRef.current.has(data.id)) {
           const phone = normalizePhone(String(data.customer_phone || ''));
           const callId = String(data.id);
           const callStatus = String(data.call_status || 'RINGING').toUpperCase();
           setIncomingPopup((prev) => {
-            // Don't overwrite if already in active phase
             if (prev?.callId === callId && prev?.phase === 'active') return prev;
             if (prev?.callId === callId && prev?.status === callStatus) return prev;
             return { callId, phone, status: callStatus, phase: 'ringing' };
           });
-        } else {
-          // No active incoming call — clear popup only if it was in ringing phase
-          setIncomingPopup((prev) =>
-            prev?.phase === 'ringing' ? null : prev
-          );
         }
       } catch {
         // silently ignore poll errors
       }
     };
     poll();
-    const id = setInterval(poll, 8000);
+    const id = setInterval(poll, 10000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -765,7 +758,7 @@ export default function SuperAdminWhatsAppChatPage() {
             setSelectedPhone(phone);
           }
 
-          if (inboundActive && rowId) {
+          if (inboundActive && rowId && !dismissedCallIdsRef.current.has(rowId)) {
             setIncomingPopup((prev) => {
               if (prev && prev.callId === rowId && prev.status === callStatus && prev.phone === phone) {
                 return prev;
@@ -1026,6 +1019,7 @@ export default function SuperAdminWhatsAppChatPage() {
   const handleIncomingPopupAction = useCallback(
     async (action: 'hangup') => {
       if (!incomingPopup?.callId || callControlLoading) return;
+      dismissedCallIdsRef.current.add(incomingPopup.callId);
       setCallControlLoading(action);
       try {
         const popupPhone = incomingPopup.phone;
@@ -1079,15 +1073,9 @@ export default function SuperAdminWhatsAppChatPage() {
         );
       };
 
+      if (callId) dismissedCallIdsRef.current.add(callId);
+
       try {
-        /**
-         * Inbound call accept flow:
-         * 1. Fetch saved sessions to get Meta's SDP offer (from ringing webhook)
-         * 2. Create RTCPeerConnection, set Meta's offer as remote description
-         * 3. Generate SDP answer
-         * 4. POST answer to our API → which sends action='accept' + sdp_type='answer' to Meta
-         * 5. If successful, call connects
-         */
 
         // Step 1: Get Meta's SDP offer from saved sessions
         let metaOfferSdp: string | null = null;
@@ -2078,7 +2066,10 @@ export default function SuperAdminWhatsAppChatPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setIncomingPopup(null)}
+                onClick={() => {
+                  if (incomingPopup?.callId) dismissedCallIdsRef.current.add(incomingPopup.callId);
+                  setIncomingPopup(null);
+                }}
                 className="rounded p-1 text-white/70 hover:text-white"
                 title="Dismiss"
               >
