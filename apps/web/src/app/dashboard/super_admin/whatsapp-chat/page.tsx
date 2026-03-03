@@ -1567,26 +1567,43 @@ export default function SuperAdminWhatsAppChatPage() {
                     })
                     .map((call) => {
                       const status = normalizeCallStatus(call.call_status);
-                      const inbound = String(call.direction || '').toUpperCase() === 'INBOUND';
-                      const isCallback = String(call.direction || '')
-                        .toUpperCase()
-                        .includes('CALLBACK');
+                      const inbound = isInboundCallDirection(call.direction);
+                      const isCallback = String(call.direction || '').toUpperCase().includes('CALLBACK');
+                      const isMissed = ['MISSED', 'REJECTED', 'FAILED'].includes(status);
+                      const isAccepted = ['ACCEPTED', 'CONNECTED', 'ENDED'].includes(status);
+                      const iconColor = isMissed
+                        ? 'text-red-500'
+                        : isAccepted
+                        ? 'text-green-600'
+                        : inbound
+                        ? 'text-blue-600'
+                        : 'text-[#0f766e]';
+                      const label = isCallback
+                        ? 'Callback request'
+                        : isMissed
+                        ? `${inbound ? 'Missed call' : 'Not answered'}`
+                        : isAccepted
+                        ? `${inbound ? 'Incoming' : 'Outgoing'} call`
+                        : `${inbound ? 'Incoming' : 'Outgoing'} call · ${status}`;
                       return (
                         <button
                           key={`call-${call.id}`}
                           type="button"
                           onClick={() => setCallInfoOpen(call)}
-                          className="mx-auto block w-fit rounded-full border border-[#d8dee3] bg-white/90 px-3 py-1 text-[11px] text-[#334155] hover:bg-white"
+                          className="mx-auto flex w-fit items-center gap-2 rounded-xl border border-[#d8dee3] bg-white/90 px-4 py-2 text-[12px] text-[#334155] shadow-sm hover:bg-white"
                         >
-                          <span className="inline-flex items-center gap-1">
+                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${isMissed ? 'bg-red-50' : 'bg-green-50'}`}>
                             {inbound ? (
-                              <PhoneIncoming className="h-3 w-3 text-[#1d4ed8]" />
+                              <PhoneIncoming className={`h-3.5 w-3.5 ${iconColor}`} />
                             ) : (
-                              <PhoneOutgoing className="h-3 w-3 text-[#0f766e]" />
+                              <PhoneOutgoing className={`h-3.5 w-3.5 ${iconColor}`} />
                             )}
-                            <span>
-                              {isCallback ? 'Callback' : 'Call'} {status || 'UPDATE'} ·{' '}
+                          </span>
+                          <span className="flex flex-col items-start leading-tight">
+                            <span className="font-semibold">{label}</span>
+                            <span className="text-[10px] text-gray-500">
                               {formatMessageTime(call.started_at || call.created_at || null)}
+                              {call.duration_seconds ? ` · ${formatDuration(call.duration_seconds)}` : ''}
                             </span>
                           </span>
                         </button>
@@ -1628,11 +1645,27 @@ export default function SuperAdminWhatsAppChatPage() {
                     const templateButtons = isTemplateMessage ? extractTemplateButtons(currentTemplate) : [];
                     const templateDisplayName =
                       currentTemplate?.display_name || currentTemplate?.template_name || msg?.template_name || '';
+                    const msgType = String(msg.message_type || '').trim().toUpperCase();
+                    const mediaLabel =
+                      msgType === 'IMAGE'
+                        ? '📷 Photo'
+                        : msgType === 'VIDEO'
+                        ? '🎥 Video'
+                        : msgType === 'AUDIO'
+                        ? '🎤 Audio'
+                        : msgType === 'DOCUMENT'
+                        ? '📄 Document'
+                        : msgType === 'LOCATION'
+                        ? '📍 Location'
+                        : msgType === 'STICKER'
+                        ? '🗂️ Sticker'
+                        : '';
                     const bubbleText =
                       String(msg.text_body || '').trim() ||
-                      (isTemplateMessage ? templateText || `Template sent: ${msg.template_name}` : '') ||
+                      (isTemplateMessage ? templateText || `Template: ${msg.template_name}` : '') ||
                       String(msg.media_caption || '').trim() ||
-                      'Message';
+                      mediaLabel ||
+                      (msgType && msgType !== 'TEXT' ? msgType : '—');
                     const callPermissionState = detectCallPermissionState({
                       templateName: msg?.template_name,
                       isOutbound: outbound,
