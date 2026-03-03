@@ -68,7 +68,7 @@ function mapCallStatus(status: string | undefined, event: string | undefined): s
   const normalizedEvent = String(event || '').trim().toLowerCase();
 
   if (['terminate', 'hangup', 'ended', 'end'].includes(normalizedEvent)) return 'ENDED';
-  if (['ringing', 'ring', 'incoming'].includes(normalizedEvent)) return 'RINGING';
+  if (['ringing', 'ring', 'incoming', 'connect'].includes(normalizedEvent)) return 'RINGING';
   if (['accept', 'accepted', 'answer', 'connected'].includes(normalizedEvent)) return 'ACCEPTED';
   if (['reject', 'rejected', 'declined', 'busy'].includes(normalizedEvent)) return 'REJECTED';
   if (['missed', 'no_answer'].includes(normalizedEvent)) return 'MISSED';
@@ -526,6 +526,15 @@ export async function POST(request: NextRequest) {
         ).trim();
         const sessionSdp = String(sessionObj?.sdp || '').trim();
         const sessionSdpType = String(sessionObj?.sdp_type || '').trim().toLowerCase();
+        if (sessionSdp) {
+          console.log('[Webhook:Call] SDP received:', {
+            sdp_type: sessionSdpType,
+            sdp_length: sessionSdp.length,
+            sdp_first_200: sessionSdp.substring(0, 200),
+            provider_session_id: providerSessionId || null,
+          });
+        }
+        // Also save SDP even if sdp_type isn't exactly 'offer' — Meta may use different labels
         if (callLogId && (providerSessionId || sessionSdp)) {
           const sessionState =
             mappedCallStatus === 'ACCEPTED'
@@ -547,13 +556,15 @@ export async function POST(request: NextRequest) {
             },
             updated_at: now,
           };
-          if (sessionSdp && sessionSdpType === 'offer') {
-            sessionPayload.offer_sdp = sessionSdp;
-            sessionPayload.offer_sdp_type = 'offer';
-          }
-          if (sessionSdp && (sessionSdpType === 'answer' || sessionSdpType === 'pranswer')) {
-            sessionPayload.answer_sdp = sessionSdp;
-            sessionPayload.answer_sdp_type = sessionSdpType;
+          if (sessionSdp) {
+            if (sessionSdpType === 'answer' || sessionSdpType === 'pranswer') {
+              sessionPayload.answer_sdp = sessionSdp;
+              sessionPayload.answer_sdp_type = sessionSdpType;
+            } else {
+              // Save as offer for any type (offer, connect, or unspecified)
+              sessionPayload.offer_sdp = sessionSdp;
+              sessionPayload.offer_sdp_type = sessionSdpType || 'offer';
+            }
           }
 
           if (providerSessionId) {
