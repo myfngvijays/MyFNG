@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 import { formatDateTimeISTAssumeUTC } from '@/lib/utils';
 import { AlertCircle, Copy, DollarSign, ExternalLink, Search } from 'lucide-react';
 
@@ -90,6 +91,15 @@ export default function RSAManagerPaymentsPage() {
   const [collectRefreshError, setCollectRefreshError] = useState('');
   const [generatedPayments, setGeneratedPayments] = useState<GeneratedPaymentLink[]>([]);
   const [cancelLinkLoadingRef, setCancelLinkLoadingRef] = useState('');
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
+
+  const openWhatsAppPreview = (phone: string | null | undefined) => {
+    const value = String(phone || '').trim();
+    if (!value) return;
+    setWaPreviewPhone(value);
+    setWaPreviewOpen(true);
+  };
 
   useEffect(() => {
     fetchRazorpayPayments();
@@ -599,7 +609,19 @@ export default function RSAManagerPaymentsPage() {
                   {generatedPayments.map((row) => (
                     <tr key={row.ref} className="border-b last:border-b-0">
                       <td className="py-2 pr-3 font-semibold">{row.customer_name || '—'}</td>
-                      <td className="py-2 pr-3">{row.customer_phone || '—'}</td>
+                      <td className="py-2 pr-3">
+                        {row.customer_phone ? (
+                          <button
+                            type="button"
+                            className="text-green-700 hover:text-green-800 underline underline-offset-2"
+                            onClick={() => openWhatsAppPreview(row.customer_phone)}
+                          >
+                            {row.customer_phone}
+                          </button>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td className="py-2 pr-3">₹{row.amount}</td>
                       <td className="py-2 pr-3">
                         <span className={`px-2 py-1 rounded-full border ${paymentStatusBadgeClass(row.status)}`}>
@@ -711,7 +733,19 @@ export default function RSAManagerPaymentsPage() {
                     <tr key={`${row.order_id || 'order'}-${row.payment_id || idx}`} className="border-b last:border-b-0">
                       <td className="py-2 pr-3">{formatDateTimeISTAssumeUTC(row.updated_at || row.created_at) || '—'}</td>
                       <td className="py-2 pr-3 font-semibold">{row.lead_customer_name || row.customer_name || '—'}</td>
-                      <td className="py-2 pr-3">{row.lead_phone || row.customer_phone || '—'}</td>
+                      <td className="py-2 pr-3">
+                        {row.lead_phone || row.customer_phone ? (
+                          <button
+                            type="button"
+                            className="text-green-700 hover:text-green-800 underline underline-offset-2"
+                            onClick={() => openWhatsAppPreview(row.lead_phone || row.customer_phone)}
+                          >
+                            {row.lead_phone || row.customer_phone}
+                          </button>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td className="py-2 pr-3">
                         {row.vehicle_number || '—'}
                         {row.vehicle_model ? ` (${row.vehicle_model})` : ''}
@@ -863,6 +897,12 @@ export default function RSAManagerPaymentsPage() {
           </div>
         </div>
       ) : null}
+      <WhatsAppMobilePreviewModal
+        isOpen={waPreviewOpen}
+        phoneNumber={waPreviewPhone}
+        title="WhatsApp Chat"
+        onClose={() => setWaPreviewOpen(false)}
+      />
     </DashboardLayout>
   );
 }

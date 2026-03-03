@@ -1234,7 +1234,17 @@ export default function RSAManagerDashboard() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4 mt-2 sm:mt-3">
                           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
                             <span className="font-medium">Phone:</span>
-                            <span className="truncate">{lead.contact_number}</span>
+                            <button
+                              type="button"
+                              className="truncate text-green-700 hover:text-green-800 underline underline-offset-2"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openWhatsAppPreview(lead.contact_number);
+                              }}
+                            >
+                              {lead.contact_number || '—'}
+                            </button>
                           </div>
                           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
                             <span className="font-medium">Vehicle:</span>
@@ -1810,7 +1820,18 @@ export default function RSAManagerDashboard() {
               <div className="min-w-0">
                 <div className="text-lg font-semibold">Previous Call Details</div>
                 <div className="text-xs opacity-90 truncate">
-                  Customer: {previousDetailsCall.cnumber || '—'}
+                  Customer:{' '}
+                  {previousDetailsCall.cnumber ? (
+                    <button
+                      type="button"
+                      className="underline underline-offset-2"
+                      onClick={() => openWhatsAppPreview(previousDetailsCall.cnumber, previousDetailsCall)}
+                    >
+                      {previousDetailsCall.cnumber}
+                    </button>
+                  ) : (
+                    '—'
+                  )}
                 </div>
               </div>
               <button
@@ -1958,7 +1979,19 @@ export default function RSAManagerDashboard() {
 
               <div className="rounded-lg border bg-emerald-50 p-4">
                 <div className="text-xs text-gray-600">Customer</div>
-                <div className="text-xl font-semibold text-gray-900">{auditCall?.cnumber || '—'}</div>
+                <div className="text-xl font-semibold text-gray-900">
+                  {auditCall?.cnumber ? (
+                    <button
+                      type="button"
+                      className="underline underline-offset-2"
+                      onClick={() => openWhatsAppPreview(auditCall.cnumber, auditCall)}
+                    >
+                      {auditCall.cnumber}
+                    </button>
+                  ) : (
+                    '—'
+                  )}
+                </div>
               </div>
 
               {(() => {

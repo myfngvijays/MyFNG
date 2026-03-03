@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { RSALeadCreateForm } from '@/components/telecaller/RSALeadCreateForm';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 import { formatDateTimeIST, formatDateTimeISTAssumeUTC } from '@/lib/utils';
 import Link from 'next/link';
 import { Award, CheckCircle, Clock, Copy, ExternalLink, FileText, Pencil, PhoneCall, RefreshCw, Target, TrendingUp } from 'lucide-react';
@@ -390,8 +391,25 @@ export default function TelecallerRSAPage() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState('');
   const [auditByCallId, setAuditByCallId] = useState<Record<string, SarvCallAudit | null>>({});
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
+  const [waPreviewMessage, setWaPreviewMessage] = useState('');
+  const [waQuickPhone, setWaQuickPhone] = useState('');
 
   const groupedCalls = useMemo(() => groupCallsByCustomer(calls), [calls]);
+  const openWhatsAppPreview = (phone: string | null | undefined, row?: SarvCallRow | null) => {
+    const value = normalizePhone(phone);
+    if (!value) return;
+    const summary = String(row?.summary || '').trim();
+    const disposition = String(row?.disposition || row?.disposition_category || '').trim();
+    const suggested =
+      summary ||
+      (disposition ? `Hi, aapke recent call (${disposition}) ke follow-up ke liye message kar raha hoon.` : '');
+    setWaPreviewPhone(value);
+    setWaPreviewMessage(suggested);
+    setWaPreviewOpen(true);
+    setWaQuickPhone(value);
+  };
   const [sarvOpen, setSarvOpen] = useState(false);
   const [sarvLead, setSarvLead] = useState<any | null>(null);
   const [sarvCalls, setSarvCalls] = useState<any[]>([]);
@@ -2287,6 +2305,30 @@ export default function TelecallerRSAPage() {
                   </select>
                 </div>
               </div>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="w-full sm:max-w-xs">
+                  <label className="text-xs text-gray-600">Open WhatsApp by number</label>
+                  <input
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                    type="text"
+                    placeholder="Enter mobile number"
+                    value={waQuickPhone}
+                    onChange={(e) => setWaQuickPhone(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      openWhatsAppPreview(waQuickPhone, null);
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary text-sm px-4 py-2 w-full sm:w-auto"
+                  onClick={() => openWhatsAppPreview(waQuickPhone, null)}
+                >
+                  Open WhatsApp
+                </button>
+              </div>
             </div>
 
             <div className="card">
@@ -2326,7 +2368,20 @@ export default function TelecallerRSAPage() {
                               <td className="py-2 pr-3 whitespace-nowrap">
                                 {formatDateTime(call.custanswerstime || call.sarv_created_at || call.created_at)}
                               </td>
-                              <td className="py-2 pr-3">{call.cnumber || '—'}</td>
+                              <td className="py-2 pr-3">
+                                {call.cnumber ? (
+                                  <button
+                                    type="button"
+                                    className="text-green-700 hover:text-green-800 font-semibold underline underline-offset-2"
+                                    onClick={() => openWhatsAppPreview(call.cnumber, call)}
+                                    title="Open WhatsApp style chat preview"
+                                  >
+                                    {call.cnumber}
+                                  </button>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
                               <td className="py-2 pr-3">{formatDuration(call.talkduration)}</td>
                               <td className="py-2 pr-3">
                                 {call.disposition || call.disposition_category || '—'}
@@ -2407,18 +2462,32 @@ export default function TelecallerRSAPage() {
                                 {formatDateTime(latest.custanswerstime || latest.sarv_created_at || latest.created_at)}
                               </td>
                               <td className="py-2 pr-3 font-semibold">
-                                <button
-                                  type="button"
-                                  className="text-left"
-                                  onClick={() =>
-                                    setExpandedCustomers((prev) => ({
-                                      ...prev,
-                                      [group.customer]: !isOpen,
-                                    }))
-                                  }
-                                >
-                                  {group.customer} • {group.calls.length} calls
-                                </button>
+                                <div className="flex flex-col gap-1">
+                                  <button
+                                    type="button"
+                                    className="text-left text-gray-800"
+                                    onClick={() =>
+                                      setExpandedCustomers((prev) => ({
+                                        ...prev,
+                                        [group.customer]: !isOpen,
+                                      }))
+                                    }
+                                  >
+                                    {group.calls.length} calls {isOpen ? '(hide)' : '(view)'}
+                                  </button>
+                                  {group.customer && group.customer !== 'Unknown' ? (
+                                    <button
+                                      type="button"
+                                      className="w-fit text-green-700 hover:text-green-800 underline underline-offset-2"
+                                      onClick={() => openWhatsAppPreview(group.customer, latest)}
+                                      title="Open WhatsApp style chat preview"
+                                    >
+                                      {group.customer}
+                                    </button>
+                                  ) : (
+                                    <span className="text-gray-500">Unknown</span>
+                                  )}
+                                </div>
                               </td>
                               <td className="py-2 pr-3">{formatDuration(latest.talkduration)}</td>
                               <td className="py-2 pr-3">
@@ -2465,7 +2534,20 @@ export default function TelecallerRSAPage() {
                                         call.custanswerstime || call.sarv_created_at || call.created_at
                                       )}
                                     </td>
-                                    <td className="py-2 pr-3">{call.cnumber || '—'}</td>
+                                    <td className="py-2 pr-3">
+                                      {call.cnumber ? (
+                                        <button
+                                          type="button"
+                                          className="text-green-700 hover:text-green-800 font-semibold underline underline-offset-2"
+                                          onClick={() => openWhatsAppPreview(call.cnumber, call)}
+                                          title="Open WhatsApp style chat preview"
+                                        >
+                                          {call.cnumber}
+                                        </button>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </td>
                                     <td className="py-2 pr-3">{formatDuration(call.talkduration)}</td>
                                     <td className="py-2 pr-3">
                                       {call.disposition || call.disposition_category || '—'}
@@ -3301,6 +3383,13 @@ export default function TelecallerRSAPage() {
           </div>
         </div>
       ) : null}
+      <WhatsAppMobilePreviewModal
+        isOpen={waPreviewOpen}
+        phoneNumber={waPreviewPhone}
+        title="WhatsApp Chat"
+        previewMessage={waPreviewMessage}
+        onClose={() => setWaPreviewOpen(false)}
+      />
     </DashboardLayout>
   );
 }

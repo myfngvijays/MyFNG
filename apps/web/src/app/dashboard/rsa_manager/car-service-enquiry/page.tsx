@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 import { formatDateTimeIST } from '@/lib/utils';
 
 type CarEnquiry = {
@@ -30,6 +31,15 @@ export default function RSAManagerCarServiceEnquiryPage() {
   const [carViewLoading, setCarViewLoading] = useState(false);
   const [carViewError, setCarViewError] = useState('');
   const [carEnquiries, setCarEnquiries] = useState<CarEnquiry[]>([]);
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
+
+  const openWhatsAppPreview = (phone: string | null | undefined) => {
+    const value = String(phone || '').trim();
+    if (!value) return;
+    setWaPreviewPhone(value);
+    setWaPreviewOpen(true);
+  };
 
   const fetchCarEnquiries = async () => {
     setCarViewLoading(true);
@@ -206,7 +216,19 @@ export default function RSAManagerCarServiceEnquiryPage() {
                       <tr key={row.id} className="border-b last:border-b-0">
                         <td className="py-2 pr-3">{formatDateTimeIST(row.created_at)}</td>
                         <td className="py-2 pr-3 font-semibold">{row.customer_name || '—'}</td>
-                        <td className="py-2 pr-3">{row.customer_phone_raw || row.customer_phone_norm || '—'}</td>
+                        <td className="py-2 pr-3">
+                          {row.customer_phone_raw || row.customer_phone_norm ? (
+                            <button
+                              type="button"
+                              className="text-green-700 hover:text-green-800 underline underline-offset-2"
+                              onClick={() => openWhatsAppPreview(row.customer_phone_raw || row.customer_phone_norm)}
+                            >
+                              {row.customer_phone_raw || row.customer_phone_norm}
+                            </button>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td className="py-2 pr-3">{row.car_model || '—'}</td>
                         <td className="py-2 pr-3">{row.remark || '—'}</td>
                         <td className="py-2 pr-3">
@@ -226,6 +248,12 @@ export default function RSAManagerCarServiceEnquiryPage() {
             )}
           </div>
         ) : null}
+        <WhatsAppMobilePreviewModal
+          isOpen={waPreviewOpen}
+          phoneNumber={waPreviewPhone}
+          title="WhatsApp Chat"
+          onClose={() => setWaPreviewOpen(false)}
+        />
       </div>
     </DashboardLayout>
   );

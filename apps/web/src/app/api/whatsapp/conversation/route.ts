@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
       let query = db
         .from('whatsapp_messages')
         .select(
-          'id, provider_message_id, direction, message_type, sender_phone, recipient_phone, template_name, text_body, media_url, media_mime_type, media_caption, payload, status, status_at, created_at'
+          'id, provider_message_id, direction, message_type, sender_phone, recipient_phone, template_name, text_body, media_url, media_mime_type, media_caption, payload, meta, status, error_message, status_at, created_at'
         )
         .or(`sender_phone.ilike.%${normalized}%,recipient_phone.ilike.%${normalized}%`)
         .order('created_at', { ascending: false })

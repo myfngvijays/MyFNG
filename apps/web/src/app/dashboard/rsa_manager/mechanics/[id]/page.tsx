@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
 import { formatDateTimeIST } from '@/lib/utils';
 import {
@@ -36,6 +37,8 @@ export default function RSAMechanicDetailPage() {
   const [completedLoading, setCompletedLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
   const hasOngoing = ongoingCases.length > 0;
   const uiIsAvailable = !hasOngoing;
 
@@ -162,8 +165,11 @@ export default function RSAMechanicDetailPage() {
     }
   };
 
-  const handleCall = (phone: string) => {
-    window.location.href = `tel:${phone}`;
+  const openWhatsAppPreview = (phone: string | null | undefined) => {
+    const value = String(phone || '').trim();
+    if (!value) return;
+    setWaPreviewPhone(value);
+    setWaPreviewOpen(true);
   };
 
   if (loading) {
@@ -278,7 +284,7 @@ export default function RSAMechanicDetailPage() {
               <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">Contact Information</h2>
               <div className="space-y-2 sm:space-y-3">
                 <button
-                  onClick={() => handleCall(mechanic.number)}
+                  onClick={() => openWhatsAppPreview(mechanic.number)}
                   className="w-full flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-lg border border-gray-200 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors"
                 >
                   <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
@@ -290,7 +296,7 @@ export default function RSAMechanicDetailPage() {
 
                 {mechanic.alternate_number1 && (
                   <button
-                    onClick={() => handleCall(mechanic.alternate_number1)}
+                    onClick={() => openWhatsAppPreview(mechanic.alternate_number1)}
                     className="w-full flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-lg border border-gray-200 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors"
                   >
                     <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" />
@@ -303,7 +309,7 @@ export default function RSAMechanicDetailPage() {
 
                 {mechanic.alternate_number2 && (
                   <button
-                    onClick={() => handleCall(mechanic.alternate_number2)}
+                    onClick={() => openWhatsAppPreview(mechanic.alternate_number2)}
                     className="w-full flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-lg border border-gray-200 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors"
                   >
                     <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" />
@@ -452,7 +458,19 @@ export default function RSAMechanicDetailPage() {
                       {ongoingCases.map((c) => (
                           <tr key={c.id} className="border-b last:border-b-0">
                             <td className="py-2 pr-3 font-semibold">{c.customer_name || '—'}</td>
-                            <td className="py-2 pr-3">{c.contact_number || '—'}</td>
+                            <td className="py-2 pr-3">
+                              {c.contact_number ? (
+                                <button
+                                  type="button"
+                                  className="text-green-700 hover:text-green-800 underline underline-offset-2"
+                                  onClick={() => openWhatsAppPreview(c.contact_number)}
+                                >
+                                  {c.contact_number}
+                                </button>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td className="py-2 pr-3">
                               {c.vehicle_number ? <span className="font-mono">{c.vehicle_number}</span> : '—'}
                             </td>
@@ -514,7 +532,19 @@ export default function RSAMechanicDetailPage() {
                       {completedCases.map((c) => (
                         <tr key={c.id} className="border-b last:border-b-0">
                           <td className="py-2 pr-3 font-semibold">{c.customer_name || '—'}</td>
-                          <td className="py-2 pr-3">{c.contact_number || '—'}</td>
+                          <td className="py-2 pr-3">
+                            {c.contact_number ? (
+                              <button
+                                type="button"
+                                className="text-green-700 hover:text-green-800 underline underline-offset-2"
+                                onClick={() => openWhatsAppPreview(c.contact_number)}
+                              >
+                                {c.contact_number}
+                              </button>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
                           <td className="py-2 pr-3">
                             {c.vehicle_number ? <span className="font-mono">{c.vehicle_number}</span> : '—'}
                           </td>
@@ -591,6 +621,12 @@ export default function RSAMechanicDetailPage() {
           </div>
         </div>
       </div>
+      <WhatsAppMobilePreviewModal
+        isOpen={waPreviewOpen}
+        phoneNumber={waPreviewPhone}
+        title="WhatsApp Chat"
+        onClose={() => setWaPreviewOpen(false)}
+      />
     </DashboardLayout>
   );
 }

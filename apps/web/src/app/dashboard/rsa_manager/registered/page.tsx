@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import Link from 'next/link';
@@ -16,6 +17,15 @@ export default function RSAManagerRegisteredPage() {
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
+
+  const openWhatsAppPreview = (phone: string | null | undefined) => {
+    const value = String(phone || '').trim();
+    if (!value) return;
+    setWaPreviewPhone(value);
+    setWaPreviewOpen(true);
+  };
 
   useEffect(() => {
     fetchUser();
@@ -131,7 +141,22 @@ export default function RSAManagerRegisteredPage() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs sm:text-sm text-gray-600">
                         <div>
-                          <span className="font-medium">Phone:</span> {lead.contact_number || '—'}
+                          <span className="font-medium">Phone:</span>{' '}
+                          {lead.contact_number ? (
+                            <button
+                              type="button"
+                              className="text-green-700 hover:text-green-800 underline underline-offset-2"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openWhatsAppPreview(lead.contact_number);
+                              }}
+                            >
+                              {lead.contact_number}
+                            </button>
+                          ) : (
+                            '—'
+                          )}
                         </div>
                         <div className="truncate">
                           <span className="font-medium">Vehicle:</span> {lead.vehicle_number || '—'}{' '}
@@ -162,6 +187,12 @@ export default function RSAManagerRegisteredPage() {
             </div>
           )}
         </div>
+        <WhatsAppMobilePreviewModal
+          isOpen={waPreviewOpen}
+          phoneNumber={waPreviewPhone}
+          title="WhatsApp Chat"
+          onClose={() => setWaPreviewOpen(false)}
+        />
       </div>
     </DashboardLayout>
   );

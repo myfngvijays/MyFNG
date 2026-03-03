@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
 import { formatDateDMY, formatDateTimeISTAssumeUTC } from '@/lib/utils';
@@ -91,6 +92,15 @@ export default function RSAManagerReportsPage() {
   const [performanceLoading, setPerformanceLoading] = useState(false);
   const [hoveredService, setHoveredService] = useState<{ name: string; count: number; percent: number } | null>(null);
   const [hoveredBar, setHoveredBar] = useState<{ date: string; count: number; completed: number; pending: number; cancelled: number } | null>(null);
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
+
+  const openWhatsAppPreview = (phone: string | null | undefined) => {
+    const value = String(phone || '').trim();
+    if (!value) return;
+    setWaPreviewPhone(value);
+    setWaPreviewOpen(true);
+  };
 
   const loadManagerAndReports = async () => {
     setError('');
@@ -432,7 +442,19 @@ export default function RSAManagerReportsPage() {
                         {performance.needsAttention.slice(0, 10).map((row) => (
                           <tr key={row.id} className="border-b last:border-b-0">
                             <td className="py-1.5 pr-2 font-medium">{row.customer_name || '—'}</td>
-                            <td className="py-1.5 pr-2">{row.contact_number || '—'}</td>
+                            <td className="py-1.5 pr-2">
+                              {row.contact_number ? (
+                                <button
+                                  type="button"
+                                  className="text-green-700 hover:text-green-800 underline underline-offset-2"
+                                  onClick={() => openWhatsAppPreview(row.contact_number)}
+                                >
+                                  {row.contact_number}
+                                </button>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td className="py-1.5 pr-2">{row.lead_status || '—'}</td>
                             <td className="py-1.5 pr-2 whitespace-nowrap">
                               {formatDateTimeISTAssumeUTC(row.lead_registered_at)}
@@ -628,6 +650,12 @@ export default function RSAManagerReportsPage() {
         </div>
 
       </div>
+      <WhatsAppMobilePreviewModal
+        isOpen={waPreviewOpen}
+        phoneNumber={waPreviewPhone}
+        title="WhatsApp Chat"
+        onClose={() => setWaPreviewOpen(false)}
+      />
     </DashboardLayout>
   );
 }

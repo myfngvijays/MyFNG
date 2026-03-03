@@ -4,6 +4,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useParams, useRouter, usePathname } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import DashboardLayout from '@/components/DashboardLayout';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
 import { formatDateTimeIST } from '@/lib/utils';
 import {
@@ -71,6 +72,8 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
   const [changingMechanic, setChangingMechanic] = useState(false);
   const [rsaMediaUploading, setRsaMediaUploading] = useState(false);
   const [rsaMediaError, setRsaMediaError] = useState('');
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
   const leadStatus = String(lead?.lead_status || lead?.complaint_status || '').toLowerCase();
   const showFinanceInStatusModal = newStatus === 'completed' || newStatus === 'cancelled';
   const canTransferManager = leadStatus !== 'completed' && leadStatus !== 'cancelled' && leadStatus !== 'closed';
@@ -90,6 +93,12 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
       })
       .filter(Boolean);
     return labels.join(', ');
+  };
+  const openWhatsAppPreview = (phone: string | null | undefined) => {
+    const value = String(phone || '').trim();
+    if (!value) return;
+    setWaPreviewPhone(value);
+    setWaPreviewOpen(true);
   };
 
   useEffect(() => {
@@ -599,12 +608,31 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
               <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
                 <div className="flex items-center gap-1.5 sm:gap-2 text-gray-600">
                   <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                  <span>{lead.contact_number}</span>
+                  {lead.contact_number ? (
+                    <button
+                      type="button"
+                      className="text-green-700 hover:text-green-800 underline underline-offset-2"
+                      onClick={() => openWhatsAppPreview(lead.contact_number)}
+                    >
+                      {lead.contact_number}
+                    </button>
+                  ) : (
+                    <span>—</span>
+                  )}
                 </div>
                 {lead.alternate_number && (
                   <div className="flex items-center gap-1.5 sm:gap-2 text-gray-600">
                     <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                    <span>Alt: {lead.alternate_number}</span>
+                    <span>
+                      Alt:{' '}
+                      <button
+                        type="button"
+                        className="text-green-700 hover:text-green-800 underline underline-offset-2"
+                        onClick={() => openWhatsAppPreview(lead.alternate_number)}
+                      >
+                        {lead.alternate_number}
+                      </button>
+                    </span>
                   </div>
                 )}
                 {lead.address && (
@@ -800,7 +828,15 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
                   <span className="font-medium text-gray-600">Assigned Mechanic:</span>
                   <p className="text-gray-900">{lead.assigned_mechanic_name}</p>
                   {lead.assigned_mechanic_contact && (
-                    <p className="text-gray-600 text-xs sm:text-sm">{lead.assigned_mechanic_contact}</p>
+                    <p className="text-gray-600 text-xs sm:text-sm">
+                      <button
+                        type="button"
+                        className="text-green-700 hover:text-green-800 underline underline-offset-2"
+                        onClick={() => openWhatsAppPreview(lead.assigned_mechanic_contact)}
+                      >
+                        {lead.assigned_mechanic_contact}
+                      </button>
+                    </p>
                   )}
                   {lead.mechanic_assigned_datetime && (
                     <p className="text-gray-500 text-[10px] sm:text-xs">
@@ -1330,6 +1366,12 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
             </div>
           </div>
         )}
+        <WhatsAppMobilePreviewModal
+          isOpen={waPreviewOpen}
+          phoneNumber={waPreviewPhone}
+          title="WhatsApp Chat"
+          onClose={() => setWaPreviewOpen(false)}
+        />
     </div>
   );
 }

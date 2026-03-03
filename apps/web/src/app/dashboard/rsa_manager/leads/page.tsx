@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 import { RSAManagerService } from '@/lib/services/rsaManagerService';
 import { formatDateTimeISTAssumeUTC } from '@/lib/utils';
 import {
@@ -30,6 +31,15 @@ function RSALeadsListContent() {
   const [filter, setFilter] = useState<'assigned' | 'pending' | 'completed' | 'cancelled'>('assigned');
   const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState<any>(null);
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
+
+  const openWhatsAppPreview = (phone: string | null | undefined) => {
+    const value = String(phone || '').trim();
+    if (!value) return;
+    setWaPreviewPhone(value);
+    setWaPreviewOpen(true);
+  };
 
   useEffect(() => {
     const statusParam = searchParams.get('status');
@@ -245,7 +255,17 @@ function RSALeadsListContent() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4 mt-2 sm:mt-3">
                           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
                             <span className="font-medium">Phone:</span>
-                            <span className="truncate">{lead.contact_number}</span>
+                            <button
+                              type="button"
+                              className="truncate text-green-700 hover:text-green-800 underline underline-offset-2"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openWhatsAppPreview(lead.contact_number);
+                              }}
+                            >
+                              {lead.contact_number || '—'}
+                            </button>
                           </div>
                           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
                             <span className="font-medium">Vehicle:</span>
@@ -300,6 +320,12 @@ function RSALeadsListContent() {
           </div>
         </div>
       </div>
+      <WhatsAppMobilePreviewModal
+        isOpen={waPreviewOpen}
+        phoneNumber={waPreviewPhone}
+        title="WhatsApp Chat"
+        onClose={() => setWaPreviewOpen(false)}
+      />
     </DashboardLayout>
   );
 }

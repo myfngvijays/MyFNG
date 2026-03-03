@@ -311,6 +311,7 @@ export default function WhatsAppMobilePreviewModal({
   const isAtBottomRef = useRef(true);
   const pendingPrependHeightRef = useRef<number | null>(null);
   const previousLastMessageKeyRef = useRef<string>('');
+  const previousTemplateOnlyModeRef = useRef<boolean>(true);
 
   const composerMessage = useMemo(
     () =>
@@ -386,10 +387,20 @@ export default function WhatsAppMobilePreviewModal({
   }, [showAttachMenu]);
 
   useEffect(() => {
-    if (!isTemplateOnlyMode) return;
-    setShowAttachMenu(false);
-    if (activeType !== 'template') {
-      setActiveType('template');
+    const wasTemplateOnly = previousTemplateOnlyModeRef.current;
+    previousTemplateOnlyModeRef.current = isTemplateOnlyMode;
+
+    if (isTemplateOnlyMode) {
+      setShowAttachMenu(false);
+      if (activeType !== 'template') {
+        setActiveType('template');
+      }
+      return;
+    }
+
+    // Auto-restore text mode when 24h customer care window re-opens.
+    if (wasTemplateOnly && activeType === 'template') {
+      setActiveType('text');
     }
   }, [isTemplateOnlyMode, activeType]);
 
@@ -629,6 +640,7 @@ export default function WhatsAppMobilePreviewModal({
       });
       const data = await res.json();
       if (!res.ok || !data?.success) {
+        await refreshConversation();
         toast.error(data?.error || 'Send failed');
         return;
       }
@@ -740,6 +752,16 @@ export default function WhatsAppMobilePreviewModal({
               const templateButtons = isTemplateMessage ? extractTemplateButtons(currentTemplate) : [];
               const templateDisplayName =
                 currentTemplate?.display_name || currentTemplate?.template_name || msg?.template_name || '';
+              const actorName = String(msg?.meta?.actor_name || '').trim();
+              const failedReason =
+                deliveryStatus === 'FAILED'
+                  ? String(
+                      msg?.error_message ||
+                        msg?.payload?.response?.error?.error_user_msg ||
+                        msg?.payload?.response?.error?.message ||
+                        ''
+                    ).trim()
+                  : '';
               const text =
                 inboundText ||
                 (msg?.template_name
@@ -773,6 +795,11 @@ export default function WhatsAppMobilePreviewModal({
                   {isTemplateMessage && !isStatus ? (
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]">
                       Template: {templateDisplayName}
+                    </p>
+                  ) : null}
+                  {isOutbound && actorName ? (
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#667781]">
+                      Sent by: {actorName}
                     </p>
                   ) : null}
                   {isLocationMessage ? (
@@ -882,6 +909,11 @@ export default function WhatsAppMobilePreviewModal({
                           {button.text}
                         </div>
                       ))}
+                    </div>
+                  ) : null}
+                  {isOutbound && failedReason ? (
+                    <div className="mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700">
+                      Failed reason: {failedReason}
                     </div>
                   ) : null}
                   {!isStatus ? (
