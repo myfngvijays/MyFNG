@@ -9,6 +9,7 @@ import {
 } from '@/app/api/whatsapp/calls/_shared';
 import {
   acceptInboundCall,
+  preAcceptInboundCall,
   sendIceCandidate,
   sendSessionSignal,
 } from '@/lib/services/whatsappCallingService';
@@ -152,56 +153,66 @@ export async function POST(
     } else {
       const isInbound = isInboundDirection(callLog.direction);
       if (isInbound) {
-        const isBrowserSdp = Boolean(body?.browser_sdp);
-        let answerSdpToSend = sdp;
+        const metaAction = String(body?.meta_action || 'accept').trim().toLowerCase();
+        console.log('[InboundCall] action:', metaAction, 'SDP length:', sdp.length);
 
-        if (isBrowserSdp) {
-          // Client sent a real browser-generated SDP answer — use it directly
-          console.log('[InboundCall] Using browser-generated SDP answer, length:', sdp.length);
-        } else {
-          // Fallback: use whatever the client sent (likely converted Meta offer)
-          console.log('[InboundCall] Using client-provided SDP, length:', sdp.length);
-        }
-
-        const acceptResult = await acceptInboundCall({
-          callId: String(callLog.provider_call_id || callId),
-          to: phone,
-          sdp: answerSdpToSend,
-          sdpType: 'answer',
-        });
-        console.log('[InboundCall] acceptInboundCall result:', JSON.stringify({
-          success: acceptResult.success,
-          statusCode: acceptResult.statusCode,
-          error: acceptResult.error,
-          answerSdp: acceptResult.answerSdp ? 'present' : 'none',
-          raw: acceptResult.raw,
-        }));
-        providerRaw = acceptResult.raw || null;
-        providerStatusCode = acceptResult.statusCode || null;
-        if (acceptResult.success) {
-          if (acceptResult.sessionId) {
-            providerSessionId = String(acceptResult.sessionId);
-          }
-          if (acceptResult.answerSdp) {
-            (providerRaw as any) = {
-              ...((providerRaw as any) || {}),
-              answer_sdp: acceptResult.answerSdp,
-              answer_sdp_type: acceptResult.answerSdpType || 'answer',
-            };
+        if (metaAction === 'pre_accept') {
+          const preResult = await preAcceptInboundCall({
+            callId: String(callLog.provider_call_id || callId),
+            sdp,
+          });
+          providerRaw = preResult.raw || null;
+          providerStatusCode = preResult.statusCode || null;
+          if (!preResult.success) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: preResult.error || 'Meta rejected pre_accept',
+                provider_status_code: preResult.statusCode || null,
+                provider_error: preResult.raw || null,
+                bridge_error: bridgeResult?.error || null,
+                accept_failed: true,
+              },
+              { status: 502 }
+            );
           }
         } else {
-          // Meta rejected the accept — return the error so the UI can show it
-          return NextResponse.json(
-            {
-              success: false,
-              error: acceptResult.error || 'Meta rejected call accept',
-              provider_status_code: acceptResult.statusCode || null,
-              provider_error: acceptResult.raw || null,
-              bridge_error: bridgeResult?.error || null,
-              accept_failed: true,
-            },
-            { status: 502 }
-          );
+          const acceptResult = await acceptInboundCall({
+            callId: String(callLog.provider_call_id || callId),
+            sdp,
+          });
+          console.log('[InboundCall] acceptInboundCall result:', JSON.stringify({
+            success: acceptResult.success,
+            statusCode: acceptResult.statusCode,
+            error: acceptResult.error,
+            raw: acceptResult.raw,
+          }));
+          providerRaw = acceptResult.raw || null;
+          providerStatusCode = acceptResult.statusCode || null;
+          if (acceptResult.success) {
+            if (acceptResult.sessionId) {
+              providerSessionId = String(acceptResult.sessionId);
+            }
+            if (acceptResult.answerSdp) {
+              (providerRaw as any) = {
+                ...((providerRaw as any) || {}),
+                answer_sdp: acceptResult.answerSdp,
+                answer_sdp_type: acceptResult.answerSdpType || 'answer',
+              };
+            }
+          } else {
+            return NextResponse.json(
+              {
+                success: false,
+                error: acceptResult.error || 'Meta rejected call accept',
+                provider_status_code: acceptResult.statusCode || null,
+                provider_error: acceptResult.raw || null,
+                bridge_error: bridgeResult?.error || null,
+                accept_failed: true,
+              },
+              { status: 502 }
+            );
+          }
         }
       } else {
         // Outbound call: send SDP offer/answer via standard session signal.

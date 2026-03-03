@@ -1036,6 +1036,7 @@ export default function SuperAdminWhatsAppChatPage() {
       activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
       activeAudioStreamRef.current = null;
     }
+    document.getElementById('whatsapp-call-audio')?.remove();
   }, []);
 
   const handleIncomingPopupAction = useCallback(
@@ -1133,135 +1134,156 @@ export default function SuperAdminWhatsAppChatPage() {
           // No saved offer
         }
 
-        // Step 3: Create RTCPeerConnection and generate SDP answer
-        let answerSdp: string | null = null;
-        let browserSdp = false;
-
-        if (metaOfferSdp && typeof RTCPeerConnection !== 'undefined') {
-          try {
-            const pc = new RTCPeerConnection({
-              iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-              ],
-            });
-            activePeerConnectionRef.current = pc;
-
-            // Add microphone track so audio can flow
-            if (audioStream) {
-              audioStream.getAudioTracks().forEach((track) => pc.addTrack(track, audioStream!));
-            } else {
-              pc.addTransceiver('audio', { direction: 'sendrecv' });
-            }
-
-            // Play incoming audio
-            pc.ontrack = (ev) => {
-              const audio = new Audio();
-              audio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
-              audio.play().catch(() => {});
-            };
-
-            await pc.setRemoteDescription(
-              new RTCSessionDescription({ type: 'offer', sdp: metaOfferSdp })
-            );
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-
-            // Wait for ICE gathering to complete (max 3s)
-            if (pc.iceGatheringState !== 'complete') {
-              await new Promise<void>((resolve) => {
-                const timeout = setTimeout(resolve, 3000);
-                pc.onicegatheringstatechange = () => {
-                  if (pc.iceGatheringState === 'complete') {
-                    clearTimeout(timeout);
-                    resolve();
-                  }
-                };
-              });
-            }
-
-            // Use the SDP with gathered ICE candidates
-            answerSdp = pc.localDescription?.sdp || answer.sdp || null;
-            browserSdp = true;
-            console.log('[InboundCall] Browser SDP answer ready, length:', answerSdp?.length);
-          } catch (e) {
-            console.warn('[InboundCall] WebRTC setup failed:', e);
-          }
-        }
-
-        // Fallback: convert Meta's offer to answer format (no real audio, but call connects)
-        if (!answerSdp && metaOfferSdp) {
-          answerSdp = metaOfferSdp
-            .replace(/a=setup:actpass/g, 'a=setup:active')
-            .replace(/a=setup:passive/g, 'a=setup:active');
-          console.log('[InboundCall] Using converted Meta offer as fallback');
-        }
-
-        if (!answerSdp) {
+        if (!metaOfferSdp) {
           setConversationError('No SDP available — Meta offer not received yet');
           return;
         }
 
-        // Step 4: POST the answer to our API → Meta
-        const sessionPostRes = await fetch(
-          `/api/whatsapp/calls/${encodeURIComponent(callId)}/session`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'answer',
-              phone: phone || undefined,
-              sdp: answerSdp,
-              sdp_type: 'answer',
-              provider_session_id: null,
-              browser_sdp: browserSdp,
-            }),
-          }
-        );
-        const sessionPostData = await sessionPostRes.json().catch(() => ({}));
+        if (typeof RTCPeerConnection === 'undefined') {
+          setConversationError('WebRTC not supported in this browser');
+          return;
+        }
 
-        if (!sessionPostRes.ok || !sessionPostData?.success) {
-          const errMsg = String(
-            sessionPostData?.error ||
-              sessionPostData?.provider_error?.error?.message ||
-              'Meta did not accept the call'
-          );
-          console.error('[InboundCall] Accept failed:', sessionPostData);
-          // If browser SDP failed, retry with converted Meta offer
-          if (browserSdp && metaOfferSdp) {
-            console.log('[InboundCall] Retrying with converted Meta offer...');
-            const fallbackSdp = metaOfferSdp
-              .replace(/a=setup:actpass/g, 'a=setup:active')
-              .replace(/a=setup:passive/g, 'a=setup:active');
-            const retryRes = await fetch(
-              `/api/whatsapp/calls/${encodeURIComponent(callId)}/session`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  action: 'answer',
-                  phone: phone || undefined,
-                  sdp: fallbackSdp,
-                  sdp_type: 'answer',
-                  provider_session_id: null,
-                  browser_sdp: false,
-                }),
+        // Step 3: Create RTCPeerConnection
+        const pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+          ],
+          iceTransportPolicy: 'all',
+        });
+        activePeerConnectionRef.current = pc;
+
+        // Add microphone tracks BEFORE creating answer (Meta requires media flow)
+        if (audioStream) {
+          audioStream.getAudioTracks().forEach((track) => pc.addTrack(track, audioStream!));
+        } else {
+          pc.addTransceiver('audio', { direction: 'recvonly' });
+        }
+
+        // Play incoming audio
+        pc.ontrack = (ev) => {
+          console.log('[InboundCall] Remote audio track received');
+          const remoteAudio = document.createElement('audio');
+          remoteAudio.id = 'whatsapp-call-audio';
+          remoteAudio.autoplay = true;
+          remoteAudio.playsInline = true;
+          remoteAudio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+          document.getElementById('whatsapp-call-audio')?.remove();
+          document.body.appendChild(remoteAudio);
+          remoteAudio.play().catch((e) => console.warn('[InboundCall] Audio play failed:', e));
+        };
+
+        // Set Meta's offer as remote description
+        await pc.setRemoteDescription(
+          new RTCSessionDescription({ type: 'offer', sdp: metaOfferSdp })
+        );
+
+        // Create SDP answer
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        // Wait for ICE gathering (max 5s)
+        if (pc.iceGatheringState !== 'complete') {
+          await new Promise<void>((resolve) => {
+            const timeout = setTimeout(resolve, 5000);
+            pc.onicegatheringstatechange = () => {
+              if (pc.iceGatheringState === 'complete') {
+                clearTimeout(timeout);
+                resolve();
               }
-            );
-            const retryData = await retryRes.json().catch(() => ({}));
-            if (!retryRes.ok || !retryData?.success) {
-              setConversationError(`Call accept failed: ${errMsg}`);
+            };
+          });
+        }
+
+        const answerSdp = pc.localDescription?.sdp || answer.sdp || null;
+        if (!answerSdp) {
+          setConversationError('Failed to generate SDP answer');
+          return;
+        }
+
+        console.log('[InboundCall] Browser SDP ready:', {
+          length: answerSdp.length,
+          candidates: (answerSdp.match(/a=candidate:/g) || []).length,
+          iceState: pc.iceGatheringState,
+        });
+
+        // Step 4: Send pre_accept to Meta (tells Meta we are preparing)
+        const sendToBackend = async (metaAction: string, sdpToSend: string) => {
+          const res = await fetch(
+            `/api/whatsapp/calls/${encodeURIComponent(callId)}/session`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'answer',
+                phone: phone || undefined,
+                sdp: sdpToSend,
+                sdp_type: 'answer',
+                provider_session_id: null,
+                meta_action: metaAction,
+              }),
             }
-          } else {
-            setConversationError(`Call accept failed: ${errMsg}`);
+          );
+          return { res, data: await res.json().catch(() => ({})) };
+        };
+
+        const { res: preRes, data: preData } = await sendToBackend('pre_accept', answerSdp);
+        if (!preRes.ok || !preData?.success) {
+          console.error('[InboundCall] pre_accept failed:', preData);
+          const errMsg = String(preData?.error || 'Meta rejected pre_accept');
+          setConversationError(`Call pre-accept failed: ${errMsg}`);
+          return;
+        }
+        console.log('[InboundCall] pre_accept succeeded');
+
+        // Step 5: Wait for WebRTC connection to establish (max 10s)
+        pc.oniceconnectionstatechange = () => {
+          console.log('[InboundCall] ICE state:', pc.iceConnectionState);
+        };
+
+        const connected = await new Promise<boolean>((resolve) => {
+          if (pc.connectionState === 'connected') {
+            resolve(true);
+            return;
           }
+          const timeout = setTimeout(() => {
+            console.warn('[InboundCall] Connection timeout, sending accept anyway');
+            resolve(true);
+          }, 10000);
+          pc.onconnectionstatechange = () => {
+            console.log('[InboundCall] Connection state:', pc.connectionState);
+            if (pc.connectionState === 'connected') {
+              clearTimeout(timeout);
+              resolve(true);
+            } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+              clearTimeout(timeout);
+              resolve(false);
+            }
+          };
+        });
+
+        if (!connected) {
+          setConversationError('WebRTC connection failed — audio path not established');
+          return;
+        }
+
+        // Step 6: Send final accept to Meta
+        const { res: acceptRes, data: acceptData } = await sendToBackend('accept', answerSdp);
+        if (!acceptRes.ok || !acceptData?.success) {
+          console.error('[InboundCall] accept failed:', acceptData);
+          const errMsg = String(acceptData?.error || 'Meta rejected call accept');
+          setConversationError(`Call accept failed: ${errMsg}`);
+        } else {
+          console.log('[InboundCall] Call accepted successfully');
         }
 
         if (phone) await loadCalls(phone);
         else if (selectedPhoneRef.current) await loadCalls(selectedPhoneRef.current);
         switchToActive();
-      } catch {
-        setConversationError('Failed to accept incoming call');
+      } catch (e: any) {
+        console.error('[InboundCall] Error:', e);
+        setConversationError(e?.message || 'Failed to accept incoming call');
       } finally {
         setCallControlLoading(null);
       }
