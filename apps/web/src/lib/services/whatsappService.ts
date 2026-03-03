@@ -19,8 +19,9 @@ type TemplateBodyParam = { type: 'text'; text: string };
 
 type MediaMessageInput = {
   phoneNumber: string;
-  mediaType: 'image' | 'document';
-  mediaUrl: string;
+  mediaType: 'image' | 'document' | 'video' | 'audio';
+  mediaUrl?: string;
+  mediaId?: string;
   caption?: string;
   filename?: string;
 };
@@ -111,7 +112,11 @@ export async function sendTextMessage(phoneNumber: string, message: string): Pro
 export async function sendMediaMessage(input: MediaMessageInput): Promise<WhatsAppSendResult> {
   const to = normalizePhoneNumber(input.phoneNumber);
   if (!to) return { success: false, error: 'Invalid recipient phone number' };
-  if (!input.mediaUrl?.trim()) return { success: false, error: 'Media URL is required' };
+  const mediaUrl = String(input.mediaUrl || '').trim();
+  const mediaId = String(input.mediaId || '').trim();
+  if (!mediaUrl && !mediaId) {
+    return { success: false, error: 'Media URL or media ID is required' };
+  }
 
   if (input.mediaType === 'image') {
     return sendMessagePayload({
@@ -119,8 +124,31 @@ export async function sendMediaMessage(input: MediaMessageInput): Promise<WhatsA
       to,
       type: 'image',
       image: {
-        link: input.mediaUrl.trim(),
+        ...(mediaId ? { id: mediaId } : { link: mediaUrl }),
         caption: input.caption?.trim() || undefined,
+      },
+    });
+  }
+
+  if (input.mediaType === 'video') {
+    return sendMessagePayload({
+      messaging_product: 'whatsapp',
+      to,
+      type: 'video',
+      video: {
+        ...(mediaId ? { id: mediaId } : { link: mediaUrl }),
+        caption: input.caption?.trim() || undefined,
+      },
+    });
+  }
+
+  if (input.mediaType === 'audio') {
+    return sendMessagePayload({
+      messaging_product: 'whatsapp',
+      to,
+      type: 'audio',
+      audio: {
+        ...(mediaId ? { id: mediaId } : { link: mediaUrl }),
       },
     });
   }
@@ -130,7 +158,7 @@ export async function sendMediaMessage(input: MediaMessageInput): Promise<WhatsA
     to,
     type: 'document',
     document: {
-      link: input.mediaUrl.trim(),
+      ...(mediaId ? { id: mediaId } : { link: mediaUrl }),
       caption: input.caption?.trim() || undefined,
       filename: input.filename?.trim() || undefined,
     },

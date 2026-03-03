@@ -231,6 +231,50 @@ function getMediaIdFromPayload(payload: any, messageType: string): string {
   return mediaId;
 }
 
+function inferMediaTypeFromFile(file: File): 'image' | 'video' | 'audio' | 'document' {
+  const mime = String(file.type || '').toLowerCase();
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'document';
+}
+
+async function compressImageIfNeeded(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) return file;
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = dataUrl;
+    });
+    const maxWidth = 1400;
+    const scale = image.width > maxWidth ? maxWidth / image.width : 1;
+    const targetWidth = Math.round(image.width * scale);
+    const targetHeight = Math.round(image.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.78)
+    );
+    if (!blob || blob.size >= file.size) return file;
+    const baseName = file.name.replace(/\.[^.]+$/, '');
+    return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+  } catch {
+    return file;
+  }
+}
+
 export default function WhatsAppMobilePreviewModal({
   isOpen,
   phoneNumber,
@@ -245,8 +289,8 @@ export default function WhatsAppMobilePreviewModal({
   const [messages, setMessages] = useState<any[]>([]);
   const [activeType, setActiveType] = useState<'text' | 'media' | 'template'>('text');
   const [textMessage, setTextMessage] = useState('');
-  const [mediaType, setMediaType] = useState<'image' | 'document'>('document');
-  const [mediaUrl, setMediaUrl] = useState('');
+  const [mediaType, setMediaType] = useState<'image' | 'video' | 'document' | 'audio'>('document');
+  const [selectedMediaFile, setSelectedMediaFile] = useState<File | null>(null);
   const [caption, setCaption] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [templateParams, setTemplateParams] = useState('');
@@ -255,6 +299,7 @@ export default function WhatsAppMobilePreviewModal({
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [nextBeforeCreatedAt, setNextBeforeCreatedAt] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -262,6 +307,7 @@ export default function WhatsAppMobilePreviewModal({
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const attachMenuRef = useRef<HTMLDivElement | null>(null);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mediaFileInputRef = useRef<HTMLInputElement | null>(null);
   const isAtBottomRef = useRef(true);
   const pendingPrependHeightRef = useRef<number | null>(null);
   const previousLastMessageKeyRef = useRef<string>('');
@@ -304,6 +350,15 @@ export default function WhatsAppMobilePreviewModal({
     });
     return map;
   }, [templateOptions]);
+  const isTemplateOnlyMode = useMemo(() => {
+    const lastInbound = [...messages]
+      .reverse()
+      .find((row) => String(row?.direction || '').trim().toUpperCase() === 'INBOUND');
+    if (!lastInbound) return true;
+    const lastInboundMs = new Date(lastInbound?.created_at || lastInbound?.status_at || '').getTime();
+    if (!Number.isFinite(lastInboundMs)) return true;
+    return Date.now() - lastInboundMs > 24 * 60 * 60 * 1000;
+  }, [messages]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -329,6 +384,14 @@ export default function WhatsAppMobilePreviewModal({
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [showAttachMenu]);
+
+  useEffect(() => {
+    if (!isTemplateOnlyMode) return;
+    setShowAttachMenu(false);
+    if (activeType !== 'template') {
+      setActiveType('template');
+    }
+  }, [isTemplateOnlyMode, activeType]);
 
   const fetchConversationPage = useCallback(
     async (beforeCreatedAt?: string | null) => {
@@ -508,15 +571,16 @@ export default function WhatsAppMobilePreviewModal({
       }
       payload = { ...payload, text };
     } else if (activeType === 'media') {
-      if (!mediaUrl.trim()) {
-        toast.error('Media URL required');
+      if (!selectedMediaFile) {
+        toast.error('Please choose media file');
         return;
       }
       payload = {
         ...payload,
         media_type: mediaType,
-        media_url: mediaUrl.trim(),
         caption: caption.trim() || undefined,
+        filename: selectedMediaFile?.name || undefined,
+        media_mime_type: selectedMediaFile?.type || undefined,
       };
     } else {
       if (!templateName.trim()) {
@@ -536,23 +600,43 @@ export default function WhatsAppMobilePreviewModal({
 
     setSending(true);
     try {
+      const isMediaWithFile = activeType === 'media' && selectedMediaFile;
+      const uploadFile =
+        isMediaWithFile && selectedMediaFile
+          ? await compressImageIfNeeded(selectedMediaFile)
+          : selectedMediaFile;
+      const reqBody = (() => {
+        if (!isMediaWithFile) {
+          return { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) };
+        }
+        const form = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value === undefined || value === null) return;
+          if (Array.isArray(value)) {
+            form.append(key, value.join(','));
+            return;
+          }
+          form.append(key, String(value));
+        });
+        form.append('file', uploadFile as File);
+        return { headers: undefined as any, body: form };
+      })();
+
       const res = await fetch('/api/whatsapp/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers: reqBody.headers,
+        body: reqBody.body,
       });
       const data = await res.json();
       if (!res.ok || !data?.success) {
         toast.error(data?.error || 'Send failed');
         return;
       }
-      toast.success('Message sent to WhatsApp API');
       setTextMessage('');
       setCaption('');
+      setSelectedMediaFile(null);
       setShowAttachMenu(false);
-      if (activeType === 'template') {
-        setActiveType('text');
-      }
+      setActiveType('text');
       await refreshConversation();
     } catch {
       toast.error('Send failed');
@@ -720,7 +804,8 @@ export default function WhatsAppMobilePreviewModal({
                         <img
                           src={resolvedMediaUrl}
                           alt="Shared media"
-                          className="max-h-48 w-full rounded-md object-cover"
+                          className="max-h-48 w-full cursor-zoom-in rounded-md object-cover"
+                          onClick={() => setImagePreviewUrl(resolvedMediaUrl)}
                         />
                       ) : (
                         <div className="inline-flex items-center gap-1 rounded-full border border-[#d7dde3] bg-[#f7fafc] px-2.5 py-1 text-[11px] font-medium text-[#1f2937]">
@@ -835,25 +920,32 @@ export default function WhatsAppMobilePreviewModal({
           ) : null}
 
           <div className="bg-[#f0f2f5] border-t border-black/10 px-2.5 py-2 space-y-2">
+            {isTemplateOnlyMode ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                Normal chat window closed. Only template messages can be sent.
+              </div>
+            ) : null}
             {activeType !== 'text' ? (
               <div className="flex items-center justify-between rounded-md bg-white px-2 py-1 text-[10px] text-[#54656f]">
                 <span>
                   Compose mode: <span className="font-semibold uppercase">{activeType}</span>
                 </span>
-                <button
-                  type="button"
-                  className="text-[#128c7e] font-semibold"
-                  onClick={() => {
-                    setActiveType('text');
-                    setShowAttachMenu(false);
-                  }}
-                >
-                  Back to text
-                </button>
+                {!isTemplateOnlyMode ? (
+                  <button
+                    type="button"
+                    className="text-[#128c7e] font-semibold"
+                    onClick={() => {
+                      setActiveType('text');
+                      setShowAttachMenu(false);
+                    }}
+                  >
+                    Back to text
+                  </button>
+                ) : null}
               </div>
             ) : null}
 
-            {activeType === 'text' ? (
+            {activeType === 'text' && !isTemplateOnlyMode ? (
               <div className="relative flex items-center gap-1.5">
                 <button
                   ref={attachButtonRef}
@@ -876,6 +968,7 @@ export default function WhatsAppMobilePreviewModal({
                           setActiveType('media');
                           setMediaType('image');
                           setShowAttachMenu(false);
+                          requestAnimationFrame(() => mediaFileInputRef.current?.click());
                         }}
                       >
                         Image/Video
@@ -887,6 +980,7 @@ export default function WhatsAppMobilePreviewModal({
                           setActiveType('media');
                           setMediaType('document');
                           setShowAttachMenu(false);
+                          requestAnimationFrame(() => mediaFileInputRef.current?.click());
                         }}
                       >
                         PDF
@@ -908,6 +1002,7 @@ export default function WhatsAppMobilePreviewModal({
                           setActiveType('media');
                           setMediaType('document');
                           setShowAttachMenu(false);
+                          requestAnimationFrame(() => mediaFileInputRef.current?.click());
                         }}
                       >
                         Document
@@ -938,28 +1033,24 @@ export default function WhatsAppMobilePreviewModal({
 
             {activeType === 'media' ? (
               <div className="space-y-1.5">
-                <div className="flex gap-1.5">
-                  <select
-                    className="w-24 rounded-md border bg-white px-2 py-1 text-[11px]"
-                    value={mediaType}
-                    onChange={(e) => setMediaType(e.target.value as 'image' | 'document')}
-                  >
-                    <option value="document">Document</option>
-                    <option value="image">Image</option>
-                  </select>
-                  <input
-                    className="flex-1 rounded-md border bg-white px-2 py-1 text-[11px]"
-                    value={mediaUrl}
-                    onChange={(e) => setMediaUrl(e.target.value)}
-                    placeholder="https://media-url"
-                  />
-                </div>
+                <button
+                  type="button"
+                  className="w-full rounded-md border bg-white px-2 py-2 text-left text-[11px] text-[#54656f]"
+                  onClick={() => mediaFileInputRef.current?.click()}
+                >
+                  {selectedMediaFile
+                    ? `${selectedMediaFile.name} (${(selectedMediaFile.size / 1024 / 1024).toFixed(2)} MB)`
+                    : 'Choose media from device'}
+                </button>
                 <input
                   className="w-full rounded-md border bg-white px-2 py-1 text-[11px]"
                   value={caption}
                   onChange={(e) => setCaption(e.target.value)}
                   placeholder="Caption (optional)"
                 />
+                <p className="text-[10px] text-gray-500">
+                  Image files are auto-compressed before upload for faster delivery.
+                </p>
               </div>
             ) : null}
 
@@ -1034,6 +1125,30 @@ export default function WhatsAppMobilePreviewModal({
               </div>
             ) : null}
 
+            <input
+              ref={mediaFileInputRef}
+              type="file"
+              className="hidden"
+              accept={
+                mediaType === 'image'
+                  ? 'image/*,video/*'
+                  : mediaType === 'audio'
+                  ? 'audio/*'
+                  : mediaType === 'video'
+                  ? 'video/*'
+                  : '.pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx,application/*'
+              }
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                if (!file) return;
+                const inferred = inferMediaTypeFromFile(file);
+                setSelectedMediaFile(file);
+                setMediaType(inferred);
+                setActiveType('media');
+                e.currentTarget.value = '';
+              }}
+            />
+
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -1048,6 +1163,27 @@ export default function WhatsAppMobilePreviewModal({
           </div>
         </div>
       </div>
+      {imagePreviewUrl ? (
+        <div
+          className="fixed inset-0 z-[7100] flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setImagePreviewUrl(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-4 top-4 rounded-full bg-white/15 p-2 text-white hover:bg-white/25"
+            onClick={() => setImagePreviewUrl(null)}
+            aria-label="Close image preview"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <img
+            src={imagePreviewUrl}
+            alt="Image preview"
+            className="max-h-[92vh] max-w-[92vw] rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

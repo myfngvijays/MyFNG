@@ -7,6 +7,7 @@ import {
 } from '@/lib/services/whatsappService';
 
 type MessageType = 'text' | 'media' | 'template';
+type ParsedSendBody = Record<string, any> & { __file?: File | null };
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -21,6 +22,10 @@ const ALLOWED_ROLE_CODES = [
   'WORKSHOP_SUPERVISOR',
   'BILLING_SPECIALIST',
 ];
+
+const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0';
+const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';
 
 async function resolveUserProfile(supabase: any, user: any) {
   const email = (user.email || '').trim();
@@ -46,6 +51,59 @@ function normalizeMessageType(value: unknown): MessageType | null {
     return messageType;
   }
   return null;
+}
+
+async function parseIncomingBody(request: NextRequest): Promise<ParsedSendBody> {
+  const contentType = request.headers.get('content-type') || '';
+  if (contentType.includes('multipart/form-data')) {
+    const form = await request.formData();
+    const fileEntry = form.get('file');
+    const body: ParsedSendBody = {
+      lead_id: form.get('lead_id') ? String(form.get('lead_id')) : '',
+      invoice_id: form.get('invoice_id') ? String(form.get('invoice_id')) : '',
+      recipient_phone: form.get('recipient_phone') ? String(form.get('recipient_phone')) : '',
+      message_type: form.get('message_type') ? String(form.get('message_type')) : '',
+      media_type: form.get('media_type') ? String(form.get('media_type')) : '',
+      media_url: form.get('media_url') ? String(form.get('media_url')) : '',
+      media_id: form.get('media_id') ? String(form.get('media_id')) : '',
+      caption: form.get('caption') ? String(form.get('caption')) : '',
+      filename: form.get('filename') ? String(form.get('filename')) : '',
+      text: form.get('text') ? String(form.get('text')) : '',
+      template_name: form.get('template_name') ? String(form.get('template_name')) : '',
+      language: form.get('language') ? String(form.get('language')) : '',
+      template_params: form.get('template_params') ? String(form.get('template_params')) : '',
+      __file: fileEntry instanceof File ? fileEntry : null,
+    };
+    return body;
+  }
+  const json = (await request.json()) as ParsedSendBody;
+  return json || {};
+}
+
+async function uploadMediaToWhatsApp(file: File): Promise<{ mediaId: string; mimeType: string }> {
+  if (!WHATSAPP_PHONE_NUMBER_ID) throw new Error('WHATSAPP_PHONE_NUMBER_ID is not configured');
+  if (!WHATSAPP_ACCESS_TOKEN) throw new Error('WHATSAPP_ACCESS_TOKEN is not configured');
+
+  const formData = new FormData();
+  formData.append('messaging_product', 'whatsapp');
+  formData.append('file', file, file.name || `upload-${Date.now()}`);
+
+  const response = await fetch(`${WHATSAPP_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/media`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+    },
+    body: formData,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const msg = String(payload?.error?.message || payload?.error?.error_user_msg || 'Media upload failed');
+    throw new Error(msg);
+  }
+  const mediaId = String(payload?.id || '').trim();
+  if (!mediaId) throw new Error('Media upload did not return a media ID');
+  return { mediaId, mimeType: file.type || 'application/octet-stream' };
 }
 
 export async function POST(request: NextRequest) {
@@ -74,7 +132,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    const body = await parseIncomingBody(request);
     const leadId = body?.lead_id ? String(body.lead_id).trim() : '';
     const invoiceId = body?.invoice_id ? String(body.invoice_id).trim() : null;
     const messageType = normalizeMessageType(body?.message_type);
@@ -120,6 +178,7 @@ export async function POST(request: NextRequest) {
     let result;
     let messageForLog = '';
     let requestPayload: Record<string, unknown> = {};
+    let mediaMimeTypeForLog: string | null = null;
 
     if (messageType === 'text') {
       const text = String(body?.text || '').trim();
@@ -133,27 +192,58 @@ export async function POST(request: NextRequest) {
     } else if (messageType === 'media') {
       const mediaType = String(body?.media_type || '').trim().toLowerCase();
       const mediaUrl = String(body?.media_url || '').trim();
+      let mediaId = String(body?.media_id || '').trim();
+      const uploadFile = body?.__file instanceof File ? body.__file : null;
       const caption = body?.caption ? String(body.caption) : undefined;
       const filename = body?.filename ? String(body.filename) : undefined;
-      if (mediaType !== 'image' && mediaType !== 'document') {
+      const requestedMime = String(body?.media_mime_type || '').trim();
+      if (mediaType !== 'image' && mediaType !== 'document' && mediaType !== 'video' && mediaType !== 'audio') {
         return NextResponse.json(
-          { error: 'media_type must be one of: image, document' },
+          { error: 'media_type must be one of: image, document, video, audio' },
           { status: 400 }
         );
       }
-      if (!mediaUrl) return NextResponse.json({ error: 'media_url is required for media type' }, { status: 400 });
-      messageForLog = caption || `[${mediaType}] ${mediaUrl}`;
+      if (!mediaUrl && !mediaId && !uploadFile) {
+        return NextResponse.json(
+          { error: 'Provide media_url, media_id, or upload file for media type' },
+          { status: 400 }
+        );
+      }
+      if (!mediaId && uploadFile) {
+        const uploaded = await uploadMediaToWhatsApp(uploadFile);
+        mediaId = uploaded.mediaId;
+        mediaMimeTypeForLog = uploaded.mimeType || null;
+      }
+
+      if (!mediaMimeTypeForLog) {
+        mediaMimeTypeForLog =
+          (uploadFile?.type && String(uploadFile.type).trim()) ||
+          (requestedMime ? requestedMime : null) ||
+          (mediaType === 'image'
+            ? 'image/*'
+            : mediaType === 'video'
+            ? 'video/*'
+            : mediaType === 'audio'
+            ? 'audio/*'
+            : 'application/octet-stream');
+      }
+
+      const mediaUrlForSend = mediaUrl || (mediaId ? `/api/whatsapp/media/${encodeURIComponent(mediaId)}` : '');
+      messageForLog = caption || `[${mediaType}] ${mediaUrlForSend || mediaId}`;
       requestPayload = {
         message_type: 'media',
         media_type: mediaType,
-        media_url: mediaUrl,
+        media_url: mediaUrl || null,
+        media_id: mediaId || null,
+        media_mime_type: mediaMimeTypeForLog,
         caption: caption || null,
         filename: filename || null,
       };
       result = await sendMediaMessage({
         phoneNumber: recipientPhone,
-        mediaType,
-        mediaUrl,
+        mediaType: mediaType as 'image' | 'document' | 'video' | 'audio',
+        mediaUrl: mediaUrl || undefined,
+        mediaId: mediaId || undefined,
         caption,
         filename,
       });
@@ -162,6 +252,11 @@ export async function POST(request: NextRequest) {
       const languageCode = String(body?.language || 'en').trim() || 'en';
       const templateParams = Array.isArray(body?.template_params)
         ? body.template_params.map((v: unknown) => String(v ?? ''))
+        : typeof body?.template_params === 'string'
+        ? body.template_params
+            .split(',')
+            .map((v: string) => String(v || '').trim())
+            .filter(Boolean)
         : [];
       if (!templateName) {
         return NextResponse.json({ error: 'template_name is required for template type' }, { status: 400 });
@@ -183,7 +278,13 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString();
     const templateNameForLog = messageType === 'template' ? String(body?.template_name || '').trim() : null;
-    const mediaUrlForLog = messageType === 'media' ? String(body?.media_url || '').trim() : null;
+    const mediaUrlForLog =
+      messageType === 'media'
+        ? String(body?.media_url || '').trim() ||
+          (String(requestPayload?.media_id || '').trim()
+            ? `/api/whatsapp/media/${encodeURIComponent(String(requestPayload.media_id).trim())}`
+            : null)
+        : null;
 
     if (invoiceId) {
       await db.from('invoice_sharing_logs').insert({
@@ -222,6 +323,7 @@ export async function POST(request: NextRequest) {
       template_language: messageType === 'template' ? String(body?.language || 'en') : null,
       text_body: messageType === 'text' ? messageForLog : null,
       media_url: mediaUrlForLog,
+      media_mime_type: messageType === 'media' ? mediaMimeTypeForLog : null,
       media_caption: messageType === 'media' ? String(body?.caption || '') || null : null,
       status: result.success ? 'SENT' : 'FAILED',
       status_at: now,
