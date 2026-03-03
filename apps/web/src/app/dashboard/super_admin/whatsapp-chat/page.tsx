@@ -108,6 +108,12 @@ function formatPhone(phone: string) {
   return phone;
 }
 
+function normalizePhone(phone: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('91') ? digits : `91${digits}`;
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return '—';
   const date = new Date(value);
@@ -183,6 +189,17 @@ function formatDuration(seconds?: number | null): string {
 
 function normalizeCallStatus(value: string | null | undefined): string {
   return String(value || '').trim().toUpperCase();
+}
+
+function isInboundCallDirection(direction: unknown): boolean {
+  const dir = String(direction || '').trim().toUpperCase();
+  return ['INBOUND', 'USER_INITIATED', 'CUSTOMER_INITIATED'].includes(dir);
+}
+
+function isIncomingRingingState(direction: unknown, status: unknown): boolean {
+  const state = String(status || '').trim().toUpperCase();
+  if (!isInboundCallDirection(direction)) return false;
+  return ['INITIATED', 'RINGING', 'NEGOTIATING', 'ACCEPTED', 'CONNECTED'].includes(state);
 }
 
 function resolveCallingPermissionTemplateName(rows: TemplateOption[]): string | null {
@@ -505,6 +522,17 @@ export default function SuperAdminWhatsAppChatPage() {
     if (sessionState) return sessionState;
     return normalizeCallStatus(activeCall.call_status) || 'IDLE';
   }, [activeCall]);
+  const isIncomingActiveCall = useMemo(() => {
+    if (!activeCall) return false;
+    if (!isInboundCallDirection(activeCall.direction)) return false;
+    const state = String(activeCallState || '').trim().toUpperCase();
+    return !['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state);
+  }, [activeCall, activeCallState]);
+  const canAnswerIncomingCall = useMemo(() => {
+    if (!isIncomingActiveCall) return false;
+    const state = String(activeCallState || '').trim().toUpperCase();
+    return ['RINGING', 'INITIATED', 'NEGOTIATING'].includes(state);
+  }, [activeCallState, isIncomingActiveCall]);
   const callPermissionTemplateName = useMemo(
     () => resolveCallingPermissionTemplateName(templateOptions),
     [templateOptions]
@@ -591,8 +619,34 @@ export default function SuperAdminWhatsAppChatPage() {
           const row = payload.new as any;
           const phone = normalizePhone(String(row?.customer_phone || ''));
           if (!phone) return;
+          const callStatus = normalizeCallStatus(String(row?.call_status || ''));
+          const inboundActive = isIncomingRingingState(row?.direction, callStatus);
+
+          const nextCallChatItem: ChatItem = {
+            phone,
+            last_message_preview:
+              inboundActive
+                ? `Incoming call: ${callStatus}`
+                : `Call ${String(callStatus || 'UPDATED').toLowerCase()}`,
+            last_message_type: 'CALL',
+            last_direction: String(row?.direction || '').toUpperCase() || null,
+            last_status: callStatus || null,
+            last_message_at: String(row?.started_at || row?.created_at || '').trim() || null,
+          };
+
+          setChats((prev) => {
+            const without = prev.filter((c) => c.phone !== phone);
+            return [nextCallChatItem, ...without];
+          });
+
           if (selectedPhoneRef.current === phone) {
             void loadCalls(phone);
+            if (inboundActive) {
+              setUnreadByPhone((prev) => ({ ...prev, [phone]: (prev[phone] || 0) + 1 }));
+            }
+          } else if (inboundActive) {
+            setUnreadByPhone((prev) => ({ ...prev, [phone]: (prev[phone] || 0) + 1 }));
+            setSelectedPhone(phone);
           }
         }
       )
@@ -1085,144 +1139,176 @@ export default function SuperAdminWhatsAppChatPage() {
           </section>
 
           <section className="col-span-12 flex h-full min-h-0 flex-col lg:col-span-6">
-            <div className="flex items-center justify-between border-b border-gray-200 p-4">
-              <div>
-                <div className="text-base font-semibold text-gray-900">
-                  {selectedPhone ? formatPhone(selectedPhone) : 'Select a chat'}
+            <div className="border-b border-gray-200 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div
+                    className="text-base font-semibold text-gray-900 truncate whitespace-nowrap"
+                    title={selectedPhone ? formatPhone(selectedPhone) : 'Select a chat'}
+                  >
+                    {selectedPhone ? formatPhone(selectedPhone) : 'Select a chat'}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-gray-500">Conversation</span>
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#128c7e]">
+                      Call state: {activeCallState}
+                    </span>
+                    {isIncomingActiveCall ? (
+                      <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#c05621]">
+                        Incoming call
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500">Conversation</div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-[#128c7e]">
-                  Call state: {activeCallState}
-                </div>
-              </div>
-              {selectedPhone ? (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleCallAction('initiate')}
-                    disabled={callActionLoading !== null}
-                    className="inline-flex items-center gap-1 rounded-lg bg-[#128c7e] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0f756b] disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Start WhatsApp call (requires customer opt-in)"
-                  >
-                    {callActionLoading === 'call' ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <PhoneCall className="h-3.5 w-3.5" />
-                    )}
-                    Call
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCallAction('callback_request')}
-                    disabled={callActionLoading !== null}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[#128c7e] bg-white px-3 py-1.5 text-xs font-semibold text-[#128c7e] hover:bg-[#e8f5f2] disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Request callback"
-                  >
-                    {callActionLoading === 'callback' ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <PhoneIncoming className="h-3.5 w-3.5" />
-                    )}
-                    Callback
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleSendFreshPermissionRequest()}
-                    disabled={callActionLoading !== null || callPermissionCooldownLeft > 0}
-                    className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    title={
-                      callPermissionCooldownLeft > 0
-                        ? `Retry permission request in ${callPermissionCooldownLeft}s`
-                        : 'Send fresh call permission request'
-                    }
-                  >
-                    {callActionLoading === 'permission' ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <MessageSquare className="h-3.5 w-3.5" />
-                    )}
-                    {callPermissionCooldownLeft > 0
-                      ? `Permission (${callPermissionCooldownLeft}s)`
-                      : 'Permission'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCallControl('hangup')}
-                    disabled={!activeCall || callControlLoading !== null}
-                    className="inline-flex items-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Hangup"
-                  >
-                    {callControlLoading === 'hangup' ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <PhoneOff className="h-3.5 w-3.5" />
-                    )}
-                    Hangup
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCallControl('hold')}
-                    disabled={!activeCall || callControlLoading !== null}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Hold"
-                  >
-                    {callControlLoading === 'hold' ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <PauseCircle className="h-3.5 w-3.5" />
-                    )}
-                    Hold
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCallControl('resume')}
-                    disabled={!activeCall || callControlLoading !== null}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Resume"
-                  >
-                    {callControlLoading === 'resume' ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <PlayCircle className="h-3.5 w-3.5" />
-                    )}
-                    Resume
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCallControl('mute')}
-                    disabled={!activeCall || callControlLoading !== null}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Mute"
-                  >
-                    {callControlLoading === 'mute' ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <VolumeX className="h-3.5 w-3.5" />
-                    )}
-                    Mute
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCallControl('unmute')}
-                    disabled={!activeCall || callControlLoading !== null}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Unmute"
-                  >
-                    {callControlLoading === 'unmute' ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Volume2 className="h-3.5 w-3.5" />
-                    )}
-                    Unmute
-                  </button>
+                {selectedPhone ? (
                   <button
                     type="button"
                     onClick={() => loadConversation(selectedPhone)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
                     Reload
                   </button>
+                ) : null}
+              </div>
+              {selectedPhone ? (
+                <div className="mt-3 overflow-x-auto">
+                  <div className="flex min-w-max items-center gap-2 pb-1">
+                    <button
+                      type="button"
+                      onClick={() => void handleCallAction('initiate')}
+                      disabled={callActionLoading !== null}
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#128c7e] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0f756b] disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Start WhatsApp call (requires customer opt-in)"
+                    >
+                      {callActionLoading === 'call' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <PhoneCall className="h-3.5 w-3.5" />
+                      )}
+                      Call
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCallAction('callback_request')}
+                      disabled={callActionLoading !== null}
+                      className="inline-flex items-center gap-1 rounded-lg border border-[#128c7e] bg-white px-3 py-1.5 text-xs font-semibold text-[#128c7e] hover:bg-[#e8f5f2] disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Request callback"
+                    >
+                      {callActionLoading === 'callback' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <PhoneIncoming className="h-3.5 w-3.5" />
+                      )}
+                      Callback
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSendFreshPermissionRequest()}
+                      disabled={callActionLoading !== null || callPermissionCooldownLeft > 0}
+                      className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      title={
+                        callPermissionCooldownLeft > 0
+                          ? `Retry permission request in ${callPermissionCooldownLeft}s`
+                          : 'Send fresh call permission request'
+                      }
+                    >
+                      {callActionLoading === 'permission' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <MessageSquare className="h-3.5 w-3.5" />
+                      )}
+                      {callPermissionCooldownLeft > 0
+                        ? `Permission (${callPermissionCooldownLeft}s)`
+                        : 'Permission'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCallControl('hangup')}
+                      disabled={!activeCall || callControlLoading !== null}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Hangup"
+                    >
+                      {callControlLoading === 'hangup' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <PhoneOff className="h-3.5 w-3.5" />
+                      )}
+                      Hangup
+                    </button>
+                    {isIncomingActiveCall ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleCallControl('resume')}
+                        disabled={!canAnswerIncomingCall || callControlLoading !== null}
+                        className="inline-flex items-center gap-1 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        title="Accept incoming call"
+                      >
+                        {callControlLoading === 'resume' ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <PhoneIncoming className="h-3.5 w-3.5" />
+                        )}
+                        Accept
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => void handleCallControl('hold')}
+                      disabled={!activeCall || callControlLoading !== null}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Hold"
+                    >
+                      {callControlLoading === 'hold' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <PauseCircle className="h-3.5 w-3.5" />
+                      )}
+                      Hold
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCallControl('resume')}
+                      disabled={!activeCall || callControlLoading !== null}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Resume"
+                    >
+                      {callControlLoading === 'resume' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <PlayCircle className="h-3.5 w-3.5" />
+                      )}
+                      Resume
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCallControl('mute')}
+                      disabled={!activeCall || callControlLoading !== null}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Mute"
+                    >
+                      {callControlLoading === 'mute' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <VolumeX className="h-3.5 w-3.5" />
+                      )}
+                      Mute
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCallControl('unmute')}
+                      disabled={!activeCall || callControlLoading !== null}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Unmute"
+                    >
+                      {callControlLoading === 'unmute' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Volume2 className="h-3.5 w-3.5" />
+                      )}
+                      Unmute
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>

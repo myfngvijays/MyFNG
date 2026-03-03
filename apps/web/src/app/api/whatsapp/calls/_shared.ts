@@ -17,7 +17,8 @@ export function isSuperAdminRole(roleCode: unknown): boolean {
 }
 
 export function isInboundDirection(direction: unknown): boolean {
-  return String(direction || '').trim().toUpperCase() === 'INBOUND';
+  const normalized = String(direction || '').trim().toUpperCase();
+  return ['INBOUND', 'USER_INITIATED', 'CUSTOMER_INITIATED'].includes(normalized);
 }
 
 export function normalizePhone(phone: string): string {

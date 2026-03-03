@@ -32,6 +32,7 @@ type WhatsAppCallEvent = {
   call_id?: string;
   conversation_id?: string;
   direction?: string;
+  event?: string;
   status?: string;
   from?: string;
   to?: string;
@@ -55,8 +56,23 @@ function mapStatus(status: string | undefined): 'SENT' | 'DELIVERED' | 'VIEWED' 
   return 'SENT';
 }
 
-function mapCallStatus(status: string | undefined): string {
+function mapCallDirection(direction: string | undefined): 'INBOUND' | 'OUTBOUND' {
+  const normalized = String(direction || '').trim().toUpperCase();
+  if (['INBOUND', 'USER_INITIATED', 'CUSTOMER_INITIATED'].includes(normalized)) return 'INBOUND';
+  if (['OUTBOUND', 'BUSINESS_INITIATED', 'AGENT_INITIATED'].includes(normalized)) return 'OUTBOUND';
+  return 'INBOUND';
+}
+
+function mapCallStatus(status: string | undefined, event: string | undefined): string {
   const normalized = String(status || '').trim().toLowerCase();
+  const normalizedEvent = String(event || '').trim().toLowerCase();
+
+  if (['terminate', 'hangup', 'ended', 'end'].includes(normalizedEvent)) return 'ENDED';
+  if (['ringing', 'ring', 'incoming'].includes(normalizedEvent)) return 'RINGING';
+  if (['accept', 'accepted', 'answer', 'connected'].includes(normalizedEvent)) return 'ACCEPTED';
+  if (['reject', 'rejected', 'declined', 'busy'].includes(normalizedEvent)) return 'REJECTED';
+  if (['missed', 'no_answer'].includes(normalizedEvent)) return 'MISSED';
+
   if (['initiated', 'dialing', 'calling'].includes(normalized)) return 'INITIATED';
   if (['ringing', 'ring'].includes(normalized)) return 'RINGING';
   if (['accepted', 'connected', 'in_progress', 'ongoing'].includes(normalized)) return 'ACCEPTED';
@@ -417,7 +433,7 @@ export async function POST(request: NextRequest) {
       const callEvents = extractCallEvents(change?.value);
       for (const callItem of callEvents) {
         const providerCallId = String(callItem?.call_id || callItem?.id || '').trim();
-        const mappedCallStatus = mapCallStatus(callItem?.status);
+        const mappedCallStatus = mapCallStatus(callItem?.status, callItem?.event);
         const startedAt =
           parseTimestampFlexible(callItem?.started_at) ||
           parseTimestampFlexible(callItem?.timestamp) ||
@@ -439,7 +455,7 @@ export async function POST(request: NextRequest) {
         const callPayload = {
           provider_call_id: providerCallId || null,
           provider_conversation_id: String(callItem?.conversation_id || '').trim() || null,
-          direction: String(callItem?.direction || 'INBOUND').trim().toUpperCase(),
+          direction: mapCallDirection(callItem?.direction),
           call_status: mappedCallStatus,
           customer_phone: customerPhone,
           started_at: startedAt,

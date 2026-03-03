@@ -115,6 +115,11 @@ function normalizeCallStatus(value: string | null | undefined): string {
   return String(value || '').trim().toUpperCase();
 }
 
+function isInboundCallDirection(direction: unknown): boolean {
+  const dir = String(direction || '').trim().toUpperCase();
+  return ['INBOUND', 'USER_INITIATED', 'CUSTOMER_INITIATED'].includes(dir);
+}
+
 function formatDuration(seconds?: number | null): string {
   const total = Number(seconds || 0);
   if (!Number.isFinite(total) || total <= 0) return '—';
@@ -580,6 +585,17 @@ export default function WhatsAppMobilePreviewModal({
     if (sessionState) return sessionState;
     return normalizeCallStatus(activeCall.call_status) || 'IDLE';
   }, [activeCall]);
+  const isIncomingActiveCall = useMemo(() => {
+    if (!activeCall) return false;
+    if (!isInboundCallDirection(activeCall.direction)) return false;
+    const state = String(activeCallState || '').trim().toUpperCase();
+    return !['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state);
+  }, [activeCall, activeCallState]);
+  const canAnswerIncomingCall = useMemo(() => {
+    if (!isIncomingActiveCall) return false;
+    const state = String(activeCallState || '').trim().toUpperCase();
+    return ['RINGING', 'INITIATED', 'NEGOTIATING'].includes(state);
+  }, [activeCallState, isIncomingActiveCall]);
   const callPermissionTemplateName = useMemo(
     () => resolveCallingPermissionTemplateName(templateOptions),
     [templateOptions]
@@ -1114,6 +1130,11 @@ export default function WhatsAppMobilePreviewModal({
                 <p className="mt-0.5 text-[10px] uppercase tracking-wide text-white/80">
                   Call state: {activeCallState}
                 </p>
+                {isIncomingActiveCall ? (
+                  <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#ffdd57]">
+                    Incoming call
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -1177,6 +1198,22 @@ export default function WhatsAppMobilePreviewModal({
                   <PhoneOff className="h-3.5 w-3.5" />
                 )}
               </button>
+              {isIncomingActiveCall ? (
+                <button
+                  type="button"
+                  className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
+                  aria-label="Accept incoming call"
+                  disabled={!canAnswerIncomingCall || callControlLoading !== null}
+                  onClick={() => void handleCallControl('resume')}
+                  title="Accept incoming call"
+                >
+                  {callControlLoading === 'resume' ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <PhoneIncoming className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
