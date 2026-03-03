@@ -1144,6 +1144,20 @@ export default function SuperAdminWhatsAppChatPage() {
           return;
         }
 
+        // Sanitize Meta's SDP offer for browser parsing
+        const sanitizedOffer = metaOfferSdp
+          .replace(/\\r\\n/g, '\n')
+          .replace(/\\n/g, '\n')
+          .replace(/\r\n/g, '\n')
+          .replace(/\r/g, '\n')
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => Boolean(line))
+          .join('\r\n')
+          .concat('\r\n');
+
+        console.log('[InboundCall] Sanitized SDP offer, length:', sanitizedOffer.length);
+
         // Step 3: Create RTCPeerConnection
         const pc = new RTCPeerConnection({
           iceServers: [
@@ -1174,9 +1188,9 @@ export default function SuperAdminWhatsAppChatPage() {
           remoteAudio.play().catch((e) => console.warn('[InboundCall] Audio play failed:', e));
         };
 
-        // Set Meta's offer as remote description
+        // Set Meta's offer as remote description (using sanitized SDP)
         await pc.setRemoteDescription(
-          new RTCSessionDescription({ type: 'offer', sdp: metaOfferSdp })
+          new RTCSessionDescription({ type: 'offer', sdp: sanitizedOffer })
         );
 
         // Create SDP answer
