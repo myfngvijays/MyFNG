@@ -8,7 +8,7 @@ const WHATSAPP_CALLING_ACCESS_TOKEN =
   process.env.WHATSAPP_CALLING_ACCESS_TOKEN || WHATSAPP_ACCESS_TOKEN;
 const WHATSAPP_CALLING_START_PATH = process.env.WHATSAPP_CALLING_START_PATH || '/calls';
 const WHATSAPP_CALLING_CALLBACK_PATH =
-  process.env.WHATSAPP_CALLING_CALLBACK_PATH || '/calls/callbacks';
+  process.env.WHATSAPP_CALLING_CALLBACK_PATH || '';
 const WHATSAPP_CALLING_LOGS_PATH = process.env.WHATSAPP_CALLING_LOGS_PATH || '/calls/logs';
 const WHATSAPP_CALLING_SESSION_PATH_TEMPLATE =
   process.env.WHATSAPP_CALLING_SESSION_PATH_TEMPLATE || '/calls/{call_id}/session';
@@ -20,6 +20,23 @@ export type WhatsAppCallingResult = {
   callId?: string;
   sessionId?: string;
   status?: string;
+  error?: string;
+  statusCode?: number;
+  raw?: unknown;
+};
+
+export type CallPermissionStateResult = {
+  success: boolean;
+  status?: 'temporary' | 'no_permission' | string;
+  actions?: Array<{
+    action_name?: string;
+    can_perform_action?: boolean;
+    limits?: Array<{
+      time_period?: string;
+      max_allowed?: number;
+      current_usage?: number;
+    }>;
+  }>;
   error?: string;
   statusCode?: number;
   raw?: unknown;
@@ -132,6 +149,9 @@ export async function initiateBusinessCall(input: {
   optInToken?: string | null;
   consentGrantedAt?: string | null;
   reason?: string | null;
+  sessionSdp?: string | null;
+  sessionSdpType?: 'offer' | 'answer' | 'pranswer' | null;
+  providerSessionId?: string | null;
 }): Promise<WhatsAppCallingResult> {
   const to = normalizePhoneNumber(input.phoneNumber);
   if (!to) return { success: false, error: 'Invalid recipient phone number' };
@@ -139,12 +159,20 @@ export async function initiateBusinessCall(input: {
   const payload: Record<string, unknown> = {
     messaging_product: 'whatsapp',
     to,
+    type: 'voice',
   };
   if (input.reason) payload.reason = input.reason;
   if (input.optInToken || input.consentGrantedAt) {
     payload.consent = {
       ...(input.optInToken ? { opt_in_token: input.optInToken } : {}),
       ...(input.consentGrantedAt ? { granted_at: input.consentGrantedAt } : {}),
+    };
+  }
+  if (input.sessionSdp && input.sessionSdpType) {
+    payload.session = {
+      sdp: String(input.sessionSdp),
+      sdp_type: String(input.sessionSdpType),
+      ...(input.providerSessionId ? { id: String(input.providerSessionId) } : {}),
     };
   }
 
@@ -158,6 +186,13 @@ export async function requestCallCallback(input: {
   phoneNumber: string;
   reason?: string | null;
 }): Promise<WhatsAppCallingResult> {
+  if (!String(WHATSAPP_CALLING_CALLBACK_PATH || '').trim()) {
+    return {
+      success: false,
+      error:
+        'Callback endpoint is not configured. Set WHATSAPP_CALLING_CALLBACK_PATH if your provider supports callback requests.',
+    };
+  }
   const to = normalizePhoneNumber(input.phoneNumber);
   if (!to) return { success: false, error: 'Invalid recipient phone number' };
 
@@ -254,4 +289,54 @@ export async function fetchProviderCallLogs(params?: {
   return providerRequest(`${WHATSAPP_CALLING_LOGS_PATH}${suffix}`, {
     method: 'GET',
   });
+}
+
+export async function fetchCallPermissionState(phoneNumber: string): Promise<CallPermissionStateResult> {
+  const configError = assertCallingConfig();
+  if (configError) return { success: false, error: configError };
+  const userWaId = normalizePhoneNumber(phoneNumber);
+  if (!userWaId) return { success: false, error: 'Invalid recipient phone number' };
+
+  try {
+    const query = new URLSearchParams({ user_wa_id: userWaId }).toString();
+    const response = await fetch(`${WHATSAPP_CALLING_API_URL}/call_permissions?${query}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_CALLING_ACCESS_TOKEN}`,
+      },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const baseMessage =
+        data?.error?.error_user_msg ||
+        data?.error?.message ||
+        data?.message ||
+        `WhatsApp Calling API request failed (${response.status})`;
+      const details = data?.error?.error_data?.details;
+      const message =
+        typeof details === 'string' && details.trim().length > 0
+          ? `${baseMessage} (${details.trim()})`
+          : baseMessage;
+      return {
+        success: false,
+        error: message,
+        statusCode: response.status,
+        raw: data,
+      };
+    }
+    const permissionStatus = String(data?.permission?.status || '').trim();
+    const actions = Array.isArray(data?.actions) ? data.actions : [];
+    return {
+      success: true,
+      status: permissionStatus || undefined,
+      actions,
+      statusCode: response.status,
+      raw: data,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || 'Failed to fetch call permission state',
+    };
+  }
 }

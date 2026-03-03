@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { callErrorResponse, requireOperationalUser } from '@/app/api/whatsapp/calls/_shared';
+import {
+  callErrorResponse,
+  isInboundDirection,
+  isSuperAdminRole,
+  requireOperationalUser,
+} from '@/app/api/whatsapp/calls/_shared';
 
 export async function GET(
   _request: NextRequest,
@@ -8,7 +13,7 @@ export async function GET(
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db } = gate;
+    const { db, roleCode } = gate;
 
     const params = await Promise.resolve(context.params as any);
     const id = String(params?.id || '').trim();
@@ -21,6 +26,9 @@ export async function GET(
       .maybeSingle();
     if (callError) return callErrorResponse(callError.message || 'Failed to fetch call', 500);
     if (!callLog) return callErrorResponse('Call not found', 404);
+    if (isInboundDirection(callLog.direction) && !isSuperAdminRole(roleCode)) {
+      return callErrorResponse('Incoming calls are available only for Super Admin', 403);
+    }
 
     const { data: recordings } = await db
       .from('whatsapp_call_recordings')
@@ -78,11 +86,22 @@ export async function PATCH(
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db } = gate;
+    const { db, roleCode } = gate;
 
     const params = await Promise.resolve(context.params as any);
     const id = String(params?.id || '').trim();
     if (!id) return callErrorResponse('id is required', 400);
+
+    const { data: existing, error: existingError } = await db
+      .from('whatsapp_call_logs')
+      .select('direction')
+      .eq('id', id)
+      .maybeSingle();
+    if (existingError) return callErrorResponse(existingError.message || 'Failed to fetch call', 500);
+    if (!existing) return callErrorResponse('Call not found', 404);
+    if (isInboundDirection(existing.direction) && !isSuperAdminRole(roleCode)) {
+      return callErrorResponse('Incoming calls are available only for Super Admin', 403);
+    }
 
     const body = await request.json().catch(() => ({}));
     const nextStatus = String(body?.call_status || '').trim().toUpperCase();

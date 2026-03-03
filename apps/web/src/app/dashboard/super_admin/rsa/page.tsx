@@ -2520,7 +2520,7 @@ export default function SuperAdminRSASettingsPage() {
                     <div className="px-3 py-3 text-xs text-gray-500">No disposition data.</div>
                   ) : (
                     <>
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={240} minHeight={220}>
                         <PieChart>
                           <Pie
                             data={activeReportOverview.dispositions}
@@ -2623,7 +2623,7 @@ export default function SuperAdminRSASettingsPage() {
                       const data = otherTotal > 0 ? [...top, { name: 'Others', total: otherTotal }] : top;
                       const total = data.reduce((sum, row) => sum + Number(row.total || 0), 0);
                       return (
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={240} minHeight={220}>
                           <PieChart>
                             <Pie
                               data={data}
@@ -2677,7 +2677,7 @@ export default function SuperAdminRSASettingsPage() {
                       const data = otherTotal > 0 ? [...top, { name: 'Others', total: otherTotal }] : top;
                       const total = data.reduce((sum, row) => sum + Number(row.total || 0), 0);
                       return (
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={240} minHeight={220}>
                           <PieChart>
                             <Pie
                               data={data}
@@ -2742,7 +2742,7 @@ export default function SuperAdminRSASettingsPage() {
                   {activeReportOverview.call_flow.points.length === 0 ? (
                     <div className="px-3 py-3 text-xs text-gray-500">No call flow data.</div>
                   ) : (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={260} minHeight={200}>
                       <LineChart data={activeReportOverview.call_flow.points}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis
@@ -3499,7 +3499,7 @@ export default function SuperAdminRSASettingsPage() {
                       </div>
                     ) : null}
                     <div className="h-44 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={260} minHeight={140}>
                         <LineChart
                           data={trendPoints.map((p) => ({
                             ...p,

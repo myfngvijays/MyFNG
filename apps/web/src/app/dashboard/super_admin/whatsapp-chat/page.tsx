@@ -90,6 +90,13 @@ type CallLog = {
   }>;
 };
 
+type AttachmentKind = 'image' | 'video' | 'audio' | 'document';
+type ComposerMode = 'text' | 'template';
+type BrowserCallOffer = {
+  sdp: string;
+  sdp_type: 'offer';
+};
+
 function formatPhone(phone: string) {
   const digits = String(phone || '').replace(/\D/g, '');
   if (digits.length === 12 && digits.startsWith('91')) {
@@ -178,6 +185,123 @@ function normalizeCallStatus(value: string | null | undefined): string {
   return String(value || '').trim().toUpperCase();
 }
 
+function resolveCallingPermissionTemplateName(rows: TemplateOption[]): string | null {
+  const exact = rows.find((row) => {
+    const name = String(row.template_name || '').trim().toLowerCase();
+    return name === 'calling_permission' || name === 'call_permission';
+  });
+  if (exact) return String(exact.template_name || '').trim() || null;
+  const fuzzy = rows.find((row) => {
+    const name = String(row.template_name || '').trim().toLowerCase();
+    return name.includes('calling_permission') || name.includes('call_permission');
+  });
+  return fuzzy ? String(fuzzy.template_name || '').trim() || null : null;
+}
+
+async function buildBrowserCallOffer(): Promise<BrowserCallOffer> {
+  if (typeof window === 'undefined' || typeof RTCPeerConnection === 'undefined') {
+    throw new Error('Browser does not support WebRTC call offer generation');
+  }
+  const peer = new RTCPeerConnection();
+  try {
+    peer.addTransceiver('audio', { direction: 'sendrecv' });
+    const offer = await peer.createOffer({ offerToReceiveAudio: true });
+    await peer.setLocalDescription(offer);
+    await new Promise<void>((resolve) => {
+      if (peer.iceGatheringState === 'complete') {
+        resolve();
+        return;
+      }
+      const timeout = window.setTimeout(() => resolve(), 1500);
+      const onStateChange = () => {
+        if (peer.iceGatheringState === 'complete') {
+          window.clearTimeout(timeout);
+          peer.removeEventListener('icegatheringstatechange', onStateChange);
+          resolve();
+        }
+      };
+      peer.addEventListener('icegatheringstatechange', onStateChange);
+    });
+    const local = peer.localDescription;
+    if (!local?.sdp) {
+      throw new Error('Unable to build SDP offer for call initiation');
+    }
+    return { sdp: local.sdp, sdp_type: 'offer' };
+  } finally {
+    peer.close();
+  }
+}
+
+type CallPermissionState = 'REQUESTED' | 'ACKNOWLEDGED' | 'APPROVED' | 'REJECTED' | 'PENDING' | null;
+
+function detectCallPermissionState(input: {
+  templateName?: unknown;
+  isOutbound: boolean;
+  text: string;
+}): CallPermissionState {
+  const templateName = String(input.templateName || '').trim().toLowerCase();
+  const normalizedText = String(input.text || '').trim().toLowerCase();
+
+  if (templateName.includes('calling_permission') || templateName.includes('call_permission')) {
+    return 'REQUESTED';
+  }
+  if (input.isOutbound || !normalizedText) return null;
+
+  if (
+    /\b(approve|approved|allow|allowed|yes|haan|ok|okay|sure|consent)\b/i.test(normalizedText) &&
+    /\b(call|calling|permission)\b/i.test(normalizedText)
+  ) {
+    return 'APPROVED';
+  }
+  if (/\b(reject|rejected|deny|denied|decline|declined|no)\b/i.test(normalizedText)) {
+    return 'REJECTED';
+  }
+  if (['received'].includes(normalizedText)) {
+    // "RECEIVED" means customer acknowledged the message, not call approval at provider level.
+    return 'ACKNOWLEDGED';
+  }
+  if (['delivered', 'sent', 'pending'].includes(normalizedText)) {
+    return 'PENDING';
+  }
+  return null;
+}
+
+function callPermissionBadgeMeta(
+  state: CallPermissionState
+): { label: string; className: string } | null {
+  if (state === 'REQUESTED') {
+    return {
+      label: 'Call Permission Request Sent',
+      className: 'border-[#cdd5db] bg-white/70 text-[#1f2937]',
+    };
+  }
+  if (state === 'APPROVED') {
+    return {
+      label: 'Call Permission Approved',
+      className: 'border-[#86efac] bg-[#dcfce7] text-[#166534]',
+    };
+  }
+  if (state === 'ACKNOWLEDGED') {
+    return {
+      label: 'Customer Acknowledged (Provider approval pending)',
+      className: 'border-[#93c5fd] bg-[#dbeafe] text-[#1e3a8a]',
+    };
+  }
+  if (state === 'REJECTED') {
+    return {
+      label: 'Call Permission Rejected',
+      className: 'border-[#fecaca] bg-[#fee2e2] text-[#991b1b]',
+    };
+  }
+  if (state === 'PENDING') {
+    return {
+      label: 'Call Permission Pending',
+      className: 'border-[#fde68a] bg-[#fef3c7] text-[#92400e]',
+    };
+  }
+  return null;
+}
+
 function inferMediaTypeFromFile(file: File): 'image' | 'video' | 'audio' | 'document' {
   const mime = String(file?.type || '').toLowerCase();
   if (mime.startsWith('image/')) return 'image';
@@ -250,12 +374,21 @@ export default function SuperAdminWhatsAppChatPage() {
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [callLoading, setCallLoading] = useState(false);
-  const [callActionLoading, setCallActionLoading] = useState<'call' | 'callback' | null>(null);
+  const [callActionLoading, setCallActionLoading] = useState<
+    'call' | 'callback' | 'permission' | null
+  >(null);
   const [callControlLoading, setCallControlLoading] = useState<string | null>(null);
   const [callInfoOpen, setCallInfoOpen] = useState<CallLog | null>(null);
+  const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
+  const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
   const [draftMessage, setDraftMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [selectedMediaFile, setSelectedMediaFile] = useState<File | null>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [attachmentAccept, setAttachmentAccept] = useState<string>('*/*');
+  const [composerMode, setComposerMode] = useState<ComposerMode>('text');
+  const [selectedTemplateName, setSelectedTemplateName] = useState('');
+  const [templateParamsDraft, setTemplateParamsDraft] = useState('');
   const [activeSection, setActiveSection] = useState<ChatSection>('all');
   const [unreadByPhone, setUnreadByPhone] = useState<Record<string, number>>({});
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
@@ -267,6 +400,8 @@ export default function SuperAdminWhatsAppChatPage() {
     failedReason: string | null;
   } | null>(null);
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
+  const attachMenuRef = useRef<HTMLDivElement | null>(null);
+  const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   const selectedPhoneRef = useRef('');
 
   useEffect(() => {
@@ -370,6 +505,14 @@ export default function SuperAdminWhatsAppChatPage() {
     if (sessionState) return sessionState;
     return normalizeCallStatus(activeCall.call_status) || 'IDLE';
   }, [activeCall]);
+  const callPermissionTemplateName = useMemo(
+    () => resolveCallingPermissionTemplateName(templateOptions),
+    [templateOptions]
+  );
+  const callPermissionCooldownLeft = Math.max(
+    0,
+    Math.ceil((callPermissionCooldownUntil - callPermissionTick) / 1000)
+  );
 
   useEffect(() => {
     loadChats(false);
@@ -391,6 +534,14 @@ export default function SuperAdminWhatsAppChatPage() {
     loadConversation(selectedPhone);
     loadCalls(selectedPhone);
   }, [selectedPhone, loadConversation, loadCalls]);
+
+  useEffect(() => {
+    if (callPermissionCooldownUntil <= Date.now()) return;
+    const interval = window.setInterval(() => {
+      setCallPermissionTick(Date.now());
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [callPermissionCooldownUntil]);
 
   useEffect(() => {
     const channel = supabase
@@ -468,14 +619,64 @@ export default function SuperAdminWhatsAppChatPage() {
     };
   }, [loadCalls, loadConversation, supabase]);
 
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (attachMenuRef.current?.contains(target)) return;
+      if (attachButtonRef.current?.contains(target)) return;
+      setShowAttachMenu(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+    };
+  }, [showAttachMenu]);
+
+  const openAttachmentPicker = useCallback(
+    (kind: AttachmentKind) => {
+      if (!selectedPhone || sendingMessage) return;
+      const acceptByType: Record<AttachmentKind, string> = {
+        image: 'image/*',
+        video: 'video/*',
+        audio: 'audio/*',
+        document: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,application/*',
+      };
+      setComposerMode('text');
+      setAttachmentAccept(acceptByType[kind]);
+      setShowAttachMenu(false);
+      requestAnimationFrame(() => mediaInputRef.current?.click());
+    },
+    [selectedPhone, sendingMessage]
+  );
+
+  const openTemplateComposer = useCallback(() => {
+    if (!selectedPhone || sendingMessage) return;
+    setShowAttachMenu(false);
+    setComposerMode('template');
+    setSelectedMediaFile(null);
+    if (!selectedTemplateName && templateOptions.length > 0) {
+      setSelectedTemplateName(String(templateOptions[0]?.template_name || '').trim());
+    }
+    if (mediaInputRef.current) mediaInputRef.current.value = '';
+  }, [selectedPhone, selectedTemplateName, sendingMessage, templateOptions]);
+
   const handleCallAction = useCallback(
     async (action: 'initiate' | 'callback_request') => {
       if (!selectedPhone || callActionLoading) return;
+      let sessionPayload: BrowserCallOffer | null = null;
       if (action === 'initiate') {
         const ok = window.confirm(
           'Confirm customer opt-in for WhatsApp call before proceeding. Continue?'
         );
         if (!ok) return;
+        try {
+          sessionPayload = await buildBrowserCallOffer();
+        } catch (error: any) {
+          setConversationError(error?.message || 'Failed to prepare call session');
+          return;
+        }
       }
       setCallActionLoading(action === 'initiate' ? 'call' : 'callback');
       try {
@@ -486,6 +687,8 @@ export default function SuperAdminWhatsAppChatPage() {
             action,
             recipient_phone: selectedPhone,
             customer_call_opt_in: action === 'initiate',
+            ...(action === 'initiate' ? { consent_granted_at: new Date().toISOString() } : {}),
+            ...(action === 'initiate' && sessionPayload ? { session: sessionPayload } : {}),
             reason:
               action === 'initiate'
                 ? 'Conversation escalation from dashboard chat'
@@ -494,7 +697,42 @@ export default function SuperAdminWhatsAppChatPage() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data?.success) {
-          setConversationError(data?.error || 'Call action failed');
+          const errorMessage = String(data?.error || 'Call action failed');
+          const details = String(data?.provider_error_details || '').trim();
+          const traceId = String(data?.provider_trace_id || '').trim();
+          const canSendPermission =
+            data?.can_send_permission_request == null
+              ? null
+              : Boolean(data.can_send_permission_request);
+          const permissionLimits = Array.isArray(data?.permission_actions)
+            ? data.permission_actions
+                .flatMap((item: any) => (Array.isArray(item?.limits) ? item.limits : []))
+                .map((limit: any) => {
+                  const period = String(limit?.time_period || '').trim();
+                  const current = Number(limit?.current_usage ?? NaN);
+                  const maxAllowed = Number(limit?.max_allowed ?? NaN);
+                  if (!period || !Number.isFinite(current) || !Number.isFinite(maxAllowed)) return '';
+                  return `${period}: ${current}/${maxAllowed}`;
+                })
+                .filter(Boolean)
+            : [];
+          const steps = Array.isArray(data?.next_steps)
+            ? data.next_steps.map((v: any) => String(v).trim()).filter(Boolean)
+            : [];
+          setConversationError(
+            [
+              errorMessage,
+              details,
+              traceId ? `Trace ID: ${traceId}` : '',
+              canSendPermission === false
+                ? 'Permission request quota reached for now. Please wait for reset window.'
+                : '',
+              permissionLimits.length > 0 ? `Permission limits: ${permissionLimits.join(', ')}` : '',
+              ...steps,
+            ]
+              .filter(Boolean)
+              .join(' ')
+          );
           return;
         }
         await loadCalls(selectedPhone);
@@ -506,6 +744,55 @@ export default function SuperAdminWhatsAppChatPage() {
     },
     [callActionLoading, loadCalls, selectedPhone]
   );
+
+  const handleSendFreshPermissionRequest = useCallback(async () => {
+    if (!selectedPhone || callActionLoading) return;
+    if (callPermissionCooldownLeft > 0) {
+      setConversationError(
+        `Please wait ${callPermissionCooldownLeft}s before sending another permission request.`
+      );
+      return;
+    }
+    if (!callPermissionTemplateName) {
+      setConversationError('No active calling-permission template found. Sync templates first.');
+      return;
+    }
+    setCallActionLoading('permission');
+    try {
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient_phone: selectedPhone,
+          message_type: 'template',
+          template_name: callPermissionTemplateName,
+          template_params: [],
+          language: 'en',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setConversationError(String(data?.error || 'Failed to send call permission request'));
+        return;
+      }
+      setCallPermissionCooldownUntil(Date.now() + 60 * 1000);
+      setCallPermissionTick(Date.now());
+      setConversationError(
+        'Fresh call permission request sent. Ask the customer to approve in WhatsApp, then retry call after ~60s.'
+      );
+      await loadConversation(selectedPhone);
+    } catch {
+      setConversationError('Failed to send call permission request');
+    } finally {
+      setCallActionLoading(null);
+    }
+  }, [
+    callActionLoading,
+    callPermissionCooldownLeft,
+    callPermissionTemplateName,
+    loadConversation,
+    selectedPhone,
+  ]);
 
   const handleCallControl = useCallback(
     async (action: 'hangup' | 'hold' | 'resume' | 'mute' | 'unmute') => {
@@ -535,12 +822,32 @@ export default function SuperAdminWhatsAppChatPage() {
   const handleSendText = useCallback(async () => {
     const text = draftMessage.trim();
     if (!selectedPhone || sendingMessage) return;
-    if (!text && !selectedMediaFile) return;
+    if (composerMode === 'template') {
+      if (!selectedTemplateName) return;
+    } else if (!text && !selectedMediaFile) {
+      return;
+    }
     setSendingMessage(true);
     setConversationError('');
     try {
       let res: Response;
-      if (selectedMediaFile) {
+      if (composerMode === 'template') {
+        const templateParams = templateParamsDraft
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean);
+        res = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipient_phone: selectedPhone,
+            message_type: 'template',
+            template_name: selectedTemplateName,
+            template_params: templateParams,
+            language: 'en',
+          }),
+        });
+      } else if (selectedMediaFile) {
         const mediaType = inferMediaTypeFromFile(selectedMediaFile);
         const uploadFile = await compressImageIfNeeded(selectedMediaFile);
         const form = new FormData();
@@ -573,6 +880,10 @@ export default function SuperAdminWhatsAppChatPage() {
       }
       setDraftMessage('');
       setSelectedMediaFile(null);
+      if (composerMode === 'template') {
+        setTemplateParamsDraft('');
+        setComposerMode('text');
+      }
       if (mediaInputRef.current) mediaInputRef.current.value = '';
       await Promise.all([loadConversation(selectedPhone), loadChats(true)]);
     } catch {
@@ -580,7 +891,17 @@ export default function SuperAdminWhatsAppChatPage() {
     } finally {
       setSendingMessage(false);
     }
-  }, [draftMessage, loadChats, loadConversation, selectedMediaFile, selectedPhone, sendingMessage]);
+  }, [
+    composerMode,
+    draftMessage,
+    loadChats,
+    loadConversation,
+    selectedMediaFile,
+    selectedPhone,
+    selectedTemplateName,
+    sendingMessage,
+    templateParamsDraft,
+  ]);
 
   const titleText = useMemo(() => {
     if (loading) return 'Loading chats...';
@@ -806,6 +1127,26 @@ export default function SuperAdminWhatsAppChatPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => void handleSendFreshPermissionRequest()}
+                    disabled={callActionLoading !== null || callPermissionCooldownLeft > 0}
+                    className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    title={
+                      callPermissionCooldownLeft > 0
+                        ? `Retry permission request in ${callPermissionCooldownLeft}s`
+                        : 'Send fresh call permission request'
+                    }
+                  >
+                    {callActionLoading === 'permission' ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <MessageSquare className="h-3.5 w-3.5" />
+                    )}
+                    {callPermissionCooldownLeft > 0
+                      ? `Permission (${callPermissionCooldownLeft}s)`
+                      : 'Permission'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => void handleCallControl('hangup')}
                     disabled={!activeCall || callControlLoading !== null}
                     className="inline-flex items-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -982,6 +1323,12 @@ export default function SuperAdminWhatsAppChatPage() {
                       (isTemplateMessage ? templateText || `Template sent: ${msg.template_name}` : '') ||
                       String(msg.media_caption || '').trim() ||
                       'Message';
+                    const callPermissionState = detectCallPermissionState({
+                      templateName: msg?.template_name,
+                      isOutbound: outbound,
+                      text: bubbleText,
+                    });
+                    const callPermissionBadge = callPermissionBadgeMeta(callPermissionState);
                     const timeLabel = formatMessageTime(msg?.status_at || msg?.updated_at || msg?.created_at);
                     const messageKey = String(msg?.id || msg?.provider_message_id || '');
                     return (
@@ -997,6 +1344,13 @@ export default function SuperAdminWhatsAppChatPage() {
                           {isTemplateMessage ? (
                             <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]">
                               Template: {templateDisplayName}
+                            </div>
+                          ) : null}
+                          {callPermissionBadge ? (
+                            <div
+                              className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${callPermissionBadge.className}`}
+                            >
+                              {callPermissionBadge.label}
                             </div>
                           ) : null}
                           <div className="whitespace-pre-wrap break-words">{bubbleText}</div>
@@ -1055,6 +1409,42 @@ export default function SuperAdminWhatsAppChatPage() {
             </div>
 
             <div className="border-t border-gray-200 bg-white p-3">
+              {composerMode === 'template' ? (
+                <div className="mb-2 rounded-lg border border-[#d8dee3] bg-[#f8fafc] px-3 py-2">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-[#475467]">
+                      Template mode
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setComposerMode('text')}
+                      className="text-[11px] font-semibold text-[#128c7e]"
+                    >
+                      Back to text
+                    </button>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <select
+                      value={selectedTemplateName}
+                      onChange={(e) => setSelectedTemplateName(e.target.value)}
+                      className="rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-700 outline-none focus:border-[#128c7e]"
+                    >
+                      <option value="">Select template</option>
+                      {templateOptions.map((tpl) => (
+                        <option key={tpl.template_name} value={tpl.template_name}>
+                          {tpl.display_name || tpl.template_name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={templateParamsDraft}
+                      onChange={(e) => setTemplateParamsDraft(e.target.value)}
+                      placeholder="Params (comma separated)"
+                      className="rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm outline-none focus:border-[#128c7e]"
+                    />
+                  </div>
+                </div>
+              ) : null}
               {selectedMediaFile ? (
                 <div className="mb-2 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                   <p className="truncate text-xs text-gray-700">{selectedMediaFile.name}</p>
@@ -1072,25 +1462,72 @@ export default function SuperAdminWhatsAppChatPage() {
                 </div>
               ) : null}
               <div className="flex items-center gap-2">
-                <input
-                  ref={mediaInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    setSelectedMediaFile(file);
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => mediaInputRef.current?.click()}
-                  disabled={!selectedPhone || sendingMessage}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Attach file"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </button>
+                <div className="relative">
+                  <input
+                    ref={mediaInputRef}
+                    type="file"
+                    accept={attachmentAccept}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setSelectedMediaFile(file);
+                      setShowAttachMenu(false);
+                    }}
+                  />
+                  <button
+                    ref={attachButtonRef}
+                    type="button"
+                    onClick={() => setShowAttachMenu((prev) => !prev)}
+                    disabled={!selectedPhone || sendingMessage}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Attach file"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </button>
+                  {showAttachMenu ? (
+                    <div
+                      ref={attachMenuRef}
+                      className="absolute bottom-12 left-0 z-20 min-w-[170px] rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openAttachmentPicker('image')}
+                        className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                      >
+                        Image
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAttachmentPicker('video')}
+                        className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                      >
+                        Video
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAttachmentPicker('audio')}
+                        className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                      >
+                        Audio
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAttachmentPicker('document')}
+                        className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                      >
+                        Document
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openTemplateComposer}
+                        className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                      >
+                        Template
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 <input
                   value={draftMessage}
                   onChange={(e) => setDraftMessage(e.target.value)}
@@ -1100,14 +1537,26 @@ export default function SuperAdminWhatsAppChatPage() {
                       void handleSendText();
                     }
                   }}
-                  disabled={!selectedPhone || sendingMessage}
-                  placeholder={selectedPhone ? 'Type a message' : 'Select a chat to send message'}
+                  disabled={!selectedPhone || sendingMessage || composerMode === 'template'}
+                  placeholder={
+                    !selectedPhone
+                      ? 'Select a chat to send message'
+                      : composerMode === 'template'
+                      ? 'Template mode enabled'
+                      : 'Type a message'
+                  }
                   className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm outline-none ring-green-200 focus:border-green-500 focus:ring disabled:cursor-not-allowed disabled:bg-gray-100"
                 />
                 <button
                   type="button"
                   onClick={() => void handleSendText()}
-                  disabled={!selectedPhone || (!draftMessage.trim() && !selectedMediaFile) || sendingMessage}
+                  disabled={
+                    !selectedPhone ||
+                    sendingMessage ||
+                    (composerMode === 'template'
+                      ? !selectedTemplateName
+                      : !draftMessage.trim() && !selectedMediaFile)
+                  }
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-green-600 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                   title="Send message"
                 >

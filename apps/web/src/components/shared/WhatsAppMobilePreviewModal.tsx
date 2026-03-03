@@ -76,6 +76,11 @@ type CallLog = {
   }>;
 };
 
+type BrowserCallOffer = {
+  sdp: string;
+  sdp_type: 'offer';
+};
+
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
@@ -119,6 +124,53 @@ function formatDuration(seconds?: number | null): string {
   if (h > 0) return `${h}h ${m}m ${s}s`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
+}
+
+function resolveCallingPermissionTemplateName(rows: TemplateOption[]): string | null {
+  const exact = rows.find((row) => {
+    const name = String(row.template_name || '').trim().toLowerCase();
+    return name === 'calling_permission' || name === 'call_permission';
+  });
+  if (exact) return String(exact.template_name || '').trim() || null;
+  const fuzzy = rows.find((row) => {
+    const name = String(row.template_name || '').trim().toLowerCase();
+    return name.includes('calling_permission') || name.includes('call_permission');
+  });
+  return fuzzy ? String(fuzzy.template_name || '').trim() || null : null;
+}
+
+async function buildBrowserCallOffer(): Promise<BrowserCallOffer> {
+  if (typeof window === 'undefined' || typeof RTCPeerConnection === 'undefined') {
+    throw new Error('Browser does not support WebRTC call offer generation');
+  }
+  const peer = new RTCPeerConnection();
+  try {
+    peer.addTransceiver('audio', { direction: 'sendrecv' });
+    const offer = await peer.createOffer({ offerToReceiveAudio: true });
+    await peer.setLocalDescription(offer);
+    await new Promise<void>((resolve) => {
+      if (peer.iceGatheringState === 'complete') {
+        resolve();
+        return;
+      }
+      const timeout = window.setTimeout(() => resolve(), 1500);
+      const onStateChange = () => {
+        if (peer.iceGatheringState === 'complete') {
+          window.clearTimeout(timeout);
+          peer.removeEventListener('icegatheringstatechange', onStateChange);
+          resolve();
+        }
+      };
+      peer.addEventListener('icegatheringstatechange', onStateChange);
+    });
+    const local = peer.localDescription;
+    if (!local?.sdp) {
+      throw new Error('Unable to build SDP offer for call initiation');
+    }
+    return { sdp: local.sdp, sdp_type: 'offer' };
+  } finally {
+    peer.close();
+  }
 }
 
 function sortMessagesAsc(rows: any[]): any[] {
@@ -241,6 +293,77 @@ function parseInboundStructuredText(value: unknown): { text: string; isStructure
   } catch {
     return { text: raw, isStructuredReply: false };
   }
+}
+
+type CallPermissionState = 'REQUESTED' | 'ACKNOWLEDGED' | 'APPROVED' | 'REJECTED' | 'PENDING' | null;
+
+function detectCallPermissionState(input: {
+  templateName?: unknown;
+  isOutbound: boolean;
+  text: string;
+}): CallPermissionState {
+  const templateName = String(input.templateName || '').trim().toLowerCase();
+  const normalizedText = String(input.text || '').trim().toLowerCase();
+
+  if (templateName.includes('calling_permission') || templateName.includes('call_permission')) {
+    return 'REQUESTED';
+  }
+
+  if (input.isOutbound || !normalizedText) return null;
+
+  if (
+    /\b(approve|approved|allow|allowed|yes|haan|ok|okay|sure|consent)\b/i.test(normalizedText) &&
+    /\b(call|calling|permission)\b/i.test(normalizedText)
+  ) {
+    return 'APPROVED';
+  }
+  if (/\b(reject|rejected|deny|denied|decline|declined|no)\b/i.test(normalizedText)) {
+    return 'REJECTED';
+  }
+  if (['received'].includes(normalizedText)) {
+    // "RECEIVED" is only a customer acknowledgement message, not provider-approved call permission.
+    return 'ACKNOWLEDGED';
+  }
+  if (['delivered', 'sent', 'pending'].includes(normalizedText)) {
+    return 'PENDING';
+  }
+  return null;
+}
+
+function callPermissionBadgeMeta(
+  state: CallPermissionState
+): { label: string; className: string } | null {
+  if (state === 'REQUESTED') {
+    return {
+      label: 'Call Permission Request Sent',
+      className: 'border-[#cdd5db] bg-white/80 text-[#1f2937]',
+    };
+  }
+  if (state === 'APPROVED') {
+    return {
+      label: 'Call Permission Approved',
+      className: 'border-[#86efac] bg-[#dcfce7] text-[#166534]',
+    };
+  }
+  if (state === 'ACKNOWLEDGED') {
+    return {
+      label: 'Customer Acknowledged (Provider approval pending)',
+      className: 'border-[#93c5fd] bg-[#dbeafe] text-[#1e3a8a]',
+    };
+  }
+  if (state === 'REJECTED') {
+    return {
+      label: 'Call Permission Rejected',
+      className: 'border-[#fecaca] bg-[#fee2e2] text-[#991b1b]',
+    };
+  }
+  if (state === 'PENDING') {
+    return {
+      label: 'Call Permission Pending',
+      className: 'border-[#fde68a] bg-[#fef3c7] text-[#92400e]',
+    };
+  }
+  return null;
 }
 
 function isImageUrl(url: string): boolean {
@@ -375,9 +498,13 @@ export default function WhatsAppMobilePreviewModal({
   const [unreadCount, setUnreadCount] = useState(0);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [callLoading, setCallLoading] = useState(false);
-  const [callActionLoading, setCallActionLoading] = useState<'call' | 'callback' | null>(null);
+  const [callActionLoading, setCallActionLoading] = useState<
+    'call' | 'callback' | 'permission' | null
+  >(null);
   const [callControlLoading, setCallControlLoading] = useState<string | null>(null);
   const [callInfoOpen, setCallInfoOpen] = useState<CallLog | null>(null);
+  const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
+  const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const attachMenuRef = useRef<HTMLDivElement | null>(null);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -453,6 +580,14 @@ export default function WhatsAppMobilePreviewModal({
     if (sessionState) return sessionState;
     return normalizeCallStatus(activeCall.call_status) || 'IDLE';
   }, [activeCall]);
+  const callPermissionTemplateName = useMemo(
+    () => resolveCallingPermissionTemplateName(templateOptions),
+    [templateOptions]
+  );
+  const callPermissionCooldownLeft = Math.max(
+    0,
+    Math.ceil((callPermissionCooldownUntil - callPermissionTick) / 1000)
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -555,11 +690,18 @@ export default function WhatsAppMobilePreviewModal({
   const handleCallAction = useCallback(
     async (action: 'initiate' | 'callback_request') => {
       if (!waPhone || callActionLoading) return;
+      let sessionPayload: BrowserCallOffer | null = null;
       if (action === 'initiate') {
         const proceed = window.confirm(
           'Confirm customer opt-in for WhatsApp call before placing the call.'
         );
         if (!proceed) return;
+        try {
+          sessionPayload = await buildBrowserCallOffer();
+        } catch (error: any) {
+          toast.error(error?.message || 'Failed to prepare call session');
+          return;
+        }
       }
       setCallActionLoading(action === 'initiate' ? 'call' : 'callback');
       try {
@@ -570,6 +712,8 @@ export default function WhatsAppMobilePreviewModal({
             action,
             recipient_phone: waPhone,
             customer_call_opt_in: action === 'initiate',
+            ...(action === 'initiate' ? { consent_granted_at: new Date().toISOString() } : {}),
+            ...(action === 'initiate' && sessionPayload ? { session: sessionPayload } : {}),
             reason:
               action === 'initiate'
                 ? 'Call initiated from WhatsApp preview'
@@ -578,7 +722,41 @@ export default function WhatsAppMobilePreviewModal({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data?.success) {
-          toast.error(data?.error || 'Call action failed');
+          const errorMessage = String(data?.error || 'Call action failed');
+          const details = String(data?.provider_error_details || '').trim();
+          const traceId = String(data?.provider_trace_id || '').trim();
+          const canSendPermission =
+            data?.can_send_permission_request == null
+              ? null
+              : Boolean(data.can_send_permission_request);
+          const permissionLimits = Array.isArray(data?.permission_actions)
+            ? data.permission_actions
+                .flatMap((item: any) => (Array.isArray(item?.limits) ? item.limits : []))
+                .map((limit: any) => {
+                  const period = String(limit?.time_period || '').trim();
+                  const current = Number(limit?.current_usage ?? NaN);
+                  const maxAllowed = Number(limit?.max_allowed ?? NaN);
+                  if (!period || !Number.isFinite(current) || !Number.isFinite(maxAllowed)) return '';
+                  return `${period}: ${current}/${maxAllowed}`;
+                })
+                .filter(Boolean)
+            : [];
+          const steps = Array.isArray(data?.next_steps)
+            ? data.next_steps.map((v: any) => String(v).trim()).filter(Boolean)
+            : [];
+          const uiMessage = [
+            errorMessage,
+            details,
+            traceId ? `Trace ID: ${traceId}` : '',
+            canSendPermission === false
+              ? 'Permission request quota reached for now. Please wait for reset window.'
+              : '',
+            permissionLimits.length > 0 ? `Permission limits: ${permissionLimits.join(', ')}` : '',
+            ...steps,
+          ]
+            .filter(Boolean)
+            .join('\n');
+          toast.error(uiMessage || 'Call action failed');
           return;
         }
         toast.success(action === 'initiate' ? 'Call request submitted' : 'Callback request submitted');
@@ -591,6 +769,51 @@ export default function WhatsAppMobilePreviewModal({
     },
     [callActionLoading, loadCalls, waPhone]
   );
+
+  const handleSendFreshPermissionRequest = useCallback(async () => {
+    if (!waPhone || callActionLoading) return;
+    if (callPermissionCooldownLeft > 0) {
+      toast.error(`Please wait ${callPermissionCooldownLeft}s before sending another permission request.`);
+      return;
+    }
+    if (!callPermissionTemplateName) {
+      toast.error('No active calling-permission template found. Please sync templates first.');
+      return;
+    }
+    setCallActionLoading('permission');
+    try {
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient_phone: waPhone,
+          message_type: 'template',
+          template_name: callPermissionTemplateName,
+          template_params: [],
+          language: 'en',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        toast.error(String(data?.error || 'Failed to send call permission request'));
+        return;
+      }
+      setCallPermissionCooldownUntil(Date.now() + 60 * 1000);
+      setCallPermissionTick(Date.now());
+      toast.success('Fresh call permission request sent. Ask customer to approve in WhatsApp.');
+      await refreshConversation();
+    } catch {
+      toast.error('Failed to send call permission request');
+    } finally {
+      setCallActionLoading(null);
+    }
+  }, [
+    callActionLoading,
+    callPermissionCooldownLeft,
+    callPermissionTemplateName,
+    refreshConversation,
+    waPhone,
+  ]);
 
   const handleCallControl = useCallback(
     async (action: 'hangup' | 'hold' | 'resume' | 'mute' | 'unmute') => {
@@ -744,6 +967,14 @@ export default function WhatsAppMobilePreviewModal({
 
     previousLastMessageKeyRef.current = lastKey;
   }, [messages, isOpen]);
+
+  useEffect(() => {
+    if (callPermissionCooldownUntil <= Date.now()) return;
+    const interval = window.setInterval(() => {
+      setCallPermissionTick(Date.now());
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [callPermissionCooldownUntil]);
 
   const handleConversationScroll = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -912,6 +1143,24 @@ export default function WhatsAppMobilePreviewModal({
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <Video className="h-3.5 w-3.5" />
+                )}
+              </button>
+              <button
+                type="button"
+                className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
+                aria-label="Send fresh call permission request"
+                disabled={callActionLoading !== null || callPermissionCooldownLeft > 0}
+                onClick={() => void handleSendFreshPermissionRequest()}
+                title={
+                  callPermissionCooldownLeft > 0
+                    ? `Retry permission request in ${callPermissionCooldownLeft}s`
+                    : 'Send fresh call permission request'
+                }
+              >
+                {callActionLoading === 'permission' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <MessageCircle className="h-3.5 w-3.5" />
                 )}
               </button>
               <button
@@ -1123,6 +1372,12 @@ export default function WhatsAppMobilePreviewModal({
                 (msg?.media_url ? `${msg?.media_caption || 'Media'}\n${msg.media_url}` : '') ||
                 msg?.status ||
                 'Message';
+              const callPermissionState = detectCallPermissionState({
+                templateName: msg?.template_name,
+                isOutbound,
+                text,
+              });
+              const callPermissionBadge = callPermissionBadgeMeta(callPermissionState);
               const timeLabel = formatMessageTime(msg?.status_at || msg?.updated_at || msg?.created_at);
               return (
                 <div
@@ -1154,6 +1409,13 @@ export default function WhatsAppMobilePreviewModal({
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#667781]">
                       Sent by: {actorName}
                     </p>
+                  ) : null}
+                  {callPermissionBadge && !isStatus ? (
+                    <div
+                      className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${callPermissionBadge.className}`}
+                    >
+                      {callPermissionBadge.label}
+                    </div>
                   ) : null}
                   {isLocationMessage ? (
                     <div className="space-y-1.5">

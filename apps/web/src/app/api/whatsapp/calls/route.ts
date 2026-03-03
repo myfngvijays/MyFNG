@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  fetchCallPermissionState,
   fetchProviderCallLogs,
   initiateBusinessCall,
   requestCallCallback,
@@ -7,6 +8,8 @@ import {
 import {
   callErrorResponse,
   fetchCallContext,
+  isInboundDirection,
+  isSuperAdminRole,
   normalizePhone,
   requireOperationalUser,
 } from '@/app/api/whatsapp/calls/_shared';
@@ -43,11 +46,36 @@ function isFullSignalingEnabled(): boolean {
   return String(process.env.WHATSAPP_CALLING_FULL_SIGNALING || '').trim() === '1';
 }
 
+function getProviderErrorMeta(raw: unknown): {
+  code: number | null;
+  details: string | null;
+  traceId: string | null;
+} {
+  const obj = raw as any;
+  const codeRaw = obj?.error?.code;
+  const code = Number.isFinite(Number(codeRaw)) ? Number(codeRaw) : null;
+  const details = String(obj?.error?.error_data?.details || '').trim();
+  const traceId = String(
+    obj?.error?.fbtrace_id ||
+      obj?.request_id ||
+      obj?.requestId ||
+      obj?.meta?.request_id ||
+      obj?.meta?.requestId ||
+      ''
+  ).trim();
+  return { code, details: details || null, traceId: traceId || null };
+}
+
+function isCallPermissionApprovalError(message?: string | null, raw?: unknown): boolean {
+  const joined = `${String(message || '')} ${String((raw as any)?.error?.message || '')} ${String((raw as any)?.error?.error_data?.details || '')}`.toLowerCase();
+  return joined.includes('no approved call permission');
+}
+
 export async function GET(request: NextRequest) {
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db } = gate;
+    const { db, roleCode } = gate;
 
     const phoneRaw = String(request.nextUrl.searchParams.get('phone') || '').trim();
     const normalizedPhone = normalizePhone(phoneRaw);
@@ -61,6 +89,7 @@ export async function GET(request: NextRequest) {
       .limit(limit);
 
     if (normalizedPhone) query = query.eq('customer_phone', normalizedPhone);
+    if (!isSuperAdminRole(roleCode)) query = query.neq('direction', 'INBOUND');
 
     const { data: logs, error } = await query;
     if (error) return callErrorResponse(error.message || 'Failed to fetch call logs', 500);
@@ -97,11 +126,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      calls: (logs || []).map((row: any) => ({
-        ...row,
-        recordings: recordingsByCall[String(row.id || '')] || [],
-        sessions: sessionsByCall[String(row.id || '')] || [],
-      })),
+      calls: (logs || [])
+        .filter((row: any) => isSuperAdminRole(roleCode) || !isInboundDirection(row?.direction))
+        .map((row: any) => ({
+          ...row,
+          recordings: recordingsByCall[String(row.id || '')] || [],
+          sessions: sessionsByCall[String(row.id || '')] || [],
+        })),
     });
   } catch (error: any) {
     return callErrorResponse(error?.message || 'Internal server error', 500);
@@ -156,18 +187,47 @@ export async function POST(request: NextRequest) {
           400
         );
       }
+      const fullSignalingEnabled = isFullSignalingEnabled();
+      const hasSessionPayload =
+        typeof body?.session === 'object' &&
+        typeof body?.session?.sdp === 'string' &&
+        typeof body?.session?.sdp_type === 'string';
+      if (fullSignalingEnabled && !hasSessionPayload) {
+        return callErrorResponse(
+          'Missing session parameter. Re-enable SDP offer generation on the calling UI.',
+          400
+        );
+      }
 
-      if (isFullSignalingEnabled()) {
-        const hasSession =
-          typeof body?.session === 'object' &&
-          typeof body?.session?.sdp === 'string' &&
-          typeof body?.session?.sdp_type === 'string';
-        if (!hasSession) {
-          return callErrorResponse(
-            'Full calling mode is enabled. session.sdp and session.sdp_type are required. Use /api/whatsapp/calls/{id}/session signaling flow.',
-            400
-          );
-        }
+      const permissionState = await fetchCallPermissionState(recipientPhone);
+      if (
+        permissionState.success &&
+        String(permissionState.status || '').trim().toLowerCase() === 'no_permission'
+      ) {
+        const sendPermissionAction = Array.isArray(permissionState.actions)
+          ? permissionState.actions.find(
+              (item: any) => String(item?.action_name || '').trim() === 'send_call_permission_request'
+            )
+          : null;
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Provider has not approved call permission yet for this customer.',
+            error_type: 'CALL_PERMISSION_NOT_APPROVED',
+            permission_status: permissionState.status || null,
+            permission_actions: permissionState.actions || [],
+            can_send_permission_request:
+              sendPermissionAction?.can_perform_action == null
+                ? null
+                : Boolean(sendPermissionAction.can_perform_action),
+            next_steps: [
+              'Customer must open the latest WhatsApp call-permission prompt and explicitly approve it.',
+              'If sending permission request is blocked by quota, wait until limit resets then send again.',
+              'After approval, wait 30-60 seconds and retry the call from UI.',
+            ],
+          },
+          { status: 409 }
+        );
       }
 
       const result = await initiateBusinessCall({
@@ -175,10 +235,21 @@ export async function POST(request: NextRequest) {
         optInToken: body?.opt_in_token ? String(body.opt_in_token) : null,
         consentGrantedAt: body?.consent_granted_at ? String(body.consent_granted_at) : null,
         reason: body?.reason ? String(body.reason) : null,
+        sessionSdp: hasSessionPayload ? String(body.session.sdp) : null,
+        sessionSdpType: hasSessionPayload
+          ? String(body.session.sdp_type).trim().toLowerCase() === 'answer'
+            ? 'answer'
+            : String(body.session.sdp_type).trim().toLowerCase() === 'pranswer'
+              ? 'pranswer'
+              : 'offer'
+          : null,
+        providerSessionId: hasSessionPayload ? String(body?.session?.id || '') || null : null,
       });
 
       const now = new Date().toISOString();
-      await db.from('whatsapp_call_logs').insert({
+      const { data: insertedCallLog } = await db
+        .from('whatsapp_call_logs')
+        .insert({
         provider_call_id: result.callId || null,
         direction: 'OUTBOUND',
         call_status: result.success ? String(result.status || 'INITIATED').toUpperCase() : 'FAILED',
@@ -203,17 +274,60 @@ export async function POST(request: NextRequest) {
         },
         created_by: userProfile.id,
         updated_at: now,
-      });
+        })
+        .select('id, provider_call_id')
+        .maybeSingle();
+
+      if (insertedCallLog?.id && hasSessionPayload) {
+        await db.from('whatsapp_call_sessions').insert({
+          call_log_id: insertedCallLog.id,
+          provider_call_id: insertedCallLog.provider_call_id || null,
+          provider_session_id: result.sessionId || body?.session?.id || null,
+          offer_sdp: String(body.session.sdp || ''),
+          offer_sdp_type: String(body.session.sdp_type || '').trim().toLowerCase(),
+          session_state: result.success ? 'NEGOTIATING' : 'FAILED',
+          payload: body.session,
+          meta: {
+            source: 'initiate_payload',
+            actor_id: userProfile.id,
+            actor_name: userProfile.full_name || null,
+          },
+          updated_at: now,
+        });
+      }
 
       if (!result.success) {
+        const providerStatus = Number(result.statusCode || 0);
+        const providerMeta = getProviderErrorMeta(result.raw);
+        const permissionPending = isCallPermissionApprovalError(result.error, result.raw);
+        const responseStatus = permissionPending
+          ? 409
+          : Number.isFinite(providerStatus) && providerStatus >= 400 && providerStatus < 500
+            ? providerStatus
+            : 502;
         return NextResponse.json(
           {
             success: false,
-            error: result.error || 'Call initiation failed',
+            error: permissionPending
+              ? 'Provider has not approved call permission yet for this customer.'
+              : result.error || 'Call initiation failed',
             provider_status_code: result.statusCode || null,
             provider_error: result.raw || null,
+            provider_error_code: providerMeta.code,
+            provider_error_details: providerMeta.details,
+            provider_trace_id: providerMeta.traceId,
+            error_type: permissionPending ? 'CALL_PERMISSION_NOT_APPROVED' : 'CALL_INITIATION_FAILED',
+            ...(permissionPending
+              ? {
+                  next_steps: [
+                    'Customer must open the WhatsApp call permission prompt/template and explicitly approve it.',
+                    'After approval, wait 30-60 seconds and retry the call from UI.',
+                    'If still failing, send a fresh permission request and avoid repeated retries immediately.',
+                  ],
+                }
+              : {}),
           },
-          { status: 502 }
+          { status: responseStatus }
         );
       }
       return NextResponse.json({
@@ -221,6 +335,28 @@ export async function POST(request: NextRequest) {
         action: 'initiate',
         call_id: result.callId || null,
         status: result.status || 'INITIATED',
+      });
+    }
+
+    if (action === 'permission_status') {
+      const statusResult = await fetchCallPermissionState(recipientPhone);
+      if (!statusResult.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: statusResult.error || 'Failed to fetch permission state',
+            provider_status_code: statusResult.statusCode || null,
+            provider_error: statusResult.raw || null,
+          },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        action: 'permission_status',
+        permission_status: statusResult.status || null,
+        actions: statusResult.actions || [],
+        provider: statusResult.raw || null,
       });
     }
 
@@ -255,6 +391,11 @@ export async function POST(request: NextRequest) {
       });
 
       if (!result.success) {
+        const providerStatus = Number(result.statusCode || 0);
+        const responseStatus =
+          Number.isFinite(providerStatus) && providerStatus >= 400 && providerStatus < 500
+            ? providerStatus
+            : 502;
         return NextResponse.json(
           {
             success: false,
@@ -262,7 +403,7 @@ export async function POST(request: NextRequest) {
             provider_status_code: result.statusCode || null,
             provider_error: result.raw || null,
           },
-          { status: 502 }
+          { status: responseStatus }
         );
       }
       return NextResponse.json({
@@ -309,7 +450,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, session });
     }
 
-    return callErrorResponse('Unsupported action. Use initiate, callback_request, sync, or mark_session', 400);
+    return callErrorResponse(
+      'Unsupported action. Use initiate, callback_request, permission_status, sync, or mark_session',
+      400
+    );
   } catch (error: any) {
     return callErrorResponse(error?.message || 'Internal server error', 500);
   }

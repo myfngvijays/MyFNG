@@ -201,7 +201,8 @@ export async function POST(request: NextRequest) {
   for (const entry of entries) {
     const changes = Array.isArray(entry?.changes) ? entry.changes : [];
     for (const change of changes) {
-      if (change?.field !== 'messages') continue;
+      const changeField = String(change?.field || '').trim().toLowerCase();
+      if (changeField !== 'messages' && changeField !== 'calls') continue;
 
       const contacts = Array.isArray(change?.value?.contacts) ? change.value.contacts : [];
       const waMetadata = change?.value?.metadata || {};

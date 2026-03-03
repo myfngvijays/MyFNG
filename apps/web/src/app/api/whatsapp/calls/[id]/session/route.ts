@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   callErrorResponse,
   fetchCallContext,
+  isInboundDirection,
+  isSuperAdminRole,
   normalizePhone,
   requireOperationalUser,
 } from '@/app/api/whatsapp/calls/_shared';
@@ -27,14 +29,17 @@ export async function GET(
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db } = gate;
+    const { db, roleCode } = gate;
 
     const params = await Promise.resolve(context.params as any);
     const callId = String(params?.id || '').trim();
     if (!callId) return callErrorResponse('id is required', 400);
 
-    const { error: callContextError } = await fetchCallContext(db, callId);
-    if (callContextError) return callErrorResponse(callContextError, 404);
+    const { error: callContextError, callLog } = await fetchCallContext(db, callId);
+    if (callContextError || !callLog) return callErrorResponse(callContextError || 'Call not found', 404);
+    if (isInboundDirection(callLog.direction) && !isSuperAdminRole(roleCode)) {
+      return callErrorResponse('Incoming calls are available only for Super Admin', 403);
+    }
 
     const { data: sessions, error } = await db
       .from('whatsapp_call_sessions')
@@ -56,7 +61,7 @@ export async function POST(
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db, userProfile } = gate;
+    const { db, userProfile, roleCode } = gate;
 
     const params = await Promise.resolve(context.params as any);
     const callId = String(params?.id || '').trim();
@@ -67,6 +72,9 @@ export async function POST(
 
     const { error: callContextError, callLog } = await fetchCallContext(db, callId);
     if (callContextError || !callLog) return callErrorResponse(callContextError || 'Call not found', 404);
+    if (isInboundDirection(callLog.direction) && !isSuperAdminRole(roleCode)) {
+      return callErrorResponse('Incoming calls are available only for Super Admin', 403);
+    }
 
     if (action === 'candidate') {
       const providerSessionId = String(body?.provider_session_id || '').trim();

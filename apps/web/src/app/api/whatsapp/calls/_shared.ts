@@ -12,6 +12,14 @@ export const ALLOWED_ROLE_CODES = [
   'BILLING_SPECIALIST',
 ];
 
+export function isSuperAdminRole(roleCode: unknown): boolean {
+  return String(roleCode || '').trim().toUpperCase() === 'SUPER_ADMIN';
+}
+
+export function isInboundDirection(direction: unknown): boolean {
+  return String(direction || '').trim().toUpperCase() === 'INBOUND';
+}
+
 export function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
