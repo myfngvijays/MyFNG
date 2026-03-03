@@ -465,6 +465,8 @@ export default function SuperAdminWhatsAppChatPage() {
   const [activeCallElapsed, setActiveCallElapsed] = useState(0);
   const [callMuted, setCallMuted] = useState(false);
   const dismissedCallIdsRef = useRef<Set<string>>(new Set());
+  const activePeerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const activeAudioStreamRef = useRef<MediaStream | null>(null);
   const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
   const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
   const [draftMessage, setDraftMessage] = useState('');
@@ -780,6 +782,15 @@ export default function SuperAdminWhatsAppChatPage() {
             });
             setActiveCallElapsed(0);
             setCallMuted(false);
+            // Cleanup WebRTC media on call end
+            if (activePeerConnectionRef.current) {
+              activePeerConnectionRef.current.close();
+              activePeerConnectionRef.current = null;
+            }
+            if (activeAudioStreamRef.current) {
+              activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+              activeAudioStreamRef.current = null;
+            }
           }
         }
       )
@@ -1016,10 +1027,22 @@ export default function SuperAdminWhatsAppChatPage() {
     [activeCall?.id, callControlLoading, loadCalls, selectedPhone]
   );
 
+  const cleanupCallMedia = useCallback(() => {
+    if (activePeerConnectionRef.current) {
+      activePeerConnectionRef.current.close();
+      activePeerConnectionRef.current = null;
+    }
+    if (activeAudioStreamRef.current) {
+      activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+      activeAudioStreamRef.current = null;
+    }
+  }, []);
+
   const handleIncomingPopupAction = useCallback(
     async (action: 'hangup') => {
       if (!incomingPopup?.callId || callControlLoading) return;
       dismissedCallIdsRef.current.add(incomingPopup.callId);
+      cleanupCallMedia();
       setCallControlLoading(action);
       try {
         const popupPhone = incomingPopup.phone;
@@ -1075,9 +1098,27 @@ export default function SuperAdminWhatsAppChatPage() {
 
       if (callId) dismissedCallIdsRef.current.add(callId);
 
-      try {
+      // Clean up any previous call
+      if (activePeerConnectionRef.current) {
+        activePeerConnectionRef.current.close();
+        activePeerConnectionRef.current = null;
+      }
+      if (activeAudioStreamRef.current) {
+        activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+        activeAudioStreamRef.current = null;
+      }
 
-        // Step 1: Get Meta's SDP offer from saved sessions
+      try {
+        // Step 1: Request microphone access
+        let audioStream: MediaStream | null = null;
+        try {
+          audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          activeAudioStreamRef.current = audioStream;
+        } catch {
+          console.warn('[InboundCall] Microphone access denied');
+        }
+
+        // Step 2: Get Meta's SDP offer from saved sessions
         let metaOfferSdp: string | null = null;
         try {
           const sessRes = await fetch(
@@ -1089,79 +1130,77 @@ export default function SuperAdminWhatsAppChatPage() {
           const offerRow = sessions.find((r: any) => String(r?.offer_sdp || '').trim());
           metaOfferSdp = offerRow?.offer_sdp ? String(offerRow.offer_sdp).trim() : null;
         } catch {
-          // No saved offer — will generate a minimal answer
+          // No saved offer
         }
 
-        // Step 2 & 3: Create a proper SDP answer
+        // Step 3: Create RTCPeerConnection and generate SDP answer
         let answerSdp: string | null = null;
+        let browserSdp = false;
 
-        if (typeof RTCPeerConnection !== 'undefined') {
-          const iceConfig = {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-            ],
-          };
-
+        if (metaOfferSdp && typeof RTCPeerConnection !== 'undefined') {
           try {
-            if (metaOfferSdp) {
-              // We have Meta's offer → create a proper WebRTC answer
-              const pc = new RTCPeerConnection(iceConfig);
-              pc.addTransceiver('audio', { direction: 'sendrecv' });
-              await pc.setRemoteDescription(
-                new RTCSessionDescription({ type: 'offer', sdp: metaOfferSdp })
-              );
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              answerSdp = answer.sdp || null;
-              pc.close();
+            const pc = new RTCPeerConnection({
+              iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+              ],
+            });
+            activePeerConnectionRef.current = pc;
+
+            // Add microphone track so audio can flow
+            if (audioStream) {
+              audioStream.getAudioTracks().forEach((track) => pc.addTrack(track, audioStream!));
             } else {
-              // No offer from Meta — use two PeerConnections to generate a
-              // structurally valid SDP answer (has a=setup:active, proper ICE, etc.)
-              const pcOffer = new RTCPeerConnection(iceConfig);
-              pcOffer.addTransceiver('audio', { direction: 'sendrecv' });
-              const syntheticOffer = await pcOffer.createOffer();
-              await pcOffer.setLocalDescription(syntheticOffer);
-
-              const pcAnswer = new RTCPeerConnection(iceConfig);
-              pcAnswer.addTransceiver('audio', { direction: 'sendrecv' });
-              await pcAnswer.setRemoteDescription(syntheticOffer);
-              const realAnswer = await pcAnswer.createAnswer();
-              await pcAnswer.setLocalDescription(realAnswer);
-              answerSdp = realAnswer.sdp || null;
-
-              pcOffer.close();
-              pcAnswer.close();
+              pc.addTransceiver('audio', { direction: 'sendrecv' });
             }
+
+            // Play incoming audio
+            pc.ontrack = (ev) => {
+              const audio = new Audio();
+              audio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+              audio.play().catch(() => {});
+            };
+
+            await pc.setRemoteDescription(
+              new RTCSessionDescription({ type: 'offer', sdp: metaOfferSdp })
+            );
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            // Wait for ICE gathering to complete (max 3s)
+            if (pc.iceGatheringState !== 'complete') {
+              await new Promise<void>((resolve) => {
+                const timeout = setTimeout(resolve, 3000);
+                pc.onicegatheringstatechange = () => {
+                  if (pc.iceGatheringState === 'complete') {
+                    clearTimeout(timeout);
+                    resolve();
+                  }
+                };
+              });
+            }
+
+            // Use the SDP with gathered ICE candidates
+            answerSdp = pc.localDescription?.sdp || answer.sdp || null;
+            browserSdp = true;
+            console.log('[InboundCall] Browser SDP answer ready, length:', answerSdp?.length);
           } catch (e) {
-            console.warn('[InboundCall] WebRTC SDP generation failed:', e);
+            console.warn('[InboundCall] WebRTC setup failed:', e);
           }
         }
 
-        if (!answerSdp) {
-          // Hardcoded minimal valid SDP answer as last resort
-          answerSdp = [
-            'v=0',
-            'o=- 0 0 IN IP4 0.0.0.0',
-            's=-',
-            't=0 0',
-            'a=group:BUNDLE 0',
-            'm=audio 9 UDP/TLS/RTP/SAVPF 111',
-            'c=IN IP4 0.0.0.0',
-            'a=rtcp:9 IN IP4 0.0.0.0',
-            'a=mid:0',
-            'a=sendrecv',
-            'a=rtpmap:111 opus/48000/2',
-            'a=fmtp:111 minptime=10;useinbandfec=1',
-            'a=setup:active',
-          ].join('\r\n') + '\r\n';
+        // Fallback: convert Meta's offer to answer format (no real audio, but call connects)
+        if (!answerSdp && metaOfferSdp) {
+          answerSdp = metaOfferSdp
+            .replace(/a=setup:actpass/g, 'a=setup:active')
+            .replace(/a=setup:passive/g, 'a=setup:active');
+          console.log('[InboundCall] Using converted Meta offer as fallback');
         }
 
-        console.log('[InboundCall] SDP answer generated:', {
-          hasMetaOffer: !!metaOfferSdp,
-          sdpLength: answerSdp?.length || 0,
-          sdpPreview: answerSdp?.substring(0, 200),
-        });
+        if (!answerSdp) {
+          setConversationError('No SDP available — Meta offer not received yet');
+          return;
+        }
 
         // Step 4: POST the answer to our API → Meta
         const sessionPostRes = await fetch(
@@ -1175,6 +1214,7 @@ export default function SuperAdminWhatsAppChatPage() {
               sdp: answerSdp,
               sdp_type: 'answer',
               provider_session_id: null,
+              browser_sdp: browserSdp,
             }),
           }
         );
@@ -1187,7 +1227,34 @@ export default function SuperAdminWhatsAppChatPage() {
               'Meta did not accept the call'
           );
           console.error('[InboundCall] Accept failed:', sessionPostData);
-          setConversationError(`Call accept failed: ${errMsg}`);
+          // If browser SDP failed, retry with converted Meta offer
+          if (browserSdp && metaOfferSdp) {
+            console.log('[InboundCall] Retrying with converted Meta offer...');
+            const fallbackSdp = metaOfferSdp
+              .replace(/a=setup:actpass/g, 'a=setup:active')
+              .replace(/a=setup:passive/g, 'a=setup:active');
+            const retryRes = await fetch(
+              `/api/whatsapp/calls/${encodeURIComponent(callId)}/session`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'answer',
+                  phone: phone || undefined,
+                  sdp: fallbackSdp,
+                  sdp_type: 'answer',
+                  provider_session_id: null,
+                  browser_sdp: false,
+                }),
+              }
+            );
+            const retryData = await retryRes.json().catch(() => ({}));
+            if (!retryRes.ok || !retryData?.success) {
+              setConversationError(`Call accept failed: ${errMsg}`);
+            }
+          } else {
+            setConversationError(`Call accept failed: ${errMsg}`);
+          }
         }
 
         if (phone) await loadCalls(phone);
@@ -2128,7 +2195,16 @@ export default function SuperAdminWhatsAppChatPage() {
             <div className="flex items-center justify-around border-t border-white/10 px-4 pb-4 pt-3">
               <button
                 type="button"
-                onClick={() => setCallMuted((m) => !m)}
+                onClick={() => {
+                  setCallMuted((prev) => {
+                    const next = !prev;
+                    // Actually mute/unmute the microphone track
+                    activeAudioStreamRef.current?.getAudioTracks().forEach((t) => {
+                      t.enabled = !next;
+                    });
+                    return next;
+                  });
+                }}
                 className={`flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-full transition-colors ${callMuted ? 'bg-red-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'}`}
                 title={callMuted ? 'Unmute' : 'Mute'}
               >

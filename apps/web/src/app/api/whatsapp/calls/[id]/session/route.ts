@@ -152,29 +152,15 @@ export async function POST(
     } else {
       const isInbound = isInboundDirection(callLog.direction);
       if (isInbound) {
-        // Fetch Meta's SDP offer from DB (saved by webhook connect event)
-        let metaOfferSdp: string | null = null;
-        const { data: savedSessions } = await db
-          .from('whatsapp_call_sessions')
-          .select('offer_sdp')
-          .eq('call_log_id', callId)
-          .not('offer_sdp', 'is', null)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        metaOfferSdp = savedSessions?.offer_sdp
-          ? String(savedSessions.offer_sdp).trim()
-          : null;
-
-        // Convert Meta's offer to an answer by changing setup directive
+        const isBrowserSdp = Boolean(body?.browser_sdp);
         let answerSdpToSend = sdp;
-        if (metaOfferSdp) {
-          answerSdpToSend = metaOfferSdp
-            .replace(/a=setup:actpass/g, 'a=setup:active')
-            .replace(/a=setup:passive/g, 'a=setup:active');
-          console.log('[InboundCall] Using Meta offer converted to answer, length:', answerSdpToSend.length);
+
+        if (isBrowserSdp) {
+          // Client sent a real browser-generated SDP answer — use it directly
+          console.log('[InboundCall] Using browser-generated SDP answer, length:', sdp.length);
         } else {
-          console.log('[InboundCall] No Meta offer found, using client SDP, length:', sdp.length);
+          // Fallback: use whatever the client sent (likely converted Meta offer)
+          console.log('[InboundCall] Using client-provided SDP, length:', sdp.length);
         }
 
         const acceptResult = await acceptInboundCall({
