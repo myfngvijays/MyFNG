@@ -1402,9 +1402,11 @@ export default function WhatsAppMobilePreviewModal({
                     ).trim()
                   : '';
               const extractInteractiveText = (): string => {
-                const raw = msg?.payload?.request || msg?.payload;
+                // payload is raw webhook inbound object: { type, interactive, ... }
                 const interactive =
-                  raw?.interactive || raw?.message?.interactive || raw?.messages?.[0]?.interactive;
+                  msg?.payload?.interactive ||
+                  msg?.payload?.request?.interactive ||
+                  msg?.payload?.messages?.[0]?.interactive;
                 if (!interactive) return '';
                 const itype = String(interactive.type || '').trim().toLowerCase();
                 if (itype === 'button_reply') {

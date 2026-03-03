@@ -20,6 +20,8 @@ import {
   PhoneOutgoing,
   Volume2,
   VolumeX,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -456,7 +458,12 @@ export default function SuperAdminWhatsAppChatPage() {
     callId: string;
     phone: string;
     status: string;
+    /** 'ringing' | 'active' */
+    phase: 'ringing' | 'active';
+    acceptedAt?: number;
   } | null>(null);
+  const [activeCallElapsed, setActiveCallElapsed] = useState(0);
+  const [callMuted, setCallMuted] = useState(false);
   const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
   const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
   const [draftMessage, setDraftMessage] = useState('');
@@ -716,7 +723,14 @@ export default function SuperAdminWhatsAppChatPage() {
               if (prev && prev.callId === rowId && prev.status === callStatus && prev.phone === phone) {
                 return prev;
               }
-              return { callId: rowId, phone, status: callStatus };
+              const phase = callStatus === 'ACCEPTED' ? 'active' : 'ringing';
+              return {
+                callId: rowId,
+                phone,
+                status: callStatus,
+                phase,
+                acceptedAt: phase === 'active' ? (prev?.acceptedAt || Date.now()) : undefined,
+              };
             });
           } else if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(callStatus)) {
             setIncomingPopup((prev) => {
@@ -724,6 +738,8 @@ export default function SuperAdminWhatsAppChatPage() {
               if ((rowId && prev.callId === rowId) || prev.phone === phone) return null;
               return prev;
             });
+            setActiveCallElapsed(0);
+            setCallMuted(false);
           }
         }
       )
@@ -749,6 +765,16 @@ export default function SuperAdminWhatsAppChatPage() {
       supabase.removeChannel(channel);
     };
   }, [loadCalls, loadConversation, supabase]);
+
+  // Active call timer
+  useEffect(() => {
+    if (incomingPopup?.phase !== 'active') return;
+    const startMs = incomingPopup.acceptedAt || Date.now();
+    const id = setInterval(() => {
+      setActiveCallElapsed(Math.floor((Date.now() - startMs) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [incomingPopup?.phase, incomingPopup?.acceptedAt]);
 
   useEffect(() => {
     if (!showAttachMenu) return;
@@ -1032,6 +1058,15 @@ export default function SuperAdminWhatsAppChatPage() {
         const phone = normalizePhone(
           String(targetPhone || selectedPhoneRef.current || activeCall?.customer_phone || '')
         );
+        const switchToActive = () => {
+          const now = Date.now();
+          setActiveCallElapsed(0);
+          setCallMuted(false);
+          setIncomingPopup((prev) =>
+            prev ? { ...prev, phase: 'active', acceptedAt: now } : prev
+          );
+        };
+
         if (!offerSession) {
           const fallback = await attemptControlResume();
           if (!fallback.ok) {
@@ -1042,7 +1077,7 @@ export default function SuperAdminWhatsAppChatPage() {
             return;
           }
           if (selectedPhoneRef.current) await loadCalls(selectedPhoneRef.current);
-          setIncomingPopup(null);
+          switchToActive();
           return;
         }
 
@@ -1087,7 +1122,7 @@ export default function SuperAdminWhatsAppChatPage() {
         } else if (selectedPhoneRef.current) {
           await loadCalls(selectedPhoneRef.current);
         }
-        setIncomingPopup(null);
+        switchToActive();
       } catch {
         setConversationError('Failed to accept incoming call');
       } finally {
@@ -1649,8 +1684,11 @@ export default function SuperAdminWhatsAppChatPage() {
 
                     // Extract interactive message text from payload
                     const extractInteractiveText = (): string => {
-                      const raw = msg?.payload?.request || msg?.payload;
-                      const interactive = raw?.interactive || raw?.message?.interactive || raw?.messages?.[0]?.interactive;
+                      // payload is raw webhook inbound object: { type, interactive, ... }
+                      const interactive =
+                        msg?.payload?.interactive ||
+                        msg?.payload?.request?.interactive ||
+                        msg?.payload?.messages?.[0]?.interactive;
                       if (!interactive) return '';
                       const itype = String(interactive.type || '').trim().toLowerCase();
                       if (itype === 'button_reply') {
@@ -1940,63 +1978,116 @@ export default function SuperAdminWhatsAppChatPage() {
         </div>
       </div>
       {incomingPopup ? (
-        <div className="fixed right-4 top-20 z-[6400] w-[320px] rounded-2xl border border-green-200 bg-white p-3 shadow-2xl">
-          <div className="flex items-start justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => setSelectedPhone(incomingPopup.phone)}
-              className="min-w-0 text-left"
-              title="Open incoming chat"
-            >
-              <div className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-green-700">
-                <PhoneIncoming className="h-3.5 w-3.5" />
-                Incoming call
+        incomingPopup.phase === 'ringing' ? (
+          /* ── Ringing popup ──────────────────────────────────── */
+          <div className="fixed right-4 top-20 z-[6400] w-72 overflow-hidden rounded-2xl border border-green-200 bg-white shadow-2xl">
+            {/* green header */}
+            <div className="flex items-center gap-2 bg-green-600 px-4 py-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
+                <PhoneIncoming className="h-4 w-4 text-white" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-green-100">
+                  Incoming call
+                </p>
+                <p className="truncate text-sm font-bold text-white">
+                  {formatPhone(incomingPopup.phone)}
+                </p>
               </div>
-              <p className="mt-1 truncate text-sm font-semibold text-gray-900">
-                {formatPhone(incomingPopup.phone)}
-              </p>
-              <p className="text-[11px] uppercase tracking-wide text-gray-500">
-                State: {incomingPopup.status}
-              </p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIncomingPopup(null)}
-              className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-              title="Dismiss"
-            >
-              <X className="h-4 w-4" />
-            </button>
+              <button
+                type="button"
+                onClick={() => setIncomingPopup(null)}
+                className="rounded p-1 text-white/70 hover:text-white"
+                title="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {/* action row */}
+            <div className="flex gap-2 p-3">
+              <button
+                type="button"
+                onClick={() => void handleAcceptIncomingCall(incomingPopup.callId, incomingPopup.phone)}
+                disabled={callControlLoading !== null}
+                className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {callControlLoading === 'resume' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PhoneIncoming className="h-4 w-4" />
+                )}
+                Accept
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleIncomingPopupAction('hangup')}
+                disabled={callControlLoading !== null}
+                className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl border border-red-300 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {callControlLoading === 'hangup' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PhoneOff className="h-4 w-4" />
+                )}
+                Reject
+              </button>
+            </div>
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handleAcceptIncomingCall(incomingPopup.callId, incomingPopup.phone)}
-              disabled={callControlLoading !== null}
-              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {callControlLoading === 'resume' ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <PhoneIncoming className="h-3.5 w-3.5" />
-              )}
-              Accept
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleIncomingPopupAction('hangup')}
-              disabled={callControlLoading !== null}
-              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {callControlLoading === 'hangup' ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <PhoneOff className="h-3.5 w-3.5" />
-              )}
-              Reject
-            </button>
+        ) : (
+          /* ── Active call panel (after accept) ───────────────── */
+          <div className="fixed right-4 top-20 z-[6400] w-64 overflow-hidden rounded-2xl bg-gray-900 shadow-2xl">
+            {/* call info */}
+            <div className="flex items-center gap-3 px-4 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-green-500">
+                <PhoneIncoming className="h-4 w-4 text-white" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white">
+                  {formatPhone(incomingPopup.phone)}
+                </p>
+                <p className="text-[12px] font-mono text-green-400">
+                  {String(Math.floor(activeCallElapsed / 60)).padStart(2, '0')}:
+                  {String(activeCallElapsed % 60).padStart(2, '0')}
+                </p>
+              </div>
+            </div>
+            {/* controls */}
+            <div className="flex items-center justify-around border-t border-white/10 px-4 pb-4 pt-3">
+              <button
+                type="button"
+                onClick={() => setCallMuted((m) => !m)}
+                className={`flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-full transition-colors ${callMuted ? 'bg-red-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                title={callMuted ? 'Unmute' : 'Mute'}
+              >
+                {callMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                <span className="text-[10px] font-medium">{callMuted ? 'Unmute' : 'Mute'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleIncomingPopupAction('hangup')}
+                disabled={callControlLoading !== null}
+                className="flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-full bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                title="Hang up"
+              >
+                {callControlLoading !== null ? (
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                ) : (
+                  <PhoneOff className="h-6 w-6" />
+                )}
+                <span className="text-[10px] font-medium">End</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedPhone(incomingPopup.phone)}
+                className="flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-full bg-white/10 text-white hover:bg-white/20"
+                title="Open chat"
+              >
+                <MessageSquare className="h-5 w-5" />
+                <span className="text-[10px] font-medium">Chat</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )
       ) : null}
       {messageInfoOpen ? (
         <div
