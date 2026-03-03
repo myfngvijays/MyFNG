@@ -639,6 +639,53 @@ export default function SuperAdminWhatsAppChatPage() {
     return () => window.clearInterval(interval);
   }, [callPermissionCooldownUntil]);
 
+  // Poll DB for active incoming calls — catches calls that started before page load
+  // or when realtime event was missed.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        // Only show popup for calls that started in the last 3 minutes
+        const cutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+        const { data } = await supabase
+          .from('whatsapp_call_logs')
+          .select('id, customer_phone, call_status, direction')
+          .eq('direction', 'INBOUND')
+          .in('call_status', ['RINGING', 'INITIATED', 'NEGOTIATING'])
+          .gte('created_at', cutoff)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        if (data?.id) {
+          const phone = normalizePhone(String(data.customer_phone || ''));
+          const callId = String(data.id);
+          const callStatus = String(data.call_status || 'RINGING').toUpperCase();
+          setIncomingPopup((prev) => {
+            // Don't overwrite if already in active phase
+            if (prev?.callId === callId && prev?.phase === 'active') return prev;
+            if (prev?.callId === callId && prev?.status === callStatus) return prev;
+            return { callId, phone, status: callStatus, phase: 'ringing' };
+          });
+        } else {
+          // No active incoming call — clear popup only if it was in ringing phase
+          setIncomingPopup((prev) =>
+            prev?.phase === 'ringing' ? null : prev
+          );
+        }
+      } catch {
+        // silently ignore poll errors
+      }
+    };
+    poll();
+    const id = setInterval(poll, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   useEffect(() => {
     const channel = supabase
       .channel('super-admin-whatsapp-chat-realtime')
@@ -1021,107 +1068,142 @@ export default function SuperAdminWhatsAppChatPage() {
       setCallControlLoading('resume');
       setConversationError('');
 
-      try {
-        const attemptControlResume = async (): Promise<{ ok: boolean; error?: string }> => {
-          const controlRes = await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/control`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'resume' }),
-          });
-          const controlData = await controlRes.json().catch(() => ({}));
-          if (!controlRes.ok || !controlData?.success) {
-            return { ok: false, error: String(controlData?.error || 'Control resume failed') };
-          }
-          return { ok: true };
-        };
-
-        const sessionRes = await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/session`, {
-          cache: 'no-store',
-        });
-        const sessionData = await sessionRes.json().catch(() => ({}));
-        if (!sessionRes.ok || !sessionData?.success) {
-          const fallback = await attemptControlResume();
-          if (!fallback.ok) {
-            setConversationError(
-              String(sessionData?.error || 'Failed to fetch incoming call session') +
-                ` | Fallback: ${String(fallback.error || 'resume failed')}`
-            );
-            return;
-          }
-          if (selectedPhoneRef.current) await loadCalls(selectedPhoneRef.current);
-          setIncomingPopup(null);
-          return;
-        }
-
-        const sessions = Array.isArray(sessionData?.sessions) ? sessionData.sessions : [];
-        const offerSession = sessions.find((row: any) => String(row?.offer_sdp || '').trim());
-        const phone = normalizePhone(
-          String(targetPhone || selectedPhoneRef.current || activeCall?.customer_phone || '')
+      const phone = normalizePhone(
+        String(targetPhone || selectedPhoneRef.current || activeCall?.customer_phone || '')
+      );
+      const switchToActive = () => {
+        setActiveCallElapsed(0);
+        setCallMuted(false);
+        setIncomingPopup((prev) =>
+          prev ? { ...prev, phase: 'active', acceptedAt: Date.now() } : prev
         );
-        const switchToActive = () => {
-          const now = Date.now();
-          setActiveCallElapsed(0);
-          setCallMuted(false);
-          setIncomingPopup((prev) =>
-            prev ? { ...prev, phase: 'active', acceptedAt: now } : prev
-          );
-        };
+      };
 
-        if (!offerSession) {
-          const fallback = await attemptControlResume();
-          if (!fallback.ok) {
-            setConversationError(
-              'Incoming offer is not available yet and fallback resume also failed: ' +
-                String(fallback.error || 'resume failed')
-            );
-            return;
-          }
-          if (selectedPhoneRef.current) await loadCalls(selectedPhoneRef.current);
-          switchToActive();
-          return;
+      try {
+        /**
+         * Inbound call accept flow:
+         * 1. Fetch saved sessions to get Meta's SDP offer (from ringing webhook)
+         * 2. Create RTCPeerConnection, set Meta's offer as remote description
+         * 3. Generate SDP answer
+         * 4. POST answer to our API → which sends action='accept' + sdp_type='answer' to Meta
+         * 5. If successful, call connects
+         */
+
+        // Step 1: Get Meta's SDP offer from saved sessions
+        let metaOfferSdp: string | null = null;
+        try {
+          const sessRes = await fetch(
+            `/api/whatsapp/calls/${encodeURIComponent(callId)}/session`,
+            { cache: 'no-store' }
+          );
+          const sessData = await sessRes.json().catch(() => ({}));
+          const sessions = Array.isArray(sessData?.sessions) ? sessData.sessions : [];
+          const offerRow = sessions.find((r: any) => String(r?.offer_sdp || '').trim());
+          metaOfferSdp = offerRow?.offer_sdp ? String(offerRow.offer_sdp).trim() : null;
+        } catch {
+          // No saved offer — will generate a minimal answer
         }
 
-        try {
-          const answer = await buildBrowserCallAnswer(String(offerSession?.offer_sdp || ''));
+        // Step 2 & 3: Create a proper SDP answer
+        let answerSdp: string | null = null;
 
-          const answerRes = await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/session`, {
+        if (typeof RTCPeerConnection !== 'undefined') {
+          const iceConfig = {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+            ],
+          };
+
+          try {
+            if (metaOfferSdp) {
+              // We have Meta's offer → create a proper WebRTC answer
+              const pc = new RTCPeerConnection(iceConfig);
+              pc.addTransceiver('audio', { direction: 'sendrecv' });
+              await pc.setRemoteDescription(
+                new RTCSessionDescription({ type: 'offer', sdp: metaOfferSdp })
+              );
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              answerSdp = answer.sdp || null;
+              pc.close();
+            } else {
+              // No offer from Meta — use two PeerConnections to generate a
+              // structurally valid SDP answer (has a=setup:active, proper ICE, etc.)
+              const pcOffer = new RTCPeerConnection(iceConfig);
+              pcOffer.addTransceiver('audio', { direction: 'sendrecv' });
+              const syntheticOffer = await pcOffer.createOffer();
+              await pcOffer.setLocalDescription(syntheticOffer);
+
+              const pcAnswer = new RTCPeerConnection(iceConfig);
+              pcAnswer.addTransceiver('audio', { direction: 'sendrecv' });
+              await pcAnswer.setRemoteDescription(syntheticOffer);
+              const realAnswer = await pcAnswer.createAnswer();
+              await pcAnswer.setLocalDescription(realAnswer);
+              answerSdp = realAnswer.sdp || null;
+
+              pcOffer.close();
+              pcAnswer.close();
+            }
+          } catch (e) {
+            console.warn('[InboundCall] WebRTC SDP generation failed:', e);
+          }
+        }
+
+        if (!answerSdp) {
+          // Hardcoded minimal valid SDP answer as last resort
+          answerSdp = [
+            'v=0',
+            'o=- 0 0 IN IP4 0.0.0.0',
+            's=-',
+            't=0 0',
+            'a=group:BUNDLE 0',
+            'm=audio 9 UDP/TLS/RTP/SAVPF 111',
+            'c=IN IP4 0.0.0.0',
+            'a=rtcp:9 IN IP4 0.0.0.0',
+            'a=mid:0',
+            'a=sendrecv',
+            'a=rtpmap:111 opus/48000/2',
+            'a=fmtp:111 minptime=10;useinbandfec=1',
+            'a=setup:active',
+          ].join('\r\n') + '\r\n';
+        }
+
+        console.log('[InboundCall] SDP answer generated:', {
+          hasMetaOffer: !!metaOfferSdp,
+          sdpLength: answerSdp?.length || 0,
+          sdpPreview: answerSdp?.substring(0, 200),
+        });
+
+        // Step 4: POST the answer to our API → Meta
+        const sessionPostRes = await fetch(
+          `/api/whatsapp/calls/${encodeURIComponent(callId)}/session`,
+          {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action: 'answer',
               phone: phone || undefined,
-              sdp: answer.sdp,
-              sdp_type: answer.sdp_type,
-              provider_session_id: offerSession?.provider_session_id || null,
+              sdp: answerSdp,
+              sdp_type: 'answer',
+              provider_session_id: null,
             }),
-          });
-          const answerData = await answerRes.json().catch(() => ({}));
-          if (!answerRes.ok || !answerData?.success) {
-            const fallback = await attemptControlResume();
-            if (!fallback.ok) {
-              setConversationError(
-                String(answerData?.error || 'Failed to accept incoming call') +
-                  ` | Fallback: ${String(fallback.error || 'resume failed')}`
-              );
-              return;
-            }
           }
-        } catch (error: any) {
-          const fallback = await attemptControlResume();
-          if (!fallback.ok) {
-            setConversationError(
-              String(error?.message || 'Failed to build WebRTC answer') +
-                ` | Fallback: ${String(fallback.error || 'resume failed')}`
-            );
-            return;
-          }
+        );
+        const sessionPostData = await sessionPostRes.json().catch(() => ({}));
+
+        if (!sessionPostRes.ok || !sessionPostData?.success) {
+          const errMsg = String(
+            sessionPostData?.error ||
+              sessionPostData?.provider_error?.error?.message ||
+              'Meta did not accept the call'
+          );
+          console.error('[InboundCall] Accept failed:', sessionPostData);
+          setConversationError(`Call accept failed: ${errMsg}`);
         }
 
-        if (phone) {
-          await loadCalls(phone);
-        } else if (selectedPhoneRef.current) {
-          await loadCalls(selectedPhoneRef.current);
-        }
+        if (phone) await loadCalls(phone);
+        else if (selectedPhoneRef.current) await loadCalls(selectedPhoneRef.current);
         switchToActive();
       } catch {
         setConversationError('Failed to accept incoming call');

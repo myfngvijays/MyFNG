@@ -432,6 +432,17 @@ export async function POST(request: NextRequest) {
 
       const callEvents = extractCallEvents(change?.value);
       for (const callItem of callEvents) {
+        console.log('[Webhook:Call] event received:', JSON.stringify({
+          id: callItem?.id || callItem?.call_id,
+          event: callItem?.event,
+          status: callItem?.status,
+          direction: callItem?.direction,
+          from: callItem?.from,
+          to: callItem?.to,
+          has_session: !!(callItem?.session),
+          session_keys: callItem?.session ? Object.keys(callItem.session as any) : [],
+          has_candidates: !!(callItem?.candidates),
+        }));
         const providerCallId = String(callItem?.call_id || callItem?.id || '').trim();
         const mappedCallStatus = mapCallStatus(callItem?.status, callItem?.event);
         const startedAt =

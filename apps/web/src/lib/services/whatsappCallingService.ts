@@ -264,6 +264,93 @@ export async function sendIceCandidate(input: IceCandidatePayload): Promise<What
   });
 }
 
+/**
+ * Accept an inbound WhatsApp call. Sends our SDP offer so Meta can establish
+ * the WebRTC media path and respond with its SDP answer.
+ */
+export async function acceptInboundCall(input: {
+  callId: string;
+  to: string;
+  sdp?: string | null;
+  sdpType?: 'offer' | 'answer' | 'pranswer' | null;
+}): Promise<WhatsAppCallingResult & { answerSdp?: string; answerSdpType?: string }> {
+  const callId = String(input.callId || '').trim();
+  const to = normalizePhoneNumber(input.to);
+  if (!callId) return { success: false, error: 'callId is required' };
+  if (!to) return { success: false, error: 'Invalid recipient phone number' };
+
+  // Meta requires: action='accept', session.sdp_type='answer'
+  const actionVariants: Array<Record<string, unknown>> = input.sdp
+    ? [
+        {
+          messaging_product: 'whatsapp',
+          call_id: callId,
+          action: 'accept',
+          session: { sdp: input.sdp, sdp_type: 'answer' },
+        },
+      ]
+    : [
+        { messaging_product: 'whatsapp', call_id: callId, action: 'accept' },
+      ];
+
+  const attempts: Array<{ path: string; payload: Record<string, unknown>; result: WhatsAppCallingResult }> = [];
+  for (const payload of actionVariants) {
+    const result = await providerRequest(WHATSAPP_CALLING_CONTROL_FALLBACK_PATH, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    attempts.push({ path: WHATSAPP_CALLING_CONTROL_FALLBACK_PATH, payload, result });
+    console.log(`[acceptInboundCall] ${WHATSAPP_CALLING_CONTROL_FALLBACK_PATH}`, {
+      payloadKeys: Object.keys(payload),
+      success: result.success,
+      statusCode: result.statusCode,
+      error: result.error,
+    });
+    if (result.success) {
+      const raw = result.raw as any;
+      const answerSdp: string | undefined =
+        raw?.session?.sdp || raw?.answer?.sdp || raw?.sdp || undefined;
+      const answerSdpType: string | undefined =
+        raw?.session?.sdp_type || raw?.answer?.sdp_type || raw?.sdp_type || undefined;
+      return { ...result, answerSdp, answerSdpType };
+    }
+  }
+
+  // Try the session endpoint as last resort
+  const sessionPath = resolveTemplatePath(WHATSAPP_CALLING_SESSION_PATH_TEMPLATE, callId);
+  const sessionPayload: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    to,
+    ...(input.sdp && input.sdpType
+      ? { session: { sdp: input.sdp, sdp_type: input.sdpType } }
+      : {}),
+  };
+  const sessionResult = await providerRequest(sessionPath, {
+    method: 'POST',
+    body: JSON.stringify(sessionPayload),
+  });
+  console.log(`[acceptInboundCall] session endpoint ${sessionPath}`, {
+    success: sessionResult.success,
+    statusCode: sessionResult.statusCode,
+    error: sessionResult.error,
+    raw: sessionResult.raw,
+  });
+  if (sessionResult.success) {
+    const raw = sessionResult.raw as any;
+    return {
+      ...sessionResult,
+      answerSdp: raw?.session?.sdp || raw?.sdp || undefined,
+      answerSdpType: raw?.session?.sdp_type || raw?.sdp_type || undefined,
+    };
+  }
+
+  return {
+    success: false,
+    error: 'acceptInboundCall: all attempts failed',
+    raw: { attempts: attempts.map((a) => ({ path: a.path, success: a.result.success, statusCode: a.result.statusCode, error: a.result.error, raw: a.result.raw })) },
+  };
+}
+
 export async function sendCallControl(input: CallControlPayload): Promise<WhatsAppCallingResult> {
   const callId = String(input.callId || '').trim();
   if (!callId) return { success: false, error: 'callId is required' };

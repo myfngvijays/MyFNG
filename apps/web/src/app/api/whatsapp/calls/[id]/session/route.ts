@@ -8,6 +8,7 @@ import {
   requireOperationalUser,
 } from '@/app/api/whatsapp/calls/_shared';
 import {
+  acceptInboundCall,
   sendIceCandidate,
   sendSessionSignal,
 } from '@/lib/services/whatsappCallingService';
@@ -149,10 +150,50 @@ export async function POST(
     if (bridgeResult?.success && bridgeResult.bridgeSessionId) {
       providerSessionId = String(bridgeResult.bridgeSessionId);
     } else {
-      // For incoming (inbound) calls the WhatsApp provider may not accept SDP answer via API.
-      // We persist the answer locally and mark call as ACCEPTED so the UI reflects it.
       const isInbound = isInboundDirection(callLog.direction);
-      if (!isInbound) {
+      if (isInbound) {
+        const acceptResult = await acceptInboundCall({
+          callId: String(callLog.provider_call_id || callId),
+          to: phone,
+          sdp,
+          sdpType: 'answer',
+        });
+        console.log('[InboundCall] acceptInboundCall result:', JSON.stringify({
+          success: acceptResult.success,
+          statusCode: acceptResult.statusCode,
+          error: acceptResult.error,
+          answerSdp: acceptResult.answerSdp ? 'present' : 'none',
+          raw: acceptResult.raw,
+        }));
+        providerRaw = acceptResult.raw || null;
+        providerStatusCode = acceptResult.statusCode || null;
+        if (acceptResult.success) {
+          if (acceptResult.sessionId) {
+            providerSessionId = String(acceptResult.sessionId);
+          }
+          if (acceptResult.answerSdp) {
+            (providerRaw as any) = {
+              ...((providerRaw as any) || {}),
+              answer_sdp: acceptResult.answerSdp,
+              answer_sdp_type: acceptResult.answerSdpType || 'answer',
+            };
+          }
+        } else {
+          // Meta rejected the accept — return the error so the UI can show it
+          return NextResponse.json(
+            {
+              success: false,
+              error: acceptResult.error || 'Meta rejected call accept',
+              provider_status_code: acceptResult.statusCode || null,
+              provider_error: acceptResult.raw || null,
+              bridge_error: bridgeResult?.error || null,
+              accept_failed: true,
+            },
+            { status: 502 }
+          );
+        }
+      } else {
+        // Outbound call: send SDP offer/answer via standard session signal.
         const providerResult = await sendSessionSignal({
           callId: String(callLog.provider_call_id || callId),
           to: phone,
@@ -176,7 +217,6 @@ export async function POST(
         providerRaw = providerResult.raw || null;
         providerStatusCode = providerResult.statusCode || null;
       }
-      // For inbound calls: skip provider signaling, mark locally as accepted.
     }
 
     const now = new Date().toISOString();
@@ -253,12 +293,16 @@ export async function POST(
       return callErrorResponse(sessionError.message || 'Failed to store session', 500);
     }
 
+    const rawObj = (providerRaw as any) || {};
     return NextResponse.json({
       success: true,
       action: sdpType,
       session,
       bridge: bridgeResult?.raw || null,
       provider_status_code: providerStatusCode,
+      // SDP answer from Meta (for inbound call WebRTC completion)
+      answer_sdp: rawObj?.answer_sdp || null,
+      answer_sdp_type: rawObj?.answer_sdp_type || null,
     });
   } catch (error: any) {
     return callErrorResponse(error?.message || 'Internal server error', 500);
