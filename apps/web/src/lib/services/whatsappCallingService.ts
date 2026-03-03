@@ -13,7 +13,9 @@ const WHATSAPP_CALLING_LOGS_PATH = process.env.WHATSAPP_CALLING_LOGS_PATH || '/c
 const WHATSAPP_CALLING_SESSION_PATH_TEMPLATE =
   process.env.WHATSAPP_CALLING_SESSION_PATH_TEMPLATE || '/calls/{call_id}/session';
 const WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE =
-  process.env.WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE || '/calls/{call_id}/control';
+  process.env.WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE || '';
+const WHATSAPP_CALLING_CONTROL_FALLBACK_PATH =
+  process.env.WHATSAPP_CALLING_CONTROL_FALLBACK_PATH || '/calls';
 
 export type WhatsAppCallingResult = {
   success: boolean;
@@ -265,14 +267,86 @@ export async function sendIceCandidate(input: IceCandidatePayload): Promise<What
 export async function sendCallControl(input: CallControlPayload): Promise<WhatsAppCallingResult> {
   const callId = String(input.callId || '').trim();
   if (!callId) return { success: false, error: 'callId is required' };
-  return providerRequest(resolveTemplatePath(WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE, callId), {
-    method: 'POST',
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      action: input.action,
-      ...(input.payload ? { payload: input.payload } : {}),
-    }),
-  });
+  const requested = String(input.action || '').trim().toLowerCase();
+  const actionCandidates =
+    requested === 'resume'
+      ? ['accept', 'answer', 'resume']
+      : requested === 'hangup'
+      ? ['terminate', 'hangup', 'end']
+      : [requested];
+
+  const endpointCandidates = [WHATSAPP_CALLING_CONTROL_FALLBACK_PATH];
+  const attempts: Array<{
+    endpoint: string;
+    payload: Record<string, unknown>;
+    result: WhatsAppCallingResult;
+  }> = [];
+
+  for (const endpoint of endpointCandidates) {
+    for (const action of actionCandidates) {
+      const payloadVariants: Record<string, unknown>[] = [
+        {
+          messaging_product: 'whatsapp',
+          call_id: callId,
+          action,
+          ...(input.payload ? { payload: input.payload } : {}),
+        },
+        {
+          messaging_product: 'whatsapp',
+          call_id: callId,
+          event: action,
+          ...(input.payload ? { payload: input.payload } : {}),
+        },
+      ];
+
+      for (const payload of payloadVariants) {
+        const result = await providerRequest(endpoint, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        attempts.push({ endpoint, payload, result });
+        if (result.success) return result;
+      }
+    }
+  }
+
+  // Optional legacy path, only when explicitly configured in env.
+  if (WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE) {
+    for (const action of actionCandidates) {
+      const legacyPayload: Record<string, unknown> = {
+        messaging_product: 'whatsapp',
+        action,
+        ...(input.payload ? { payload: input.payload } : {}),
+      };
+      const result = await providerRequest(resolveTemplatePath(WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE, callId), {
+        method: 'POST',
+        body: JSON.stringify(legacyPayload),
+      });
+      attempts.push({
+        endpoint: resolveTemplatePath(WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE, callId),
+        payload: legacyPayload,
+        result,
+      });
+      if (result.success) return result;
+    }
+  }
+
+  const last = attempts[attempts.length - 1];
+  return {
+    success: false,
+    error: last?.result?.error || 'Call control failed after trying all supported payload formats',
+    statusCode: last?.result?.statusCode || undefined,
+    raw: {
+      attempts: attempts.map((item) => ({
+        endpoint: item.endpoint,
+        payload: item.payload,
+        success: item.result.success,
+        statusCode: item.result.statusCode || null,
+        error: item.result.error || null,
+        raw: item.result.raw || null,
+      })),
+    },
+  };
 }
 
 export async function fetchProviderCallLogs(params?: {

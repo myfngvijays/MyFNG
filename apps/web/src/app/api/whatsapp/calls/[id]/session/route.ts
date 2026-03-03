@@ -130,55 +130,65 @@ export async function POST(
     const phone = normalizePhone(String(body?.phone || callLog?.customer_phone || ''));
     if (!phone) return callErrorResponse('phone is required', 400);
 
-    let bridgeResult;
+    let providerSessionId = String(body?.provider_session_id || '').trim();
+    let providerRaw: unknown = null;
+    let providerStatusCode: number | null = null;
+    let bridgeResult: Awaited<ReturnType<typeof submitAsteriskOffer>> | undefined;
+
     if (sdpType === 'offer') {
-      bridgeResult = await submitAsteriskOffer({
-        callId,
-        phone,
-        sdp,
-        sdpType,
-      });
+      bridgeResult = await submitAsteriskOffer({ callId, phone, sdp, sdpType });
     } else {
       bridgeResult = await submitAsteriskAnswer({
         callId,
-        providerSessionId: body?.provider_session_id ? String(body.provider_session_id) : null,
+        providerSessionId: providerSessionId || null,
         sdp,
         sdpType,
       });
     }
-
-    let providerSessionId = String(body?.provider_session_id || '').trim();
-    let providerRaw: unknown = null;
-    let providerStatusCode: number | null = null;
 
     if (bridgeResult?.success && bridgeResult.bridgeSessionId) {
       providerSessionId = String(bridgeResult.bridgeSessionId);
     } else {
-      const providerResult = await sendSessionSignal({
-        callId: String(callLog.provider_call_id || callId),
-        to: phone,
-        sdp,
-        sdpType,
-        providerSessionId: providerSessionId || null,
-      });
-      if (!providerResult.success) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: providerResult.error || 'Failed to submit session signal',
-            provider_status_code: providerResult.statusCode || null,
-            provider_error: providerResult.raw || null,
-            bridge_error: bridgeResult?.error || null,
-          },
-          { status: 502 }
-        );
+      // For incoming (inbound) calls the WhatsApp provider may not accept SDP answer via API.
+      // We persist the answer locally and mark call as ACCEPTED so the UI reflects it.
+      const isInbound = isInboundDirection(callLog.direction);
+      if (!isInbound) {
+        const providerResult = await sendSessionSignal({
+          callId: String(callLog.provider_call_id || callId),
+          to: phone,
+          sdp,
+          sdpType,
+          providerSessionId: providerSessionId || null,
+        });
+        if (!providerResult.success) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: providerResult.error || 'Failed to submit session signal',
+              provider_status_code: providerResult.statusCode || null,
+              provider_error: providerResult.raw || null,
+              bridge_error: bridgeResult?.error || null,
+            },
+            { status: 502 }
+          );
+        }
+        providerSessionId = String(providerResult.sessionId || providerSessionId || '').trim();
+        providerRaw = providerResult.raw || null;
+        providerStatusCode = providerResult.statusCode || null;
       }
-      providerSessionId = String(providerResult.sessionId || providerSessionId || '').trim();
-      providerRaw = providerResult.raw || null;
-      providerStatusCode = providerResult.statusCode || null;
+      // For inbound calls: skip provider signaling, mark locally as accepted.
     }
 
     const now = new Date().toISOString();
+
+    // For answer, update call status to ACCEPTED.
+    if (sdpType === 'answer' || sdpType === 'pranswer') {
+      await db
+        .from('whatsapp_call_logs')
+        .update({ call_status: 'ACCEPTED', started_at: now, updated_at: now })
+        .eq('id', callId);
+    }
+
     const upsertPayload: Record<string, unknown> = {
       call_log_id: callId,
       provider_call_id: callLog.provider_call_id || null,
@@ -201,11 +211,44 @@ export async function POST(
       upsertPayload.answer_sdp_type = sdpType;
     }
 
-    const { data: session, error: sessionError } = await db
-      .from('whatsapp_call_sessions')
-      .upsert(upsertPayload, { onConflict: 'provider_session_id' })
-      .select('*')
-      .maybeSingle();
+    // Upsert by provider_session_id if available, else insert.
+    let session: any = null;
+    let sessionError: any = null;
+    if (providerSessionId) {
+      const { data, error } = await db
+        .from('whatsapp_call_sessions')
+        .upsert(upsertPayload, { onConflict: 'provider_session_id' })
+        .select('*')
+        .maybeSingle();
+      session = data;
+      sessionError = error;
+    } else {
+      const { data: existing } = await db
+        .from('whatsapp_call_sessions')
+        .select('id')
+        .eq('call_log_id', callId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existing?.id) {
+        const { data, error } = await db
+          .from('whatsapp_call_sessions')
+          .update(upsertPayload)
+          .eq('id', existing.id)
+          .select('*')
+          .maybeSingle();
+        session = data;
+        sessionError = error;
+      } else {
+        const { data, error } = await db
+          .from('whatsapp_call_sessions')
+          .insert(upsertPayload)
+          .select('*')
+          .maybeSingle();
+        session = data;
+        sessionError = error;
+      }
+    }
     if (sessionError) {
       return callErrorResponse(sessionError.message || 'Failed to store session', 500);
     }

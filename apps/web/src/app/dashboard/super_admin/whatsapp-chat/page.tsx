@@ -96,6 +96,10 @@ type BrowserCallOffer = {
   sdp: string;
   sdp_type: 'offer';
 };
+type BrowserCallAnswer = {
+  sdp: string;
+  sdp_type: 'answer';
+};
 
 function formatPhone(phone: string) {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -249,6 +253,58 @@ async function buildBrowserCallOffer(): Promise<BrowserCallOffer> {
   }
 }
 
+async function buildBrowserCallAnswer(remoteOfferSdp: string): Promise<BrowserCallAnswer> {
+  if (typeof window === 'undefined' || typeof RTCPeerConnection === 'undefined') {
+    throw new Error('Browser does not support WebRTC call answer generation');
+  }
+  const rawOffer = String(remoteOfferSdp || '').trim();
+  const offerSdp = rawOffer
+    // Provider can return escaped newlines; normalize to RFC-compliant CRLF lines.
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => Boolean(line))
+    // Some provider payloads include malformed ssrc attributes that browsers reject.
+    .filter((line) => !/^a=ssrc:[^\s]+\s+cname:/i.test(line))
+    .join('\r\n')
+    .concat('\r\n');
+  if (!offerSdp) {
+    throw new Error('Incoming call offer SDP is missing');
+  }
+
+  const peer = new RTCPeerConnection();
+  try {
+    await peer.setRemoteDescription({ type: 'offer', sdp: offerSdp });
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+    await new Promise<void>((resolve) => {
+      if (peer.iceGatheringState === 'complete') {
+        resolve();
+        return;
+      }
+      const timeout = window.setTimeout(() => resolve(), 1500);
+      const onStateChange = () => {
+        if (peer.iceGatheringState === 'complete') {
+          window.clearTimeout(timeout);
+          peer.removeEventListener('icegatheringstatechange', onStateChange);
+          resolve();
+        }
+      };
+      peer.addEventListener('icegatheringstatechange', onStateChange);
+    });
+    const local = peer.localDescription;
+    if (!local?.sdp) {
+      throw new Error('Unable to build SDP answer for incoming call');
+    }
+    return { sdp: local.sdp, sdp_type: 'answer' };
+  } finally {
+    peer.close();
+  }
+}
+
 type CallPermissionState = 'REQUESTED' | 'ACKNOWLEDGED' | 'APPROVED' | 'REJECTED' | 'PENDING' | null;
 
 function detectCallPermissionState(input: {
@@ -396,6 +452,11 @@ export default function SuperAdminWhatsAppChatPage() {
   >(null);
   const [callControlLoading, setCallControlLoading] = useState<string | null>(null);
   const [callInfoOpen, setCallInfoOpen] = useState<CallLog | null>(null);
+  const [incomingPopup, setIncomingPopup] = useState<{
+    callId: string;
+    phone: string;
+    status: string;
+  } | null>(null);
   const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
   const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
   const [draftMessage, setDraftMessage] = useState('');
@@ -619,6 +680,7 @@ export default function SuperAdminWhatsAppChatPage() {
           const row = payload.new as any;
           const phone = normalizePhone(String(row?.customer_phone || ''));
           if (!phone) return;
+          const rowId = String(row?.id || '').trim();
           const callStatus = normalizeCallStatus(String(row?.call_status || ''));
           const inboundActive = isIncomingRingingState(row?.direction, callStatus);
 
@@ -647,6 +709,21 @@ export default function SuperAdminWhatsAppChatPage() {
           } else if (inboundActive) {
             setUnreadByPhone((prev) => ({ ...prev, [phone]: (prev[phone] || 0) + 1 }));
             setSelectedPhone(phone);
+          }
+
+          if (inboundActive && rowId) {
+            setIncomingPopup((prev) => {
+              if (prev && prev.callId === rowId && prev.status === callStatus && prev.phone === phone) {
+                return prev;
+              }
+              return { callId: rowId, phone, status: callStatus };
+            });
+          } else if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(callStatus)) {
+            setIncomingPopup((prev) => {
+              if (!prev) return prev;
+              if ((rowId && prev.callId === rowId) || prev.phone === phone) return null;
+              return prev;
+            });
           }
         }
       )
@@ -871,6 +948,153 @@ export default function SuperAdminWhatsAppChatPage() {
       }
     },
     [activeCall?.id, callControlLoading, loadCalls, selectedPhone]
+  );
+
+  const handleIncomingPopupAction = useCallback(
+    async (action: 'hangup') => {
+      if (!incomingPopup?.callId || callControlLoading) return;
+      setCallControlLoading(action);
+      try {
+        const popupPhone = incomingPopup.phone;
+        if (popupPhone && selectedPhoneRef.current !== popupPhone) {
+          setSelectedPhone(popupPhone);
+        }
+
+        const res = await fetch(
+          `/api/whatsapp/calls/${encodeURIComponent(incomingPopup.callId)}/control`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action }),
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.success) {
+          setConversationError(data?.error || 'Incoming call control failed');
+          return;
+        }
+        if (popupPhone) {
+          await loadCalls(popupPhone);
+        } else if (selectedPhoneRef.current) {
+          await loadCalls(selectedPhoneRef.current);
+        }
+        setIncomingPopup(null);
+      } catch {
+        setConversationError('Incoming call control failed');
+      } finally {
+        setCallControlLoading(null);
+      }
+    },
+    [callControlLoading, incomingPopup, loadCalls]
+  );
+
+  const handleAcceptIncomingCall = useCallback(
+    async (targetCallId?: string | null, targetPhone?: string | null) => {
+      const callId = String(targetCallId || activeCall?.id || '').trim();
+      if (!callId || callControlLoading) return;
+      setCallControlLoading('resume');
+      setConversationError('');
+
+      try {
+        const attemptControlResume = async (): Promise<{ ok: boolean; error?: string }> => {
+          const controlRes = await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/control`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'resume' }),
+          });
+          const controlData = await controlRes.json().catch(() => ({}));
+          if (!controlRes.ok || !controlData?.success) {
+            return { ok: false, error: String(controlData?.error || 'Control resume failed') };
+          }
+          return { ok: true };
+        };
+
+        const sessionRes = await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/session`, {
+          cache: 'no-store',
+        });
+        const sessionData = await sessionRes.json().catch(() => ({}));
+        if (!sessionRes.ok || !sessionData?.success) {
+          const fallback = await attemptControlResume();
+          if (!fallback.ok) {
+            setConversationError(
+              String(sessionData?.error || 'Failed to fetch incoming call session') +
+                ` | Fallback: ${String(fallback.error || 'resume failed')}`
+            );
+            return;
+          }
+          if (selectedPhoneRef.current) await loadCalls(selectedPhoneRef.current);
+          setIncomingPopup(null);
+          return;
+        }
+
+        const sessions = Array.isArray(sessionData?.sessions) ? sessionData.sessions : [];
+        const offerSession = sessions.find((row: any) => String(row?.offer_sdp || '').trim());
+        const phone = normalizePhone(
+          String(targetPhone || selectedPhoneRef.current || activeCall?.customer_phone || '')
+        );
+        if (!offerSession) {
+          const fallback = await attemptControlResume();
+          if (!fallback.ok) {
+            setConversationError(
+              'Incoming offer is not available yet and fallback resume also failed: ' +
+                String(fallback.error || 'resume failed')
+            );
+            return;
+          }
+          if (selectedPhoneRef.current) await loadCalls(selectedPhoneRef.current);
+          setIncomingPopup(null);
+          return;
+        }
+
+        try {
+          const answer = await buildBrowserCallAnswer(String(offerSession?.offer_sdp || ''));
+
+          const answerRes = await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'answer',
+              phone: phone || undefined,
+              sdp: answer.sdp,
+              sdp_type: answer.sdp_type,
+              provider_session_id: offerSession?.provider_session_id || null,
+            }),
+          });
+          const answerData = await answerRes.json().catch(() => ({}));
+          if (!answerRes.ok || !answerData?.success) {
+            const fallback = await attemptControlResume();
+            if (!fallback.ok) {
+              setConversationError(
+                String(answerData?.error || 'Failed to accept incoming call') +
+                  ` | Fallback: ${String(fallback.error || 'resume failed')}`
+              );
+              return;
+            }
+          }
+        } catch (error: any) {
+          const fallback = await attemptControlResume();
+          if (!fallback.ok) {
+            setConversationError(
+              String(error?.message || 'Failed to build WebRTC answer') +
+                ` | Fallback: ${String(fallback.error || 'resume failed')}`
+            );
+            return;
+          }
+        }
+
+        if (phone) {
+          await loadCalls(phone);
+        } else if (selectedPhoneRef.current) {
+          await loadCalls(selectedPhoneRef.current);
+        }
+        setIncomingPopup(null);
+      } catch {
+        setConversationError('Failed to accept incoming call');
+      } finally {
+        setCallControlLoading(null);
+      }
+    },
+    [activeCall?.customer_phone, activeCall?.id, callControlLoading, loadCalls]
   );
 
   const handleSendText = useCallback(async () => {
@@ -1239,7 +1463,7 @@ export default function SuperAdminWhatsAppChatPage() {
                     {isIncomingActiveCall ? (
                       <button
                         type="button"
-                        onClick={() => void handleCallControl('resume')}
+                        onClick={() => void handleAcceptIncomingCall(activeCall?.id, selectedPhone)}
                         disabled={!canAnswerIncomingCall || callControlLoading !== null}
                         className="inline-flex items-center gap-1 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
                         title="Accept incoming call"
@@ -1653,6 +1877,65 @@ export default function SuperAdminWhatsAppChatPage() {
           </section>
         </div>
       </div>
+      {incomingPopup ? (
+        <div className="fixed right-4 top-20 z-[6400] w-[320px] rounded-2xl border border-green-200 bg-white p-3 shadow-2xl">
+          <div className="flex items-start justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedPhone(incomingPopup.phone)}
+              className="min-w-0 text-left"
+              title="Open incoming chat"
+            >
+              <div className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-green-700">
+                <PhoneIncoming className="h-3.5 w-3.5" />
+                Incoming call
+              </div>
+              <p className="mt-1 truncate text-sm font-semibold text-gray-900">
+                {formatPhone(incomingPopup.phone)}
+              </p>
+              <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                State: {incomingPopup.status}
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIncomingPopup(null)}
+              className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              title="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleAcceptIncomingCall(incomingPopup.callId, incomingPopup.phone)}
+              disabled={callControlLoading !== null}
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {callControlLoading === 'resume' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <PhoneIncoming className="h-3.5 w-3.5" />
+              )}
+              Accept
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleIncomingPopupAction('hangup')}
+              disabled={callControlLoading !== null}
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {callControlLoading === 'hangup' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <PhoneOff className="h-3.5 w-3.5" />
+              )}
+              Reject
+            </button>
+          </div>
+        </div>
+      ) : null}
       {messageInfoOpen ? (
         <div
           className="fixed inset-0 z-[6500] bg-black/35"
