@@ -1,0 +1,257 @@
+const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0';
+const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';
+
+const WHATSAPP_CALLING_API_URL =
+  process.env.WHATSAPP_CALLING_API_URL || `${WHATSAPP_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}`;
+const WHATSAPP_CALLING_ACCESS_TOKEN =
+  process.env.WHATSAPP_CALLING_ACCESS_TOKEN || WHATSAPP_ACCESS_TOKEN;
+const WHATSAPP_CALLING_START_PATH = process.env.WHATSAPP_CALLING_START_PATH || '/calls';
+const WHATSAPP_CALLING_CALLBACK_PATH =
+  process.env.WHATSAPP_CALLING_CALLBACK_PATH || '/calls/callbacks';
+const WHATSAPP_CALLING_LOGS_PATH = process.env.WHATSAPP_CALLING_LOGS_PATH || '/calls/logs';
+const WHATSAPP_CALLING_SESSION_PATH_TEMPLATE =
+  process.env.WHATSAPP_CALLING_SESSION_PATH_TEMPLATE || '/calls/{call_id}/session';
+const WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE =
+  process.env.WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE || '/calls/{call_id}/control';
+
+export type WhatsAppCallingResult = {
+  success: boolean;
+  callId?: string;
+  sessionId?: string;
+  status?: string;
+  error?: string;
+  statusCode?: number;
+  raw?: unknown;
+};
+
+export type SessionSignalPayload = {
+  callId: string;
+  to: string;
+  sdp: string;
+  sdpType: 'offer' | 'answer' | 'pranswer';
+  providerSessionId?: string | null;
+};
+
+export type IceCandidatePayload = {
+  callId: string;
+  providerSessionId: string;
+  candidate: string;
+  sdpMid?: string | null;
+  sdpMLineIndex?: number | null;
+};
+
+export type CallControlPayload = {
+  callId: string;
+  action: 'hangup' | 'mute' | 'unmute' | 'hold' | 'resume' | 'transfer' | 'dtmf';
+  payload?: Record<string, unknown>;
+};
+
+function normalizePhoneNumber(phoneNumber: string): string {
+  const digits = String(phoneNumber || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('91') ? digits : `91${digits}`;
+}
+
+function assertCallingConfig(): string | null {
+  if (!WHATSAPP_PHONE_NUMBER_ID) return 'WHATSAPP_PHONE_NUMBER_ID is not configured';
+  if (!WHATSAPP_CALLING_ACCESS_TOKEN) return 'WHATSAPP_CALLING_ACCESS_TOKEN is not configured';
+  if (!WHATSAPP_CALLING_API_URL) return 'WHATSAPP_CALLING_API_URL is not configured';
+  return null;
+}
+
+async function parseProviderError(response: Response): Promise<{ message: string; raw?: unknown }> {
+  try {
+    const payload = await response.json();
+    const baseMessage =
+      payload?.error?.error_user_msg ||
+      payload?.error?.message ||
+      payload?.message ||
+      `WhatsApp Calling API request failed (${response.status})`;
+    const details = payload?.error?.error_data?.details;
+    const message =
+      typeof details === 'string' && details.trim().length > 0
+        ? `${baseMessage} (${details.trim()})`
+        : baseMessage;
+    return { message, raw: payload };
+  } catch {
+    return { message: `WhatsApp Calling API request failed (${response.status})` };
+  }
+}
+
+async function providerRequest(path: string, init: RequestInit): Promise<WhatsAppCallingResult> {
+  const configError = assertCallingConfig();
+  if (configError) return { success: false, error: configError };
+
+  try {
+    const response = await fetch(`${WHATSAPP_CALLING_API_URL}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${WHATSAPP_CALLING_ACCESS_TOKEN}`,
+        ...(init.headers || {}),
+      },
+    });
+
+    if (!response.ok) {
+      const parsed = await parseProviderError(response);
+      return {
+        success: false,
+        error: parsed.message,
+        statusCode: response.status,
+        raw: parsed.raw,
+      };
+    }
+
+    const data = await response.json().catch(() => ({}));
+    return {
+      success: true,
+      callId:
+        data?.call_id ||
+        data?.id ||
+        data?.data?.call_id ||
+        data?.call?.id ||
+        undefined,
+      sessionId:
+        data?.session_id ||
+        data?.session?.id ||
+        data?.data?.session_id ||
+        data?.call?.session_id ||
+        undefined,
+      status: data?.status || data?.call_status || undefined,
+      statusCode: response.status,
+      raw: data,
+    };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Calling provider request failed' };
+  }
+}
+
+export async function initiateBusinessCall(input: {
+  phoneNumber: string;
+  optInToken?: string | null;
+  consentGrantedAt?: string | null;
+  reason?: string | null;
+}): Promise<WhatsAppCallingResult> {
+  const to = normalizePhoneNumber(input.phoneNumber);
+  if (!to) return { success: false, error: 'Invalid recipient phone number' };
+
+  const payload: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    to,
+  };
+  if (input.reason) payload.reason = input.reason;
+  if (input.optInToken || input.consentGrantedAt) {
+    payload.consent = {
+      ...(input.optInToken ? { opt_in_token: input.optInToken } : {}),
+      ...(input.consentGrantedAt ? { granted_at: input.consentGrantedAt } : {}),
+    };
+  }
+
+  return providerRequest(WHATSAPP_CALLING_START_PATH, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function requestCallCallback(input: {
+  phoneNumber: string;
+  reason?: string | null;
+}): Promise<WhatsAppCallingResult> {
+  const to = normalizePhoneNumber(input.phoneNumber);
+  if (!to) return { success: false, error: 'Invalid recipient phone number' };
+
+  const payload: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    to,
+  };
+  if (input.reason) payload.reason = input.reason;
+
+  return providerRequest(WHATSAPP_CALLING_CALLBACK_PATH, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+function resolveTemplatePath(template: string, callId: string): string {
+  return template.replace('{call_id}', encodeURIComponent(callId));
+}
+
+export async function sendSessionSignal(input: SessionSignalPayload): Promise<WhatsAppCallingResult> {
+  const callId = String(input.callId || '').trim();
+  const to = normalizePhoneNumber(input.to);
+  const sdp = String(input.sdp || '').trim();
+  const sdpType = String(input.sdpType || '').trim().toLowerCase();
+  if (!callId) return { success: false, error: 'callId is required' };
+  if (!to) return { success: false, error: 'Invalid recipient phone number' };
+  if (!sdp) return { success: false, error: 'session.sdp is required' };
+  if (!['offer', 'answer', 'pranswer'].includes(sdpType)) {
+    return { success: false, error: 'session.sdp_type must be offer, answer, or pranswer' };
+  }
+
+  const payload: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    to,
+    session: {
+      sdp,
+      sdp_type: sdpType,
+      ...(input.providerSessionId ? { id: String(input.providerSessionId) } : {}),
+    },
+  };
+
+  return providerRequest(resolveTemplatePath(WHATSAPP_CALLING_SESSION_PATH_TEMPLATE, callId), {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function sendIceCandidate(input: IceCandidatePayload): Promise<WhatsAppCallingResult> {
+  const callId = String(input.callId || '').trim();
+  const providerSessionId = String(input.providerSessionId || '').trim();
+  const candidate = String(input.candidate || '').trim();
+  if (!callId) return { success: false, error: 'callId is required' };
+  if (!providerSessionId) return { success: false, error: 'providerSessionId is required' };
+  if (!candidate) return { success: false, error: 'candidate is required' };
+
+  return providerRequest(resolveTemplatePath(WHATSAPP_CALLING_SESSION_PATH_TEMPLATE, callId), {
+    method: 'POST',
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      session: {
+        id: providerSessionId,
+        candidate,
+        ...(input.sdpMid ? { sdp_mid: input.sdpMid } : {}),
+        ...(input.sdpMLineIndex != null ? { sdp_mline_index: input.sdpMLineIndex } : {}),
+      },
+    }),
+  });
+}
+
+export async function sendCallControl(input: CallControlPayload): Promise<WhatsAppCallingResult> {
+  const callId = String(input.callId || '').trim();
+  if (!callId) return { success: false, error: 'callId is required' };
+  return providerRequest(resolveTemplatePath(WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE, callId), {
+    method: 'POST',
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      action: input.action,
+      ...(input.payload ? { payload: input.payload } : {}),
+    }),
+  });
+}
+
+export async function fetchProviderCallLogs(params?: {
+  phoneNumber?: string;
+  limit?: number;
+  cursor?: string | null;
+}): Promise<WhatsAppCallingResult> {
+  const query = new URLSearchParams();
+  if (params?.phoneNumber) query.set('phone', normalizePhoneNumber(params.phoneNumber));
+  if (params?.limit != null) query.set('limit', String(params.limit));
+  if (params?.cursor) query.set('cursor', String(params.cursor));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+
+  return providerRequest(`${WHATSAPP_CALLING_LOGS_PATH}${suffix}`, {
+    method: 'GET',
+  });
+}

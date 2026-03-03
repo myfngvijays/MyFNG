@@ -27,6 +27,26 @@ type WhatsAppInboundMessage = {
   button?: unknown;
 };
 
+type WhatsAppCallEvent = {
+  id?: string;
+  call_id?: string;
+  conversation_id?: string;
+  direction?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  timestamp?: string;
+  started_at?: string;
+  ended_at?: string;
+  duration?: number | string;
+  callback_requested?: boolean;
+  error?: { message?: string; details?: string };
+  session?: unknown;
+  candidates?: unknown;
+  recording?: unknown;
+  recordings?: unknown;
+};
+
 function mapStatus(status: string | undefined): 'SENT' | 'DELIVERED' | 'VIEWED' | 'FAILED' {
   const normalized = String(status || '').toLowerCase();
   if (normalized === 'delivered') return 'DELIVERED';
@@ -35,10 +55,69 @@ function mapStatus(status: string | undefined): 'SENT' | 'DELIVERED' | 'VIEWED' 
   return 'SENT';
 }
 
+function mapCallStatus(status: string | undefined): string {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (['initiated', 'dialing', 'calling'].includes(normalized)) return 'INITIATED';
+  if (['ringing', 'ring'].includes(normalized)) return 'RINGING';
+  if (['accepted', 'connected', 'in_progress', 'ongoing'].includes(normalized)) return 'ACCEPTED';
+  if (['ended', 'completed', 'hangup'].includes(normalized)) return 'ENDED';
+  if (['missed', 'no_answer'].includes(normalized)) return 'MISSED';
+  if (['rejected', 'declined', 'busy'].includes(normalized)) return 'REJECTED';
+  if (['callback_requested', 'callback'].includes(normalized)) return 'CALLBACK_REQUESTED';
+  if (['failed', 'error', 'undelivered'].includes(normalized)) return 'FAILED';
+  return String(status || 'INITIATED').toUpperCase();
+}
+
 function parseIsoTimestamp(unixTimestamp: string | undefined): string | null {
   const ts = Number(unixTimestamp || '');
   if (!Number.isFinite(ts) || ts <= 0) return null;
   return new Date(ts * 1000).toISOString();
+}
+
+function parseTimestampFlexible(input: unknown): string | null {
+  if (input == null) return null;
+  if (typeof input === 'number' || /^\d+$/.test(String(input))) {
+    const n = Number(input);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const ms = n > 10_000_000_000 ? n : n * 1000;
+    return new Date(ms).toISOString();
+  }
+  const str = String(input).trim();
+  if (!str) return null;
+  const d = new Date(str);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function normalizePhone(phone: unknown): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('91') ? digits : `91${digits}`;
+}
+
+function extractCallEvents(changeValue: any): WhatsAppCallEvent[] {
+  const directCalls = Array.isArray(changeValue?.calls) ? changeValue.calls : [];
+  const nestedCalls = Array.isArray(changeValue?.statuses?.calls) ? changeValue.statuses.calls : [];
+  const messageCalls = Array.isArray(changeValue?.messages?.calls) ? changeValue.messages.calls : [];
+  return [...directCalls, ...nestedCalls, ...messageCalls].filter(Boolean);
+}
+
+function extractRecordings(call: WhatsAppCallEvent): any[] {
+  const one = call?.recording;
+  const many = Array.isArray(call?.recordings) ? call.recordings : [];
+  const output: any[] = [];
+  if (one && typeof one === 'object') output.push(one);
+  many.forEach((rec) => {
+    if (rec && typeof rec === 'object') output.push(rec);
+  });
+  return output;
+}
+
+function extractSessionCandidates(call: WhatsAppCallEvent): any[] {
+  const fromCall = Array.isArray(call?.candidates) ? call.candidates : [];
+  const sessionObj = call?.session && typeof call.session === 'object' ? (call.session as any) : null;
+  const fromSession = Array.isArray(sessionObj?.candidates) ? sessionObj.candidates : [];
+  return [...fromCall, ...fromSession].filter(Boolean);
 }
 
 function isSignatureValid(rawBody: string, signatureHeader: string | null): boolean {
@@ -116,6 +195,8 @@ export async function POST(request: NextRequest) {
   let skippedCount = 0;
   let inboundCount = 0;
   let failedCount = 0;
+  let callUpdatedCount = 0;
+  let recordingUpdatedCount = 0;
 
   for (const entry of entries) {
     const changes = Array.isArray(entry?.changes) ? entry.changes : [];
@@ -205,17 +286,63 @@ export async function POST(request: NextRequest) {
         const errorMessage = statusItem?.errors?.[0]?.details || statusItem?.errors?.[0]?.title || null;
 
         // Update existing outbound/inbound archive row with latest delivery status.
-        const { data: updatedMsg } = await db
+        const { data: existingMsgRaw } = await db
           .from('whatsapp_messages')
-          .update({
-            status: mappedStatus,
-            status_at: statusAt || now,
-            error_message: mappedStatus === 'FAILED' ? errorMessage : null,
-            updated_at: now,
-          })
+          .select('id, status, status_at, meta, created_at')
           .eq('provider_message_id', providerMessageId)
-          .select('id')
+          .order('created_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
+        const existingMsg: any = existingMsgRaw;
+        let updatedMsg: { id?: string } | null = null;
+
+        if (existingMsg?.id) {
+          const existingMeta =
+            existingMsg?.meta && typeof existingMsg.meta === 'object' ? existingMsg.meta : {};
+          const existingTimestamps =
+            existingMeta?.status_timestamps && typeof existingMeta.status_timestamps === 'object'
+              ? existingMeta.status_timestamps
+              : {};
+          const nextTimestamps: Record<string, string> = { ...existingTimestamps };
+
+          // Preserve first known "sent_at" and append downstream status timestamps.
+          if (!nextTimestamps.sent_at) {
+            const fallbackSentAt = existingMsg?.created_at || existingMsg?.status_at || now;
+            nextTimestamps.sent_at = String(fallbackSentAt);
+          }
+          if (mappedStatus === 'SENT') {
+            nextTimestamps.sent_at = String(statusAt || nextTimestamps.sent_at || now);
+          }
+          if (mappedStatus === 'DELIVERED') {
+            nextTimestamps.delivered_at = String(statusAt || now);
+          }
+          if (mappedStatus === 'VIEWED') {
+            nextTimestamps.viewed_at = String(statusAt || now);
+          }
+          if (mappedStatus === 'FAILED') {
+            nextTimestamps.failed_at = String(statusAt || now);
+          }
+
+          const mergedMeta = {
+            ...existingMeta,
+            status_raw: statusItem?.status || existingMeta?.status_raw || null,
+            status_timestamps: nextTimestamps,
+          };
+
+          const { data: updatedMsgRaw } = await db
+            .from('whatsapp_messages')
+            .update({
+              status: mappedStatus,
+              status_at: statusAt || now,
+              error_message: mappedStatus === 'FAILED' ? errorMessage : null,
+              meta: mergedMeta,
+              updated_at: now,
+            })
+            .eq('id', existingMsg.id)
+            .select('id')
+            .maybeSingle();
+          updatedMsg = updatedMsgRaw || null;
+        }
 
         if (updatedMsg?.id) {
           updatedCount += 1;
@@ -285,6 +412,212 @@ export async function POST(request: NextRequest) {
           .eq('id', existingLog.id);
         invoiceUpdatedCount += 1;
       }
+
+      const callEvents = extractCallEvents(change?.value);
+      for (const callItem of callEvents) {
+        const providerCallId = String(callItem?.call_id || callItem?.id || '').trim();
+        const mappedCallStatus = mapCallStatus(callItem?.status);
+        const startedAt =
+          parseTimestampFlexible(callItem?.started_at) ||
+          parseTimestampFlexible(callItem?.timestamp) ||
+          null;
+        const endedAt = parseTimestampFlexible(callItem?.ended_at) || null;
+        const durationRaw = Number(callItem?.duration);
+        const durationSeconds = Number.isFinite(durationRaw) && durationRaw >= 0 ? Math.floor(durationRaw) : null;
+        const customerPhone =
+          normalizePhone(callItem?.from) || normalizePhone(callItem?.to) || normalizePhone(change?.value?.from);
+        if (!customerPhone) {
+          skippedCount += 1;
+          continue;
+        }
+
+        const errorMessage = String(
+          callItem?.error?.details || callItem?.error?.message || ''
+        ).trim() || null;
+
+        const callPayload = {
+          provider_call_id: providerCallId || null,
+          provider_conversation_id: String(callItem?.conversation_id || '').trim() || null,
+          direction: String(callItem?.direction || 'INBOUND').trim().toUpperCase(),
+          call_status: mappedCallStatus,
+          customer_phone: customerPhone,
+          started_at: startedAt,
+          ended_at: endedAt,
+          duration_seconds: durationSeconds,
+          callback_requested:
+            Boolean(callItem?.callback_requested) || mappedCallStatus === 'CALLBACK_REQUESTED',
+          recording_available: extractRecordings(callItem).length > 0,
+          recording_count: extractRecordings(callItem).length,
+          error_message: errorMessage,
+          payload: callItem,
+          meta: {
+            source: 'webhook',
+            field: change?.field || null,
+          },
+          updated_at: now,
+        };
+
+        let callLogId: string | null = null;
+        if (providerCallId) {
+          const { data: upserted, error: upsertError } = await db
+            .from('whatsapp_call_logs')
+            .upsert(callPayload, { onConflict: 'provider_call_id' })
+            .select('id')
+            .maybeSingle();
+          if (upsertError) {
+            const { data: inserted, error: insertError } = await db
+              .from('whatsapp_call_logs')
+              .insert(callPayload)
+              .select('id')
+              .maybeSingle();
+            if (insertError) {
+              failedCount += 1;
+              continue;
+            }
+            callLogId = inserted?.id || null;
+          } else {
+            callLogId = upserted?.id || null;
+          }
+        } else {
+          const { data: inserted, error: insertError } = await db
+            .from('whatsapp_call_logs')
+            .insert(callPayload)
+            .select('id')
+            .maybeSingle();
+          if (insertError) {
+            failedCount += 1;
+            continue;
+          }
+          callLogId = inserted?.id || null;
+        }
+        callUpdatedCount += 1;
+
+        const sessionObj = callItem?.session && typeof callItem.session === 'object' ? (callItem.session as any) : null;
+        const providerSessionId = String(
+          sessionObj?.id || sessionObj?.session_id || sessionObj?.provider_session_id || ''
+        ).trim();
+        const sessionSdp = String(sessionObj?.sdp || '').trim();
+        const sessionSdpType = String(sessionObj?.sdp_type || '').trim().toLowerCase();
+        if (callLogId && (providerSessionId || sessionSdp)) {
+          const sessionState =
+            mappedCallStatus === 'ACCEPTED'
+              ? 'CONNECTED'
+              : mappedCallStatus === 'ENDED'
+              ? 'ENDED'
+              : mappedCallStatus === 'FAILED'
+              ? 'FAILED'
+              : 'NEGOTIATING';
+          const sessionPayload: Record<string, unknown> = {
+            call_log_id: callLogId,
+            provider_call_id: providerCallId || null,
+            provider_session_id: providerSessionId || null,
+            session_state: sessionState,
+            payload: sessionObj || callItem,
+            meta: {
+              source: 'webhook',
+              field: change?.field || null,
+            },
+            updated_at: now,
+          };
+          if (sessionSdp && sessionSdpType === 'offer') {
+            sessionPayload.offer_sdp = sessionSdp;
+            sessionPayload.offer_sdp_type = 'offer';
+          }
+          if (sessionSdp && (sessionSdpType === 'answer' || sessionSdpType === 'pranswer')) {
+            sessionPayload.answer_sdp = sessionSdp;
+            sessionPayload.answer_sdp_type = sessionSdpType;
+          }
+
+          if (providerSessionId) {
+            await db.from('whatsapp_call_sessions').upsert(sessionPayload, {
+              onConflict: 'provider_session_id',
+            });
+          } else {
+            await db.from('whatsapp_call_sessions').insert(sessionPayload);
+          }
+        }
+
+        const sessionCandidates = extractSessionCandidates(callItem);
+        if (callLogId && sessionCandidates.length > 0) {
+          let targetSessionId = '';
+          if (providerSessionId) {
+            const { data: existingSession } = await db
+              .from('whatsapp_call_sessions')
+              .select('id')
+              .eq('provider_session_id', providerSessionId)
+              .maybeSingle();
+            targetSessionId = String(existingSession?.id || '');
+          } else {
+            const { data: latestSession } = await db
+              .from('whatsapp_call_sessions')
+              .select('id')
+              .eq('call_log_id', callLogId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            targetSessionId = String(latestSession?.id || '');
+          }
+          if (targetSessionId) {
+            for (const candidateItem of sessionCandidates) {
+              const candidate = String(
+                candidateItem?.candidate || candidateItem?.value || candidateItem || ''
+              ).trim();
+              if (!candidate) continue;
+              await db.from('whatsapp_call_ice_candidates').insert({
+                session_id: targetSessionId,
+                direction: 'INBOUND',
+                candidate,
+                sdp_mid: candidateItem?.sdp_mid ? String(candidateItem.sdp_mid) : null,
+                sdp_mline_index:
+                  candidateItem?.sdp_mline_index != null &&
+                  Number.isFinite(Number(candidateItem.sdp_mline_index))
+                    ? Math.floor(Number(candidateItem.sdp_mline_index))
+                    : null,
+                payload: candidateItem && typeof candidateItem === 'object' ? candidateItem : {},
+              });
+            }
+          }
+        }
+
+        const recordings = extractRecordings(callItem);
+        for (const recording of recordings) {
+          const providerRecordingId = String(
+            recording?.id || recording?.recording_id || recording?.media_id || ''
+          ).trim();
+          const recordingUrl = String(recording?.url || recording?.recording_url || '').trim() || null;
+          const recDurationRaw = Number(recording?.duration || recording?.duration_seconds);
+          const recDuration =
+            Number.isFinite(recDurationRaw) && recDurationRaw >= 0 ? Math.floor(recDurationRaw) : null;
+          const recSizeRaw = Number(recording?.size || recording?.size_bytes);
+          const recSize = Number.isFinite(recSizeRaw) && recSizeRaw >= 0 ? Math.floor(recSizeRaw) : null;
+
+          const recordingPayload = {
+            call_log_id: callLogId,
+            provider_call_id: providerCallId || null,
+            provider_recording_id: providerRecordingId || null,
+            recording_url: recordingUrl,
+            mime_type: String(recording?.mime_type || '').trim() || null,
+            duration_seconds: recDuration,
+            size_bytes: recSize,
+            available_at: parseTimestampFlexible(recording?.available_at) || now,
+            expires_at: parseTimestampFlexible(recording?.expires_at),
+            payload: recording,
+            meta: {
+              source: 'webhook',
+            },
+            updated_at: now,
+          };
+
+          if (providerRecordingId) {
+            await db
+              .from('whatsapp_call_recordings')
+              .upsert(recordingPayload, { onConflict: 'provider_recording_id' });
+          } else {
+            await db.from('whatsapp_call_recordings').insert(recordingPayload);
+          }
+          recordingUpdatedCount += 1;
+        }
+      }
     }
   }
 
@@ -294,7 +627,7 @@ export async function POST(request: NextRequest) {
       .update({
         processed_at: new Date().toISOString(),
         process_status: 'PROCESSED',
-        process_note: `inbound:${inboundCount}, status_updated:${updatedCount}, invoice_updated:${invoiceUpdatedCount}, skipped:${skippedCount}, failed:${failedCount}`,
+        process_note: `inbound:${inboundCount}, status_updated:${updatedCount}, invoice_updated:${invoiceUpdatedCount}, calls_updated:${callUpdatedCount}, recordings_updated:${recordingUpdatedCount}, skipped:${skippedCount}, failed:${failedCount}`,
       })
       .eq('id', webhookEvent.id);
     if (webhookUpdateError) {
@@ -306,6 +639,8 @@ export async function POST(request: NextRequest) {
     success: true,
     inbound: inboundCount,
     updated: updatedCount,
+    calls_updated: callUpdatedCount,
+    recordings_updated: recordingUpdatedCount,
     skipped: skippedCount,
     failed: failedCount,
   });

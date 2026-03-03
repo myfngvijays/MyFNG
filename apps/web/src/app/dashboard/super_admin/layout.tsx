@@ -177,20 +177,26 @@ const navigationItems: NavItem[] = [
   {
     name: 'WhatsApp',
     icon: MessageSquare,
-    description: 'Templates, dashboard & bot flow'
+    description: 'Dashboard, message, template & bot flow'
     ,
     children: [
-      {
-        name: 'WhatsApp Templates',
-        href: '/dashboard/super_admin/whatsapp-templates',
-        icon: MessageSquare,
-        description: 'Create/manage WhatsApp templates',
-      },
       {
         name: 'WhatsApp Dashboard',
         href: '/dashboard/super_admin/whatsapp-dashboard',
         icon: BarChart3,
         description: 'Delivery & messaging overview',
+      },
+      {
+        name: 'WhatsApp Message',
+        href: '/dashboard/super_admin/whatsapp-chat',
+        icon: MessageSquare,
+        description: 'Open WhatsApp style chat',
+      },
+      {
+        name: 'WhatsApp Templates',
+        href: '/dashboard/super_admin/whatsapp-templates',
+        icon: MessageSquare,
+        description: 'Create/manage WhatsApp templates',
       },
       {
         name: 'Bot Flow',
@@ -260,7 +266,7 @@ export default function SuperAdminLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'Website Images': true,
-    WhatsApp: true,
+    WhatsApp: false,
   });
 
   const handleLogout = async () => {

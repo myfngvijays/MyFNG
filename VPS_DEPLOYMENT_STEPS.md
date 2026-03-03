@@ -122,6 +122,18 @@ pm2 save
 pm2 status
 ```
 
+#### PM2 process split for calling rollout
+```bash
+# Web app process should exist
+pm2 start npm --name "myfng-web" -- start
+
+# Optional dedicated bridge worker (when implemented as separate command)
+# pm2 start npm --name "myfng-bridge" -- run bridge:start
+
+pm2 save
+pm2 status
+```
+
 #### **Option B: Using Systemd**
 ```bash
 # Check if service exists
@@ -201,6 +213,42 @@ ps aux | grep node
 5. **Verify Success:**
    - You should see green checkmarks ✅
    - Final message: "🎉 MIGRATION COMPLETED SUCCESSFULLY!"
+
+---
+
+## WhatsApp Calling Full Signaling Runtime Keys
+
+Add these keys in `apps/web/.env.production` on the server:
+
+```bash
+WHATSAPP_CALLING_ENABLED=1
+WHATSAPP_CALLING_FULL_SIGNALING=1
+WHATSAPP_CALLING_BUSINESS_COUNTRY=IN
+WHATSAPP_CALLING_SUPPORTED_COUNTRIES=IN
+WHATSAPP_CALLING_ALLOWED_HOURS=
+
+ASTERISK_BRIDGE_INTERNAL_URL=http://127.0.0.1:3000/api/internal/asterisk
+ASTERISK_WEBHOOK_SECRET=replace_with_long_random_secret
+ASTERISK_ARI_URL=http://127.0.0.1:8088
+ASTERISK_ARI_USERNAME=replace_ari_user
+ASTERISK_ARI_PASSWORD=replace_ari_password
+ASTERISK_AMI_HOST=127.0.0.1
+ASTERISK_AMI_PORT=5038
+ASTERISK_AMI_USERNAME=replace_ami_user
+ASTERISK_AMI_SECRET=replace_ami_secret
+```
+
+After env update:
+```bash
+pm2 restart myfng-web
+pm2 logs myfng-web --lines 120 --nostream
+```
+
+Health checks:
+```bash
+curl -s "http://127.0.0.1:3000/api/internal/asterisk/health" \
+  -H "x-asterisk-webhook-secret: $ASTERISK_WEBHOOK_SECRET"
+```
 
 ---
 

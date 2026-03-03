@@ -109,6 +109,31 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_actual_anon_key_here
 # Save: Ctrl+X, then Y, then Enter
 ```
 
+#### Add WhatsApp Calling (Full Signaling + Asterisk) env keys
+
+```bash
+# Edit runtime env (example for apps/web/.env.production)
+nano .env.production
+
+# WhatsApp calling flags
+WHATSAPP_CALLING_ENABLED=1
+WHATSAPP_CALLING_FULL_SIGNALING=1
+WHATSAPP_CALLING_BUSINESS_COUNTRY=IN
+WHATSAPP_CALLING_SUPPORTED_COUNTRIES=IN
+WHATSAPP_CALLING_ALLOWED_HOURS=
+
+# Bridge + Asterisk
+ASTERISK_BRIDGE_INTERNAL_URL=http://127.0.0.1:3000/api/internal/asterisk
+ASTERISK_WEBHOOK_SECRET=replace_with_long_random_secret
+ASTERISK_ARI_URL=http://127.0.0.1:8088
+ASTERISK_ARI_USERNAME=replace_ari_user
+ASTERISK_ARI_PASSWORD=replace_ari_password
+ASTERISK_AMI_HOST=127.0.0.1
+ASTERISK_AMI_PORT=5038
+ASTERISK_AMI_USERNAME=replace_ami_user
+ASTERISK_AMI_SECRET=replace_ami_secret
+```
+
 ### Step 7: Install Dependencies & Build
 
 ```bash
@@ -143,6 +168,29 @@ pm2 save
 # Setup PM2 to start on boot
 pm2 startup
 # Run the command it outputs
+```
+
+#### PM2 process split for web + bridge health checks
+
+```bash
+# Web app process
+pm2 start npm --name "myfng-web" -- start
+
+# Optional second process if you run dedicated bridge worker command later
+# pm2 start npm --name "myfng-bridge" -- run bridge:start
+
+pm2 save
+```
+
+#### Health checks
+
+```bash
+# App + calling config health (requires authenticated cookie in browser; use UI endpoint)
+# GET /api/whatsapp/calls/health
+
+# Internal bridge health (requires internal secret)
+curl -s "http://127.0.0.1:3000/api/internal/asterisk/health" \
+  -H "x-asterisk-webhook-secret: $ASTERISK_WEBHOOK_SECRET"
 ```
 
 ---
