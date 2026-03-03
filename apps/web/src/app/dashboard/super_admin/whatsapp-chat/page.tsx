@@ -1857,32 +1857,65 @@ export default function SuperAdminWhatsAppChatPage() {
 
                     // Extract interactive message text from payload
                     const extractInteractiveText = (): string => {
-                      // payload is raw webhook inbound object: { type, interactive, ... }
+                      const p = msg?.payload || {};
                       const interactive =
-                        msg?.payload?.interactive ||
-                        msg?.payload?.request?.interactive ||
-                        msg?.payload?.messages?.[0]?.interactive;
-                      if (!interactive) return '';
-                      const itype = String(interactive.type || '').trim().toLowerCase();
-                      if (itype === 'button_reply') {
-                        return String(interactive.button_reply?.title || interactive.button_reply?.id || '').trim();
+                        p?.interactive ||
+                        p?.request?.interactive ||
+                        p?.messages?.[0]?.interactive;
+                      if (interactive) {
+                        const itype = String(interactive.type || '').trim().toLowerCase();
+                        if (itype === 'button_reply') {
+                          return String(interactive.button_reply?.title || interactive.button_reply?.id || '').trim();
+                        }
+                        if (itype === 'list_reply') {
+                          const title = String(interactive.list_reply?.title || '').trim();
+                          const desc = String(interactive.list_reply?.description || '').trim();
+                          return desc ? `${title}\n${desc}` : title;
+                        }
+                        if (itype === 'nfm_reply') {
+                          const body = String(interactive.nfm_reply?.body || interactive.nfm_reply?.name || '').trim();
+                          const responseJson = interactive.nfm_reply?.response_json;
+                          if (responseJson) {
+                            try {
+                              const parsed = typeof responseJson === 'string' ? JSON.parse(responseJson) : responseJson;
+                              if (parsed?.flow_token?.includes('call_permission') || parsed?.screen === 'calling_permission') {
+                                return parsed?.submitted === true || parsed?.status === 'approved'
+                                  ? 'Call permission approved'
+                                  : 'Call permission response received';
+                              }
+                            } catch { /* ignore */ }
+                          }
+                          return body || 'Form reply';
+                        }
+                        if (itype === 'call_permission_request' || itype === 'calling_permission') {
+                          return 'Call permission request';
+                        }
+                        const headerText = String(interactive?.header?.text || '').trim();
+                        const bodyText = String(interactive?.body?.text || '').trim();
+                        const footerText = String(interactive?.footer?.text || '').trim();
+                        const combined = [headerText, bodyText, footerText].filter(Boolean).join('\n');
+                        if (combined) return combined;
                       }
-                      if (itype === 'list_reply') {
-                        const title = String(interactive.list_reply?.title || '').trim();
-                        const desc = String(interactive.list_reply?.description || '').trim();
-                        return desc ? `${title}\n${desc}` : title;
-                      }
-                      if (itype === 'nfm_reply') {
-                        return String(interactive.nfm_reply?.body || interactive.nfm_reply?.name || 'Form reply').trim();
-                      }
-                      // button / cta_url / catalog_message etc.
-                      const headerText = String(interactive?.header?.text || '').trim();
-                      const bodyText = String(interactive?.body?.text || '').trim();
-                      const footerText = String(interactive?.footer?.text || '').trim();
-                      return [headerText, bodyText, footerText].filter(Boolean).join('\n') || '';
+                      // Deeper payload search for any readable text
+                      const deepText =
+                        String(p?.text?.body || p?.body?.text || p?.text || '').trim() ||
+                        String(p?.request?.text?.body || p?.request?.body || '').trim() ||
+                        String(p?.messages?.[0]?.text?.body || p?.messages?.[0]?.body || '').trim();
+                      if (deepText && deepText !== '[object Object]') return deepText;
+                      // Check if it's a call-related event
+                      if (p?.calls || p?.call_id || p?.request?.call_id) return 'Voice call event';
+                      return '';
                     };
 
                     const interactiveText = msgType === 'INTERACTIVE' ? extractInteractiveText() : '';
+                    // Detect call-related messages
+                    const isCallRelated =
+                      msgType === 'INTERACTIVE' &&
+                      !interactiveText &&
+                      (String(msg?.template_name || '').toLowerCase().includes('call') ||
+                        String(JSON.stringify(msg?.payload || '')).toLowerCase().includes('call_permission') ||
+                        String(JSON.stringify(msg?.payload || '')).toLowerCase().includes('calling'));
+                    const callEventText = isCallRelated ? 'Call permission' : '';
 
                     const mediaLabel =
                       msgType === 'IMAGE'
@@ -1903,9 +1936,10 @@ export default function SuperAdminWhatsAppChatPage() {
                       String(msg.text_body || '').trim() ||
                       (isTemplateMessage ? templateText || `Template: ${msg.template_name}` : '') ||
                       interactiveText ||
+                      callEventText ||
                       String(msg.media_caption || '').trim() ||
                       mediaLabel ||
-                      (msgType && msgType !== 'TEXT' ? msgType : '—');
+                      (msgType && msgType !== 'TEXT' && msgType !== 'INTERACTIVE' ? msgType : '—');
                     const callPermissionState = detectCallPermissionState({
                       templateName: msg?.template_name,
                       isOutbound: outbound,
@@ -1936,7 +1970,14 @@ export default function SuperAdminWhatsAppChatPage() {
                               {callPermissionBadge.label}
                             </div>
                           ) : null}
-                          <div className="whitespace-pre-wrap break-words">{bubbleText}</div>
+                          {isCallRelated || callPermissionState ? (
+                            <div className="flex items-center gap-2 text-gray-600">
+                              <PhoneCall className="h-4 w-4 flex-shrink-0" />
+                              <span className="whitespace-pre-wrap break-words">{bubbleText}</span>
+                            </div>
+                          ) : (
+                            <div className="whitespace-pre-wrap break-words">{bubbleText}</div>
+                          )}
                           {isTemplateMessage && templateButtons.length > 0 ? (
                             <div className="mt-2 space-y-1">
                               {templateButtons.map((button, index) => (
