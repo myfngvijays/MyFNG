@@ -1646,6 +1646,33 @@ export default function SuperAdminWhatsAppChatPage() {
                     const templateDisplayName =
                       currentTemplate?.display_name || currentTemplate?.template_name || msg?.template_name || '';
                     const msgType = String(msg.message_type || '').trim().toUpperCase();
+
+                    // Extract interactive message text from payload
+                    const extractInteractiveText = (): string => {
+                      const raw = msg?.payload?.request || msg?.payload;
+                      const interactive = raw?.interactive || raw?.message?.interactive || raw?.messages?.[0]?.interactive;
+                      if (!interactive) return '';
+                      const itype = String(interactive.type || '').trim().toLowerCase();
+                      if (itype === 'button_reply') {
+                        return String(interactive.button_reply?.title || interactive.button_reply?.id || '').trim();
+                      }
+                      if (itype === 'list_reply') {
+                        const title = String(interactive.list_reply?.title || '').trim();
+                        const desc = String(interactive.list_reply?.description || '').trim();
+                        return desc ? `${title}\n${desc}` : title;
+                      }
+                      if (itype === 'nfm_reply') {
+                        return String(interactive.nfm_reply?.body || interactive.nfm_reply?.name || 'Form reply').trim();
+                      }
+                      // button / cta_url / catalog_message etc.
+                      const headerText = String(interactive?.header?.text || '').trim();
+                      const bodyText = String(interactive?.body?.text || '').trim();
+                      const footerText = String(interactive?.footer?.text || '').trim();
+                      return [headerText, bodyText, footerText].filter(Boolean).join('\n') || '';
+                    };
+
+                    const interactiveText = msgType === 'INTERACTIVE' ? extractInteractiveText() : '';
+
                     const mediaLabel =
                       msgType === 'IMAGE'
                         ? '📷 Photo'
@@ -1660,9 +1687,11 @@ export default function SuperAdminWhatsAppChatPage() {
                         : msgType === 'STICKER'
                         ? '🗂️ Sticker'
                         : '';
+
                     const bubbleText =
                       String(msg.text_body || '').trim() ||
                       (isTemplateMessage ? templateText || `Template: ${msg.template_name}` : '') ||
+                      interactiveText ||
                       String(msg.media_caption || '').trim() ||
                       mediaLabel ||
                       (msgType && msgType !== 'TEXT' ? msgType : '—');

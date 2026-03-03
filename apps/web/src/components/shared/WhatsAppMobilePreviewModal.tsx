@@ -1401,14 +1401,42 @@ export default function WhatsAppMobilePreviewModal({
                         ''
                     ).trim()
                   : '';
+              const extractInteractiveText = (): string => {
+                const raw = msg?.payload?.request || msg?.payload;
+                const interactive =
+                  raw?.interactive || raw?.message?.interactive || raw?.messages?.[0]?.interactive;
+                if (!interactive) return '';
+                const itype = String(interactive.type || '').trim().toLowerCase();
+                if (itype === 'button_reply') {
+                  return String(interactive.button_reply?.title || interactive.button_reply?.id || '').trim();
+                }
+                if (itype === 'list_reply') {
+                  const title = String(interactive.list_reply?.title || '').trim();
+                  const desc = String(interactive.list_reply?.description || '').trim();
+                  return desc ? `${title}\n${desc}` : title;
+                }
+                if (itype === 'nfm_reply') {
+                  return String(
+                    interactive.nfm_reply?.body || interactive.nfm_reply?.name || 'Form reply'
+                  ).trim();
+                }
+                const headerText = String(interactive?.header?.text || '').trim();
+                const bodyText = String(interactive?.body?.text || '').trim();
+                const footerText = String(interactive?.footer?.text || '').trim();
+                return [headerText, bodyText, footerText].filter(Boolean).join('\n') || '';
+              };
+
+              const interactiveText = messageType === 'INTERACTIVE' ? extractInteractiveText() : '';
+
               const text =
                 inboundText ||
+                interactiveText ||
                 (msg?.template_name
                   ? templateText || `Template sent: ${msg.template_name}`
                   : '') ||
                 (msg?.media_url ? `${msg?.media_caption || 'Media'}\n${msg.media_url}` : '') ||
                 msg?.status ||
-                'Message';
+                (messageType && messageType !== 'TEXT' ? messageType : '—');
               const callPermissionState = detectCallPermissionState({
                 templateName: msg?.template_name,
                 isOutbound,
