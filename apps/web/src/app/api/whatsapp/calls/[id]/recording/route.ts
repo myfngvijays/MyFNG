@@ -38,15 +38,16 @@ export async function POST(
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
     if (!file || file.size === 0) return callErrorResponse('file is required', 400);
+    const durationRaw = Number(formData.get('duration_seconds'));
+    const durationSeconds =
+      Number.isFinite(durationRaw) && durationRaw > 0 ? Math.floor(durationRaw) : null;
 
     const now = new Date().toISOString();
     const buffer = Buffer.from(await file.arrayBuffer());
     const fileName = `call-recordings/${callId}/${Date.now()}-${file.name || 'recording.webm'}`;
 
     // Ensure storage bucket exists
-    await ensureBucket(db).catch((e: any) => {
-      console.warn('[CallRecording] Bucket check failed:', e?.message);
-    });
+    await ensureBucket(db).catch(() => {});
 
     const { data: uploadData, error: uploadError } = await db.storage
       .from(BUCKET_NAME)
@@ -57,12 +58,9 @@ export async function POST(
 
     let publicUrl: string | null = null;
     if (uploadError) {
-      console.error('[CallRecording] Storage upload error:', uploadError.message);
-      // Fallback: store as base64 data URL in the DB directly
       const base64 = buffer.toString('base64');
       const mimeType = file.type || 'audio/webm';
       publicUrl = `data:${mimeType};base64,${base64}`;
-      console.log('[CallRecording] Falling back to base64 storage, size:', file.size);
     } else {
       const { data: publicUrlData } = db.storage
         .from(BUCKET_NAME)
@@ -79,7 +77,7 @@ export async function POST(
         recording_proxy_path: publicUrl,
         mime_type: file.type || 'audio/webm',
         size_bytes: file.size,
-        duration_seconds: null,
+        duration_seconds: durationSeconds,
         available_at: now,
         payload: { source: 'browser_recording', file_name: fileName },
         meta: {
@@ -93,13 +91,17 @@ export async function POST(
       .maybeSingle();
 
     if (insertError) {
-      console.error('[CallRecording] DB insert error:', insertError);
       return callErrorResponse(insertError.message || 'Failed to save recording metadata', 500);
     }
 
     await db
       .from('whatsapp_call_logs')
-      .update({ recording_available: true, recording_count: 1, updated_at: now })
+      .update({
+        recording_available: true,
+        recording_count: 1,
+        ...(durationSeconds ? { duration_seconds: durationSeconds } : {}),
+        updated_at: now,
+      })
       .eq('id', callId);
 
     return NextResponse.json({
@@ -108,7 +110,6 @@ export async function POST(
       url: publicUrl,
     });
   } catch (error: any) {
-    console.error('[CallRecording] Error:', error);
     return callErrorResponse(error?.message || 'Internal server error', 500);
   }
 }

@@ -50,7 +50,190 @@ export async function GET(
       .order('created_at', { ascending: false });
     if (error) return callErrorResponse(error.message || 'Failed to fetch sessions', 500);
 
-    return NextResponse.json({ success: true, sessions: sessions || [] });
+    let allSessions: any[] = sessions || [];
+
+    const providerCallId = String(callLog.provider_call_id || '').trim();
+    if (providerCallId) {
+      const { data: relatedLogs } = await db
+        .from('whatsapp_call_logs')
+        .select('id')
+        .eq('provider_call_id', providerCallId)
+        .neq('id', callId);
+      const relatedIds = (relatedLogs || []).map((r: any) => r.id).filter(Boolean);
+      if (relatedIds.length > 0) {
+        const { data: relatedSessions } = await db
+          .from('whatsapp_call_sessions')
+          .select('*')
+          .in('call_log_id', relatedIds);
+        if (relatedSessions?.length) {
+          allSessions = [...allSessions, ...relatedSessions];
+        }
+      }
+
+      const { data: providerSessions } = await db
+        .from('whatsapp_call_sessions')
+        .select('*')
+        .eq('provider_call_id', providerCallId);
+      if (providerSessions?.length) {
+        allSessions = [...allSessions, ...providerSessions];
+      }
+    }
+
+    const uniqueSessions = Array.from(
+      new Map(allSessions.map((s: any) => [s.id, s])).values()
+    );
+
+    let iceCandidates: any[] = [];
+    const sessionIds = uniqueSessions.map((s: any) => s.id).filter(Boolean);
+    if (sessionIds.length > 0) {
+      const { data: candidateData } = await db
+        .from('whatsapp_call_ice_candidates')
+        .select('*')
+        .in('session_id', sessionIds)
+        .eq('direction', 'INBOUND')
+        .order('created_at', { ascending: true });
+      iceCandidates = candidateData || [];
+    }
+
+    const hasAnswerInSessions = uniqueSessions.some(
+      (s: any) => String(s.answer_sdp || '').trim().length > 0
+    );
+
+    let webhookAnswerSdp: string | null = null;
+    let webhookAnswerSdpType: string | null = null;
+    let webhookCallStatus: string | null = null;
+
+    const currentCallStatus = String(callLog.call_status || '').trim().toUpperCase();
+    const isCallTerminated = ['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(currentCallStatus);
+
+    if (providerCallId && (!hasAnswerInSessions || !isCallTerminated)) {
+      const { data: webhookRows } = await db
+        .from('whatsapp_webhook_events')
+        .select('id, payload, received_at, process_status')
+        .order('received_at', { ascending: false })
+        .limit(10);
+      const matchingRows = (webhookRows || []).filter((row: any) => {
+        const raw = JSON.stringify(row?.payload || {});
+        return raw.includes(providerCallId);
+      });
+
+      for (const row of matchingRows) {
+        const entries = Array.isArray(row.payload?.entry) ? row.payload.entry : [];
+        for (const entry of entries) {
+          const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+          for (const change of changes) {
+            const calls = Array.isArray(change?.value?.calls) ? change.value.calls : [];
+            for (const callItem of calls) {
+              const itemId = String(callItem?.call_id || callItem?.id || '').trim();
+              if (itemId !== providerCallId) continue;
+              const sdp = String(callItem?.session?.sdp || '').trim();
+              const sdpType = String(callItem?.session?.sdp_type || '').trim().toLowerCase();
+              if (sdp && !webhookAnswerSdp) {
+                webhookAnswerSdp = sdp;
+                webhookAnswerSdpType = sdpType || 'answer';
+              }
+            }
+
+            const statuses = Array.isArray(change?.value?.statuses) ? change.value.statuses : [];
+            const statusPriority: Record<string, number> = {
+              INITIATED: 0,
+              RINGING: 1,
+              ACCEPTED: 2,
+              CONNECTED: 3,
+              MISSED: 4,
+              REJECTED: 4,
+              ENDED: 4,
+              FAILED: 4,
+            };
+            for (const statusItem of statuses) {
+              const itemId = String(statusItem?.id || '').trim();
+              if (itemId !== providerCallId) continue;
+              const status = String(statusItem?.status || '').trim().toUpperCase();
+              if (
+                status &&
+                ((statusPriority[status] ?? -1) >= (statusPriority[String(webhookCallStatus || '').toUpperCase()] ?? -1))
+              ) {
+                webhookCallStatus = status;
+              }
+            }
+
+            for (const callItem of calls) {
+              const itemId = String(callItem?.call_id || callItem?.id || '').trim();
+              if (itemId !== providerCallId) continue;
+              const event = String(callItem?.event || '').trim().toLowerCase();
+              const callStatus = String(callItem?.status || '').trim().toUpperCase();
+              const isTerminalEvent = ['terminate', 'terminated', 'hangup', 'end', 'ended', 'cancel', 'cancelled', 'canceled', 'reject', 'rejected', 'declined', 'busy', 'no_answer', 'not_answered', 'timeout'].includes(event);
+              const normalizedTerminalStatus = ['FAILED', 'ENDED', 'MISSED', 'REJECTED'].includes(callStatus) ? callStatus : '';
+              if (isTerminalEvent || normalizedTerminalStatus) {
+                webhookCallStatus = normalizedTerminalStatus || 'ENDED';
+              }
+            }
+          }
+        }
+      }
+
+      if (!hasAnswerInSessions && webhookAnswerSdp) {
+        const existingSessionId = uniqueSessions[0]?.id;
+        if (existingSessionId) {
+          await db
+            .from('whatsapp_call_sessions')
+            .update({
+              answer_sdp: webhookAnswerSdp,
+              answer_sdp_type: webhookAnswerSdpType || 'answer',
+              session_state: 'CONNECTED',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingSessionId);
+          uniqueSessions[0].answer_sdp = webhookAnswerSdp;
+          uniqueSessions[0].answer_sdp_type = webhookAnswerSdpType || 'answer';
+          uniqueSessions[0].session_state = 'CONNECTED';
+        } else {
+          await db.from('whatsapp_call_sessions').insert({
+            call_log_id: callId,
+            provider_call_id: providerCallId,
+            answer_sdp: webhookAnswerSdp,
+            answer_sdp_type: webhookAnswerSdpType || 'answer',
+            session_state: 'CONNECTED',
+            meta: { source: 'webhook_extraction' },
+          });
+          uniqueSessions.push({
+            answer_sdp: webhookAnswerSdp,
+            answer_sdp_type: webhookAnswerSdpType || 'answer',
+            session_state: 'CONNECTED',
+            meta: { source: 'webhook_extraction' },
+          });
+        }
+      }
+
+      if (webhookCallStatus) {
+        const statusMap: Record<string, string> = {
+          RINGING: 'RINGING',
+          ACCEPTED: 'ACCEPTED',
+          CONNECTED: 'CONNECTED',
+          MISSED: 'MISSED',
+          REJECTED: 'REJECTED',
+          ENDED: 'ENDED',
+          FAILED: 'FAILED',
+        };
+        const mappedStatus = statusMap[webhookCallStatus];
+        if (mappedStatus) {
+          const statusPriority: Record<string, number> = { INITIATED: 0, RINGING: 1, ACCEPTED: 2, CONNECTED: 3, MISSED: 4, REJECTED: 4, ENDED: 4, FAILED: 4 };
+          if ((statusPriority[mappedStatus] ?? -1) > (statusPriority[currentCallStatus] ?? -1)) {
+            const updatePayload: Record<string, unknown> = { call_status: mappedStatus, updated_at: new Date().toISOString() };
+            if (mappedStatus === 'ENDED' || mappedStatus === 'FAILED' || mappedStatus === 'MISSED' || mappedStatus === 'REJECTED') {
+              updatePayload.ended_at = new Date().toISOString();
+            }
+            await db
+              .from('whatsapp_call_logs')
+              .update(updatePayload)
+              .eq('id', callId);
+          }
+        }
+      }
+    }
+
+    const latestCallStatus = webhookCallStatus || currentCallStatus || null;
+    return NextResponse.json({ success: true, sessions: uniqueSessions, ice_candidates: iceCandidates, call_status: latestCallStatus });
   } catch (error: any) {
     return callErrorResponse(error?.message || 'Internal server error', 500);
   }
@@ -154,7 +337,6 @@ export async function POST(
       const isInbound = isInboundDirection(callLog.direction);
       if (isInbound) {
         const metaAction = String(body?.meta_action || 'accept').trim().toLowerCase();
-        console.log('[InboundCall] action:', metaAction, 'SDP length:', sdp.length);
 
         if (metaAction === 'pre_accept') {
           const preResult = await preAcceptInboundCall({
@@ -181,12 +363,6 @@ export async function POST(
             callId: String(callLog.provider_call_id || callId),
             sdp,
           });
-          console.log('[InboundCall] acceptInboundCall result:', JSON.stringify({
-            success: acceptResult.success,
-            statusCode: acceptResult.statusCode,
-            error: acceptResult.error,
-            raw: acceptResult.raw,
-          }));
           providerRaw = acceptResult.raw || null;
           providerStatusCode = acceptResult.statusCode || null;
           if (acceptResult.success) {

@@ -123,21 +123,26 @@ async function providerRequest(path: string, init: RequestInit): Promise<WhatsAp
     }
 
     const data = await response.json().catch(() => ({}));
+    const firstCall = Array.isArray(data?.calls) ? data.calls[0] : null;
     return {
       success: true,
       callId:
         data?.call_id ||
         data?.id ||
+        firstCall?.id ||
+        firstCall?.call_id ||
         data?.data?.call_id ||
         data?.call?.id ||
         undefined,
       sessionId:
         data?.session_id ||
         data?.session?.id ||
+        firstCall?.session?.id ||
+        firstCall?.session_id ||
         data?.data?.session_id ||
         data?.call?.session_id ||
         undefined,
-      status: data?.status || data?.call_status || undefined,
+      status: data?.status || data?.call_status || firstCall?.status || undefined,
       statusCode: response.status,
       raw: data,
     };

@@ -325,7 +325,42 @@ export async function POST(request: NextRequest) {
         );
       }
       const rawData = result.raw as any;
-      console.log('[OutboundCall] Meta initiate response raw:', JSON.stringify(rawData));
+
+      const firstCall = Array.isArray(rawData?.calls) ? rawData.calls[0] : null;
+      const answerSdp = String(
+        rawData?.session?.sdp ||
+        rawData?.answer?.sdp ||
+        rawData?.sdp ||
+        firstCall?.session?.sdp ||
+        firstCall?.sdp ||
+        rawData?.data?.session?.sdp ||
+        rawData?.data?.sdp ||
+        (Array.isArray(rawData?.data) ? rawData.data[0]?.session?.sdp : null) ||
+        ''
+      ).trim() || null;
+      const answerSdpType = String(
+        rawData?.session?.sdp_type ||
+        rawData?.answer?.sdp_type ||
+        rawData?.sdp_type ||
+        firstCall?.session?.sdp_type ||
+        firstCall?.sdp_type ||
+        rawData?.data?.session?.sdp_type ||
+        rawData?.data?.sdp_type ||
+        ''
+      ).trim() || null;
+
+      if (answerSdp && insertedCallLog?.id) {
+        await db
+          .from('whatsapp_call_sessions')
+          .update({
+            answer_sdp: answerSdp,
+            answer_sdp_type: answerSdpType || 'answer',
+            session_state: 'NEGOTIATING',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('call_log_id', insertedCallLog.id);
+      }
+
       return NextResponse.json({
         success: true,
         action: 'initiate',
@@ -333,10 +368,8 @@ export async function POST(request: NextRequest) {
         db_call_id: insertedCallLog?.id || null,
         session_id: result.sessionId || null,
         status: result.status || 'INITIATED',
-        answer_sdp:
-          rawData?.session?.sdp || rawData?.answer?.sdp || rawData?.sdp || null,
-        answer_sdp_type:
-          rawData?.session?.sdp_type || rawData?.answer?.sdp_type || rawData?.sdp_type || null,
+        answer_sdp: answerSdp,
+        answer_sdp_type: answerSdpType,
       });
     }
 

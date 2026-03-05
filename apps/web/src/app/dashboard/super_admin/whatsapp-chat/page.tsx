@@ -389,9 +389,13 @@ export default function SuperAdminWhatsAppChatPage() {
   const [callMuted, setCallMuted] = useState(false);
   const dismissedCallIdsRef = useRef<Set<string>>(new Set());
   const activePeerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const outboundConnectedAtRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
+  const [isOutboundRtcConnected, setIsOutboundRtcConnected] = useState(false);
   const activeAudioStreamRef = useRef<MediaStream | null>(null);
   const activeRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+  const activeCallRef = useRef<string | null>(null);
   const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
   const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
   const [draftMessage, setDraftMessage] = useState('');
@@ -416,10 +420,17 @@ export default function SuperAdminWhatsAppChatPage() {
   const attachMenuRef = useRef<HTMLDivElement | null>(null);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   const selectedPhoneRef = useRef('');
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     selectedPhoneRef.current = selectedPhone;
   }, [selectedPhone]);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'instant' });
+    }
+  }, [conversation, selectedPhone]);
 
   const buildLiveOutboundCallOffer = useCallback(async (): Promise<{ sdp: string; sdp_type: 'offer' }> => {
     if (typeof window === 'undefined' || typeof RTCPeerConnection === 'undefined') {
@@ -458,17 +469,101 @@ export default function SuperAdminWhatsAppChatPage() {
       pc.addTransceiver('audio', { direction: 'recvonly' });
     }
 
-    pc.ontrack = (ev) => {
-      console.log('[OutboundCall] Remote audio track received');
-      const remoteStream = ev.streams[0] || new MediaStream([ev.track]);
-      const remoteAudio = document.createElement('audio');
-      remoteAudio.id = 'whatsapp-call-audio';
-      remoteAudio.autoplay = true;
-      remoteAudio.playsInline = true;
-      remoteAudio.srcObject = remoteStream;
+    let finalized = false;
+    const finalizeOngoingCall = () => {
+      if (finalized) return;
+      finalized = true;
+      const cid = activeCallRef.current;
+      if (cid) {
+        fetch(`/api/whatsapp/calls/${encodeURIComponent(cid)}/control`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'hangup' }),
+        }).catch(() => {});
+      }
+      if (activeRecorderRef.current && activeRecorderRef.current.state !== 'inactive') {
+        activeRecorderRef.current.stop();
+      }
+      activeRecorderRef.current = null;
+      recordingStartedAtRef.current = null;
+      outboundConnectedAtRef.current = null;
+      setIsOutboundRtcConnected(false);
+      if (activePeerConnectionRef.current) {
+        activePeerConnectionRef.current.close();
+        activePeerConnectionRef.current = null;
+      }
+      if (activeAudioStreamRef.current) {
+        activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+        activeAudioStreamRef.current = null;
+      }
       document.getElementById('whatsapp-call-audio')?.remove();
-      document.body.appendChild(remoteAudio);
-      remoteAudio.play().catch((e) => console.warn('[OutboundCall] Audio play failed:', e));
+      setActiveCallElapsed(0);
+      setCallMuted(false);
+      if (selectedPhoneRef.current) void loadCalls(selectedPhoneRef.current);
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') {
+        if (!outboundConnectedAtRef.current) outboundConnectedAtRef.current = Date.now();
+        setIsOutboundRtcConnected(true);
+      }
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        finalizeOngoingCall();
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+        finalizeOngoingCall();
+      }
+    };
+
+    pc.ontrack = (ev) => {
+      if (!outboundConnectedAtRef.current) outboundConnectedAtRef.current = Date.now();
+      setIsOutboundRtcConnected(true);
+      ev.track.onended = () => finalizeOngoingCall();
+      const remoteStream = ev.streams[0] || new MediaStream([ev.track]);
+      const existing = document.getElementById('whatsapp-call-audio') as HTMLAudioElement | null;
+      if (existing) {
+        existing.srcObject = remoteStream;
+        existing.play().catch(() => {});
+      } else {
+        const remoteAudio = document.createElement('audio');
+        remoteAudio.id = 'whatsapp-call-audio';
+        remoteAudio.autoplay = true;
+        remoteAudio.playsInline = true;
+        remoteAudio.srcObject = remoteStream;
+        document.body.appendChild(remoteAudio);
+        remoteAudio.play().catch(() => {});
+      }
+
+      try {
+        const ctx = new AudioContext();
+        const dest = ctx.createMediaStreamDestination();
+        if (audioStream) {
+          const localSrc = ctx.createMediaStreamSource(audioStream);
+          localSrc.connect(dest);
+        }
+        const remoteSrc = ctx.createMediaStreamSource(remoteStream);
+        remoteSrc.connect(dest);
+        const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm;codecs=opus' });
+        recordedChunksRef.current = [];
+        const startedAtMs = Date.now();
+        recordingStartedAtRef.current = startedAtMs;
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+        };
+        recorder.onstop = () => {
+          const currentCallId = activeCallRef.current;
+          const elapsedSec = Math.max(1, Math.floor((Date.now() - startedAtMs) / 1000));
+          recordingStartedAtRef.current = null;
+          if (currentCallId) saveCallRecording(currentCallId, recordedChunksRef.current, elapsedSec);
+        };
+        recorder.start(1000);
+        activeRecorderRef.current = recorder;
+      } catch {
+        // Recording not available
+      }
     };
 
     const offer = await pc.createOffer({ offerToReceiveAudio: true });
@@ -611,10 +706,12 @@ export default function SuperAdminWhatsAppChatPage() {
   }, [activeCallState, isIncomingActiveCall]);
   const hasLiveConnectedCall = useMemo(() => {
     if (!activeCall) return false;
+    const isOutbound = !isInboundCallDirection(activeCall.direction);
+    if (isOutbound) return isOutboundRtcConnected;
     const state = String(activeCallState || '').trim().toUpperCase();
     if (['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state)) return false;
     return ['ACCEPTED', 'CONNECTED'].includes(state);
-  }, [activeCall, activeCallState]);
+  }, [activeCall, activeCallState, isOutboundRtcConnected]);
   const isOutboundActiveCall = useMemo(() => {
     if (!activeCall) return false;
     if (isInboundCallDirection(activeCall.direction)) return false;
@@ -829,6 +926,9 @@ export default function SuperAdminWhatsAppChatPage() {
               activeRecorderRef.current.stop();
             }
             activeRecorderRef.current = null;
+            recordingStartedAtRef.current = null;
+            outboundConnectedAtRef.current = null;
+            setIsOutboundRtcConnected(false);
             if (activePeerConnectionRef.current) {
               activePeerConnectionRef.current.close();
               activePeerConnectionRef.current = null;
@@ -863,12 +963,31 @@ export default function SuperAdminWhatsAppChatPage() {
     };
   }, [loadCalls, loadConversation, supabase]);
 
-  // Active call timer (works for inbound popup as well as outbound active call)
+  const isOutboundConnected = useMemo(() => {
+    if (!isOutboundActiveCall) return false;
+    // Outbound timer/status must follow actual RTC connection only.
+    return isOutboundRtcConnected;
+  }, [isOutboundActiveCall, isOutboundRtcConnected]);
+
+  useEffect(() => {
+    activeCallRef.current = activeCall?.id || null;
+  }, [activeCall?.id]);
+
+  useEffect(() => {
+    if (!isOutboundActiveCall) {
+      outboundConnectedAtRef.current = null;
+      recordingStartedAtRef.current = null;
+      setIsOutboundRtcConnected(false);
+    }
+  }, [isOutboundActiveCall]);
+
   useEffect(() => {
     let startMs: number | null = null;
     if (incomingPopup?.phase === 'active') {
       startMs = incomingPopup.acceptedAt || Date.now();
-    } else if ((hasLiveConnectedCall || isOutboundActiveCall) && activeCall) {
+    } else if (isOutboundConnected) {
+      startMs = outboundConnectedAtRef.current || Date.now();
+    } else if (hasLiveConnectedCall && activeCall && isInboundCallDirection(activeCall.direction)) {
       const sourceTs = String(
         activeCall.started_at || activeCall.updated_at || activeCall.created_at || ''
       ).trim();
@@ -888,7 +1007,7 @@ export default function SuperAdminWhatsAppChatPage() {
     incomingPopup?.phase,
     incomingPopup?.acceptedAt,
     hasLiveConnectedCall,
-    isOutboundActiveCall,
+    isOutboundConnected,
     activeCall?.started_at,
     activeCall?.updated_at,
     activeCall?.created_at,
@@ -947,6 +1066,9 @@ export default function SuperAdminWhatsAppChatPage() {
           'Confirm customer opt-in for WhatsApp call before proceeding. Continue?'
         );
         if (!ok) return;
+        setIsOutboundRtcConnected(false);
+        outboundConnectedAtRef.current = null;
+        recordingStartedAtRef.current = null;
         try {
           sessionPayload = await buildLiveOutboundCallOffer();
         } catch (error: any) {
@@ -1011,22 +1133,17 @@ export default function SuperAdminWhatsAppChatPage() {
           );
           return;
         }
-        console.log('[OutboundCall] Initiate response:', JSON.stringify({
-          call_id: data?.call_id,
-          answer_sdp: data?.answer_sdp ? `${String(data.answer_sdp).length} chars` : null,
-          answer_sdp_type: data?.answer_sdp_type,
-        }));
         const initAnswerSdp = String(data?.answer_sdp || '').trim();
         if (initAnswerSdp) {
           const pc = activePeerConnectionRef.current;
           if (pc && pc.signalingState !== 'closed' && !pc.remoteDescription) {
             try {
+              const normalizedAnswer = normalizeSdpForBrowser(initAnswerSdp);
               await pc.setRemoteDescription(
-                new RTCSessionDescription({ type: 'answer', sdp: normalizeSdpForBrowser(initAnswerSdp) })
+                new RTCSessionDescription({ type: 'answer', sdp: normalizedAnswer })
               );
-              console.log('[OutboundCall] Answer SDP set from initiate response — voice path active');
-            } catch (e) {
-              console.warn('[OutboundCall] Failed to set initial answer SDP:', e);
+            } catch {
+              // Will be retried via polling
             }
           }
         }
@@ -1043,45 +1160,114 @@ export default function SuperAdminWhatsAppChatPage() {
   useEffect(() => {
     if (!isOutboundActiveCall || !activeCall?.id) return;
     const pc = activePeerConnectionRef.current;
-    if (!pc || pc.signalingState === 'closed' || pc.remoteDescription) return;
+    if (!pc || pc.signalingState === 'closed') return;
+    const alreadyConnected = pc.connectionState === 'connected' && !!pc.remoteDescription;
 
     let cancelled = false;
+    const appliedCandidateKeys = new Set<string>();
+
     const poll = async () => {
       if (cancelled) return;
       const currentPc = activePeerConnectionRef.current;
-      if (!currentPc || currentPc.signalingState === 'closed' || currentPc.remoteDescription) return;
+      if (!currentPc || currentPc.signalingState === 'closed') return;
+
       try {
         const res = await fetch(
-          `/api/whatsapp/calls/${encodeURIComponent(activeCall.id)}/session`,
+          `/api/whatsapp/calls/${encodeURIComponent(activeCall!.id)}/session`,
           { cache: 'no-store' }
         );
         const json = await res.json().catch(() => ({}));
         const sessions = Array.isArray(json?.sessions) ? json.sessions : [];
-        const answerRow = sessions.find((row: any) => String(row?.answer_sdp || '').trim());
-        const answerSdpRaw = String(answerRow?.answer_sdp || '').trim();
-        if (
-          answerSdpRaw &&
-          !cancelled &&
-          currentPc.signalingState !== 'closed' &&
-          !currentPc.remoteDescription
-        ) {
-          await currentPc.setRemoteDescription(
-            new RTCSessionDescription({ type: 'answer', sdp: normalizeSdpForBrowser(answerSdpRaw) })
-          );
-          console.log('[OutboundCall] Answer SDP set via polling — voice path active');
+        const candidates = Array.isArray(json?.ice_candidates) ? json.ice_candidates : [];
+        const callStatus = String(json?.call_status || '').trim().toUpperCase();
+
+        if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(callStatus) && !cancelled) {
+          if (activeRecorderRef.current && activeRecorderRef.current.state !== 'inactive') {
+            activeRecorderRef.current.stop();
+          }
+          activeRecorderRef.current = null;
+          recordingStartedAtRef.current = null;
+          outboundConnectedAtRef.current = null;
+          setIsOutboundRtcConnected(false);
+          if (activePeerConnectionRef.current) {
+            activePeerConnectionRef.current.close();
+            activePeerConnectionRef.current = null;
+          }
+          if (activeAudioStreamRef.current) {
+            activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+            activeAudioStreamRef.current = null;
+          }
+          document.getElementById('whatsapp-call-audio')?.remove();
+          setActiveCallElapsed(0);
+          setCallMuted(false);
+          if (selectedPhoneRef.current) void loadCalls(selectedPhoneRef.current);
           return;
+        }
+
+        if (!currentPc.remoteDescription && !cancelled) {
+          let remoteSdp: string | null = null;
+
+          const answerRow = sessions.find((row: any) => String(row?.answer_sdp || '').trim());
+          if (answerRow) {
+            remoteSdp = String(answerRow.answer_sdp).trim();
+          }
+
+          if (!remoteSdp) {
+            const webhookRow = sessions.find((row: any) => {
+              const sdp = String(row?.offer_sdp || '').trim();
+              const source = String((row?.meta as any)?.source || '').trim();
+              return sdp && source === 'webhook';
+            });
+            if (webhookRow) remoteSdp = String(webhookRow.offer_sdp).trim();
+          }
+
+          if (remoteSdp && !cancelled && currentPc.signalingState !== 'closed') {
+            try {
+              const normalizedSdp = normalizeSdpForBrowser(remoteSdp);
+              await currentPc.setRemoteDescription(
+                new RTCSessionDescription({ type: 'answer', sdp: normalizedSdp })
+              );
+            } catch {
+              // Will retry on next poll
+            }
+          }
+        }
+
+        if (currentPc.remoteDescription && candidates.length > 0) {
+          for (const cand of candidates) {
+            const candStr = String(cand?.candidate || '').trim();
+            if (!candStr) continue;
+            const key = `${candStr}:${cand?.sdp_mid || ''}:${cand?.sdp_mline_index ?? ''}`;
+            if (appliedCandidateKeys.has(key)) continue;
+            try {
+              await currentPc.addIceCandidate(new RTCIceCandidate({
+                candidate: candStr,
+                sdpMid: cand?.sdp_mid || undefined,
+                sdpMLineIndex: cand?.sdp_mline_index ?? undefined,
+              }));
+              appliedCandidateKeys.add(key);
+            } catch {
+              // Skip invalid candidate
+            }
+          }
         }
       } catch {
         // Will retry
       }
-      if (!cancelled) setTimeout(poll, 3000);
+
+      if (!cancelled) {
+        const currentPc2 = activePeerConnectionRef.current;
+        if (!currentPc2 || currentPc2.signalingState === 'closed') return;
+        const isConnected = currentPc2.connectionState === 'connected' && !!currentPc2.remoteDescription;
+        setTimeout(poll, isConnected ? 1500 : 2500);
+      }
     };
-    const timer = setTimeout(poll, 1500);
+    const timer = setTimeout(poll, alreadyConnected ? 1500 : 1200);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isOutboundActiveCall, activeCall?.id, activeCallState]);
+  }, [isOutboundActiveCall, activeCall?.id, activeCallState, loadCalls]);
 
   const handleSendFreshPermissionRequest = useCallback(async () => {
     if (!selectedPhone || callActionLoading) return;
@@ -1137,6 +1323,9 @@ export default function SuperAdminWhatsAppChatPage() {
       activeRecorderRef.current.stop();
     }
     activeRecorderRef.current = null;
+    recordingStartedAtRef.current = null;
+    outboundConnectedAtRef.current = null;
+    setIsOutboundRtcConnected(false);
     if (activePeerConnectionRef.current) {
       activePeerConnectionRef.current.close();
       activePeerConnectionRef.current = null;
@@ -1177,7 +1366,7 @@ export default function SuperAdminWhatsAppChatPage() {
     [activeCall?.id, callControlLoading, cleanupCallMedia, loadCalls, selectedPhone]
   );
 
-  const saveCallRecording = useCallback(async (callId: string, chunks: Blob[]) => {
+  const saveCallRecording = useCallback(async (callId: string, chunks: Blob[], durationSeconds: number) => {
     if (chunks.length === 0) return;
     try {
       const blob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
@@ -1185,13 +1374,12 @@ export default function SuperAdminWhatsAppChatPage() {
       const form = new FormData();
       form.append('file', blob, `call-recording-${callId}.webm`);
       form.append('call_id', callId);
+      form.append('duration_seconds', String(Math.max(1, Math.floor(durationSeconds || 0))));
       await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/recording`, {
         method: 'POST',
         body: form,
       }).catch(() => {});
-      console.log('[CallRecording] Saved recording, size:', blob.size);
-    } catch (e) {
-      console.warn('[CallRecording] Failed to save:', e);
+    } catch {
     }
   }, []);
 
@@ -1201,21 +1389,35 @@ export default function SuperAdminWhatsAppChatPage() {
     if (!['INITIATED', 'RINGING', 'NEGOTIATING'].includes(state)) return;
 
     const timeout = setTimeout(() => {
-      console.log('[OutboundCall] Auto-ending call after 60s timeout (stuck in', state, ')');
       const callId = activeCall.id;
       fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/control`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'hangup' }),
       }).catch(() => {});
-      cleanupCallMedia();
+      if (activeRecorderRef.current && activeRecorderRef.current.state !== 'inactive') {
+        activeRecorderRef.current.stop();
+      }
+      activeRecorderRef.current = null;
+      recordingStartedAtRef.current = null;
+      outboundConnectedAtRef.current = null;
+      setIsOutboundRtcConnected(false);
+      if (activePeerConnectionRef.current) {
+        activePeerConnectionRef.current.close();
+        activePeerConnectionRef.current = null;
+      }
+      if (activeAudioStreamRef.current) {
+        activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+        activeAudioStreamRef.current = null;
+      }
+      document.getElementById('whatsapp-call-audio')?.remove();
       setActiveCallElapsed(0);
       setCallMuted(false);
       if (selectedPhoneRef.current) void loadCalls(selectedPhoneRef.current);
     }, 60_000);
 
     return () => clearTimeout(timeout);
-  }, [isOutboundActiveCall, activeCall?.id, activeCallState, cleanupCallMedia, loadCalls]);
+  }, [isOutboundActiveCall, activeCall?.id, activeCallState, loadCalls]);
 
   const handleIncomingPopupAction = useCallback(
     async (action: 'hangup') => {
@@ -1294,7 +1496,7 @@ export default function SuperAdminWhatsAppChatPage() {
           audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           activeAudioStreamRef.current = audioStream;
         } catch {
-          console.warn('[InboundCall] Microphone access denied');
+          // Microphone access denied — receive-only mode
         }
 
         // Step 2: Get Meta's SDP offer from saved sessions
@@ -1334,8 +1536,6 @@ export default function SuperAdminWhatsAppChatPage() {
           .join('\r\n')
           .concat('\r\n');
 
-        console.log('[InboundCall] Sanitized SDP offer, length:', sanitizedOffer.length);
-
         // Step 3: Create RTCPeerConnection
         const pc = new RTCPeerConnection({
           iceServers: [
@@ -1355,7 +1555,6 @@ export default function SuperAdminWhatsAppChatPage() {
 
         // Play incoming audio and start recording
         pc.ontrack = (ev) => {
-          console.log('[InboundCall] Remote audio track received');
           const remoteStream = ev.streams[0] || new MediaStream([ev.track]);
           const remoteAudio = document.createElement('audio');
           remoteAudio.id = 'whatsapp-call-audio';
@@ -1364,7 +1563,7 @@ export default function SuperAdminWhatsAppChatPage() {
           remoteAudio.srcObject = remoteStream;
           document.getElementById('whatsapp-call-audio')?.remove();
           document.body.appendChild(remoteAudio);
-          remoteAudio.play().catch((e) => console.warn('[InboundCall] Audio play failed:', e));
+          remoteAudio.play().catch(() => {});
 
           // Start recording: mix local + remote audio
           try {
@@ -1378,18 +1577,20 @@ export default function SuperAdminWhatsAppChatPage() {
             remoteSrc.connect(dest);
             const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm;codecs=opus' });
             recordedChunksRef.current = [];
+            const startedAtMs = Date.now();
+            recordingStartedAtRef.current = startedAtMs;
             recorder.ondataavailable = (e) => {
               if (e.data.size > 0) recordedChunksRef.current.push(e.data);
             };
             recorder.onstop = () => {
-              console.log('[CallRecording] Recorder stopped, chunks:', recordedChunksRef.current.length);
-              if (callId) saveCallRecording(callId, recordedChunksRef.current);
+              const elapsedSec = Math.max(1, Math.floor((Date.now() - startedAtMs) / 1000));
+              recordingStartedAtRef.current = null;
+              if (callId) saveCallRecording(callId, recordedChunksRef.current, elapsedSec);
             };
             recorder.start(1000);
             activeRecorderRef.current = recorder;
-            console.log('[CallRecording] Recording started');
-          } catch (recErr) {
-            console.warn('[CallRecording] Could not start recording:', recErr);
+          } catch {
+            // Recording not available
           }
         };
 
@@ -1421,12 +1622,6 @@ export default function SuperAdminWhatsAppChatPage() {
           return;
         }
 
-        console.log('[InboundCall] Browser SDP ready:', {
-          length: answerSdp.length,
-          candidates: (answerSdp.match(/a=candidate:/g) || []).length,
-          iceState: pc.iceGatheringState,
-        });
-
         // Step 4: Send pre_accept to Meta (tells Meta we are preparing)
         const sendToBackend = async (metaAction: string, sdpToSend: string) => {
           const res = await fetch(
@@ -1449,29 +1644,20 @@ export default function SuperAdminWhatsAppChatPage() {
 
         const { res: preRes, data: preData } = await sendToBackend('pre_accept', answerSdp);
         if (!preRes.ok || !preData?.success) {
-          console.error('[InboundCall] pre_accept failed:', preData);
           const errMsg = String(preData?.error || 'Meta rejected pre_accept');
           setConversationError(`Call pre-accept failed: ${errMsg}`);
           return;
         }
-        console.log('[InboundCall] pre_accept succeeded');
-
         // Step 5: Wait for WebRTC connection to establish (max 10s)
-        pc.oniceconnectionstatechange = () => {
-          console.log('[InboundCall] ICE state:', pc.iceConnectionState);
-        };
-
         const connected = await new Promise<boolean>((resolve) => {
           if (pc.connectionState === 'connected') {
             resolve(true);
             return;
           }
           const timeout = setTimeout(() => {
-            console.warn('[InboundCall] Connection timeout, sending accept anyway');
             resolve(true);
           }, 10000);
           pc.onconnectionstatechange = () => {
-            console.log('[InboundCall] Connection state:', pc.connectionState);
             if (pc.connectionState === 'connected') {
               clearTimeout(timeout);
               resolve(true);
@@ -1490,18 +1676,14 @@ export default function SuperAdminWhatsAppChatPage() {
         // Step 6: Send final accept to Meta
         const { res: acceptRes, data: acceptData } = await sendToBackend('accept', answerSdp);
         if (!acceptRes.ok || !acceptData?.success) {
-          console.error('[InboundCall] accept failed:', acceptData);
           const errMsg = String(acceptData?.error || 'Meta rejected call accept');
           setConversationError(`Call accept failed: ${errMsg}`);
-        } else {
-          console.log('[InboundCall] Call accepted successfully');
         }
 
         if (phone) await loadCalls(phone);
         else if (selectedPhoneRef.current) await loadCalls(selectedPhoneRef.current);
         switchToActive();
       } catch (e: any) {
-        console.error('[InboundCall] Error:', e);
         setConversationError(e?.message || 'Failed to accept incoming call');
       } finally {
         setCallControlLoading(null);
@@ -1795,7 +1977,11 @@ export default function SuperAdminWhatsAppChatPage() {
                         Incoming call
                       </span>
                     ) : null}
-                    {(hasLiveConnectedCall || isOutboundActiveCall) ? (
+                    {isOutboundActiveCall && !isOutboundConnected ? (
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-700 animate-pulse">
+                        {activeCallState === 'RINGING' ? 'Ringing' : 'Calling'}
+                      </span>
+                    ) : (hasLiveConnectedCall || isOutboundConnected) ? (
                       <span className="rounded-full bg-sky-50 px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-sky-700">
                         {String(Math.floor(activeCallElapsed / 60)).padStart(2, '0')}:
                         {String(activeCallElapsed % 60).padStart(2, '0')}
@@ -1894,15 +2080,18 @@ export default function SuperAdminWhatsAppChatPage() {
                         const recordingUrl = hasRecording
                           ? call.recordings![0].recording_proxy_path || call.recordings![0].recording_url || null
                           : null;
-                        // Calculate duration from available timestamps
                         let callDuration = call.duration_seconds;
-                        if ((callDuration == null || callDuration <= 0) && isAccepted && call.started_at) {
-                          const startMs = new Date(call.started_at).getTime();
-                          const endRef = call.ended_at || call.updated_at || call.created_at;
-                          if (endRef) {
-                            const endMs = new Date(endRef).getTime();
-                            if (endMs > startMs) {
-                              callDuration = Math.floor((endMs - startMs) / 1000);
+                        if ((callDuration == null || callDuration <= 0) && isAccepted) {
+                          const answeredAt = (call.meta as any)?.answered_at;
+                          const connectTime = answeredAt || call.started_at;
+                          if (connectTime) {
+                            const startMs = new Date(connectTime).getTime();
+                            const endRef = call.ended_at || call.updated_at || call.created_at;
+                            if (endRef) {
+                              const endMs = new Date(endRef).getTime();
+                              if (endMs > startMs) {
+                                callDuration = Math.floor((endMs - startMs) / 1000);
+                              }
                             }
                           }
                         }
@@ -2138,6 +2327,22 @@ export default function SuperAdminWhatsAppChatPage() {
                           ) : null}
                           {(() => {
                             // Extract media URL from message or payload
+                            const rawAudioId =
+                              msg.payload?.audio?.id ||
+                              msg.payload?.messages?.[0]?.audio?.id ||
+                              null;
+                            const rawImageId =
+                              msg.payload?.messages?.[0]?.image?.id ||
+                              msg.payload?.image?.id ||
+                              null;
+                            const rawVideoId =
+                              msg.payload?.messages?.[0]?.video?.id ||
+                              msg.payload?.video?.id ||
+                              null;
+                            const rawDocId =
+                              msg.payload?.messages?.[0]?.document?.id ||
+                              msg.payload?.document?.id ||
+                              null;
                             const mediaUrl =
                               msg.media_url ||
                               msg.payload?.media_url ||
@@ -2147,8 +2352,10 @@ export default function SuperAdminWhatsAppChatPage() {
                               msg.payload?.audio?.link ||
                               msg.payload?.document?.link ||
                               msg.payload?.sticker?.link ||
-                              msg.payload?.messages?.[0]?.image?.id ||
-                              msg.payload?.messages?.[0]?.video?.id ||
+                              (rawAudioId ? `/api/whatsapp/media/${encodeURIComponent(rawAudioId)}` : null) ||
+                              (rawImageId ? `/api/whatsapp/media/${encodeURIComponent(rawImageId)}` : null) ||
+                              (rawVideoId ? `/api/whatsapp/media/${encodeURIComponent(rawVideoId)}` : null) ||
+                              (rawDocId ? `/api/whatsapp/media/${encodeURIComponent(rawDocId)}` : null) ||
                               null;
                             const mediaMime = String(msg.media_mime_type || msg.payload?.media_mime_type || '').toLowerCase();
 
@@ -2217,9 +2424,16 @@ export default function SuperAdminWhatsAppChatPage() {
                                 ) : null}
 
                                 {/* Audio */}
-                                {mediaUrl && (msgType === 'AUDIO' || mediaMime.startsWith('audio/')) ? (
-                                  <div className="mb-1">
-                                    <audio controls preload="none" src={mediaUrl} className="w-full" />
+                                {(msgType === 'AUDIO' || mediaMime.startsWith('audio/')) ? (
+                                  <div className="mb-1 flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: outbound ? 'rgba(0,0,0,0.06)' : '#f0f2f5' }}>
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884]">
+                                      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" /></svg>
+                                    </span>
+                                    {mediaUrl ? (
+                                      <audio controls preload="none" src={mediaUrl} className="h-8 min-w-0 flex-1" style={{ maxWidth: '220px' }} />
+                                    ) : (
+                                      <span className="text-xs text-gray-500">Audio not available</span>
+                                    )}
                                   </div>
                                 ) : null}
 
@@ -2252,7 +2466,7 @@ export default function SuperAdminWhatsAppChatPage() {
                                     <PhoneCall className="h-4 w-4 flex-shrink-0" />
                                     <span className="whitespace-pre-wrap break-words">{bubbleText}</span>
                                   </div>
-                                ) : !hasLocation && !(mediaUrl && (msgType === 'IMAGE' || msgType === 'STICKER') && !String(msg.media_caption || msg.text_body || '').trim()) ? (
+                                ) : !hasLocation && msgType !== 'AUDIO' && !mediaMime.startsWith('audio/') && !(mediaUrl && (msgType === 'IMAGE' || msgType === 'STICKER') && !String(msg.media_caption || msg.text_body || '').trim()) ? (
                                   <div className="whitespace-pre-wrap break-words">{bubbleText}</div>
                                 ) : String(msg.media_caption || '').trim() ? (
                                   <div className="whitespace-pre-wrap break-words">{String(msg.media_caption || '').trim()}</div>
@@ -2311,6 +2525,7 @@ export default function SuperAdminWhatsAppChatPage() {
                     );
                     });
                   })()}
+                  <div ref={chatEndRef} />
                 </div>
               )}
             </div>
@@ -2606,15 +2821,25 @@ export default function SuperAdminWhatsAppChatPage() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-300">
-                {hasLiveConnectedCall ? 'Connected' : 'Calling…'}
+                {isOutboundConnected
+                  ? 'Connected'
+                  : activeCallState === 'RINGING'
+                    ? 'Ringing…'
+                    : 'Calling…'}
               </p>
               <p className="truncate text-sm font-bold text-white">
                 {formatPhone(activeCall?.customer_phone || selectedPhone)}
               </p>
-              <p className="text-[12px] font-mono text-green-400">
-                {String(Math.floor(activeCallElapsed / 60)).padStart(2, '0')}:
-                {String(activeCallElapsed % 60).padStart(2, '0')}
-              </p>
+              {isOutboundConnected ? (
+                <p className="text-[12px] font-mono text-green-400">
+                  {String(Math.floor(activeCallElapsed / 60)).padStart(2, '0')}:
+                  {String(activeCallElapsed % 60).padStart(2, '0')}
+                </p>
+              ) : (
+                <p className="text-[12px] text-blue-400 animate-pulse">
+                  {activeCallState === 'RINGING' ? 'Waiting for answer…' : 'Connecting…'}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center justify-around border-t border-white/10 px-4 pb-4 pt-3">
