@@ -449,9 +449,16 @@ export async function POST(request: NextRequest) {
           parseTimestampFlexible(callItem?.started_at) ||
           parseTimestampFlexible(callItem?.timestamp) ||
           null;
-        const endedAt = parseTimestampFlexible(callItem?.ended_at) || null;
+        const isTerminated = ['ENDED', 'MISSED', 'REJECTED'].includes(mappedCallStatus);
+        const endedAt =
+          parseTimestampFlexible(callItem?.ended_at) ||
+          (isTerminated ? parseTimestampFlexible(callItem?.timestamp) || now : null);
         const durationRaw = Number(callItem?.duration);
-        const durationSeconds = Number.isFinite(durationRaw) && durationRaw >= 0 ? Math.floor(durationRaw) : null;
+        let durationSeconds = Number.isFinite(durationRaw) && durationRaw >= 0 ? Math.floor(durationRaw) : null;
+        if (durationSeconds == null && startedAt && endedAt && isTerminated) {
+          const diff = Math.floor((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000);
+          if (Number.isFinite(diff) && diff >= 0) durationSeconds = diff;
+        }
         const customerPhone =
           normalizePhone(callItem?.from) || normalizePhone(callItem?.to) || normalizePhone(change?.value?.from);
         if (!customerPhone) {

@@ -121,8 +121,8 @@ export default function BookServicePage() {
     },
     {
       id: 'step3',
-      title: 'Choose your service',
-      subtitle: '',
+      title: 'Choose your plan',
+      subtitle: 'Select a service package for your vehicle',
       type: 'pricing'
     },
     {
@@ -1828,10 +1828,34 @@ export default function BookServicePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/30">
+    <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
-      <div className="container mx-auto px-3 sm:px-4 md:px-6 pt-16 sm:pt-20 md:pt-24 pb-8 sm:pb-12 md:pb-16">
+
+      {/* Hero Section */}
+      <div className="bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary pt-20 sm:pt-24 md:pt-28 pb-16 sm:pb-20 md:pb-24">
+        <div className="container mx-auto px-4 sm:px-4 md:px-6">
+          <div className="max-w-6xl mx-auto">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-1 sm:mb-2">
+              Book Service Now
+            </h1>
+            <p className="text-sm sm:text-base text-white/80 mb-4 sm:mb-5">
+              {currentStepData.subtitle || 'Select your location and car model'}
+            </p>
+            <div className="flex items-center gap-2">
+              {steps.map((step, index) => (
+                <div
+                  key={step.id}
+                  className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full transition-all duration-300 ${
+                    index <= currentStep ? 'bg-white' : 'bg-white/30'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 -mt-10 sm:-mt-14 md:-mt-16 pb-8 sm:pb-12 md:pb-16 relative z-10">
         <div className="max-w-6xl mx-auto">
           <div ref={formCardRef} className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
             {/* Progress Bar */}
@@ -2028,6 +2052,14 @@ export default function BookServicePage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Trust Badge */}
+                    <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200/50 rounded-xl">
+                      <Sparkles className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                      <p className="text-sm font-medium text-purple-800">
+                        No login required. Book in under 2 minutes.
+                      </p>
+                    </div>
                     </div>
                   </div>
                 )}
@@ -2128,15 +2160,9 @@ export default function BookServicePage() {
                       </div>
                     ) : (
                       <>
-                        <div className="mb-4 sticky top-[4.5rem] z-20 bg-white/95 backdrop-blur border border-gray-200 rounded-2xl p-3 sm:p-4 shadow-sm">
-                          <div className="text-lg sm:text-xl font-extrabold text-gray-900">Choose your plan</div>
-                          <div className="mt-0.5 text-xs sm:text-sm text-gray-600">
-                            {formData.carModel?.make} {formData.carModel?.model_name} in {formData.city?.name}
-                          </div>
-                        </div>
-
+                        {/* "Choose your service" sub-heading (shown once, smaller font) */}
                         <div className="mb-3">
-                          <div className="text-lg sm:text-xl font-extrabold text-gray-900">Choose your service</div>
+                          <div className="text-sm sm:text-base font-bold text-gray-700">Choose your service</div>
                         </div>
 
                         {/* Category pills (horizontal) */}
@@ -2210,7 +2236,7 @@ export default function BookServicePage() {
                                   </div>
                                 </div>
                               )}
-                              <div className={`grid ${showReferencePlanUi ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4' : 'grid-cols-2 xl:grid-cols-4'} gap-3 sm:gap-5`}>
+                              <div className={`grid ${showReferencePlanUi ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 xl:grid-cols-4'} gap-3 sm:gap-5`}>
                                 {planServices.map((service: any, idx: number) => {
                                   const isSelected = formData.selectedServices.includes(service.id);
                                   const isLockedByOtherSelection =
@@ -2258,9 +2284,26 @@ export default function BookServicePage() {
                                   </div>
                                 )}
 
-                                      <div className={`${showReferencePlanUi ? 'flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between' : 'flex items-start justify-between gap-3'}`}>
-                                        <div className="min-w-0">
-                                          {!showReferencePlanUi ? (
+                                      {showReferencePlanUi ? (
+                                        <>
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                              <div className="text-lg sm:text-xl leading-[1.15] font-extrabold text-gray-900 break-words">{displayTitle}</div>
+                                              <div className="mt-1 text-xs sm:text-sm font-bold text-brand-primary">
+                                                {pointsValue > 0 ? `${pointsValue} Activity Points` : 'Activity Points Included'}
+                                              </div>
+                                            </div>
+                                            {/* Price at top-right corner on mobile only */}
+                                            <div className="text-right flex-shrink-0 sm:hidden">
+                                              <div className="text-lg font-extrabold leading-none text-gray-900">
+                                                {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'NA'}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0">
                                             <div className="inline-flex items-center gap-2">
                                               <span className="text-xs font-extrabold tracking-wide uppercase text-gray-600">{planLabel}</span>
                                               {isSelected ? (
@@ -2269,62 +2312,48 @@ export default function BookServicePage() {
                                                 </span>
                                               ) : null}
                                             </div>
-                                          ) : null}
-                                          <div className={`${showReferencePlanUi ? 'mt-1 text-[22px] sm:text-[26px] leading-[1.15]' : 'mt-1 text-lg'} font-extrabold text-gray-900 break-words`}>{displayTitle}</div>
-                                          {showReferencePlanUi ? (
-                                            <div className="mt-1 text-sm sm:text-base font-bold text-brand-primary">
-                                              {pointsValue > 0 ? `${pointsValue} Activity Points` : 'Activity Points Included'}
+                                            <div className="mt-1 text-lg font-extrabold text-gray-900 break-words">{displayTitle}</div>
+                                            <div className="mt-2 flex items-center gap-2 text-xs text-gray-600 flex-wrap">
+                                              {eta ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1">
+                                                  <Clock className="w-3.5 h-3.5" /> {eta}
+                                                </span>
+                                              ) : null}
+                                              {service.points ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1">
+                                                  <CheckCircle className="w-3.5 h-3.5" /> {service.points} pts
+                                                </span>
+                                              ) : null}
                                             </div>
-                                          ) : null}
-                                          <div className="mt-2 flex items-center gap-2 text-xs text-gray-600 flex-wrap">
-                                      {!showReferencePlanUi && eta ? (
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1">
-                                          <Clock className="w-3.5 h-3.5" /> {eta}
-                                        </span>
-                                      ) : null}
-                                      {!showReferencePlanUi && service.points ? (
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1">
-                                          <CheckCircle className="w-3.5 h-3.5" /> {service.points} pts
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                  <div className={`${showReferencePlanUi ? 'text-left sm:text-right' : 'text-right'}`}>
-                                    {showReferencePlanUi ? (
-                                      <>
-                                        <div className="text-[24px] sm:text-[28px] font-extrabold leading-none text-gray-900">
-                                          {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'NA'}
+                                          </div>
+                                          <div className="text-right">
+                                            <button
+                                              type="button"
+                                              onClick={() => setDetailsService({ service, checklistTemplate: checklist, price })}
+                                              className="text-xs font-bold text-brand-primary hover:text-brand-secondary underline underline-offset-4"
+                                            >
+                                              View checklist
+                                            </button>
+                                          </div>
                                         </div>
-                                        {newPointsCount > 0 ? (
-                                          <div className="mt-1 text-[11px] font-bold text-brand-primary">+{newPointsCount} new points</div>
-                                        ) : null}
-                                      </>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={() => setDetailsService({ service, checklistTemplate: checklist, price })}
-                                        className="text-xs font-bold text-brand-primary hover:text-brand-secondary underline underline-offset-4"
-                                      >
-                                        View checklist
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
+                                      )}
 
                                       <div className="mt-4">
-                                        <div className="flex items-center justify-between mb-2">
-                                          <div className="text-xs font-bold text-gray-700">{showReferencePlanUi ? 'Includes' : 'What you get'}</div>
-                                          {!showReferencePlanUi && checklist.source === 'fallback' ? (
-                                            <span className="text-[10px] font-bold text-gray-500">Standard</span>
-                                          ) : !showReferencePlanUi ? (
-                                            <span className="text-[10px] font-bold text-green-700">Official</span>
-                                          ) : null}
-                                        </div>
-                                        <div className={`${showReferencePlanUi ? 'grid grid-cols-2 gap-2' : 'space-y-2'}`}>
+                                        {!showReferencePlanUi && (
+                                          <div className="flex items-center justify-between mb-2">
+                                            <div className="text-xs font-bold text-gray-700">What you get</div>
+                                            {checklist.source === 'fallback' ? (
+                                              <span className="text-[10px] font-bold text-gray-500">Standard</span>
+                                            ) : (
+                                              <span className="text-[10px] font-bold text-green-700">Official</span>
+                                            )}
+                                          </div>
+                                        )}
+                                        <div className={`${showReferencePlanUi ? 'space-y-2' : 'space-y-2'}`}>
                                   {visiblePointItems.length > 0 ? (
                                     visiblePointItems.map((it: any, i: number) => (
-                                      <div key={`${it?.name || ''}-${i}`} className={`flex items-start gap-2 ${showReferencePlanUi ? 'text-[12px] sm:text-[13px] border border-gray-200 rounded-xl p-2' : 'text-sm'} text-gray-700`}>
-                                        <CheckCircle className={`${showReferencePlanUi ? 'w-4 h-4' : 'w-4 h-4'} text-green-600 flex-shrink-0 mt-0.5`} />
+                                      <div key={`${it?.name || ''}-${i}`} className={`flex items-start gap-2 ${showReferencePlanUi ? 'text-[13px]' : 'text-sm'} text-gray-700`}>
+                                        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
                                         <span className="break-words line-clamp-2">
                                           {it?.name || String(it)}
                                           {!showReferencePlanUi && it?.category ? (
@@ -2340,7 +2369,7 @@ export default function BookServicePage() {
                                             <button
                                               type="button"
                                               onClick={() => setDetailsService({ service, checklistTemplate: checklist, price })}
-                                              className="text-xs font-bold text-brand-primary border border-brand-primary/30 rounded-xl p-2 hover:bg-brand-primary/5"
+                                              className="text-[13px] font-bold text-brand-primary hover:text-brand-secondary mt-1"
                                             >
                                               View all points
                                             </button>
@@ -2348,21 +2377,26 @@ export default function BookServicePage() {
                                         </div>
                                 </div>
 
-                                <div className={`mt-auto pt-4 border-t border-gray-200 ${showReferencePlanUi ? 'min-h-[70px] flex flex-col items-start gap-3' : 'flex items-end justify-between gap-3'}`}>
-                                  {!showReferencePlanUi ? (
+                                <div className={`mt-auto pt-4 ${showReferencePlanUi ? 'flex flex-col items-start gap-2' : 'border-t border-gray-200 flex items-end justify-between gap-3'}`}>
+                                  {showReferencePlanUi ? (
+                                    <div className="text-2xl font-extrabold text-gray-900">
+                                      {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'NA'}
+                                    </div>
+                                  ) : (
                                     <div>
                                       <div className="text-xs text-gray-500">{`Total for ${formData.city?.name}`}</div>
                                       <div className="text-xl font-extrabold text-gray-900">
                                         {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'Price on request'}
                                       </div>
                                     </div>
-                                  ) : null}
+                                  )}
                                   <button
                                     type="button"
                                           onClick={() => {
                                             if (isLockedByOtherSelection) return;
                                             if (!isSelected) {
                                               handleServiceToggle(service.id);
+                                              setTimeout(() => handleNext(), 150);
                                               return;
                                             }
                                             handleNext();
@@ -3230,7 +3264,7 @@ export default function BookServicePage() {
                     }`}
                   >
                     <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span className="hidden sm:inline">Back</span>
+                    Back
                   </button>
                 
                   <button
@@ -3393,7 +3427,7 @@ export default function BookServicePage() {
                           <div className="mt-1 text-xs text-emerald-800">
                             Highlighted items are new in this plan.
                           </div>
-                          <div className="mt-3 flex items-center justify-between gap-3 lg:hidden">
+                          <div className="mt-3 flex items-center justify-between gap-3 lg:hidden bg-green-50 border border-green-200 rounded-xl p-3">
                             <div className="text-xl font-extrabold text-gray-900">
                               {detailsService.price > 0 ? `₹${detailsService.price.toLocaleString('en-IN')}` : '—'}
                             </div>
@@ -3404,14 +3438,34 @@ export default function BookServicePage() {
                                 setDetailsService(null);
                                 setTimeout(() => handleNext(), 0);
                               }}
-                              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg font-extrabold text-xs bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow"
+                              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg font-extrabold text-xs bg-green-600 hover:bg-green-700 text-white shadow"
                             >
                               Proceed to Book
                               <ArrowRight className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
-                      ) : null}
+                      ) : (
+                        <div className="lg:hidden mb-2">
+                          <div className="flex items-center justify-between gap-3 bg-green-50 border border-green-200 rounded-xl p-3">
+                            <div className="text-xl font-extrabold text-gray-900">
+                              {detailsService.price > 0 ? `₹${detailsService.price.toLocaleString('en-IN')}` : '—'}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                ensureServiceSelected(detailsService.service.id);
+                                setDetailsService(null);
+                                setTimeout(() => handleNext(), 0);
+                              }}
+                              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg font-extrabold text-xs bg-green-600 hover:bg-green-700 text-white shadow"
+                            >
+                              Proceed to Book
+                              <ArrowRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {categories.map((cat) => (
                         <div key={cat}>
                           <div className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-2">
@@ -3447,12 +3501,12 @@ export default function BookServicePage() {
                 })()}
               </div>
 
-              <div className="lg:col-span-4 p-4 sm:p-6 border-t lg:border-t-0 lg:border-l border-gray-200 bg-gradient-to-br from-gray-50 to-white">
-                <div className="text-xs text-gray-500">Estimated Total</div>
+              <div className="lg:col-span-4 p-4 sm:p-6 border-t lg:border-t-0 lg:border-l border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+                <div className="text-xs text-green-700 font-semibold">Estimated Total</div>
                 <div className="mt-1 text-3xl font-extrabold text-gray-900">
                   {detailsService.price > 0 ? `₹${detailsService.price.toLocaleString('en-IN')}` : '—'}
                 </div>
-                <div className="mt-1 text-xs text-gray-500">*Excluding taxes & parts (if any)</div>
+                <div className="mt-1 text-xs text-green-600">*Excluding taxes & parts (if any)</div>
 
                 <button
                   type="button"
@@ -3461,12 +3515,12 @@ export default function BookServicePage() {
                     setDetailsService(null);
                     setTimeout(() => handleNext(), 0);
                   }}
-                  className="mt-6 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-extrabold text-sm sm:text-base bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-lg shadow-brand-primary/30"
+                  className="mt-6 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-extrabold text-sm sm:text-base bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-600/30"
                 >
                   Proceed to Book
                   <ArrowRight className="w-5 h-5" />
                 </button>
-                <div className="mt-3 text-xs text-gray-500 text-center">
+                <div className="mt-3 text-xs text-green-600 text-center">
                   You can change your package later before payment.
                 </div>
               </div>

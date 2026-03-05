@@ -117,18 +117,18 @@ function BookingSuccessContent() {
               {/* Contact Options */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <a
-                  href="tel:+919876543210"
+                  href="tel:+919152307030"
                   className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border-2 border-gray-200 rounded-lg sm:rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all"
                 >
                   <Phone className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0" />
                   <div className="text-left min-w-0 flex-1">
                     <p className="font-semibold text-xs sm:text-sm text-gray-900">Call Us</p>
-                    <p className="text-xs sm:text-sm text-gray-600 truncate">+91 98765 43210</p>
+                    <p className="text-xs sm:text-sm text-gray-600 truncate">+91 91523 07030</p>
                   </div>
                 </a>
 
                 <a
-                  href="https://wa.me/919876543210"
+                  href="https://wa.me/919167779696"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border-2 border-gray-200 rounded-lg sm:rounded-xl hover:border-green-500 hover:bg-green-50 transition-all"
@@ -136,7 +136,7 @@ function BookingSuccessContent() {
                   <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0" />
                   <div className="text-left min-w-0 flex-1">
                     <p className="font-semibold text-xs sm:text-sm text-gray-900">WhatsApp</p>
-                    <p className="text-xs sm:text-sm text-gray-600">Chat with us</p>
+                    <p className="text-xs sm:text-sm text-gray-600 truncate">+91 91677 79696</p>
                   </div>
                 </a>
               </div>

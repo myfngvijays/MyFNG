@@ -37,7 +37,16 @@ const config: Config = {
         bounceSlow: {
           '0%, 100%': { transform: 'translateY(-5%)' },
           '50%': { transform: 'translateY(0)' },
-        }
+        },
+        gradientMove: {
+          '0%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
+          '100%': { backgroundPosition: '0% 50%' },
+        },
+        scrollBrands: {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-50%)' },
+        },
       },
       animation: {
         'fade-in-up': 'fadeInUp 0.8s ease-out forwards',
@@ -47,6 +56,8 @@ const config: Config = {
         'fade-in-up-delay-400': 'fadeInUp 0.8s ease-out 0.4s forwards',
         'fade-in-up-delay-500': 'fadeInUp 0.8s ease-out 0.5s forwards',
         'bounce-slow': 'bounceSlow 3s infinite',
+        'gradient-move': 'gradientMove 12s ease infinite',
+        'scroll-brands': 'scrollBrands 25s linear infinite',
       },
     },
   },

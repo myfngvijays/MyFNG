@@ -1,43 +1,63 @@
+'use client';
+
 import React, { useState } from 'react';
 import type { WorkshopPublicPageFaq } from './types';
 
 type WorkshopFaqsProps = {
   faqs: WorkshopPublicPageFaq[];
+  workshopName?: string;
+  city?: string;
 };
 
-export default function WorkshopFaqs({ faqs }: WorkshopFaqsProps) {
-  const [showAll, setShowAll] = useState(false);
+export default function WorkshopFaqs({ faqs, workshopName, city }: WorkshopFaqsProps) {
+  const [activeIndex, setActiveIndex] = useState<number>(0);
+
   if (!faqs.length) return null;
-  const visibleFaqs = showAll ? faqs : faqs.slice(0, 4);
+
+  const toggle = (index: number) => {
+    setActiveIndex((prev) => (prev === index ? -1 : index));
+  };
 
   return (
-    <section className="mt-8">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">FAQs</h3>
-      <div className="space-y-3">
-        {visibleFaqs.map((faq, index) => (
-          <details
-            key={`${faq.question}-${index}`}
-            className="group rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm"
-          >
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-gray-900">
-              <span>{faq.question}</span>
-              <span className="text-gray-400 group-open:rotate-45 transition-transform">+</span>
-            </summary>
-            <p className="mt-3 text-sm text-gray-600">{faq.answer}</p>
-          </details>
-        ))}
-      </div>
-      {faqs.length > 4 && (
-        <div className="mt-4 flex justify-center">
-          <button
-            type="button"
-            onClick={() => setShowAll((prev) => !prev)}
-            className="rounded-full border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-          >
-            {showAll ? 'Show Less' : 'See More'}
-          </button>
+    <section className="py-[60px] bg-[#f2f4f8]">
+      <div className="w-[90%] max-w-[1100px] mx-auto">
+        <h2 className="text-[32px] font-bold text-[#0a3d91] mb-[30px]">FAQs</h2>
+
+        <div className="space-y-[18px]">
+          {faqs.map((faq, index) => {
+            const isActive = activeIndex === index;
+            return (
+              <div
+                key={`faq-${index}`}
+                className="bg-[#e9edf3] rounded-[16px] overflow-hidden transition-all duration-300"
+              >
+                <div
+                  onClick={() => toggle(index)}
+                  className="px-[25px] py-[22px] text-[16px] sm:text-[18px] font-semibold text-[#0a3d91] flex justify-between items-center cursor-pointer select-none"
+                >
+                  <span>{faq.question}</span>
+                  <span
+                    className={`text-[22px] font-bold transition-transform duration-300 ${
+                      isActive ? 'rotate-45' : ''
+                    }`}
+                  >
+                    +
+                  </span>
+                </div>
+                <div
+                  className="bg-white overflow-hidden transition-all duration-400 ease-in-out"
+                  style={{
+                    maxHeight: isActive ? '800px' : '0px',
+                    padding: isActive ? '0 25px' : '0 25px',
+                  }}
+                >
+                  <p className="py-5 text-[14px] text-[#444] leading-[1.7]">{faq.answer}</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      )}
+      </div>
     </section>
   );
 }

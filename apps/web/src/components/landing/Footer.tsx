@@ -1,121 +1,466 @@
-import { Phone, Mail, MapPin, MessageSquare } from 'lucide-react';
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 
+const ctaTitles = [
+  "Serious Car Owners Don't Postpone Maintenance.",
+  "Your Car Deserves Expert Care – Not Guesswork.",
+  "Avoid Expensive Repairs. Service On Time.",
+  "Mumbai & Pune's Trusted Multi-Brand Car Service.",
+];
+
 export default function Footer() {
+  const [ctaIndex, setCtaIndex] = useState(0);
+  const [ctaFading, setCtaFading] = useState(false);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const [isMobile, setIsMobile] = useState(false);
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCtaFading(true);
+      setTimeout(() => {
+        setCtaIndex((prev) => (prev + 1) % ctaTitles.length);
+        setCtaFading(false);
+      }, 300);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const toggleSection = (id: string) => {
+    if (!isMobile) return;
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const isOpen = (id: string) => openSections.has(id);
+
+  const AccordionTitle = ({ id, children, size }: { id: string; children: React.ReactNode; size?: string }) => (
+    <h4
+      onClick={() => toggleSection(id)}
+      className={`text-white ${size || 'text-[14px]'} uppercase tracking-[1px] mb-5 font-semibold ${
+        isMobile ? 'cursor-pointer relative pr-5' : ''
+      }`}
+      style={isMobile ? { marginBottom: isOpen(id) ? '20px' : '0px' } : {}}
+    >
+      {children}
+      {isMobile && (
+        <span className="absolute right-0 top-0 transition-all duration-300">
+          {isOpen(id) ? '−' : '+'}
+        </span>
+      )}
+    </h4>
+  );
+
+  const listClass = (id: string) =>
+    isMobile
+      ? `list-none p-0 m-0 overflow-hidden transition-all duration-400 ${isOpen(id) ? 'max-h-[1000px]' : 'max-h-0'}`
+      : 'list-none p-0 m-0';
+
+  const locationGridClass = (id: string) =>
+    isMobile
+      ? `overflow-hidden transition-all duration-400 ${isOpen(id) ? 'max-h-[2000px]' : 'max-h-0'}`
+      : '';
+
   return (
-    <footer className="bg-brand-secondary text-white pt-12 sm:pt-14 md:pt-16 pb-6 sm:pb-8" id="contact">
-      <div className="container mx-auto px-3 sm:px-4 md:px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 lg:gap-10 xl:gap-12 mb-8 sm:mb-10 md:mb-12">
-          {/* Services Column */}
-          <div>
-            <h3 className="text-base sm:text-lg font-bold mb-4 sm:mb-6 border-b-2 border-brand-primary inline-block pb-2 text-white">Services</h3>
-            <ul className="space-y-2 sm:space-y-3 text-sm sm:text-base text-blue-100">
-              <li><Link href="/services/periodic-service" className="hover:text-white transition">Periodic Car Service</Link></li>
-              <li><Link href="/services/engine-service" className="hover:text-white transition">Car Engine Service</Link></li>
-              <li><Link href="/services/brake-service" className="hover:text-white transition">Brake Service</Link></li>
-              <li><Link href="/services/ac-service" className="hover:text-white transition">Car AC Service</Link></li>
-              <li><Link href="/services/battery-service" className="hover:text-white transition">Car Battery Service</Link></li>
-              <li><Link href="/services/clutch-service" className="hover:text-white transition">Clutch Service</Link></li>
-              <li><Link href="/services/tyre-wheel-care" className="hover:text-white transition">Tyre & Wheel Care</Link></li>
-              <li><Link href="/services/detailing-service" className="hover:text-white transition">Detailing Service</Link></li>
-              <li><Link href="/services/denting-painting" className="hover:text-white transition">Denting & Painting</Link></li>
-            </ul>
-          </div>
-          
-          {/* Popular Areas Column */}
-          <div>
-            <h3 className="text-base sm:text-lg font-bold mb-4 sm:mb-6 border-b-2 border-brand-primary inline-block pb-2 text-white">Popular Area</h3>
-            <div className="grid grid-cols-2 gap-x-3 sm:gap-x-4 gap-y-1.5 sm:gap-y-2 text-blue-100 text-xs sm:text-sm">
-              <Link href="#" className="hover:text-white transition">Ambernath</Link>
-              <Link href="#" className="hover:text-white transition">Bhiwandi</Link>
-              <Link href="#" className="hover:text-white transition">Kalyan West</Link>
-              <Link href="#" className="hover:text-white transition">Kopar Khairane</Link>
-              <Link href="#" className="hover:text-white transition">Vartak Nagar, Thane</Link>
-              <Link href="#" className="hover:text-white transition">Kalyan East</Link>
-              <Link href="#" className="hover:text-white transition">Manpada, Thane</Link>
-              <Link href="#" className="hover:text-white transition">Virar West</Link>
-              <Link href="#" className="hover:text-white transition">Vashi West</Link>
-              <Link href="#" className="hover:text-white transition">Vashi East</Link>
-              <Link href="#" className="hover:text-white transition">Nerul</Link>
-              <Link href="#" className="hover:text-white transition">Khopoli</Link>
-              <Link href="#" className="hover:text-white transition">Dombivli</Link>
-              <Link href="#" className="hover:text-white transition">Boisar</Link>
-              <Link href="#" className="hover:text-white transition">Mira Road East</Link>
-              <Link href="#" className="hover:text-white transition">Sector 15, Panvel</Link>
-              <Link href="#" className="hover:text-white transition">Plot no 71, Panvel</Link>
-              <Link href="#" className="hover:text-white transition">Ghotai Phata, Titwala</Link>
-              <Link href="#" className="hover:text-white transition">Ghodbunder Road, Thane</Link>
-              <Link href="#" className="hover:text-white transition">Marol, Andheri East</Link>
-              <Link href="#" className="hover:text-white transition">Badlapur</Link>
-              <Link href="#" className="hover:text-white transition">Pune</Link>
-            </div>
-          </div>
-          
-          {/* About Us Column */}
-          <div>
-            <h3 className="text-base sm:text-lg font-bold mb-4 sm:mb-6 border-b-2 border-brand-primary inline-block pb-2 text-white">About Us</h3>
-            <ul className="space-y-2 sm:space-y-3 text-sm sm:text-base text-blue-100">
-              <li><Link href="/about" className="hover:text-white transition">About Us</Link></li>
-              <li><Link href="/partner" className="hover:text-white transition">My FNG Partner</Link></li>
-              <li><Link href="/work" className="hover:text-white transition">Our Work</Link></li>
-              <li><Link href="/faq" className="hover:text-white transition">FAQ</Link></li>
-              <li><Link href="/terms-and-conditions" className="hover:text-white transition">Terms and Condition</Link></li>
-              <li><Link href="/privacy-policy" className="hover:text-white transition">Privacy</Link></li>
-            </ul>
+    <>
+      {/* GRADIENT CTA SECTION */}
+      <section
+        className="py-[10px] px-5 pb-[35px] text-center text-white relative overflow-hidden"
+        style={{
+          background: 'linear-gradient(135deg, #000000 0%, #0a0f2c 40%, #0f1e5a 100%)',
+          backgroundSize: '400% 400%',
+          animation: 'gradientMove 12s ease infinite',
+        }}
+      >
+        <div className="max-w-[900px] mx-auto">
+          <h2
+            className="text-[28px] md:text-[32px] font-extrabold mb-4 transition-opacity duration-300"
+            style={{ opacity: ctaFading ? 0 : 1 }}
+          >
+            {ctaTitles[ctaIndex]}
+          </h2>
+          <p className="text-[16px] md:text-[18px] opacity-90 mb-9 leading-relaxed">
+            Book your car service today with My FNG – Transparent pricing, expert technicians,
+            <br className="hidden md:inline" /> and reliable car care across Mumbai &amp; Pune.
+          </p>
+          <div className="flex justify-center gap-5 flex-wrap">
             <Link
-              href="/pay-now"
-              className="mt-4 inline-flex items-center justify-center rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-primary-hover"
+              href="/book-service"
+              className="py-[14px] px-[30px] text-[16px] font-semibold rounded-lg bg-[#f97316] text-white hover:bg-[#ea580c] hover:-translate-y-[3px] transition-all duration-300 no-underline"
             >
-              Pay Now
+              🚗 Book Car Service Now
+            </Link>
+            <Link
+              href="/ai-booking"
+              className="py-[14px] px-[30px] text-[16px] font-semibold rounded-lg border-2 border-white text-white bg-transparent hover:bg-white hover:text-[#0f172a] transition-all duration-300 no-underline"
+            >
+              🤖 Book via MY FNG AI
             </Link>
           </div>
-          
-          {/* Book Service Column */}
-          <div>
-            <h3 className="text-base sm:text-lg font-bold mb-4 sm:mb-6 border-b-2 border-brand-primary inline-block pb-2 text-white">Book Service</h3>
-            <form className="space-y-3 sm:space-y-4">
-              <div>
-                <label htmlFor="mobile" className="block text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-white">Mobile</label>
-                <input 
-                  type="tel" 
-                  id="mobile"
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="text-[#d6d6d6] pt-[10px]" style={{ background: '#023d95' }}>
+        <div className="w-[92%] max-w-[1500px] mx-auto">
+
+          {/* TOP GRID */}
+          <div
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-0 md:gap-10 pb-4 border-b border-white/[0.08]"
+            style={isMobile ? { gap: 0, paddingBottom: 0 } : {}}
+          >
+            {/* Quick Links */}
+            <div className={isMobile ? 'border-b border-white/[0.08] py-0' : ''}>
+              <AccordionTitle id="quick-links">Quick Links</AccordionTitle>
+              <ul className={listClass('quick-links')}>
+                {[
+                  { href: '/about', label: 'About Us' },
+                  { href: '/blogs', label: 'Blog' },
+                  { href: '/contact', label: 'Contact Us' },
+                  { href: '/privacy-policy', label: 'Privacy Policy' },
+                  { href: '/terms-and-conditions', label: 'Terms & Conditions' },
+                  { href: '/workshops', label: 'Workshop Locator' },
+                  { href: '/services', label: 'Offers' },
+                  { href: '/roadside-assistance', label: 'Roadside Assistance' },
+                ].map((item) => (
+                  <li key={item.href} className="mb-0">
+                    <Link
+                      href={item.href}
+                      className="text-[#b8c7d1] text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Our Services */}
+            <div className={isMobile ? 'border-b border-white/[0.08] py-0' : ''}>
+              <AccordionTitle id="services">Our Services</AccordionTitle>
+              <ul className={listClass('services')}>
+                {[
+                  { href: '/car-services/periodic-car-service', label: 'Periodic Car Service' },
+                  { href: '/car-services/car-engine-service', label: 'Car Engine Service' },
+                  { href: '/car-services/car-ac-service', label: 'Car AC Service' },
+                  { href: '/car-services/car-battery-service', label: 'Car Battery Service' },
+                  { href: '/car-services/car-brake-service', label: 'Car Brake Service' },
+                  { href: '/car-services/car-clutch-service', label: 'Car Clutch Service' },
+                  { href: '/car-services/car-detailing', label: 'Car Detailing' },
+                  { href: '/car-services/denting-painting', label: 'Denting & Painting' },
+                  { href: '/car-services/wheel-alignment-and-balancing', label: 'Wheel Alignment & Balancing' },
+                ].map((item) => (
+                  <li key={item.href} className="mb-0">
+                    <Link
+                      href={item.href}
+                      className="text-[#b8c7d1] text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Luxury Brands */}
+            <div className={isMobile ? 'border-b border-white/[0.08] py-0' : ''}>
+              <AccordionTitle id="luxury-brands">Luxury Brands</AccordionTitle>
+              <ul className={listClass('luxury-brands')}>
+                {[
+                  'Mercedes', 'BMW', 'Audi', 'Jaguar', 'Land Rover',
+                  'Porsche', 'Rolls Royce', 'Mitsubishi', 'Volvo',
+                ].map((brand) => (
+                  <li key={brand} className="mb-0">
+                    <Link
+                      href={`/car-services/${brand.toLowerCase().replace(/\s+/g, '-')}-car-service`}
+                      className="text-[#b8c7d1] text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
+                    >
+                      {brand}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Popular Brands */}
+            <div className={isMobile ? 'border-b border-white/[0.08] py-0' : ''}>
+              <AccordionTitle id="popular-brands">Popular Brands</AccordionTitle>
+              <ul className={listClass('popular-brands')}>
+                {[
+                  { label: 'Maruti Suzuki', slug: 'maruti' },
+                  { label: 'Hyundai', slug: 'hyundai' },
+                  { label: 'Honda', slug: 'honda' },
+                  { label: 'Tata', slug: 'tata' },
+                  { label: 'Mahindra', slug: 'mahindra' },
+                  { label: 'Toyota', slug: 'toyota' },
+                  { label: 'Kia', slug: 'kia' },
+                  { label: 'Skoda', slug: 'skoda' },
+                  { label: 'Volkswagen', slug: 'volkswagen' },
+                ].map((brand) => (
+                  <li key={brand.slug} className="mb-0">
+                    <Link
+                      href={`/car-services/${brand.slug}-car-service`}
+                      className="text-[#b8c7d1] text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
+                    >
+                      {brand.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Popular Service Areas */}
+            <div className={isMobile ? 'border-b border-white/[0.08] py-0' : ''}>
+              <AccordionTitle id="service-areas">Popular Service Areas</AccordionTitle>
+              <ul className={listClass('service-areas')}>
+                {[
+                  { href: '/car-services/car-service-in-vartak-nagar', label: 'Car Service in Vartak Nagar' },
+                  { href: '/car-services/car-service-in-manpada', label: 'Car Service in Manpada' },
+                  { href: '/car-services/car-service-in-majiwada', label: 'Car Service in Majiwada' },
+                  { href: '/car-services/car-service-in-kalyan', label: 'Car Service in Kalyan' },
+                  { href: '/car-services/car-service-in-dombivli', label: 'Car Service in Dombivli' },
+                  { href: '/car-services/car-service-in-ambernath', label: 'Car Service in Ambernath' },
+                ].map((item) => (
+                  <li key={item.href} className="mb-0">
+                    <Link
+                      href={item.href}
+                      className="text-[#b8c7d1] text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* REMAINING LOCATIONS */}
+          <div className={`mt-4 ${isMobile ? 'border-b border-white/[0.08] py-0' : ''}`}>
+            <AccordionTitle id="all-locations" size="text-[15px]">Trusted Car Service Centers Near You</AccordionTitle>
+            <div
+              className={`grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 ${locationGridClass('all-locations')}`}
+            >
+              {[
+                { href: '/', label: 'MY FNG - Head Office' },
+                { href: '/car-services/car-service-in-vartak-nagar-thane', label: 'Car Service in Vartak Nagar' },
+                { href: '/car-services/car-service-in-manpada-thane', label: 'Car Service in Manpada' },
+                { href: '/car-services/car-service-in-majiwada-thane', label: 'Car Service in Majiwada' },
+                { href: '/car-services/car-service-in-kasarvadavali', label: 'Car Service in Kasarvadavali' },
+                { href: '/car-services/car-service-in-gb-road-thane', label: 'Car Service in Ghodbunder Road' },
+                { href: '/car-services/car-service-in-kalyan-shilphata-marg', label: 'Car Service in Dombivli East' },
+                { href: '/car-services/car-service-in-kolegaon-dombivli', label: 'Car Service in Kolegaon, Dombivli' },
+                { href: '/car-services/car-service-in-malang-gad-road-kalyan', label: 'Car Service in Kalyan East' },
+                { href: '/car-services/car-service-in-khadakpada', label: 'Car Service in Kalyan West' },
+                { href: '/car-services/car-service-in-ambernath', label: 'Car Service in Ambernath' },
+                { href: '/car-services/car-service-in-badlapur', label: 'Car Service in Badlapur' },
+                { href: '/car-services/car-service-in-bhiwandi', label: 'Car Service in Bhiwandi' },
+                { href: '/car-services/car-service-in-titwala', label: 'Car Service in Titwala' },
+                { href: '/car-services/car-service-in-mira-road-east', label: 'Car Service in Mira Road East' },
+                { href: '/car-services/car-service-in-nerul', label: 'Car Service in Nerul' },
+                { href: '/car-services/car-service-in-koparkhairane', label: 'Car Service in Koparkhairane' },
+                { href: '/car-services/car-service-in-vasai-west', label: 'Car Service in Vasai West' },
+                { href: '/car-services/car-service-in-vasai-east', label: 'Car Service in Vasai East' },
+                { href: '/car-services/car-service-in-virar-west', label: 'Car Service in Virar West' },
+                { href: '/car-services/car-service-in-boisar', label: 'Car Service in Boisar' },
+                { href: '/car-services/car-service-in-palghar', label: 'Car Service in Palghar' },
+                { href: '/car-services/car-service-in-andheri-east', label: 'Car Service in Andheri East' },
+                { href: '/car-services/car-service-in-malad-west', label: 'Car Service in Malad West' },
+                { href: '/car-services/car-service-in-mulund-west', label: 'Car Service in Mulund West' },
+                { href: '/car-services/car-service-in-dadar-west', label: 'Car Service in Dadar West' },
+                { href: '/car-services/car-service-in-vile-parle-west', label: 'Car Service in Vile Parle West' },
+                { href: '/car-services/car-service-in-mahalaxmi', label: 'Car Service in Mahalaxmi' },
+                { href: '/car-services/car-service-in-ghatkopar-west', label: 'Car Service in Ghatkopar West' },
+                { href: '/car-services/car-service-in-panvel-hoc-colony', label: 'Car Service in HOC Colony, Panvel' },
+                { href: '/car-services/car-service-in-panvel-shivaji-nagar', label: 'Car Service in Panvel' },
+                { href: '/car-services/car-service-in-kalamboli', label: 'Car Service in Kalamboli' },
+                { href: '/car-services/car-service-in-khopoli', label: 'Car Service in Khopoli' },
+                { href: '/car-services/car-service-in-dahisar-west', label: 'Car Service in Dahisar West' },
+                { href: '/car-services/car-service-in-kandivali-west', label: 'Car Service in Kandivali West' },
+                { href: '/car-services/car-service-in-borivali-west', label: 'Car Service in Borivali West' },
+                { href: '/car-services/car-service-in-chembur', label: 'Car Service in Chembur' },
+                { href: '/car-services/car-service-in-miragaon-road-mira-road-east', label: 'Car Service in Miragaon, Mira Road' },
+                { href: '/car-services/car-service-in-shiravane-nerul', label: 'Car Service in Shiravane, Nerul' },
+                { href: '/car-services/car-service-in-kharadi', label: 'Car Service in Kharadi, Pune' },
+                { href: '/car-services/car-service-in-saswad', label: 'Car Service in Saswad, Pune' },
+                { href: '/car-services/car-service-in-pimple-saudagar', label: 'Car Service in Pimple Saudagar' },
+                { href: '/car-services/car-service-in-baner', label: 'Car Service in Baner, Pune' },
+                { href: '/car-services/car-service-in-wagholi', label: 'Car Service in Wagholi, Pune' },
+                { href: '/car-services/car-service-in-katraj', label: 'Car Service in Katraj, Pune' },
+                { href: '/car-services/car-service-in-vimanagar', label: 'Car Service in Vimanagar, Pune' },
+                { href: '/car-services/car-service-in-wakad', label: 'Car Service in Wakad, Pune' },
+                { href: '/car-services/car-service-in-tathawade', label: 'Car Service in Tathawade, Pune' },
+                { href: '/car-services/car-service-in-hadapsar', label: 'Car Service in Hadapsar, Pune' },
+                { href: '/car-services/car-service-in-suncity-pune', label: 'Car Service in Suncity, Pune' },
+                { href: '/car-services/car-service-in-lohgaon', label: 'Car Service in Lohgaon-Wagholi, Pune' },
+                { href: '/car-services/car-service-in-nashik', label: 'Car Service in Pathardi Phata, Nashik' },
+              ].map((loc) => (
+                <Link
+                  key={loc.href + loc.label}
+                  href={loc.href}
+                  className="block text-[#b8c7d1] text-[10px] font-bold no-underline hover:text-white transition-all duration-300"
+                >
+                  {loc.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* FOOTER BOTTOM */}
+          <div className="mt-5 pt-[30px] border-t border-white/[0.08] grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr] gap-10">
+
+            {/* Company Info */}
+            <div>
+              <img
+                src="/logo.png"
+                alt="MyFNG - Multi Brand Car Service"
+                className="w-[150px] h-auto block mb-3 brightness-0 invert"
+              />
+              <p className="text-[11px] leading-[1.7] font-semibold">
+                MY FNG – Your Friendly Neighbourhood Garage.<br />
+                Multi-brand car servicing &amp; repairs across Mumbai &amp; Pune.
+              </p>
+              <p className="text-[11px] leading-[1.7] font-semibold mt-2">
+                A/309, Centrum Business Square, Road No 16,<br />
+                Wagle Industrial Estate, Thane (W), Thane-400604
+              </p>
+            </div>
+
+            {/* Contact Info */}
+            <div>
+              <h4 className="text-white text-[11px] font-semibold mb-3">Contact Us</h4>
+              <div className="text-[11px] leading-[2] font-semibold">
+                <div>Email: support@myfng.in</div>
+                <div>Car Service: +91-9772215095</div>
+                <div>Roadside Assistance: +91-9610448949</div>
+                <div>Working Days: Monday – Saturday</div>
+                <div>Hours: 09:30 AM - 06:30 PM</div>
+              </div>
+            </div>
+
+            {/* App Download */}
+            <div>
+              <h4 className="text-white text-[11px] font-semibold mb-3">Download MyFNG App</h4>
+              <div className="flex flex-col gap-2.5">
+                <a href="#" target="_blank" rel="noopener noreferrer">
+                  <img
+                    src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
+                    alt="Download on Play Store"
+                    className="w-[160px] block"
+                  />
+                </a>
+                <a href="#" target="_blank" rel="noopener noreferrer">
+                  <img
+                    src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
+                    alt="Download on App Store"
+                    className="w-[160px] block"
+                  />
+                </a>
+              </div>
+            </div>
+
+            {/* Book Service + Social */}
+            <div>
+              <h4 className="text-white text-[11px] font-semibold mb-3">Book Service</h4>
+              <div className="flex flex-col gap-3 mt-2.5">
+                <input
+                  type="tel"
                   placeholder="Enter your mobile number"
-                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg bg-white/10 border border-white/20 text-white placeholder-blue-300 focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/50"
+                  className="py-3 px-3.5 rounded-[10px] border border-white/20 bg-white/[0.08] text-white text-[13px] outline-none placeholder:text-white/60"
                 />
+                <button
+                  type="button"
+                  className="py-3 rounded-[10px] border-none text-white font-semibold cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_6px_15px_rgba(37,99,235,0.4)] transition-all duration-300"
+                  style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)' }}
+                >
+                  Submit
+                </button>
               </div>
-              <button 
-                type="submit"
-                className="w-full bg-brand-primary hover:bg-brand-primary-hover text-white font-bold py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition transform hover:scale-105 text-sm sm:text-base"
-              >
-                Submit
-              </button>
-            </form>
-            
-            <div className="mt-4 sm:mt-6 space-y-2 sm:space-y-3">
-              <div className="flex items-center gap-2 sm:gap-3 text-sm sm:text-base text-blue-100">
-                <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
-                <a href="tel:+919167779696" className="hover:text-white transition break-all">+91 9167779696</a>
-              </div>
-              <div className="flex items-center gap-2 sm:gap-3 text-sm sm:text-base text-blue-100">
-                <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
-                <a href="mailto:support@myfng.in" className="hover:text-white transition break-all">support@myfng.in</a>
+
+              {/* Social Icons */}
+              <div className="flex gap-5 mt-2.5">
+                <a
+                  href="https://www.facebook.com/myfngcarservices"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                  style={{ background: '#1877F2' }}
+                  aria-label="Facebook"
+                >
+                  <svg width="14" height="14" viewBox="0 0 320 512" fill="currentColor"><path d="M80 299.3V512H196V299.3h86.5l18-97.8H196V142.2c0-21.1 13-38.2 40.1-38.2H288V18.6S259.1 0 225.4 0C147.3 0 106 39.6 106 111.4v90.1H80v97.8z"/></svg>
+                </a>
+                <a
+                  href="https://www.instagram.com/myfngcarservices/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                  style={{ background: 'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)' }}
+                  aria-label="Instagram"
+                >
+                  <svg width="14" height="14" viewBox="0 0 448 512" fill="currentColor"><path d="M224.1 141c-63.6 0-114.9 51.3-114.9 114.9S160.5 370.9 224.1 370.9 339 319.5 339 255.9 287.7 141 224.1 141zm0 189.6c-41.1 0-74.7-33.5-74.7-74.7s33.5-74.7 74.7-74.7 74.7 33.5 74.7 74.7-33.6 74.7-74.7 74.7zm146.4-194.3c0 14.9-12 26.8-26.8 26.8-14.9 0-26.8-12-26.8-26.8s12-26.8 26.8-26.8 26.8 12 26.8 26.8zm76.1 27.2c-1.7-35.9-9.9-67.7-36.2-93.9-26.2-26.2-58-34.4-93.9-36.2-37-2.1-147.9-2.1-184.9 0-35.8 1.7-67.6 9.9-93.9 36.1s-34.4 58-36.2 93.9c-2.1 37-2.1 147.9 0 184.9 1.7 35.9 9.9 67.7 36.2 93.9s58 34.4 93.9 36.2c37 2.1 147.9 2.1 184.9 0 35.9-1.7 67.7-9.9 93.9-36.2 26.2-26.2 34.4-58 36.2-93.9 2.1-37 2.1-147.8 0-184.8zM398.8 388c-7.8 19.6-22.9 34.7-42.6 42.6-29.5 11.7-99.5 9-132.1 9s-102.7 2.6-132.1-9c-19.6-7.8-34.7-22.9-42.6-42.6-11.7-29.5-9-99.5-9-132.1s-2.6-102.7 9-132.1c7.8-19.6 22.9-34.7 42.6-42.6 29.5-11.7 99.5-9 132.1-9s102.7-2.6 132.1 9c19.6 7.8 34.7 22.9 42.6 42.6 11.7 29.5 9 99.5 9 132.1s2.7 102.7-9 132.1z"/></svg>
+                </a>
+                <a
+                  href="https://linkedin.com/company/myfngcarservices"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                  style={{ background: '#0077B5' }}
+                  aria-label="LinkedIn"
+                >
+                  <svg width="14" height="14" viewBox="0 0 448 512" fill="currentColor"><path d="M100.3 448H7.4V148.9h92.9zM53.8 108.1C24.1 108.1 0 83.5 0 53.8a53.8 53.8 0 0 1 107.6 0c0 29.7-24.1 54.3-53.8 54.3zM447.9 448h-92.7V302.4c0-34.7-.7-79.2-48.3-79.2-48.3 0-55.7 37.7-55.7 76.7V448h-92.8V148.9h89.1v40.8h1.3c12.4-23.5 42.7-48.3 87.9-48.3 94 0 111.3 61.9 111.3 142.3V448z"/></svg>
+                </a>
+                <a
+                  href="https://youtube.com/channel/UCil_RltFnCtXeAha5TrNtew/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                  style={{ background: '#FF0000' }}
+                  aria-label="YouTube"
+                >
+                  <svg width="14" height="14" viewBox="0 0 576 512" fill="currentColor"><path d="M549.7 124.1c-6.3-23.7-24.8-42.3-48.3-48.6C458.8 64 288 64 288 64S117.2 64 74.6 75.5c-23.5 6.3-42 24.9-48.3 48.6-11.4 42.9-11.4 132.3-11.4 132.3s0 89.4 11.4 132.3c6.3 23.7 24.8 41.5 48.3 47.8C117.2 448 288 448 288 448s170.8 0 213.4-11.5c23.5-6.3 42-24.2 48.3-47.8 11.4-42.9 11.4-132.3 11.4-132.3s0-89.4-11.4-132.3zm-317.5 213.5V175.2l142.7 81.2-142.7 81.2z"/></svg>
+                </a>
+                <a
+                  href="https://x.com/myfngcarservice"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                  style={{ background: '#000000' }}
+                  aria-label="X (Twitter)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 512 512" fill="currentColor"><path d="M389.2 48h70.6L305.6 224.2 487 464H345L233.7 318.6 106.5 464H35.8L200.7 275.5 26.8 48H172l95.9 126.7L389.2 48zm-24.8 373.8h39.1L151.1 88h-42L364.4 421.8z"/></svg>
+                </a>
               </div>
             </div>
           </div>
-        </div>
-        
-        <div className="border-t border-white/10 pt-6 sm:pt-8">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4">
-            <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="MY FNG Logo" className="h-6 sm:h-7 md:h-8 w-auto brightness-0 invert flex-shrink-0" />
-            </div>
-            <p className="text-blue-200 text-xs sm:text-sm text-center sm:text-right">
-              © {new Date().getFullYear()} MY FNG. All rights reserved.
-            </p>
+
+          {/* Copyright */}
+          <div className="text-center py-5 border-t border-white/[0.08] mt-5 text-[11px] text-[#aaa]">
+            © {new Date().getFullYear()} My FNG Autocare Private Limited. All Rights Reserved.
           </div>
+
         </div>
-      </div>
-    </footer>
+      </footer>
+
+      {/* Keyframe animation for gradient CTA */}
+      <style>{`
+        @keyframes gradientMove {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+      `}</style>
+    </>
   );
 }
-

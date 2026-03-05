@@ -1,10 +1,21 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { useRouter } from 'next/navigation';
-import { Globe, Search, Plus, Edit2, Eye, ExternalLink, Image as ImageIcon, CheckCircle, XCircle, Star, Upload, X } from 'lucide-react';
+import { Globe, Search, Plus, Edit2, Eye, ExternalLink, Image as ImageIcon, CheckCircle, XCircle, Star, Upload, X, MapPin, RefreshCw, PlugZap } from 'lucide-react';
 import toast from 'react-hot-toast';
+import type { GmbData } from '@/components/workshop/types';
+
+type GbpLocationOption = {
+  resource_name: string;
+  title: string;
+  address: string;
+  place_id: string;
+  maps_uri: string;
+  website_uri: string;
+  phone_number: string;
+};
 
 export default function WorkshopPublicPagesPage() {
   const router = useRouter();
@@ -61,11 +72,85 @@ export default function WorkshopPublicPagesPage() {
   const [packageFeatures, setPackageFeatures] = useState<string[]>([]);
   const [faqQuestion, setFaqQuestion] = useState('');
   const [faqAnswer, setFaqAnswer] = useState('');
+  const [fetchingGmb, setFetchingGmb] = useState(false);
+  const [gmbPreview, setGmbPreview] = useState<GmbData | null>(null);
+  const [gbpConnected, setGbpConnected] = useState(false);
+  const [checkingGbp, setCheckingGbp] = useState(false);
+  const [gbpLocations, setGbpLocations] = useState<GbpLocationOption[]>([]);
+  const [loadingGbpLocations, setLoadingGbpLocations] = useState(false);
+  const [selectedGbpLocation, setSelectedGbpLocation] = useState('');
+  const initializedRef = useRef(false);
 
   useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
     fetchPages();
     fetchWorkshops();
+    fetchGoogleBusinessStatus();
+    checkGoogleBusinessConnectToast();
   }, []);
+
+  const fetchGoogleBusinessStatus = async () => {
+    try {
+      setCheckingGbp(true);
+      const res = await fetch('/api/integrations/google-business/status', { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const connected = Boolean(json?.connected);
+        setGbpConnected(connected);
+        if (connected) fetchGoogleBusinessLocations();
+      }
+    } catch {
+      // ignore non-critical status failures
+    } finally {
+      setCheckingGbp(false);
+    }
+  };
+
+  const fetchGoogleBusinessLocations = async () => {
+    if (loadingGbpLocations) return;
+    try {
+      setLoadingGbpLocations(true);
+      const res = await fetch('/api/integrations/google-business/locations', { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error('Failed to load GBP locations:', json);
+        const detailMsg = String(json?.details || json?.error || 'Failed to load Google Business locations');
+        toast.error(detailMsg.length > 140 ? `${detailMsg.slice(0, 140)}...` : detailMsg);
+        setGbpLocations([]);
+        return;
+      }
+      setGbpLocations(Array.isArray(json?.locations) ? json.locations : []);
+    } catch (e) {
+      console.error('Failed to load GBP locations:', e);
+      setGbpLocations([]);
+    } finally {
+      setLoadingGbpLocations(false);
+    }
+  };
+
+  const checkGoogleBusinessConnectToast = () => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const status = url.searchParams.get('gmb_connect');
+    if (!status) return;
+    const msg = url.searchParams.get('msg') || '';
+    if (status === 'success') {
+      toast.success('Google Business connected successfully');
+      setGbpConnected(true);
+      fetchGoogleBusinessLocations();
+    } else {
+      toast.error(`Google connect failed${msg ? `: ${msg}` : ''}`);
+    }
+    url.searchParams.delete('gmb_connect');
+    url.searchParams.delete('msg');
+    window.history.replaceState({}, '', url.toString());
+  };
+
+  const handleConnectGoogleBusiness = () => {
+    const returnTo = '/dashboard/super_admin/workshops/public-pages';
+    window.location.href = `/api/integrations/google-business/connect?return_to=${encodeURIComponent(returnTo)}`;
+  };
 
   const fetchPages = async () => {
     try {
@@ -91,7 +176,7 @@ export default function WorkshopPublicPagesPage() {
     try {
       const { data, error } = await supabase
         .from('workshops')
-        .select('id, name, city, state')
+        .select('id, name, address, city, state, public_gmb_url')
         .eq('is_verified', true)
         .order('name');
 
@@ -115,9 +200,27 @@ export default function WorkshopPublicPagesPage() {
       setFormData(prev => ({
         ...prev,
         workshop_id: workshopId,
-        slug: editingPage ? prev.slug : generateSlug(workshop.name)
+        slug: editingPage ? prev.slug : generateSlug(workshop.name),
+        google_maps_url: workshop.public_gmb_url || prev.google_maps_url
       }));
+      setGmbPreview(null);
+      setSelectedGbpLocation('');
+      if (gbpConnected && gbpLocations.length === 0) fetchGoogleBusinessLocations();
     }
+  };
+
+  const handleGbpLocationSelect = (resourceName: string) => {
+    setSelectedGbpLocation(resourceName);
+    const loc = gbpLocations.find((l) => l.resource_name === resourceName);
+    if (!loc) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      google_maps_url: loc.maps_uri || prev.google_maps_url,
+      alternate_phone: loc.phone_number || prev.alternate_phone,
+      website_url: loc.website_uri || prev.website_url,
+    }));
+    setGmbPreview(null);
   };
 
   const handleAddService = () => {
@@ -205,6 +308,81 @@ export default function WorkshopPublicPagesPage() {
       ...prev,
       faqs: prev.faqs.filter((_, i) => i !== index)
     }));
+  };
+
+  const handleFetchGMB = async () => {
+    if (!formData.google_maps_url.trim()) {
+      toast.error('Please enter a Google Maps URL first');
+      return;
+    }
+    setFetchingGmb(true);
+    setGmbPreview(null);
+    try {
+      const selectedWorkshop = workshops.find((w) => w.id === formData.workshop_id);
+      const selectedLocation = gbpLocations.find((l) => l.resource_name === selectedGbpLocation);
+      const res = await fetch('/api/workshops/gmb/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          google_maps_url: formData.google_maps_url,
+          place_id: selectedLocation?.place_id || undefined,
+          gmb_location_name: selectedLocation?.resource_name || undefined,
+          workshop_id: formData.workshop_id || undefined,
+          workshop_context: selectedWorkshop
+            ? {
+                name: selectedWorkshop.name,
+                address: selectedWorkshop.address,
+                city: selectedWorkshop.city,
+                state: selectedWorkshop.state,
+              }
+            : undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        if (json?.debug?.attempts?.length) {
+          console.error('GMB debug:', json.debug);
+          toast.error(`${json?.error || 'Failed to fetch GMB data'} (${json.debug.attempts.join(', ')})`);
+        } else {
+          toast.error(json?.error || 'Failed to fetch GMB data');
+        }
+        return;
+      }
+      const gmb: GmbData = json.data;
+      setGmbPreview(gmb);
+
+      const dayMap: Record<string, string> = {};
+      if (gmb.opening_hours) {
+        for (const line of gmb.opening_hours) {
+          const match = line.match(/^(\w+):\s*(.+)$/);
+          if (match) {
+            dayMap[match[1].toLowerCase()] = match[2].trim();
+          }
+        }
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        business_hours: {
+          monday: dayMap['monday'] || prev.business_hours.monday,
+          tuesday: dayMap['tuesday'] || prev.business_hours.tuesday,
+          wednesday: dayMap['wednesday'] || prev.business_hours.wednesday,
+          thursday: dayMap['thursday'] || prev.business_hours.thursday,
+          friday: dayMap['friday'] || prev.business_hours.friday,
+          saturday: dayMap['saturday'] || prev.business_hours.saturday,
+          sunday: dayMap['sunday'] || prev.business_hours.sunday,
+        },
+        alternate_phone: gmb.phone_number || prev.alternate_phone,
+        website_url: gmb.website || prev.website_url,
+      }));
+
+      toast.success('GMB data fetched successfully! Form fields auto-filled.');
+    } catch (err: any) {
+      console.error('GMB fetch error:', err);
+      toast.error('Failed to fetch GMB data');
+    } finally {
+      setFetchingGmb(false);
+    }
   };
 
   const handleAddGalleryImage = () => {
@@ -305,7 +483,7 @@ export default function WorkshopPublicPagesPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const pageData = {
+      const pageData: Record<string, any> = {
         ...formData,
         business_hours: formData.business_hours,
         services_offered: formData.services_offered,
@@ -316,18 +494,30 @@ export default function WorkshopPublicPagesPage() {
         faqs: formData.faqs,
         updated_by: user.id,
         ...(editingPage ? {} : { created_by: user.id }),
-        ...(formData.is_published && !editingPage ? { published_at: new Date().toISOString() } : {})
+        ...(formData.is_published && !editingPage ? { published_at: new Date().toISOString() } : {}),
       };
+
+      if (gmbPreview?.place_id) {
+        pageData.gmb_place_id = gmbPreview.place_id;
+        pageData.gmb_data = {
+          ...gmbPreview,
+          gmb_location_name: selectedGbpLocation || null,
+        };
+        pageData.gmb_last_fetched_at = new Date().toISOString();
+      }
+      if (selectedGbpLocation) {
+        pageData.gmb_location_name = selectedGbpLocation;
+      }
 
       let error;
       if (editingPage) {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await (supabase as any)
           .from('workshop_public_pages')
           .update(pageData)
           .eq('id', editingPage.id);
         error = updateError;
       } else {
-        const { error: insertError } = await supabase
+        const { error: insertError } = await (supabase as any)
           .from('workshop_public_pages')
           .insert([pageData]);
         error = insertError;
@@ -378,6 +568,8 @@ export default function WorkshopPublicPagesPage() {
       is_published: page.is_published || false,
       is_featured: page.is_featured || false
     });
+    setGmbPreview(page.gmb_data || null);
+    setSelectedGbpLocation(page.gmb_location_name || page.gmb_data?.gmb_location_name || '');
     setShowModal(true);
   };
 
@@ -420,6 +612,8 @@ export default function WorkshopPublicPagesPage() {
     setPackageFeatures([]);
     setFaqQuestion('');
     setFaqAnswer('');
+    setGmbPreview(null);
+    setSelectedGbpLocation('');
   };
 
   const filteredPages = pages.filter(page =>
@@ -443,16 +637,32 @@ export default function WorkshopPublicPagesPage() {
           <h1 className="text-3xl font-bold text-gray-900">Workshop Public Pages</h1>
           <p className="text-gray-600 mt-1">Manage public-facing workshop pages</p>
         </div>
-        <button
-          onClick={() => {
-            resetForm();
-            setShowModal(true);
-          }}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          <Plus className="w-5 h-5" />
-          Create Public Page
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleConnectGoogleBusiness}
+            disabled={checkingGbp}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${
+              gbpConnected
+                ? 'bg-green-50 text-green-700 border-green-300'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            } disabled:opacity-60`}
+            title="Connect your Google Business account"
+          >
+            <PlugZap className="w-4 h-4" />
+            {checkingGbp ? 'Checking...' : gbpConnected ? 'Google Connected' : 'Connect Google Business'}
+          </button>
+
+          <button
+            onClick={() => {
+              resetForm();
+              setShowModal(true);
+            }}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          >
+            <Plus className="w-5 h-5" />
+            Create Public Page
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -603,6 +813,112 @@ export default function WorkshopPublicPagesPage() {
                     URL: www.domain.in/workshop/{formData.slug || 'workshop-name'}
                   </p>
                 </div>
+
+                {/* Google Maps URL + Fetch GMB */}
+                {formData.workshop_id && (
+                <div>
+                  {gbpConnected && (
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Google Business Location
+                      </label>
+                      <select
+                        value={selectedGbpLocation}
+                        onChange={(e) => handleGbpLocationSelect(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        disabled={loadingGbpLocations}
+                      >
+                        <option value="">
+                          {loadingGbpLocations ? 'Loading GMB locations...' : 'Select GMB from connected account'}
+                        </option>
+                        {gbpLocations.map((loc) => (
+                          <option key={loc.resource_name} value={loc.resource_name}>
+                            {loc.title}{loc.address ? ` - ${loc.address}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedGbpLocation && (
+                        <p className="text-xs text-gray-500 mt-1">Selected location will be remembered for this public page.</p>
+                      )}
+                    </div>
+                  )}
+
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <MapPin className="w-4 h-4 inline mr-1" />
+                    Google Maps URL
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={formData.google_maps_url}
+                      onChange={(e) => setFormData(prev => ({ ...prev, google_maps_url: e.target.value }))}
+                      placeholder="https://maps.google.com/..."
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleFetchGMB}
+                      disabled={fetchingGmb || !formData.google_maps_url.trim()}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${fetchingGmb ? 'animate-spin' : ''}`} />
+                      {fetchingGmb ? 'Fetching...' : 'Fetch GMB Data'}
+                    </button>
+                  </div>
+
+                  {gmbPreview && (
+                    <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-green-900 text-sm">GMB Data Preview</h4>
+                        {gmbPreview.rating != null && (
+                          <span className="flex items-center gap-1 text-sm font-medium text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded">
+                            <Star className="w-3.5 h-3.5 fill-yellow-500 text-yellow-500" />
+                            {gmbPreview.rating} ({gmbPreview.total_reviews || 0} reviews)
+                          </span>
+                        )}
+                      </div>
+                      {gmbPreview.business_name && (
+                        <p className="text-sm text-gray-800"><span className="font-medium">Business:</span> {gmbPreview.business_name}</p>
+                      )}
+                      {gmbPreview.formatted_address && (
+                        <p className="text-sm text-gray-800"><span className="font-medium">Address:</span> {gmbPreview.formatted_address}</p>
+                      )}
+                      {gmbPreview.phone_number && (
+                        <p className="text-sm text-gray-800"><span className="font-medium">Phone:</span> {gmbPreview.phone_number}</p>
+                      )}
+                      {gmbPreview.website && (
+                        <p className="text-sm text-gray-800"><span className="font-medium">Website:</span> {gmbPreview.website}</p>
+                      )}
+                      {gmbPreview.opening_hours && gmbPreview.opening_hours.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium text-gray-800 mb-1">Hours:</p>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                            {gmbPreview.opening_hours.map((h, i) => (
+                              <p key={i} className="text-xs text-gray-600">{h}</p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {gmbPreview.reviews && gmbPreview.reviews.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium text-gray-800 mb-1">Recent Reviews ({gmbPreview.reviews.length}):</p>
+                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                            {gmbPreview.reviews.map((r, i) => (
+                              <div key={i} className="text-xs text-gray-600 bg-white p-2 rounded border border-green-100">
+                                <span className="font-medium">{r.author_name}</span>
+                                <span className="ml-1 text-yellow-600">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                                <span className="ml-1 text-gray-400">{r.relative_time}</span>
+                                {r.text && <p className="mt-0.5 line-clamp-2">{r.text}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <p className="text-xs text-green-700 mt-2">Business hours, phone, and website have been auto-filled below.</p>
+                    </div>
+                  )}
+                </div>
+                )}
 
                 {/* Images */}
                 <div className="space-y-4">
@@ -1042,16 +1358,6 @@ export default function WorkshopPublicPagesPage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Google Maps URL</label>
-                  <input
-                    type="url"
-                    value={formData.google_maps_url}
-                    onChange={(e) => setFormData(prev => ({ ...prev, google_maps_url: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
                 </div>
 
                 {/* Gallery */}

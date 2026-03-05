@@ -51,6 +51,8 @@ type ConversationMessage = {
   message_type: string | null;
   text_body: string | null;
   media_caption: string | null;
+  media_url?: string | null;
+  media_mime_type?: string | null;
   template_name: string | null;
   payload?: Record<string, any> | null;
   meta?: Record<string, any> | null;
@@ -78,6 +80,7 @@ type CallLog = {
   started_at?: string | null;
   ended_at?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
   duration_seconds?: number | null;
   callback_requested?: boolean;
   error_message?: string | null;
@@ -467,6 +470,8 @@ export default function SuperAdminWhatsAppChatPage() {
   const dismissedCallIdsRef = useRef<Set<string>>(new Set());
   const activePeerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const activeAudioStreamRef = useRef<MediaStream | null>(null);
+  const activeRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
   const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
   const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
   const [draftMessage, setDraftMessage] = useState('');
@@ -782,7 +787,11 @@ export default function SuperAdminWhatsAppChatPage() {
             });
             setActiveCallElapsed(0);
             setCallMuted(false);
-            // Cleanup WebRTC media on call end
+            // Stop recording and cleanup WebRTC media on call end
+            if (activeRecorderRef.current && activeRecorderRef.current.state !== 'inactive') {
+              activeRecorderRef.current.stop();
+            }
+            activeRecorderRef.current = null;
             if (activePeerConnectionRef.current) {
               activePeerConnectionRef.current.close();
               activePeerConnectionRef.current = null;
@@ -1027,7 +1036,29 @@ export default function SuperAdminWhatsAppChatPage() {
     [activeCall?.id, callControlLoading, loadCalls, selectedPhone]
   );
 
+  const saveCallRecording = useCallback(async (callId: string, chunks: Blob[]) => {
+    if (chunks.length === 0) return;
+    try {
+      const blob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
+      if (blob.size < 100) return;
+      const form = new FormData();
+      form.append('file', blob, `call-recording-${callId}.webm`);
+      form.append('call_id', callId);
+      await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/recording`, {
+        method: 'POST',
+        body: form,
+      }).catch(() => {});
+      console.log('[CallRecording] Saved recording, size:', blob.size);
+    } catch (e) {
+      console.warn('[CallRecording] Failed to save:', e);
+    }
+  }, []);
+
   const cleanupCallMedia = useCallback(() => {
+    if (activeRecorderRef.current && activeRecorderRef.current.state !== 'inactive') {
+      activeRecorderRef.current.stop();
+    }
+    activeRecorderRef.current = null;
     if (activePeerConnectionRef.current) {
       activePeerConnectionRef.current.close();
       activePeerConnectionRef.current = null;
@@ -1175,17 +1206,44 @@ export default function SuperAdminWhatsAppChatPage() {
           pc.addTransceiver('audio', { direction: 'recvonly' });
         }
 
-        // Play incoming audio
+        // Play incoming audio and start recording
         pc.ontrack = (ev) => {
           console.log('[InboundCall] Remote audio track received');
+          const remoteStream = ev.streams[0] || new MediaStream([ev.track]);
           const remoteAudio = document.createElement('audio');
           remoteAudio.id = 'whatsapp-call-audio';
           remoteAudio.autoplay = true;
           remoteAudio.playsInline = true;
-          remoteAudio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+          remoteAudio.srcObject = remoteStream;
           document.getElementById('whatsapp-call-audio')?.remove();
           document.body.appendChild(remoteAudio);
           remoteAudio.play().catch((e) => console.warn('[InboundCall] Audio play failed:', e));
+
+          // Start recording: mix local + remote audio
+          try {
+            const ctx = new AudioContext();
+            const dest = ctx.createMediaStreamDestination();
+            if (audioStream) {
+              const localSrc = ctx.createMediaStreamSource(audioStream);
+              localSrc.connect(dest);
+            }
+            const remoteSrc = ctx.createMediaStreamSource(remoteStream);
+            remoteSrc.connect(dest);
+            const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm;codecs=opus' });
+            recordedChunksRef.current = [];
+            recorder.ondataavailable = (e) => {
+              if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+            };
+            recorder.onstop = () => {
+              console.log('[CallRecording] Recorder stopped, chunks:', recordedChunksRef.current.length);
+              if (callId) saveCallRecording(callId, recordedChunksRef.current);
+            };
+            recorder.start(1000);
+            activeRecorderRef.current = recorder;
+            console.log('[CallRecording] Recording started');
+          } catch (recErr) {
+            console.warn('[CallRecording] Could not start recording:', recErr);
+          }
         };
 
         // Set Meta's offer as remote description (using sanitized SDP)
@@ -1620,126 +1678,6 @@ export default function SuperAdminWhatsAppChatPage() {
                       )}
                       Call
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCallAction('callback_request')}
-                      disabled={callActionLoading !== null}
-                      className="inline-flex items-center gap-1 rounded-lg border border-[#128c7e] bg-white px-3 py-1.5 text-xs font-semibold text-[#128c7e] hover:bg-[#e8f5f2] disabled:cursor-not-allowed disabled:opacity-60"
-                      title="Request callback"
-                    >
-                      {callActionLoading === 'callback' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <PhoneIncoming className="h-3.5 w-3.5" />
-                      )}
-                      Callback
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleSendFreshPermissionRequest()}
-                      disabled={callActionLoading !== null || callPermissionCooldownLeft > 0}
-                      className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      title={
-                        callPermissionCooldownLeft > 0
-                          ? `Retry permission request in ${callPermissionCooldownLeft}s`
-                          : 'Send fresh call permission request'
-                      }
-                    >
-                      {callActionLoading === 'permission' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <MessageSquare className="h-3.5 w-3.5" />
-                      )}
-                      {callPermissionCooldownLeft > 0
-                        ? `Permission (${callPermissionCooldownLeft}s)`
-                        : 'Permission'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCallControl('hangup')}
-                      disabled={!activeCall || callControlLoading !== null}
-                      className="inline-flex items-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      title="Hangup"
-                    >
-                      {callControlLoading === 'hangup' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <PhoneOff className="h-3.5 w-3.5" />
-                      )}
-                      Hangup
-                    </button>
-                    {isIncomingActiveCall ? (
-                      <button
-                        type="button"
-                        onClick={() => void handleAcceptIncomingCall(activeCall?.id, selectedPhone)}
-                        disabled={!canAnswerIncomingCall || callControlLoading !== null}
-                        className="inline-flex items-center gap-1 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        title="Accept incoming call"
-                      >
-                        {callControlLoading === 'resume' ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <PhoneIncoming className="h-3.5 w-3.5" />
-                        )}
-                        Accept
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => void handleCallControl('hold')}
-                      disabled={!activeCall || callControlLoading !== null}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      title="Hold"
-                    >
-                      {callControlLoading === 'hold' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <PauseCircle className="h-3.5 w-3.5" />
-                      )}
-                      Hold
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCallControl('resume')}
-                      disabled={!activeCall || callControlLoading !== null}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      title="Resume"
-                    >
-                      {callControlLoading === 'resume' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <PlayCircle className="h-3.5 w-3.5" />
-                      )}
-                      Resume
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCallControl('mute')}
-                      disabled={!activeCall || callControlLoading !== null}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      title="Mute"
-                    >
-                      {callControlLoading === 'mute' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <VolumeX className="h-3.5 w-3.5" />
-                      )}
-                      Mute
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCallControl('unmute')}
-                      disabled={!activeCall || callControlLoading !== null}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      title="Unmute"
-                    >
-                      {callControlLoading === 'unmute' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Volume2 className="h-3.5 w-3.5" />
-                      )}
-                      Unmute
-                    </button>
                   </div>
                 </div>
               ) : null}
@@ -1766,58 +1704,133 @@ export default function SuperAdminWhatsAppChatPage() {
                       Loading calls...
                     </div>
                   ) : null}
-                  {callLogs
-                    .slice()
-                    .sort((a, b) => {
-                      const ta = new Date(a.started_at || a.created_at || 0).getTime();
-                      const tb = new Date(b.started_at || b.created_at || 0).getTime();
-                      return ta - tb;
-                    })
-                    .map((call) => {
-                      const status = normalizeCallStatus(call.call_status);
-                      const inbound = isInboundCallDirection(call.direction);
-                      const isCallback = String(call.direction || '').toUpperCase().includes('CALLBACK');
-                      const isMissed = ['MISSED', 'REJECTED', 'FAILED'].includes(status);
-                      const isAccepted = ['ACCEPTED', 'CONNECTED', 'ENDED'].includes(status);
-                      const iconColor = isMissed
-                        ? 'text-red-500'
-                        : isAccepted
-                        ? 'text-green-600'
-                        : inbound
-                        ? 'text-blue-600'
-                        : 'text-[#0f766e]';
-                      const label = isCallback
-                        ? 'Callback request'
-                        : isMissed
-                        ? `${inbound ? 'Missed call' : 'Not answered'}`
-                        : isAccepted
-                        ? `${inbound ? 'Incoming' : 'Outgoing'} call`
-                        : `${inbound ? 'Incoming' : 'Outgoing'} call · ${status}`;
-                      return (
-                        <button
-                          key={`call-${call.id}`}
-                          type="button"
-                          onClick={() => setCallInfoOpen(call)}
-                          className="mx-auto flex w-fit items-center gap-2 rounded-xl border border-[#d8dee3] bg-white/90 px-4 py-2 text-[12px] text-[#334155] shadow-sm hover:bg-white"
-                        >
-                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${isMissed ? 'bg-red-50' : 'bg-green-50'}`}>
-                            {inbound ? (
-                              <PhoneIncoming className={`h-3.5 w-3.5 ${iconColor}`} />
-                            ) : (
-                              <PhoneOutgoing className={`h-3.5 w-3.5 ${iconColor}`} />
-                            )}
-                          </span>
-                          <span className="flex flex-col items-start leading-tight">
-                            <span className="font-semibold">{label}</span>
-                            <span className="text-[10px] text-gray-500">
-                              {formatMessageTime(call.started_at || call.created_at || null)}
-                              {call.duration_seconds ? ` · ${formatDuration(call.duration_seconds)}` : ''}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  {conversation.map((msg) => {
+                  {(() => {
+                    // Merge calls and messages into one timeline
+                    const callItems = callLogs.map((call) => ({
+                      type: 'call' as const,
+                      ts: new Date(call.started_at || call.created_at || 0).getTime(),
+                      call,
+                    }));
+                    const msgItems = conversation
+                      .filter((msg) => {
+                        const mt = String(msg.message_type || '').trim().toUpperCase();
+                        if (mt !== 'INTERACTIVE') return true;
+                        const payloadStr = JSON.stringify(msg?.payload || '').toLowerCase();
+                        if (payloadStr.includes('call_permission') || payloadStr.includes('calling_permission') || payloadStr.includes('calling')) return false;
+                        const tpl = String(msg?.template_name || '').toLowerCase();
+                        if (tpl.includes('call') || tpl.includes('calling')) return false;
+                        return true;
+                      })
+                      .map((msg) => ({
+                        type: 'message' as const,
+                        ts: new Date(msg.status_at || msg.created_at || 0).getTime(),
+                        msg,
+                      }));
+                    const timeline = [...callItems, ...msgItems].sort((a, b) => a.ts - b.ts);
+
+                    return timeline.map((item) => {
+                      if (item.type === 'call') {
+                        const call = item.call;
+                        const status = normalizeCallStatus(call.call_status);
+                        const inbound = isInboundCallDirection(call.direction);
+                        const isCallback = String(call.direction || '').toUpperCase().includes('CALLBACK');
+                        const isMissed = ['MISSED', 'REJECTED', 'FAILED'].includes(status);
+                        const isRinging = ['RINGING', 'INITIATED', 'NEGOTIATING'].includes(status);
+                        const isAccepted = ['ACCEPTED', 'CONNECTED', 'ENDED'].includes(status);
+                        const hasRecording = Array.isArray(call.recordings) && call.recordings.length > 0;
+                        const recordingUrl = hasRecording
+                          ? call.recordings![0].recording_proxy_path || call.recordings![0].recording_url || null
+                          : null;
+                        // Calculate duration from available timestamps
+                        let callDuration = call.duration_seconds;
+                        if ((callDuration == null || callDuration <= 0) && isAccepted && call.started_at) {
+                          const startMs = new Date(call.started_at).getTime();
+                          const endRef = call.ended_at || call.updated_at || call.created_at;
+                          if (endRef) {
+                            const endMs = new Date(endRef).getTime();
+                            if (endMs > startMs) {
+                              callDuration = Math.floor((endMs - startMs) / 1000);
+                            }
+                          }
+                        }
+                        const iconColor = isMissed
+                          ? 'text-red-500'
+                          : isAccepted
+                          ? 'text-green-600'
+                          : isRinging
+                          ? 'text-orange-500'
+                          : inbound
+                          ? 'text-blue-600'
+                          : 'text-[#0f766e]';
+                        const bgColor = isMissed
+                          ? 'bg-red-50 border-red-200'
+                          : isRinging
+                          ? 'bg-orange-50 border-orange-200'
+                          : isAccepted
+                          ? 'bg-white border-[#d8dee3]'
+                          : 'bg-white border-[#d8dee3]';
+                        const label = isCallback
+                          ? 'Callback request'
+                          : isMissed
+                          ? `${inbound ? 'Missed call' : 'Not answered'}`
+                          : isRinging
+                          ? `${inbound ? 'Incoming' : 'Outgoing'} call · Ringing`
+                          : isAccepted
+                          ? `${inbound ? 'Incoming' : 'Outgoing'} call`
+                          : `${inbound ? 'Incoming' : 'Outgoing'} call · ${status}`;
+                        return (
+                          <div key={`call-${call.id}`} className="flex justify-center">
+                            <div
+                              className={`flex w-[280px] flex-col rounded-xl border ${bgColor} px-4 py-2.5 text-[12px] shadow-sm`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setCallInfoOpen(call)}
+                                className="flex w-full items-center gap-2.5 hover:opacity-80"
+                              >
+                                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isMissed ? 'bg-red-100' : isRinging ? 'bg-orange-100' : 'bg-green-100'}`}>
+                                  {isMissed ? (
+                                    <PhoneOff className={`h-4 w-4 ${iconColor}`} />
+                                  ) : inbound ? (
+                                    <PhoneIncoming className={`h-4 w-4 ${iconColor}`} />
+                                  ) : (
+                                    <PhoneOutgoing className={`h-4 w-4 ${iconColor}`} />
+                                  )}
+                                </span>
+                                <span className="flex min-w-0 flex-1 flex-col items-start leading-tight">
+                                  <span className={`text-[13px] font-semibold ${isMissed ? 'text-red-700' : 'text-[#334155]'}`}>{label}</span>
+                                  <span className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                                    <span>{formatMessageTime(call.started_at || call.created_at || null)}</span>
+                                    {isAccepted && callDuration != null && callDuration > 0 ? (
+                                      <>
+                                        <span className="text-gray-400">·</span>
+                                        <span className="font-semibold text-green-700">{formatDuration(callDuration)}</span>
+                                      </>
+                                    ) : isAccepted ? (
+                                      <>
+                                        <span className="text-gray-400">·</span>
+                                        <span className="font-medium text-gray-500">Connected</span>
+                                      </>
+                                    ) : null}
+                                  </span>
+                                </span>
+                              </button>
+                              {isAccepted && hasRecording && recordingUrl ? (
+                                <div className="mt-2 rounded-lg bg-[#f0f2f5] p-1.5">
+                                  <audio
+                                    controls
+                                    preload="none"
+                                    src={recordingUrl}
+                                    className="h-8 w-full"
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      const msg = item.msg;
                     const outbound = String(msg.direction || '').toUpperCase() === 'OUTBOUND';
                     const actorName = String(msg?.meta?.actor_name || '').trim();
                     const deliveryStatus = normalizeDeliveryStatus(msg?.status);
@@ -1970,14 +1983,130 @@ export default function SuperAdminWhatsAppChatPage() {
                               {callPermissionBadge.label}
                             </div>
                           ) : null}
-                          {isCallRelated || callPermissionState ? (
-                            <div className="flex items-center gap-2 text-gray-600">
-                              <PhoneCall className="h-4 w-4 flex-shrink-0" />
-                              <span className="whitespace-pre-wrap break-words">{bubbleText}</span>
-                            </div>
-                          ) : (
-                            <div className="whitespace-pre-wrap break-words">{bubbleText}</div>
-                          )}
+                          {(() => {
+                            // Extract media URL from message or payload
+                            const mediaUrl =
+                              msg.media_url ||
+                              msg.payload?.media_url ||
+                              msg.payload?.request?.media_url ||
+                              msg.payload?.image?.link ||
+                              msg.payload?.video?.link ||
+                              msg.payload?.audio?.link ||
+                              msg.payload?.document?.link ||
+                              msg.payload?.sticker?.link ||
+                              msg.payload?.messages?.[0]?.image?.id ||
+                              msg.payload?.messages?.[0]?.video?.id ||
+                              null;
+                            const mediaMime = String(msg.media_mime_type || msg.payload?.media_mime_type || '').toLowerCase();
+
+                            // Extract location
+                            const loc =
+                              msg.payload?.location ||
+                              msg.payload?.messages?.[0]?.location ||
+                              msg.payload?.request?.location ||
+                              null;
+                            const hasLocation = loc && (loc.latitude || loc.longitude);
+                            const locLat = Number(loc?.latitude || 0);
+                            const locLng = Number(loc?.longitude || 0);
+                            const locName = String(loc?.name || '').trim();
+                            const locAddr = String(loc?.address || '').trim();
+                            const locUrl = hasLocation
+                              ? loc?.url || `https://www.google.com/maps?q=${locLat},${locLng}`
+                              : null;
+
+                            return (
+                              <>
+                                {/* Location */}
+                                {hasLocation ? (
+                                  <a
+                                    href={locUrl!}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mb-1 block overflow-hidden rounded-lg"
+                                  >
+                                    <img
+                                      src={`https://maps.googleapis.com/maps/api/staticmap?center=${locLat},${locLng}&zoom=15&size=280x150&markers=color:red%7C${locLat},${locLng}&key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8`}
+                                      alt="Location"
+                                      className="h-[120px] w-full rounded-lg object-cover"
+                                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                    />
+                                    <div className="mt-1 text-[12px]">
+                                      {locName ? <div className="font-semibold text-[#111b21]">{locName}</div> : null}
+                                      {locAddr ? <div className="text-gray-500">{locAddr}</div> : (
+                                        <div className="text-gray-500">{locLat.toFixed(5)}, {locLng.toFixed(5)}</div>
+                                      )}
+                                    </div>
+                                  </a>
+                                ) : null}
+
+                                {/* Image */}
+                                {mediaUrl && (msgType === 'IMAGE' || mediaMime.startsWith('image/')) ? (
+                                  <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className="mb-1 block">
+                                    <img
+                                      src={mediaUrl}
+                                      alt="Photo"
+                                      className="max-h-[240px] w-full rounded-lg object-cover"
+                                      loading="lazy"
+                                    />
+                                  </a>
+                                ) : null}
+
+                                {/* Video */}
+                                {mediaUrl && (msgType === 'VIDEO' || mediaMime.startsWith('video/')) ? (
+                                  <div className="mb-1">
+                                    <video
+                                      controls
+                                      preload="metadata"
+                                      src={mediaUrl}
+                                      className="max-h-[240px] w-full rounded-lg"
+                                    />
+                                  </div>
+                                ) : null}
+
+                                {/* Audio */}
+                                {mediaUrl && (msgType === 'AUDIO' || mediaMime.startsWith('audio/')) ? (
+                                  <div className="mb-1">
+                                    <audio controls preload="none" src={mediaUrl} className="w-full" />
+                                  </div>
+                                ) : null}
+
+                                {/* Document */}
+                                {mediaUrl && (msgType === 'DOCUMENT' || mediaMime.startsWith('application/')) && !mediaMime.startsWith('audio/') && !mediaMime.startsWith('image/') && !mediaMime.startsWith('video/') ? (
+                                  <a
+                                    href={mediaUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mb-1 flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-blue-600 hover:underline"
+                                  >
+                                    <span className="text-lg">📄</span>
+                                    <span className="truncate">{msg.payload?.document?.filename || msg.payload?.request?.filename || 'Document'}</span>
+                                  </a>
+                                ) : null}
+
+                                {/* Sticker */}
+                                {mediaUrl && msgType === 'STICKER' ? (
+                                  <img
+                                    src={mediaUrl}
+                                    alt="Sticker"
+                                    className="mb-1 h-[120px] w-[120px] object-contain"
+                                    loading="lazy"
+                                  />
+                                ) : null}
+
+                                {/* Call-related message */}
+                                {isCallRelated || callPermissionState ? (
+                                  <div className="flex items-center gap-2 text-gray-600">
+                                    <PhoneCall className="h-4 w-4 flex-shrink-0" />
+                                    <span className="whitespace-pre-wrap break-words">{bubbleText}</span>
+                                  </div>
+                                ) : !hasLocation && !(mediaUrl && (msgType === 'IMAGE' || msgType === 'STICKER') && !String(msg.media_caption || msg.text_body || '').trim()) ? (
+                                  <div className="whitespace-pre-wrap break-words">{bubbleText}</div>
+                                ) : String(msg.media_caption || '').trim() ? (
+                                  <div className="whitespace-pre-wrap break-words">{String(msg.media_caption || '').trim()}</div>
+                                ) : null}
+                              </>
+                            );
+                          })()}
                           {isTemplateMessage && templateButtons.length > 0 ? (
                             <div className="mt-2 space-y-1">
                               {templateButtons.map((button, index) => (
@@ -2027,7 +2156,8 @@ export default function SuperAdminWhatsAppChatPage() {
                         </div>
                       </div>
                     );
-                  })}
+                    });
+                  })()}
                 </div>
               )}
             </div>

@@ -382,43 +382,36 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const followLinkedin = 'https://linkedin.com/company/myfngcarservices';
   const followX = 'https://x.com/myfngcarservice';
   const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || '';
-  const isExactHtmlStylePage = transformed.slug === 'what-to-do-when-you-need-towing-service-near-me-in-pune';
   const htmlStyleQuote = highlightQuote || 'Ignoring early engine warning signs can lead to expensive repairs later.';
 
-  if (isExactHtmlStylePage) {
-    return (
+  return (
       <div className="min-h-screen bg-[#f5f7fb]">
         <style>{`
-          .blog-html-wrap .header{background:#fff;box-shadow:0 2px 10px rgba(0,0,0,0.08);position:sticky;top:0;z-index:1000;}
-          .blog-html-wrap .navbar{max-width:1200px;margin:auto;display:flex;align-items:center;justify-content:space-between;padding:12px 20px;}
-          .blog-html-wrap .logo img{height:38px;}
-          .blog-html-wrap .nav-links{display:flex;gap:25px;align-items:center;}
-          .blog-html-wrap .nav-links a{text-decoration:none;color:#333;font-weight:500;font-size:15px;}
-          .blog-html-wrap .header-buttons{display:flex;gap:15px;}
-          .blog-html-wrap .btn-outline{border:1px solid #0a4ea3;padding:8px 16px;border-radius:10px;text-decoration:none;color:#0a4ea3;font-weight:500;}
-          .blog-html-wrap .btn-primary{background:#0a4ea3;padding:9px 18px;border-radius:10px;color:#fff;text-decoration:none;font-weight:500;}
-          .blog-html-wrap .hamburger{display:none;font-size:22px;cursor:pointer;background:transparent;border:none;color:#111827;}
-          .blog-html-wrap .mobile-menu{display:none;flex-direction:column;background:#fff;padding:15px;}
-          .blog-html-wrap .mobile-menu a{padding:10px 0;text-decoration:none;color:#333;}
+          .blog-html-wrap{font-family:'Poppins',sans-serif;font-size:13px;color:#222;}
+          .blog-html-wrap *{box-sizing:border-box;}
+          .blog-html-wrap h1,.blog-html-wrap h2,.blog-html-wrap h3,.blog-html-wrap h4,.blog-html-wrap h5,.blog-html-wrap h6{font-family:'Poppins',sans-serif;color:#111827;}
           .blog-html-wrap .container{max-width:1200px;margin:auto;padding:20px;}
           .blog-html-wrap .breadcrumb{font-size:14px;color:#888;margin-bottom:20px;}
           .blog-html-wrap .blog-title{font-size:32px;font-weight:700;margin-bottom:10px;color:#111827;line-height:1.2;}
           .blog-html-wrap .blog-meta{font-size:13px;color:#777;margin-bottom:20px;display:flex;gap:20px;flex-wrap:wrap;}
           .blog-html-wrap .layout{display:flex;gap:25px;}
-          .blog-html-wrap .content-area{flex:3;}
-          .blog-html-wrap .sidebar{flex:1;position:sticky;top:90px;height:fit-content;}
+          .blog-html-wrap .content-area{flex:3;min-width:0;}
+          .blog-html-wrap .sidebar{flex:1;min-width:0;position:sticky;top:90px;height:fit-content;}
           .blog-html-wrap .featured-image{width:100%;border-radius:14px;box-shadow:0 5px 20px rgba(0,0,0,0.1);margin-bottom:20px;}
-          .blog-html-wrap .social-wrap{display:flex;gap:192px;margin-bottom:22px;}
+          .blog-html-wrap .social-wrap{display:flex;gap:30px;margin-bottom:22px;}
           .blog-html-wrap .follow{background:#fff;padding:15px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.06);display:flex;gap:15px;flex-wrap:wrap;width:44%;border:1px solid #006bff;align-items:center;}
           .blog-html-wrap .share{background:#eef2f7;padding:15px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.06);display:flex;gap:15px;flex-wrap:wrap;width:37%;border:1px solid #006bff;align-items:center;}
           .blog-html-wrap .follow-label,.blog-html-wrap .share-label{font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}
           .blog-html-wrap .social-link{color:#0056d2;display:inline-flex;align-items:center;font-size:25px;}
           .blog-html-wrap .quote{background:#0056d2;color:#fff;padding:20px;border-radius:12px;font-style:italic;margin-bottom:25px;}
-          .blog-html-wrap .main-content{background:#fff;padding:25px;border-radius:14px;box-shadow:0 2px 14px rgba(0,0,0,0.06);line-height:1.7;color:#333;}
-          .blog-html-wrap .main-content h2{margin:20px 0 10px;}
+          .blog-html-wrap .main-content{background:#fff;padding:25px;border-radius:14px;box-shadow:0 2px 14px rgba(0,0,0,0.06);line-height:1.7;color:#333;font-size:15px;}
+          .blog-html-wrap .main-content h2{margin:20px 0 10px;font-size:22px;font-weight:700;color:#111827;}
+          .blog-html-wrap .main-content h3{margin:16px 0 8px;font-size:18px;font-weight:600;color:#111827;}
+          .blog-html-wrap .main-content p{margin-bottom:12px;font-size:15px;}
           .blog-html-wrap .main-content img{width:100%;border-radius:10px;margin:15px 0;}
           .blog-html-wrap .main-content ul{padding-left:20px;}
-          .blog-html-wrap .main-content li{margin:6px 0;}
+          .blog-html-wrap .main-content li{margin:6px 0;font-size:15px;}
+          .blog-html-wrap .main-content strong{font-weight:600;}
           .blog-html-wrap .tags{margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
           .blog-html-wrap .tags span{background:#eef2f7;padding:8px 14px;border-radius:20px;font-size:13px;}
           .blog-html-wrap .faq{margin-top:34px;padding-top:6px;}
@@ -432,11 +425,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .comment-box{background:#fff;padding:25px;border-radius:14px;margin-top:25px;}
           .blog-html-wrap .comment-box input,.blog-html-wrap .comment-box textarea{width:100%;margin-top:10px;padding:12px;border-radius:10px;border:1px solid #ccc;}
           .blog-html-wrap .comment-box button{margin-top:15px;background:#5fa6d9;color:#fff;border:none;padding:12px 20px;border-radius:10px;cursor:pointer;}
-          .blog-html-wrap .side-box{background:#fff;padding:18px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06);width:325px;max-width:100%;}
+          .blog-html-wrap .side-box{background:#fff;padding:18px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06);max-width:100%;}
           .blog-html-wrap .search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;}
           .blog-html-wrap .search input{min-width:0;width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;}
           .blog-html-wrap .search button{background:#0a4ea3;color:#fff;border:none;padding:10px 16px;border-radius:8px;}
-          .blog-html-wrap .playstore-badge{display:inline-block;margin-top:10px;max-width:220px;}
+          .blog-html-wrap .playstore-badge{display:inline-block;margin-top:10px;max-width:160px;}
           .blog-html-wrap .playstore-badge img{display:block;width:100%;height:auto;}
           .blog-html-wrap .service-slider{position:relative;height:240px;overflow:hidden;border-radius:12px;}
           .blog-html-wrap .service-slide{background:#fff;padding:15px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.08);text-align:center;margin-top:12px;}
@@ -463,15 +456,15 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .categories{display:flex;flex-wrap:wrap;gap:10px;}
           .blog-html-wrap .categories a{background:#eef2f7;padding:8px 14px;border-radius:20px;text-decoration:none;color:#333;font-size:12px;}
           @media(max-width:1024px){
-            .blog-html-wrap .nav-links,.blog-html-wrap .header-buttons{display:none;}
-            .blog-html-wrap .hamburger{display:block;}
             .blog-html-wrap .layout{flex-direction:column;}
             .blog-html-wrap .sidebar{position:static;}
             .blog-html-wrap .side-box{width:100%;}
-            .blog-html-wrap .social-wrap{flex-direction:column;gap:20px;}
+            .blog-html-wrap .social-wrap{flex-direction:column;gap:15px;}
             .blog-html-wrap .follow,.blog-html-wrap .share{width:100%;}
+            .blog-html-wrap .blog-title{font-size:24px;}
           }
         `}</style>
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet" />
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
         {schema ? (
           <script
@@ -480,38 +473,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
           />
         ) : null}
+        <Navbar />
         <div className="blog-html-wrap">
-          <header className="header">
-            <div className="navbar">
-              <div className="logo">
-                <img src="https://myfng.in/logo.png" alt="MyFNG" />
-              </div>
-              <div className="nav-links">
-                <a href="/">Home</a>
-                <a href="/services">Services</a>
-                <a href="/about">About</a>
-                <a href="/car-roadside-assitance">Roadside Assistance</a>
-                <a href="/blogs">Blog</a>
-                <a href="/contact">Contact</a>
-              </div>
-              <div className="header-buttons">
-                <a href="/login" className="btn-outline">Partner Login</a>
-                <a href="/login" className="btn-primary">Customer Login</a>
-              </div>
-              <button type="button" id="blogHamburgerBtn" className="hamburger" aria-label="Toggle menu">
-                <i className="fa fa-bars" />
-              </button>
-            </div>
-            <div className="mobile-menu" id="mobileMenu">
-              <a href="/">Home</a>
-              <a href="/services">Services</a>
-              <a href="/about">About</a>
-              <a href="/car-roadside-assitance">Roadside Assistance</a>
-              <a href="/blogs">Blog</a>
-              <a href="/contact">Contact</a>
-            </div>
-          </header>
-          <div className="container">
+          <div className="container" style={{ marginTop: '80px' }}>
             <div className="breadcrumb">
               Home &gt; Blogs {breadcrumbCategory?.name ? `> ${breadcrumbCategory.name}` : ''} &gt; {transformed.title}
             </div>
@@ -715,331 +679,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           </div>
           <HtmlStyleEffects />
         </div>
+        <Footer />
       </div>
     );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-
-      {schema ? (
-        <script
-          type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
-        />
-      ) : null}
-
-      <section className="mt-16 sm:mt-18 md:mt-20 py-6 sm:py-8">
-        <div className="container mx-auto px-3 sm:px-4">
-          <div className="max-w-6xl mx-auto">
-            {/* Breadcrumbs */}
-            <nav className="text-xs sm:text-sm text-gray-600 mb-3">
-              <ol className="flex flex-wrap items-center gap-1">
-                <li>
-                  <Link href="/" className="hover:underline">
-                    Home
-                  </Link>
-                </li>
-                <li className="text-gray-400">›</li>
-                <li>
-                  <Link href="/blogs" className="hover:underline">
-                    Blogs
-                  </Link>
-                </li>
-                {breadcrumbCategory?.name ? (
-                  <>
-                    <li className="text-gray-400">›</li>
-                    <li>
-                      <Link href={`/blogs?category=${encodeURIComponent(breadcrumbCategory.id)}`} className="hover:underline">
-                        {breadcrumbCategory.name}
-                      </Link>
-                    </li>
-                  </>
-                ) : null}
-                <li className="text-gray-400">›</li>
-                <li className="text-gray-900 font-medium line-clamp-1">{transformed.title}</li>
-              </ol>
-            </nav>
-
-            {/* Title */}
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 leading-tight line-clamp-3">
-              {transformed.title}
-            </h1>
-
-            {/* Author Name - at top */}
-            {authorDisplayName ? (
-              <div className="mt-2 text-sm sm:text-base font-semibold text-gray-800">
-                Author: {authorDisplayName}
-              </div>
-            ) : null}
-
-            {/* Meta */}
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm text-gray-600">
-              {dateText ? (
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4" />
-                  {dateText}
-                </div>
-              ) : null}
-              {readTimeText ? (
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4" />
-                  {readTimeText}
-                </div>
-              ) : null}
-              <div className="flex items-center gap-1.5">
-                <Eye className="w-4 h-4" />
-                <ViewCounter slug={transformed.slug} initialViews={views} /> views
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Main content + sidebar layout */}
-      <section className="pb-10 sm:pb-12 md:pb-14">
-        <div className="container mx-auto px-3 sm:px-4">
-          <div className="max-w-6xl mx-auto">
-            {highlightQuote ? (
-              <div className="bg-gray-900 text-white rounded-xl p-5 sm:p-6 mb-6">
-                <div className="text-sm sm:text-base leading-relaxed italic">
-                  “{highlightQuote}”
-                </div>
-              </div>
-            ) : null}
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-              {/* Left column: featured image (smaller, left) + article */}
-              <div className="lg:col-span-8 space-y-6">
-                {/* Featured image - left side, smaller */}
-                {transformed.featured_image ? (
-                  <div className="relative w-full max-w-lg aspect-[16/10] sm:aspect-[2/1] rounded-xl overflow-hidden shadow-lg bg-gray-200">
-                    <Image src={transformed.featured_image} alt={transformed.title} fill className="object-cover" priority />
-                  </div>
-                ) : null}
-
-                <article className="bg-white rounded-xl shadow-lg p-4 sm:p-6 md:p-8">
-                  {transformed.excerpt ? (
-                    <p className="text-gray-700 text-sm sm:text-base leading-relaxed mb-6">
-                      {transformed.excerpt}
-                    </p>
-                  ) : null}
-
-                  {/* Content (HTML supported as per dashboard editor helper text) */}
-                  <div
-                    className="prose prose-sm sm:prose-base md:prose-lg max-w-none"
-                    dangerouslySetInnerHTML={{ __html: transformed.content }}
-                  />
-
-                  {/* Tags & Share - after blog content */}
-                  <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div className="flex flex-wrap gap-2">
-                      {transformed.tags && transformed.tags.length > 0
-                        ? transformed.tags.map((tag) =>
-                            tag ? (
-                              <span
-                                key={tag.slug || tag.name}
-                                className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm"
-                              >
-                                <Tag className="w-3 h-3" />
-                                {tag.name}
-                              </span>
-                            ) : null
-                          )
-                        : null}
-                      {(!transformed.tags || transformed.tags.length === 0) ? <span className="text-sm text-gray-500">No tags</span> : null}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-700 mr-1">Share:</span>
-                      <a
-                        href={fbHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg transition text-blue-800 text-xs sm:text-sm font-semibold"
-                        title="Share on Facebook"
-                      >
-                        <Facebook className="w-4 h-4" />
-                        Facebook
-                      </a>
-                      <a
-                        href={waHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-green-50 hover:bg-green-100 rounded-lg transition text-green-800 text-xs sm:text-sm font-semibold"
-                        title="Share on WhatsApp"
-                      >
-                        <MessageCircle className="w-4 h-4" />
-                        WhatsApp
-                      </a>
-                      <a
-                        href={liHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-sky-50 hover:bg-sky-100 rounded-lg transition text-sky-800 text-xs sm:text-sm font-semibold"
-                        title="Share on LinkedIn"
-                      >
-                        <Linkedin className="w-4 h-4" />
-                        LinkedIn
-                      </a>
-                      <CopyLinkButton url={shareUrl} />
-                    </div>
-                  </div>
-
-                  {/* FAQs (editable + schema source) */}
-                  {transformed.faqs && transformed.faqs.length ? (
-                    <div className="mt-10 sm:mt-12">
-                      <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">FAQs</h2>
-                      <div className="space-y-4">
-                        {transformed.faqs.slice(0, 8).map((f, idx) => (
-                          <div key={`${idx}-${f.question}`} className="border border-gray-200 rounded-xl p-4">
-                            <div className="font-semibold text-gray-900">{f.question}</div>
-                            <div className="text-gray-700 mt-1">{f.answer}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <BlogComments blogId={transformed.id} initialComments={(comments || []) as BlogComment[]} />
-                </article>
-              </div>
-
-              {/* Sidebar - sticky, only blog content scrolls */}
-              <aside className="lg:col-span-4 space-y-5 lg:sticky lg:top-24 lg:self-start">
-                {/* Search */}
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="font-semibold text-gray-900 mb-3">Search</div>
-                  <form action="/blogs" method="GET" className="flex gap-2">
-                    <input
-                      name="q"
-                      placeholder="Search blogs by keyword"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                    />
-                    <button type="submit" className="btn btn-primary text-sm px-4 py-2">
-                      Search
-                    </button>
-                  </form>
-                </div>
-
-                {/* Download app */}
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="font-semibold text-gray-900 mb-3">Download Our App</div>
-                  <a
-                    href={playStoreUrl || '#'}
-                    target={playStoreUrl ? '_blank' : undefined}
-                    rel={playStoreUrl ? 'noopener noreferrer' : undefined}
-                    aria-disabled={!playStoreUrl}
-                    className={`btn btn-primary w-full justify-center ${!playStoreUrl ? 'opacity-60 pointer-events-none' : ''}`}
-                  >
-                    Play Store
-                  </a>
-                </div>
-
-                {/* Follow Us - in sidebar, not inside blog content */}
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="font-semibold text-gray-900 mb-3">Follow Us</div>
-                  <div className="flex flex-wrap gap-3 text-sm">
-                    <a
-                      href={followFacebook || '#'}
-                      target={followFacebook ? '_blank' : undefined}
-                      rel={followFacebook ? 'noopener noreferrer' : undefined}
-                      aria-disabled={!followFacebook}
-                      className={`inline-flex items-center gap-2 ${followFacebook ? 'text-gray-700 hover:text-blue-600 hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
-                    >
-                      <Facebook className="w-4 h-4" /> Facebook
-                    </a>
-                    <a
-                      href={followInstagram || '#'}
-                      target={followInstagram ? '_blank' : undefined}
-                      rel={followInstagram ? 'noopener noreferrer' : undefined}
-                      aria-disabled={!followInstagram}
-                      className={`inline-flex items-center gap-2 ${followInstagram ? 'text-gray-700 hover:text-pink-600 hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
-                    >
-                      <Instagram className="w-4 h-4" /> Instagram
-                    </a>
-                    <a
-                      href={followYoutube || '#'}
-                      target={followYoutube ? '_blank' : undefined}
-                      rel={followYoutube ? 'noopener noreferrer' : undefined}
-                      aria-disabled={!followYoutube}
-                      className={`inline-flex items-center gap-2 ${followYoutube ? 'text-gray-700 hover:text-red-600 hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
-                    >
-                      <Youtube className="w-4 h-4" /> YouTube
-                    </a>
-                    <a
-                      href={followLinkedin || '#'}
-                      target={followLinkedin ? '_blank' : undefined}
-                      rel={followLinkedin ? 'noopener noreferrer' : undefined}
-                      aria-disabled={!followLinkedin}
-                      className={`inline-flex items-center gap-2 ${followLinkedin ? 'text-gray-700 hover:text-sky-600 hover:underline' : 'text-gray-400 cursor-not-allowed'}`}
-                    >
-                      <Linkedin className="w-4 h-4" /> LinkedIn
-                    </a>
-                  </div>
-                </div>
-
-                {/* Related Blog Articles - always in sidebar */}
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="font-semibold text-gray-900 mb-3">Related Blog Articles</div>
-                  <div className="space-y-3">
-                    {(recentPosts || []).map((p: any) => (
-                      <Link key={p.id} href={`/blogs/${p.slug}`} className="flex gap-3 hover:bg-gray-50 rounded-lg p-2 transition">
-                        <div className="relative w-16 h-12 rounded-md overflow-hidden bg-gray-200 flex-shrink-0">
-                          {p.featured_image ? (
-                            <Image src={p.featured_image} alt={p.title} fill className="object-cover" />
-                          ) : null}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-gray-900 line-clamp-2">{p.title}</div>
-                          <div className="text-xs text-gray-500">{formatDate(p.published_at || p.created_at)}</div>
-                        </div>
-                      </Link>
-                    ))}
-                    {(recentPosts || []).length === 0 ? <div className="text-sm text-gray-600">No related posts yet.</div> : null}
-                  </div>
-                </div>
-
-                {/* Related articles (from SEO config; blank if not set) */}
-                {relatedArticles.length ? (
-                  <div className="bg-white rounded-xl border border-gray-200 p-4">
-                    <div className="font-semibold text-gray-900 mb-3">Related Articles</div>
-                    <ul className="space-y-2 text-sm">
-                      {relatedArticles.slice(0, 6).map((a) => (
-                        <li key={a.url}>
-                          <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline">
-                            {a.title || a.url}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {/* Categories */}
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="font-semibold text-gray-900 mb-3">Categories</div>
-                  <div className="flex flex-wrap gap-2">
-                    {(categories || []).map((c: any) => (
-                      <Link
-                        key={c.id}
-                        href={`/blogs?category=${encodeURIComponent(c.id)}`}
-                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-xs font-semibold text-gray-800 transition"
-                      >
-                        {c.name}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </aside>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <Footer />
-    </div>
-  );
 }
-
