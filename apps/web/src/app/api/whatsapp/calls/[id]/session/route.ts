@@ -215,7 +215,6 @@ export async function POST(
           }
         }
       } else {
-        // Outbound call: send SDP offer/answer via standard session signal.
         const providerResult = await sendSessionSignal({
           callId: String(callLog.provider_call_id || callId),
           to: phone,

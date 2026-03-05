@@ -164,15 +164,15 @@ export async function initiateBusinessCall(input: {
     type: 'voice',
   };
   if (input.reason) payload.reason = input.reason;
-  if (input.optInToken || input.consentGrantedAt) {
+  if (input.optInToken) {
     payload.consent = {
-      ...(input.optInToken ? { opt_in_token: input.optInToken } : {}),
+      opt_in_token: input.optInToken,
       ...(input.consentGrantedAt ? { granted_at: input.consentGrantedAt } : {}),
     };
   }
   if (input.sessionSdp && input.sessionSdpType) {
     payload.session = {
-      sdp: String(input.sessionSdp),
+      sdp: sanitizeSdpForMeta(String(input.sessionSdp)),
       sdp_type: String(input.sessionSdpType),
       ...(input.providerSessionId ? { id: String(input.providerSessionId) } : {}),
     };
@@ -226,20 +226,44 @@ export async function sendSessionSignal(input: SessionSignalPayload): Promise<Wh
     return { success: false, error: 'session.sdp_type must be offer, answer, or pranswer' };
   }
 
-  const payload: Record<string, unknown> = {
-    messaging_product: 'whatsapp',
-    to,
-    session: {
-      sdp,
-      sdp_type: sdpType,
-      ...(input.providerSessionId ? { id: String(input.providerSessionId) } : {}),
-    },
+  const sessionPayload = {
+    sdp: sanitizeSdpForMeta(sdp),
+    sdp_type: sdpType,
+    ...(input.providerSessionId ? { id: String(input.providerSessionId) } : {}),
   };
+  const payloadVariants: Record<string, unknown>[] = [
+    {
+      messaging_product: 'whatsapp',
+      to,
+      session: sessionPayload,
+    },
+    {
+      messaging_product: 'whatsapp',
+      session: sessionPayload,
+    },
+    {
+      messaging_product: 'whatsapp',
+      call_id: callId,
+      session: sessionPayload,
+    },
+  ];
 
-  return providerRequest(resolveTemplatePath(WHATSAPP_CALLING_SESSION_PATH_TEMPLATE, callId), {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+  const path = resolveTemplatePath(WHATSAPP_CALLING_SESSION_PATH_TEMPLATE, callId);
+  let lastResult: WhatsAppCallingResult | null = null;
+  for (const payload of payloadVariants) {
+    const result = await providerRequest(path, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (result.success) return result;
+    lastResult = result;
+    const combined =
+      `${String(result.error || '')} ${String((result.raw as any)?.error?.error_data?.details || '')}`.toLowerCase();
+    if (!combined.includes('invalid parameter')) {
+      return result;
+    }
+  }
+  return lastResult || { success: false, error: 'Failed to submit session signal' };
 }
 
 export async function sendIceCandidate(input: IceCandidatePayload): Promise<WhatsAppCallingResult> {
@@ -271,13 +295,14 @@ export async function sendIceCandidate(input: IceCandidatePayload): Promise<What
  */
 export function sanitizeSdpForMeta(sdp: string): string {
   return sdp
-    .split('\r\n')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
     .filter((line) => {
-      const lower = line.toLowerCase();
-      return !lower.startsWith('a=fingerprint:sha-384') && !lower.startsWith('a=fingerprint:sha-512');
+      const trimmed = line.trim().toLowerCase();
+      return !trimmed.startsWith('a=fingerprint:sha-384') && !trimmed.startsWith('a=fingerprint:sha-512');
     })
     .map((line) => {
-      if (line.toLowerCase().startsWith('a=fingerprint:sha-256')) {
+      if (line.trim().toLowerCase().startsWith('a=fingerprint:sha-256')) {
         return line.replace(/a=fingerprint:sha-256/i, 'a=fingerprint:SHA-256');
       }
       return line;

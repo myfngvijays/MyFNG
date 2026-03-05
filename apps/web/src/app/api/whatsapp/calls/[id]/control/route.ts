@@ -87,6 +87,24 @@ export async function POST(
             .eq('id', auditRow.id);
         }
 
+        if (action === 'hangup') {
+          const endedNow = new Date().toISOString();
+          await db
+            .from('whatsapp_call_logs')
+            .update({ call_status: 'ENDED', ended_at: endedNow, updated_at: endedNow })
+            .eq('id', callId);
+          await db
+            .from('whatsapp_call_sessions')
+            .update({ session_state: 'ENDED', updated_at: endedNow })
+            .eq('call_log_id', callId);
+          return NextResponse.json({
+            success: true,
+            action,
+            via: 'local_override',
+            audit_id: auditRow?.id || null,
+          });
+        }
+
         return NextResponse.json(
           {
             success: false,
@@ -97,6 +115,18 @@ export async function POST(
           },
           { status: 502 }
         );
+      }
+
+      if (action === 'hangup') {
+        const endedNow = new Date().toISOString();
+        await db
+          .from('whatsapp_call_logs')
+          .update({ call_status: 'ENDED', ended_at: endedNow, updated_at: endedNow })
+          .eq('id', callId);
+        await db
+          .from('whatsapp_call_sessions')
+          .update({ session_state: 'ENDED', updated_at: endedNow })
+          .eq('call_log_id', callId);
       }
 
       if (auditRow?.id) {

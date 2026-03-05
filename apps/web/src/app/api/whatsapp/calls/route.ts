@@ -42,9 +42,6 @@ function isWithinAllowedHours(range: string): boolean {
   return nowMin >= startMin || nowMin <= endMin;
 }
 
-function isFullSignalingEnabled(): boolean {
-  return String(process.env.WHATSAPP_CALLING_FULL_SIGNALING || '').trim() === '1';
-}
 
 function getProviderErrorMeta(raw: unknown): {
   code: number | null;
@@ -187,14 +184,13 @@ export async function POST(request: NextRequest) {
           400
         );
       }
-      const fullSignalingEnabled = isFullSignalingEnabled();
       const hasSessionPayload =
         typeof body?.session === 'object' &&
         typeof body?.session?.sdp === 'string' &&
         typeof body?.session?.sdp_type === 'string';
-      if (fullSignalingEnabled && !hasSessionPayload) {
+      if (!hasSessionPayload) {
         return callErrorResponse(
-          'Missing session parameter. Re-enable SDP offer generation on the calling UI.',
+          'Missing session parameter. SDP offer is required for business-initiated calls.',
           400
         );
       }
@@ -235,15 +231,13 @@ export async function POST(request: NextRequest) {
         optInToken: body?.opt_in_token ? String(body.opt_in_token) : null,
         consentGrantedAt: body?.consent_granted_at ? String(body.consent_granted_at) : null,
         reason: body?.reason ? String(body.reason) : null,
-        sessionSdp: hasSessionPayload ? String(body.session.sdp) : null,
-        sessionSdpType: hasSessionPayload
-          ? String(body.session.sdp_type).trim().toLowerCase() === 'answer'
-            ? 'answer'
-            : String(body.session.sdp_type).trim().toLowerCase() === 'pranswer'
-              ? 'pranswer'
-              : 'offer'
-          : null,
-        providerSessionId: hasSessionPayload ? String(body?.session?.id || '') || null : null,
+        sessionSdp: String(body.session.sdp),
+        sessionSdpType: String(body.session.sdp_type).trim().toLowerCase() === 'answer'
+          ? 'answer'
+          : String(body.session.sdp_type).trim().toLowerCase() === 'pranswer'
+            ? 'pranswer'
+            : 'offer',
+        providerSessionId: String(body?.session?.id || '') || null,
       });
 
       const now = new Date().toISOString();
@@ -278,7 +272,7 @@ export async function POST(request: NextRequest) {
         .select('id, provider_call_id')
         .maybeSingle();
 
-      if (insertedCallLog?.id && hasSessionPayload) {
+      if (insertedCallLog?.id) {
         await db.from('whatsapp_call_sessions').insert({
           call_log_id: insertedCallLog.id,
           provider_call_id: insertedCallLog.provider_call_id || null,
@@ -330,11 +324,19 @@ export async function POST(request: NextRequest) {
           { status: responseStatus }
         );
       }
+      const rawData = result.raw as any;
+      console.log('[OutboundCall] Meta initiate response raw:', JSON.stringify(rawData));
       return NextResponse.json({
         success: true,
         action: 'initiate',
         call_id: result.callId || null,
+        db_call_id: insertedCallLog?.id || null,
+        session_id: result.sessionId || null,
         status: result.status || 'INITIATED',
+        answer_sdp:
+          rawData?.session?.sdp || rawData?.answer?.sdp || rawData?.sdp || null,
+        answer_sdp_type:
+          rawData?.session?.sdp_type || rawData?.answer?.sdp_type || rawData?.sdp_type || null,
       });
     }
 

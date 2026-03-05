@@ -508,6 +508,7 @@ export default function WhatsAppMobilePreviewModal({
   >(null);
   const [callControlLoading, setCallControlLoading] = useState<string | null>(null);
   const [callInfoOpen, setCallInfoOpen] = useState<CallLog | null>(null);
+  const [activeCallElapsed, setActiveCallElapsed] = useState(0);
   const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
   const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -596,6 +597,12 @@ export default function WhatsAppMobilePreviewModal({
     const state = String(activeCallState || '').trim().toUpperCase();
     return ['RINGING', 'INITIATED', 'NEGOTIATING'].includes(state);
   }, [activeCallState, isIncomingActiveCall]);
+  const hasLiveConnectedCall = useMemo(() => {
+    if (!activeCall) return false;
+    const state = String(activeCallState || '').trim().toUpperCase();
+    if (['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state)) return false;
+    return ['ACCEPTED', 'CONNECTED'].includes(state);
+  }, [activeCall, activeCallState]);
   const callPermissionTemplateName = useMemo(
     () => resolveCallingPermissionTemplateName(templateOptions),
     [templateOptions]
@@ -992,6 +999,31 @@ export default function WhatsAppMobilePreviewModal({
     return () => window.clearInterval(interval);
   }, [callPermissionCooldownUntil]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!hasLiveConnectedCall || !activeCall) {
+      setActiveCallElapsed(0);
+      return;
+    }
+    const sourceTs = String(
+      activeCall.started_at || activeCall.updated_at || activeCall.created_at || ''
+    ).trim();
+    const parsed = sourceTs ? new Date(sourceTs).getTime() : Number.NaN;
+    const startMs = Number.isFinite(parsed) && parsed > 0 ? parsed : Date.now();
+    setActiveCallElapsed(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
+    const id = window.setInterval(() => {
+      setActiveCallElapsed(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [
+    isOpen,
+    hasLiveConnectedCall,
+    activeCall?.id,
+    activeCall?.started_at,
+    activeCall?.updated_at,
+    activeCall?.created_at,
+  ]);
+
   const handleConversationScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -1133,6 +1165,12 @@ export default function WhatsAppMobilePreviewModal({
                 {isIncomingActiveCall ? (
                   <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#ffdd57]">
                     Incoming call
+                  </p>
+                ) : null}
+                {hasLiveConnectedCall ? (
+                  <p className="mt-0.5 font-mono text-[10px] font-semibold tracking-wide text-[#a7f3d0]">
+                    {String(Math.floor(activeCallElapsed / 60)).padStart(2, '0')}:
+                    {String(activeCallElapsed % 60).padStart(2, '0')}
                   </p>
                 ) : null}
               </div>
