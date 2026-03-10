@@ -87,7 +87,7 @@ export default function Footer() {
       >
         <div className="max-w-[900px] mx-auto">
           <h2
-            className="text-[28px] md:text-[32px] font-extrabold mb-4 transition-opacity duration-300"
+            className="text-[28px] md:text-[32px] font-extrabold text-white mb-4 transition-opacity duration-300"
             style={{ opacity: ctaFading ? 0 : 1 }}
           >
             {ctaTitles[ctaIndex]}
@@ -123,7 +123,7 @@ export default function Footer() {
             style={isMobile ? { gap: 0, paddingBottom: 0 } : {}}
           >
             {/* Quick Links */}
-            <div className={isMobile ? 'border-b border-white/[0.08] py-0' : ''}>
+            <div className={isMobile ? 'border-b border-white/[0.08] py-0 mb-[15px]' : ''}>
               <AccordionTitle id="quick-links">Quick Links</AccordionTitle>
               <ul className={listClass('quick-links')}>
                 {[
@@ -149,7 +149,7 @@ export default function Footer() {
             </div>
 
             {/* Our Services */}
-            <div className={isMobile ? 'border-b border-white/[0.08] py-0' : ''}>
+            <div className={isMobile ? 'border-b border-white/[0.08] py-0 mb-[15px]' : ''}>
               <AccordionTitle id="services">Our Services</AccordionTitle>
               <ul className={listClass('services')}>
                 {[
@@ -176,7 +176,7 @@ export default function Footer() {
             </div>
 
             {/* Luxury Brands */}
-            <div className={isMobile ? 'border-b border-white/[0.08] py-0' : ''}>
+            <div className={isMobile ? 'border-b border-white/[0.08] py-0 mb-[15px]' : ''}>
               <AccordionTitle id="luxury-brands">Luxury Brands</AccordionTitle>
               <ul className={listClass('luxury-brands')}>
                 {[
@@ -196,7 +196,7 @@ export default function Footer() {
             </div>
 
             {/* Popular Brands */}
-            <div className={isMobile ? 'border-b border-white/[0.08] py-0' : ''}>
+            <div className={isMobile ? 'border-b border-white/[0.08] py-0 mb-[15px]' : ''}>
               <AccordionTitle id="popular-brands">Popular Brands</AccordionTitle>
               <ul className={listClass('popular-brands')}>
                 {[
@@ -223,7 +223,7 @@ export default function Footer() {
             </div>
 
             {/* Popular Service Areas */}
-            <div className={isMobile ? 'border-b border-white/[0.08] py-0' : ''}>
+            <div className={isMobile ? 'border-b border-white/[0.08] py-0 mb-[15px]' : ''}>
               <AccordionTitle id="service-areas">Popular Service Areas</AccordionTitle>
               <ul className={listClass('service-areas')}>
                 {[
@@ -248,8 +248,8 @@ export default function Footer() {
           </div>
 
           {/* REMAINING LOCATIONS */}
-          <div className={`mt-4 ${isMobile ? 'border-b border-white/[0.08] py-0' : ''}`}>
-            <AccordionTitle id="all-locations" size="text-[15px]">Trusted Car Service Centers Near You</AccordionTitle>
+          <div className={`${isMobile ? 'mt-[15px] border-b border-white/[0.08] py-0 mb-[15px]' : 'mt-4'}`}>
+            <AccordionTitle id="all-locations">Trusted Car Service Centers Near You</AccordionTitle>
             <div
               className={`grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 ${locationGridClass('all-locations')}`}
             >
@@ -319,130 +319,134 @@ export default function Footer() {
           </div>
 
           {/* FOOTER BOTTOM */}
-          <div className="mt-5 pt-[30px] border-t border-white/[0.08] grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr] gap-10">
+          <div className="mt-5 pt-[30px] border-t border-white/[0.08]">
+            <div className="bg-white rounded-2xl px-4 sm:px-6 md:px-8 py-6 sm:py-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr] gap-10">
 
-            {/* Company Info */}
-            <div>
-              <img
-                src="/logo.png"
-                alt="MyFNG - Multi Brand Car Service"
-                className="w-[150px] h-auto block mb-3 brightness-0 invert"
-              />
-              <p className="text-[11px] leading-[1.7] font-semibold">
-                MY FNG – Your Friendly Neighbourhood Garage.<br />
-                Multi-brand car servicing &amp; repairs across Mumbai &amp; Pune.
-              </p>
-              <p className="text-[11px] leading-[1.7] font-semibold mt-2">
-                A/309, Centrum Business Square, Road No 16,<br />
-                Wagle Industrial Estate, Thane (W), Thane-400604
-              </p>
-            </div>
-
-            {/* Contact Info */}
-            <div>
-              <h4 className="text-white text-[11px] font-semibold mb-3">Contact Us</h4>
-              <div className="text-[11px] leading-[2] font-semibold">
-                <div>Email: support@myfng.in</div>
-                <div>Car Service: +91-9772215095</div>
-                <div>Roadside Assistance: +91-9610448949</div>
-                <div>Working Days: Monday – Saturday</div>
-                <div>Hours: 09:30 AM - 06:30 PM</div>
-              </div>
-            </div>
-
-            {/* App Download */}
-            <div>
-              <h4 className="text-white text-[11px] font-semibold mb-3">Download MyFNG App</h4>
-              <div className="flex flex-col gap-2.5">
-                <a href="#" target="_blank" rel="noopener noreferrer">
+                {/* Company Info */}
+                <div className="text-center md:text-left">
                   <img
-                    src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
-                    alt="Download on Play Store"
-                    className="w-[160px] block"
+                    src="/logo.png"
+                    alt="MyFNG - Multi Brand Car Service"
+                    className="w-[150px] h-auto block mb-3 mx-auto md:mx-0"
                   />
-                </a>
-                <a href="#" target="_blank" rel="noopener noreferrer">
-                  <img
-                    src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
-                    alt="Download on App Store"
-                    className="w-[160px] block"
-                  />
-                </a>
-              </div>
-            </div>
+                  <p className="text-[11px] leading-[1.7] font-semibold text-gray-700">
+                    MY FNG – Your Friendly Neighbourhood Garage.<br />
+                    Multi-brand car servicing &amp; repairs across Mumbai &amp; Pune.
+                  </p>
+                  <p className="text-[11px] leading-[1.7] font-semibold mt-2 text-gray-700">
+                    A/309, Centrum Business Square, Road No 16,<br />
+                    Wagle Industrial Estate, Thane (W), Thane-400604
+                  </p>
+                </div>
 
-            {/* Book Service + Social */}
-            <div>
-              <h4 className="text-white text-[11px] font-semibold mb-3">Book Service</h4>
-              <div className="flex flex-col gap-3 mt-2.5">
-                <input
-                  type="tel"
-                  placeholder="Enter your mobile number"
-                  className="py-3 px-3.5 rounded-[10px] border border-white/20 bg-white/[0.08] text-white text-[13px] outline-none placeholder:text-white/60"
-                />
-                <button
-                  type="button"
-                  className="py-3 rounded-[10px] border-none text-white font-semibold cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_6px_15px_rgba(37,99,235,0.4)] transition-all duration-300"
-                  style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)' }}
-                >
-                  Submit
-                </button>
-              </div>
+                {/* Contact Info */}
+                <div className="text-center md:text-left">
+                  <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Contact Us</h4>
+                  <div className="text-[11px] leading-[2] font-semibold text-gray-700">
+                    <div>Email: support@myfng.in</div>
+                    <div>Car Service: +91-9772215095</div>
+                    <div>Roadside Assistance: +91-9610448949</div>
+                    <div>Working Days: Monday – Saturday</div>
+                    <div>Hours: 09:30 AM - 06:30 PM</div>
+                  </div>
+                </div>
 
-              {/* Social Icons */}
-              <div className="flex gap-5 mt-2.5">
-                <a
-                  href="https://www.facebook.com/myfngcarservices"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
-                  style={{ background: '#1877F2' }}
-                  aria-label="Facebook"
-                >
-                  <svg width="14" height="14" viewBox="0 0 320 512" fill="currentColor"><path d="M80 299.3V512H196V299.3h86.5l18-97.8H196V142.2c0-21.1 13-38.2 40.1-38.2H288V18.6S259.1 0 225.4 0C147.3 0 106 39.6 106 111.4v90.1H80v97.8z"/></svg>
-                </a>
-                <a
-                  href="https://www.instagram.com/myfngcarservices/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
-                  style={{ background: 'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)' }}
-                  aria-label="Instagram"
-                >
-                  <svg width="14" height="14" viewBox="0 0 448 512" fill="currentColor"><path d="M224.1 141c-63.6 0-114.9 51.3-114.9 114.9S160.5 370.9 224.1 370.9 339 319.5 339 255.9 287.7 141 224.1 141zm0 189.6c-41.1 0-74.7-33.5-74.7-74.7s33.5-74.7 74.7-74.7 74.7 33.5 74.7 74.7-33.6 74.7-74.7 74.7zm146.4-194.3c0 14.9-12 26.8-26.8 26.8-14.9 0-26.8-12-26.8-26.8s12-26.8 26.8-26.8 26.8 12 26.8 26.8zm76.1 27.2c-1.7-35.9-9.9-67.7-36.2-93.9-26.2-26.2-58-34.4-93.9-36.2-37-2.1-147.9-2.1-184.9 0-35.8 1.7-67.6 9.9-93.9 36.1s-34.4 58-36.2 93.9c-2.1 37-2.1 147.9 0 184.9 1.7 35.9 9.9 67.7 36.2 93.9s58 34.4 93.9 36.2c37 2.1 147.9 2.1 184.9 0 35.9-1.7 67.7-9.9 93.9-36.2 26.2-26.2 34.4-58 36.2-93.9 2.1-37 2.1-147.8 0-184.8zM398.8 388c-7.8 19.6-22.9 34.7-42.6 42.6-29.5 11.7-99.5 9-132.1 9s-102.7 2.6-132.1-9c-19.6-7.8-34.7-22.9-42.6-42.6-11.7-29.5-9-99.5-9-132.1s-2.6-102.7 9-132.1c7.8-19.6 22.9-34.7 42.6-42.6 29.5-11.7 99.5-9 132.1-9s102.7-2.6 132.1 9c19.6 7.8 34.7 22.9 42.6 42.6 11.7 29.5 9 99.5 9 132.1s2.7 102.7-9 132.1z"/></svg>
-                </a>
-                <a
-                  href="https://linkedin.com/company/myfngcarservices"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
-                  style={{ background: '#0077B5' }}
-                  aria-label="LinkedIn"
-                >
-                  <svg width="14" height="14" viewBox="0 0 448 512" fill="currentColor"><path d="M100.3 448H7.4V148.9h92.9zM53.8 108.1C24.1 108.1 0 83.5 0 53.8a53.8 53.8 0 0 1 107.6 0c0 29.7-24.1 54.3-53.8 54.3zM447.9 448h-92.7V302.4c0-34.7-.7-79.2-48.3-79.2-48.3 0-55.7 37.7-55.7 76.7V448h-92.8V148.9h89.1v40.8h1.3c12.4-23.5 42.7-48.3 87.9-48.3 94 0 111.3 61.9 111.3 142.3V448z"/></svg>
-                </a>
-                <a
-                  href="https://youtube.com/channel/UCil_RltFnCtXeAha5TrNtew/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
-                  style={{ background: '#FF0000' }}
-                  aria-label="YouTube"
-                >
-                  <svg width="14" height="14" viewBox="0 0 576 512" fill="currentColor"><path d="M549.7 124.1c-6.3-23.7-24.8-42.3-48.3-48.6C458.8 64 288 64 288 64S117.2 64 74.6 75.5c-23.5 6.3-42 24.9-48.3 48.6-11.4 42.9-11.4 132.3-11.4 132.3s0 89.4 11.4 132.3c6.3 23.7 24.8 41.5 48.3 47.8C117.2 448 288 448 288 448s170.8 0 213.4-11.5c23.5-6.3 42-24.2 48.3-47.8 11.4-42.9 11.4-132.3 11.4-132.3s0-89.4-11.4-132.3zm-317.5 213.5V175.2l142.7 81.2-142.7 81.2z"/></svg>
-                </a>
-                <a
-                  href="https://x.com/myfngcarservice"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
-                  style={{ background: '#000000' }}
-                  aria-label="X (Twitter)"
-                >
-                  <svg width="14" height="14" viewBox="0 0 512 512" fill="currentColor"><path d="M389.2 48h70.6L305.6 224.2 487 464H345L233.7 318.6 106.5 464H35.8L200.7 275.5 26.8 48H172l95.9 126.7L389.2 48zm-24.8 373.8h39.1L151.1 88h-42L364.4 421.8z"/></svg>
-                </a>
-              </div>
+                {/* App Download */}
+                <div className="text-center md:text-left">
+                  <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Download MyFNG App</h4>
+                  <div className="flex flex-row md:flex-col gap-2.5 justify-center md:justify-start items-center md:items-start flex-wrap">
+                    <a href="#" target="_blank" rel="noopener noreferrer">
+                      <img
+                        src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
+                        alt="Download on Play Store"
+                        className="w-[145px] sm:w-[160px] block"
+                      />
+                    </a>
+                    <a href="#" target="_blank" rel="noopener noreferrer">
+                      <img
+                        src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
+                        alt="Download on App Store"
+                        className="w-[145px] sm:w-[160px] block"
+                      />
+                    </a>
+                  </div>
+                </div>
+
+                {/* Book Service + Social */}
+                <div className="text-center md:text-left">
+                  <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Book Service</h4>
+                  <div className="flex flex-col gap-3 mt-2.5">
+                    <input
+                      type="tel"
+                      placeholder="Enter your mobile number"
+                      className="py-3 px-3.5 rounded-[10px] border border-gray-300 bg-white text-gray-900 text-[13px] outline-none placeholder:text-gray-500"
+                    />
+                    <button
+                      type="button"
+                      className="py-3 rounded-[10px] border-none text-white font-semibold cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_6px_15px_rgba(37,99,235,0.4)] transition-all duration-300"
+                      style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)' }}
+                    >
+                      Submit
+                    </button>
+                  </div>
+
+                  {/* Social Icons */}
+                  <div className="flex gap-5 mt-2.5 justify-center md:justify-start">
+                    <a
+                      href="https://www.facebook.com/myfngcarservices"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      style={{ background: '#1877F2' }}
+                      aria-label="Facebook"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 320 512" fill="currentColor"><path d="M80 299.3V512H196V299.3h86.5l18-97.8H196V142.2c0-21.1 13-38.2 40.1-38.2H288V18.6S259.1 0 225.4 0C147.3 0 106 39.6 106 111.4v90.1H80v97.8z"/></svg>
+                    </a>
+                    <a
+                      href="https://www.instagram.com/myfngcarservices/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      style={{ background: 'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)' }}
+                      aria-label="Instagram"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 448 512" fill="currentColor"><path d="M224.1 141c-63.6 0-114.9 51.3-114.9 114.9S160.5 370.9 224.1 370.9 339 319.5 339 255.9 287.7 141 224.1 141zm0 189.6c-41.1 0-74.7-33.5-74.7-74.7s33.5-74.7 74.7-74.7 74.7 33.5 74.7 74.7-33.6 74.7-74.7 74.7zm146.4-194.3c0 14.9-12 26.8-26.8 26.8-14.9 0-26.8-12-26.8-26.8s12-26.8 26.8-26.8 26.8 12 26.8 26.8zm76.1 27.2c-1.7-35.9-9.9-67.7-36.2-93.9-26.2-26.2-58-34.4-93.9-36.2-37-2.1-147.9-2.1-184.9 0-35.8 1.7-67.6 9.9-93.9 36.1s-34.4 58-36.2 93.9c-2.1 37-2.1 147.9 0 184.9 1.7 35.9 9.9 67.7 36.2 93.9s58 34.4 93.9 36.2c37 2.1 147.9 2.1 184.9 0 35.9-1.7 67.7-9.9 93.9-36.2 26.2-26.2 34.4-58 36.2-93.9 2.1-37 2.1-147.8 0-184.8zM398.8 388c-7.8 19.6-22.9 34.7-42.6 42.6-29.5 11.7-99.5 9-132.1 9s-102.7 2.6-132.1-9c-19.6-7.8-34.7-22.9-42.6-42.6-11.7-29.5-9-99.5-9-132.1s-2.6-102.7 9-132.1c7.8-19.6 22.9-34.7 42.6-42.6 29.5-11.7 99.5-9 132.1-9s102.7-2.6 132.1 9c19.6 7.8 34.7 22.9 42.6 42.6 11.7 29.5 9 99.5 9 132.1s2.7 102.7-9 132.1z"/></svg>
+                    </a>
+                    <a
+                      href="https://linkedin.com/company/myfngcarservices"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      style={{ background: '#0077B5' }}
+                      aria-label="LinkedIn"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 448 512" fill="currentColor"><path d="M100.3 448H7.4V148.9h92.9zM53.8 108.1C24.1 108.1 0 83.5 0 53.8a53.8 53.8 0 0 1 107.6 0c0 29.7-24.1 54.3-53.8 54.3zM447.9 448h-92.7V302.4c0-34.7-.7-79.2-48.3-79.2-48.3 0-55.7 37.7-55.7 76.7V448h-92.8V148.9h89.1v40.8h1.3c12.4-23.5 42.7-48.3 87.9-48.3 94 0 111.3 61.9 111.3 142.3V448z"/></svg>
+                    </a>
+                    <a
+                      href="https://youtube.com/channel/UCil_RltFnCtXeAha5TrNtew/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      style={{ background: '#FF0000' }}
+                      aria-label="YouTube"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 576 512" fill="currentColor"><path d="M549.7 124.1c-6.3-23.7-24.8-42.3-48.3-48.6C458.8 64 288 64 288 64S117.2 64 74.6 75.5c-23.5 6.3-42 24.9-48.3 48.6-11.4 42.9-11.4 132.3-11.4 132.3s0 89.4 11.4 132.3c6.3 23.7 24.8 41.5 48.3 47.8C117.2 448 288 448 288 448s170.8 0 213.4-11.5c23.5-6.3 42-24.2 48.3-47.8 11.4-42.9 11.4-132.3 11.4-132.3s0-89.4-11.4-132.3zm-317.5 213.5V175.2l142.7 81.2-142.7 81.2z"/></svg>
+                    </a>
+                    <a
+                      href="https://x.com/myfngcarservice"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      style={{ background: '#000000' }}
+                      aria-label="X (Twitter)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 512 512" fill="currentColor"><path d="M389.2 48h70.6L305.6 224.2 487 464H345L233.7 318.6 106.5 464H35.8L200.7 275.5 26.8 48H172l95.9 126.7L389.2 48zm-24.8 373.8h39.1L151.1 88h-42L364.4 421.8z"/></svg>
+                    </a>
+                  </div>
+                </div>
             </div>
+          </div>
           </div>
 
           {/* Copyright */}

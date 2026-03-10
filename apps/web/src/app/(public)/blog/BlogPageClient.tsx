@@ -9,6 +9,8 @@ import Footer from '@/components/landing/Footer';
 import { ArrowRight, Calendar, Clock, Search } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
 
+const BLOGS_PER_PAGE = 8;
+
 interface Blog {
   id: string;
   title: string;
@@ -31,43 +33,32 @@ export default function BlogPageClient() {
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  // We want to show *all* published blogs on the public listing.
-  // Public API caps limit at 100, so use that to minimize requests.
-  const [pagination, setPagination] = useState({ page: 1, limit: 100, total: 0, totalPages: 1 });
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     fetchAllPublishedBlogs();
   }, []);
 
-  useEffect(() => {
-    const q = (searchParams.get('q') || '').trim();
-    const category = (searchParams.get('category') || '').trim();
-    if (q) setSearchQuery(q);
-    if (category) setSelectedCategory(category);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function updateUrl(next: { q?: string; category?: string }) {
+  function updateUrl(next: { q?: string; category?: string; page?: number }) {
     const params = new URLSearchParams();
     const q = (next.q ?? '').trim();
     const cat = (next.category ?? '').trim();
+    const page = Number(next.page ?? 1);
     if (q) params.set('q', q);
     if (cat && cat !== 'all') params.set('category', cat);
+    if (page > 1) params.set('page', String(page));
     const qs = params.toString();
     router.replace(qs ? `/blogs?${qs}` : '/blogs');
   }
 
   async function fetchAllPublishedBlogs() {
     setLoading(true);
-    setLoadingMore(false);
     try {
-      const limit = pagination.limit;
+      const limit = 100;
       let page = 1;
       let totalPages = 1;
-      let total = 0;
       const map = new Map<string, Blog>();
 
       do {
@@ -87,23 +78,15 @@ export default function BlogPageClient() {
         for (const b of nextBlogs) map.set(b.id, b);
 
         totalPages = Number(data?.pagination?.totalPages ?? totalPages);
-        total = Number(data?.pagination?.total ?? total);
         page += 1;
       } while (page <= totalPages);
 
       const allBlogs = Array.from(map.values());
       setBlogs(allBlogs);
-      setPagination((p) => ({
-        ...p,
-        page: totalPages || 1,
-        total: total || allBlogs.length,
-        totalPages: totalPages || 1,
-      }));
     } catch (error) {
       console.error('Error fetching blogs:', error);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
   }
 
@@ -121,45 +104,6 @@ export default function BlogPageClient() {
     }
   }, [blogs]);
 
-  async function fetchBlogs(opts?: { page?: number; append?: boolean }) {
-    const page = opts?.page ?? 1;
-    const append = Boolean(opts?.append);
-    if (append) setLoadingMore(true);
-    else setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.append('page', String(page));
-      params.append('limit', String(pagination.limit));
-      
-      // Use public API endpoint - no authentication required
-      const response = await fetch(`/api/blogs/public?${params.toString()}`);
-      if (response.ok) {
-        const data = await response.json();
-        const nextBlogs = (data.blogs || []) as Blog[];
-        setPagination((p) => ({
-          ...p,
-          page: data?.pagination?.page ?? page,
-          total: data?.pagination?.total ?? p.total,
-          totalPages: data?.pagination?.totalPages ?? p.totalPages,
-        }));
-        setBlogs((prev) => {
-          if (!append) return nextBlogs;
-          const map = new Map<string, Blog>();
-          for (const b of prev) map.set(b.id, b);
-          for (const b of nextBlogs) map.set(b.id, b);
-          return Array.from(map.values());
-        });
-      } else {
-        console.error('Failed to fetch blogs');
-      }
-    } catch (error) {
-      console.error('Error fetching blogs:', error);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }
-
   const filteredPosts = blogs.filter(blog => {
     // Search filter
     const matchesSearch = searchQuery === '' ||
@@ -173,6 +117,33 @@ export default function BlogPageClient() {
     
     return matchesSearch && matchesCategory;
   });
+  const totalPages = Math.max(1, Math.ceil(filteredPosts.length / BLOGS_PER_PAGE));
+  const startIndex = (currentPage - 1) * BLOGS_PER_PAGE;
+  const paginatedPosts = filteredPosts.slice(startIndex, startIndex + BLOGS_PER_PAGE);
+
+  useEffect(() => {
+    const q = (searchParams.get('q') || '').trim();
+    const category = (searchParams.get('category') || '').trim();
+    const page = Math.max(1, Number(searchParams.get('page') || '1'));
+    setSearchQuery(q);
+    setSelectedCategory(category || 'all');
+    setCurrentPage(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+      updateUrl({ q: searchQuery, category: selectedCategory, page: totalPages });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalPages, currentPage]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    updateUrl({ q: searchQuery, category: selectedCategory, page });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return '';
@@ -183,20 +154,9 @@ export default function BlogPageClient() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      {/* Header */}
-      <section className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 py-12 sm:py-16 md:py-20 mt-16 sm:mt-18 md:mt-20">
-        <div className="container mx-auto px-3 sm:px-4">
-          <div className="max-w-3xl mx-auto text-center">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 sm:mb-3 md:mb-4 text-white">Our Blog</h1>
-            <p className="text-base sm:text-lg md:text-xl text-gray-200">
-              Expert tips, industry insights, and car care advice
-            </p>
-          </div>
-        </div>
-      </section>
 
       {/* Search and Filter */}
-      <section className="py-6 sm:py-7 md:py-8 bg-white border-b border-gray-200">
+      <section className="py-6 sm:py-7 md:py-8 bg-white border-b border-gray-200 mt-16 sm:mt-18 md:mt-20">
         <div className="container mx-auto px-3 sm:px-4">
           <div className="max-w-6xl mx-auto">
             {/* Search Bar */}
@@ -209,7 +169,8 @@ export default function BlogPageClient() {
                 onChange={(e) => {
                   const v = e.target.value;
                   setSearchQuery(v);
-                  updateUrl({ q: v, category: selectedCategory });
+                  setCurrentPage(1);
+                  updateUrl({ q: v, category: selectedCategory, page: 1 });
                 }}
                 className="w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-2 sm:py-2.5 md:py-3 text-sm sm:text-base border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent"
               />
@@ -220,7 +181,8 @@ export default function BlogPageClient() {
               <button
                 onClick={() => {
                   setSelectedCategory('all');
-                  updateUrl({ q: searchQuery, category: 'all' });
+                  setCurrentPage(1);
+                  updateUrl({ q: searchQuery, category: 'all', page: 1 });
                 }}
                 className={`px-4 sm:px-5 md:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-semibold transition-all ${
                   selectedCategory === 'all'
@@ -235,7 +197,8 @@ export default function BlogPageClient() {
                   key={category.id}
                   onClick={() => {
                     setSelectedCategory(category.id);
-                    updateUrl({ q: searchQuery, category: category.id });
+                    setCurrentPage(1);
+                    updateUrl({ q: searchQuery, category: category.id, page: 1 });
                   }}
                   className={`px-4 sm:px-5 md:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-semibold transition-all ${
                     selectedCategory === category.id
@@ -268,13 +231,16 @@ export default function BlogPageClient() {
               <>
                 <div className="flex items-center justify-between text-xs sm:text-sm text-gray-600 mb-3">
                   <div>
-                    Showing <span className="font-semibold">{filteredPosts.length}</span> of{' '}
-                    <span className="font-semibold">{pagination.total || filteredPosts.length}</span> published blogs
+                    Showing{' '}
+                    <span className="font-semibold">
+                      {filteredPosts.length === 0 ? 0 : startIndex + 1}-{Math.min(startIndex + BLOGS_PER_PAGE, filteredPosts.length)}
+                    </span>{' '}
+                    of <span className="font-semibold">{filteredPosts.length}</span> blogs
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
-                  {filteredPosts.map((blog) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
+                  {paginatedPosts.map((blog) => (
                     <article
                       key={blog.id}
                       className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all group"
@@ -348,16 +314,37 @@ export default function BlogPageClient() {
                     </article>
                   ))}
                 </div>
-
-                {pagination.page < pagination.totalPages && selectedCategory === 'all' && searchQuery.trim() === '' ? (
-                  <div className="flex justify-center mt-8">
+                {totalPages > 1 ? (
+                  <div className="flex items-center justify-center gap-2 mt-8">
                     <button
                       type="button"
-                      onClick={() => fetchBlogs({ page: pagination.page + 1, append: true })}
-                      disabled={loadingMore}
-                      className="btn btn-outline"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="px-3 py-2 rounded-md border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {loadingMore ? 'Loading…' : 'Load more'}
+                      Prev
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <button
+                        key={page}
+                        type="button"
+                        onClick={() => handlePageChange(page)}
+                        className={`px-3 py-2 rounded-md border text-sm ${
+                          currentPage === page
+                            ? 'bg-brand-primary text-white border-brand-primary'
+                            : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-2 rounded-md border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
                     </button>
                   </div>
                 ) : null}

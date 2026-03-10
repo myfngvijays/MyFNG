@@ -91,7 +91,7 @@ export default function HomePage() {
   const [whyIntent, setWhyIntent] = useState<WhyIntent>('instant');
   const [headerAiQuery, setHeaderAiQuery] = useState('');
   const [chatDraft, setChatDraft] = useState('');
-  const [latestBlogs, setLatestBlogs] = useState<Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string }>>([]);
+  const [latestBlogs, setLatestBlogs] = useState<Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string; featuredImage?: string }>>([]);
   const heroServiceSlides = useMemo(
     () =>
       DEFAULT_SERVICES.map((service) => ({
@@ -139,7 +139,7 @@ export default function HomePage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/blogs/public?limit=3');
+        const res = await fetch('/api/blogs/public?limit=4');
         if (!res.ok) return;
         const data = (await res.json()) as any;
         const blogs = Array.isArray(data?.blogs) ? data.blogs : [];
@@ -147,13 +147,16 @@ export default function HomePage() {
           .map((b: any, idx: number) => {
             const title = String(b?.title || '').trim();
             const slug = String(b?.slug || '').trim();
-            const excerpt = String(b?.excerpt || '').trim();
+            const excerptRaw = String(b?.excerpt || '').replace(/\s+/g, ' ').trim();
             if (!title || !slug) return null;
             const readTime = `${Number(b?.read_time || 3)} min read`;
             const tag = String(b?.category?.name || b?.category?.[0]?.name || 'Blog').trim() || 'Blog';
-            return { title, slug, excerpt, readTime, tag };
+            const excerpt =
+              excerptRaw.length > 110 ? `${excerptRaw.slice(0, 107).trimEnd()}...` : excerptRaw;
+            const featuredImage = String(b?.featured_image || '').trim() || undefined;
+            return { title, slug, excerpt, readTime, tag, featuredImage };
           })
-          .filter(Boolean) as Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string }>;
+          .filter(Boolean) as Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string; featuredImage?: string }>;
 
         if (!cancelled) setLatestBlogs(mapped);
       } catch {
@@ -939,7 +942,7 @@ export default function HomePage() {
       </section>
 
       {/* Live Stats Section */}
-      <section className="py-12 sm:py-14 md:py-16 bg-gradient-to-br from-gray-50 to-white">
+      <section className="py-8 sm:py-10 md:py-12 bg-gradient-to-br from-gray-50 to-white">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-8 sm:mb-10 md:mb-12">
             <AIFeatureBadge text="Live Platform Metrics" />
@@ -965,7 +968,7 @@ export default function HomePage() {
       />
 
       {/* 3. Brands We Serve - Horizontal Scrolling */}
-      <section className="py-12 sm:py-16 md:py-20 bg-gray-50">
+      <section className="py-8 sm:py-10 md:py-12 bg-gray-50">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-8 sm:mb-10 md:mb-12">
             <AIFeatureBadge text="Brands We Serve" />
@@ -1048,7 +1051,7 @@ export default function HomePage() {
       </section>
 
       {/* 4. How MY FNG Works - Interactive Split Screen */}
-      <section className="py-12 sm:py-16 md:py-24 bg-white">
+      <section className="py-8 sm:py-10 md:py-14 bg-white">
         <div className="container mx-auto px-4 sm:px-6">
           <div className="text-center mb-12 sm:mb-16">
             <AIFeatureBadge text="How It Works" />
@@ -1175,7 +1178,7 @@ export default function HomePage() {
       </section>
 
       {/* 5. Why Choose MY FNG */}
-      <section className="py-12 sm:py-16 md:py-20 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5">
+      <section className="py-8 sm:py-10 md:py-12 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
             <AIFeatureBadge text="Why Choose Us" />
@@ -1591,7 +1594,7 @@ export default function HomePage() {
       </section>
 
       {/* 6. From Our Blogs */}
-      <section className="py-12 sm:py-16 md:py-20 bg-white">
+      <section className="py-8 sm:py-10 md:py-12 bg-white">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
             <AIFeatureBadge text="Latest Updates" />
@@ -1601,8 +1604,8 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {(latestBlogs.length
+          {(() => {
+            const cards = (latestBlogs.length
               ? latestBlogs.map((b, idx) => {
                   const palette = [
                     { color: 'bg-blue-600', icon: <Sparkles className="w-10 h-10" /> },
@@ -1617,6 +1620,7 @@ export default function HomePage() {
                       excerpt={b.excerpt || 'Read the full article on MyFNG blog.'}
                       readTime={b.readTime}
                       tag={b.tag}
+                      imageUrl={b.featuredImage}
                       color={p.color}
                       icon={p.icon}
                       href={`/blogs/${b.slug}`}
@@ -1627,7 +1631,7 @@ export default function HomePage() {
                   <BlogCard
                     key="fallback-1"
                     title="How AI is Revolutionizing Car Maintenance"
-                    excerpt="Discover how artificial intelligence is transforming the way we maintain and service our vehicles, making car care smarter and more efficient."
+                    excerpt="Discover how AI is transforming car care and making service smarter."
                     readTime="5 min read"
                     tag="AI Technology"
                     color="bg-blue-600"
@@ -1637,7 +1641,7 @@ export default function HomePage() {
                   <BlogCard
                     key="fallback-2"
                     title="10 Ways to Save Money on Car Service"
-                    excerpt="Learn practical tips and tricks to reduce your car maintenance costs without compromising on quality or safety."
+                    excerpt="Practical tips to reduce maintenance costs without compromising quality."
                     readTime="4 min read"
                     tag="Cost Saving"
                     color="bg-green-500"
@@ -1647,15 +1651,40 @@ export default function HomePage() {
                   <BlogCard
                     key="fallback-3"
                     title="Understanding Your Car's Service Schedule"
-                    excerpt="A comprehensive guide to knowing when and why your car needs regular servicing to ensure longevity and performance."
+                    excerpt="Know when and why your car needs servicing for long-term performance."
                     readTime="6 min read"
                     tag="Maintenance"
                     color="bg-purple-600"
                     icon={<Calendar className="w-10 h-10" />}
                     href="/blogs"
                   />,
-                ]) as any}
-          </div>
+                  <BlogCard
+                    key="fallback-4"
+                    title="Signs Your Car Needs Immediate Attention"
+                    excerpt="Spot early warning signs and avoid bigger repair bills."
+                    readTime="3 min read"
+                    tag="Car Care"
+                    color="bg-indigo-600"
+                    icon={<Wrench className="w-10 h-10" />}
+                    href="/blogs"
+                  />,
+                ]) as any[];
+
+            return (
+              <>
+                <div className="md:hidden -mx-3 px-3 flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2">
+                  {cards.map((card, idx) => (
+                    <div key={`mobile-blog-card-${idx}`} className="min-w-[86%] snap-center">
+                      {card}
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden md:grid grid-cols-2 lg:grid-cols-4 gap-8">
+                  {cards}
+                </div>
+              </>
+            );
+          })()}
 
           <div className="text-center mt-8 sm:mt-10 md:mt-12">
             <Link href="/blogs" className="btn btn-outline text-sm sm:text-base md:text-lg px-6 sm:px-8 md:px-10 py-2.5 sm:py-3 md:py-4 rounded-xl">
@@ -1666,7 +1695,7 @@ export default function HomePage() {
       </section>
 
       {/* 7. What People Say - Testimonials */}
-      <section className="py-12 sm:py-16 md:py-20 bg-gray-50">
+      <section className="py-8 sm:py-10 md:py-12 bg-gray-50">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
             <AIFeatureBadge text="Testimonials" />
@@ -1778,7 +1807,7 @@ export default function HomePage() {
       </section>
 
       {/* 8. Frequently Asked Questions */}
-      <section className="py-12 sm:py-16 md:py-20 bg-white">
+      <section className="py-8 sm:py-10 md:py-12 bg-white">
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="text-center mb-10 sm:mb-12 md:mb-16">
             <AIFeatureBadge text="FAQs" />
@@ -2452,6 +2481,7 @@ function BlogCard({
   excerpt, 
   readTime, 
   tag, 
+  imageUrl,
   color, 
   icon,
   href,
@@ -2460,6 +2490,7 @@ function BlogCard({
   excerpt: string; 
   readTime: string; 
   tag: string; 
+  imageUrl?: string;
   color: string; 
   icon: React.ReactNode;
   href: string;
@@ -2467,15 +2498,26 @@ function BlogCard({
   return (
     <Link href={href} className="bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 group flex flex-col h-full border border-gray-100">
       {/* Header Area */}
-      <div className={`h-48 ${color} flex items-center justify-center relative overflow-hidden`}>
-        {/* Decorative Circles */}
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-        
-        {/* Icon */}
-        <div className="relative z-10 w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center text-white shadow-lg border border-white/30 group-hover:scale-110 transition-transform duration-500">
-          {icon}
-        </div>
+      <div className={`h-48 ${imageUrl ? 'bg-gray-100' : color} flex items-center justify-center relative overflow-hidden`}>
+        {imageUrl ? (
+          <Image
+            src={imageUrl}
+            alt={title}
+            fill
+            className="object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        ) : (
+          <>
+            {/* Decorative Circles */}
+            <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+            <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+            
+            {/* Icon */}
+            <div className="relative z-10 w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center text-white shadow-lg border border-white/30 group-hover:scale-110 transition-transform duration-500">
+              {icon}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="p-8 flex flex-col flex-1">
@@ -2493,7 +2535,7 @@ function BlogCard({
           {title}
         </h3>
         
-        <p className="text-gray-500 text-sm leading-relaxed mb-6 flex-1">
+        <p className="text-gray-500 text-sm leading-relaxed mb-6 flex-1 line-clamp-2">
           {excerpt}
         </p>
 

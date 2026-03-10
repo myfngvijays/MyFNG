@@ -11,7 +11,7 @@ import 'leaflet/dist/leaflet.css';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'MyFNG - Complete Workshop Management Solution',
+  title: "My FNG - India's First AI-Powered Car Service Booking Platform",
   description: 'Professional workshop management and service platform',
   icons: {
     icon: [

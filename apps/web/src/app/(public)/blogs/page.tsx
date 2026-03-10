@@ -1,5 +1,5 @@
 // Alias route for SEO: old site uses /blogs
-import BlogPage from '@/app/blog/page';
+import BlogPage from '../blog/page';
 
 export default BlogPage;
 

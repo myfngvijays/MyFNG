@@ -6,6 +6,7 @@ type CommentRow = {
   id: string;
   blog_id: string;
   user_name: string | null;
+  user_email?: string | null;
   comment: string;
   parent_comment_id: string | null;
   status: number | null;
@@ -94,6 +95,40 @@ export default function BlogComments({
     }
   }
 
+  async function deleteComment(commentId: string) {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/blogs/comments', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blog_id: blogId,
+          comment_id: commentId,
+          user_name: name,
+          user_email: email,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to delete comment');
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to delete comment');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function canDelete(c: CommentRow) {
+    const typedEmail = email.trim().toLowerCase();
+    const typedName = name.trim();
+    const cEmail = String(c.user_email || '').trim().toLowerCase();
+    const cName = String(c.user_name || '').trim();
+
+    if (cEmail) return Boolean(typedEmail && typedEmail === cEmail);
+    return Boolean(typedName && typedName === cName);
+  }
+
   const roots = byParent.get(null) || [];
 
   return (
@@ -103,7 +138,7 @@ export default function BlogComments({
         <button
           type="button"
           onClick={refresh}
-          className="text-xs sm:text-sm font-semibold text-brand-primary hover:underline"
+          className="text-xs sm:text-sm font-semibold text-white bg-[#0a4ea3] hover:bg-[#083b7c] px-3 py-2 rounded-lg transition-colors disabled:opacity-60"
           disabled={loading}
         >
           {loading ? 'Refreshing…' : 'Refresh'}
@@ -154,7 +189,7 @@ export default function BlogComments({
             type="button"
             onClick={submit}
             disabled={posting || text.trim().length === 0}
-            className="btn btn-primary text-sm px-4 py-2 disabled:opacity-60"
+            className="text-sm px-4 py-2 rounded-lg bg-[#0a4ea3] text-white hover:bg-[#083b7c] transition-colors disabled:opacity-60"
           >
             {posting ? 'Posting…' : 'Post Comment'}
           </button>
@@ -172,13 +207,24 @@ export default function BlogComments({
                   <div className="font-semibold text-gray-900 text-sm">{c.user_name || 'Anonymous'}</div>
                   <div className="text-xs text-gray-500">{fmt(c.created_at)}</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setReplyToId(c.id)}
-                  className="text-xs font-semibold text-brand-primary hover:underline"
-                >
-                  Reply
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setReplyToId(c.id)}
+                    className="text-xs font-semibold text-brand-primary hover:underline"
+                  >
+                    Reply
+                  </button>
+                  {canDelete(c) ? (
+                    <button
+                      type="button"
+                      onClick={() => deleteComment(c.id)}
+                      className="text-xs font-semibold text-red-600 hover:underline"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div className="mt-2 text-sm text-gray-800 whitespace-pre-wrap">{c.comment}</div>
 

@@ -424,7 +424,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .faq-item i{font-size:16px;color:#0a4ea3;transition:.3s;}
           .blog-html-wrap .comment-box{background:#fff;padding:25px;border-radius:14px;margin-top:25px;}
           .blog-html-wrap .comment-box input,.blog-html-wrap .comment-box textarea{width:100%;margin-top:10px;padding:12px;border-radius:10px;border:1px solid #ccc;}
-          .blog-html-wrap .comment-box button{margin-top:15px;background:#5fa6d9;color:#fff;border:none;padding:12px 20px;border-radius:10px;cursor:pointer;}
+          .blog-html-wrap .comment-box button{margin-top:15px;background:#0a4ea3;color:#fff;border:none;padding:12px 20px;border-radius:10px;cursor:pointer;}
           .blog-html-wrap .side-box{background:#fff;padding:18px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06);max-width:100%;}
           .blog-html-wrap .search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;}
           .blog-html-wrap .search input{min-width:0;width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;}
@@ -572,10 +572,6 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 <div className="main-content">
                   {transformed.excerpt ? <p>{transformed.excerpt}</p> : null}
                   <div dangerouslySetInnerHTML={{ __html: transformed.content }} />
-                  <div className="tags">
-                    <strong>Tags :</strong>
-                    {(transformed.tags || []).map((tag) => (tag ? <span key={tag.slug || tag.name}>{tag.name}</span> : null))}
-                  </div>
                 </div>
 
                 {transformed.faqs && transformed.faqs.length ? (
@@ -674,6 +670,21 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     ))}
                   </div>
                 </div>
+
+                {(transformed.tags || []).filter(Boolean).length ? (
+                  <div className="side-box">
+                    <h3>Tags</h3>
+                    <div className="categories">
+                      {(transformed.tags || []).map((tag) =>
+                        tag ? (
+                          <Link key={tag.slug || tag.name} href={`/blogs?q=${encodeURIComponent(tag.name)}`}>
+                            {tag.name}
+                          </Link>
+                        ) : null
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </aside>
             </div>
           </div>
