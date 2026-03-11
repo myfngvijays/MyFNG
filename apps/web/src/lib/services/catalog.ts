@@ -54,7 +54,7 @@ export const DEFAULT_SERVICES: Service[] = [
     longDescription:
       'Keep your car running smooth, safe, and fuel-efficient with MyFNG Periodic Car Service. We follow a standardised service process to inspect, clean, and maintain all critical components - helping prevent your car breakdowns and costly repairs.',
     features: [
-      'Engine Oil Replacement (Shell/Castrol Premium)',
+      'Engine Oil Replacement',
       'Oil Filter & Air Filter Replacement',
       'Brake, Coolant & Fluid Top-up',
       '40-Point Comprehensive Inspection',
