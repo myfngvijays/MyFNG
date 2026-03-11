@@ -52,7 +52,7 @@ export const DEFAULT_SERVICES: Service[] = [
     icon: Activity,
     description: 'Standardised periodic maintenance to keep your car smooth, safe, and fuel-efficient.',
     longDescription:
-      'Keep your car running smooth, safe, and fuel-efficient with MyFNG Periodic Car Service. We follow a standardised service process to inspect, clean, and maintain all critical components—helping prevent your car breakdowns and costly repairs.',
+      'Keep your car running smooth, safe, and fuel-efficient with MyFNG Periodic Car Service. We follow a standardised service process to inspect, clean, and maintain all critical components - helping prevent your car breakdowns and costly repairs.',
     features: [
       'Engine Oil Replacement (Shell/Castrol Premium)',
       'Oil Filter & Air Filter Replacement',
