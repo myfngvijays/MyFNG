@@ -684,14 +684,16 @@ export default function SuperAdminWhatsAppChatPage() {
         if (['INITIATED', 'RINGING', 'NEGOTIATING'].includes(status) && age > STALE_PRE_CONNECT_MS) return false;
         if (['CONNECTED', 'ACCEPTED'].includes(status) && age > STALE_CONNECTED_MS) return false;
         return true;
-      }) || sorted[0] || null
+      }) || null
     );
   }, [callLogs]);
   const activeCallState = useMemo(() => {
     if (!activeCall) return 'IDLE';
+    const callStatus = normalizeCallStatus(activeCall.call_status);
+    if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(callStatus)) return callStatus;
     const sessionState = String(activeCall?.sessions?.[0]?.session_state || '').trim().toUpperCase();
     if (sessionState) return sessionState;
-    return normalizeCallStatus(activeCall.call_status) || 'IDLE';
+    return callStatus || 'IDLE';
   }, [activeCall]);
   const isIncomingActiveCall = useMemo(() => {
     if (!activeCall) return false;

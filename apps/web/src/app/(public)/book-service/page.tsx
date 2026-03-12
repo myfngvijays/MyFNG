@@ -121,8 +121,8 @@ export default function BookServicePage() {
     },
     {
       id: 'step3',
-      title: 'Choose your plan',
-      subtitle: 'Select a service package for your vehicle',
+      title: 'Choose your service',
+      subtitle: 'Choose your plan and continue',
       type: 'pricing'
     },
     {
@@ -984,7 +984,7 @@ export default function BookServicePage() {
     window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   };
 
-  const handleNext = () => {
+  const proceedToNext = (selectedServicesOverride?: string[]) => {
     // Step 1 validation: City and Car Model required
     if (currentStep === 0) {
       if (!formData.city) {
@@ -1007,7 +1007,8 @@ export default function BookServicePage() {
 
     // Step 3 validation: At least one service required
     if (currentStep === 2) {
-      if (formData.selectedServices.length === 0) {
+      const selectedServices = selectedServicesOverride ?? formData.selectedServices;
+      if (selectedServices.length === 0) {
         toast.error('Please select at least one service');
         return;
       }
@@ -1060,6 +1061,10 @@ export default function BookServicePage() {
       }
       setIsAnimating(false);
     }, 300);
+  };
+
+  const handleNext = () => {
+    proceedToNext();
   };
 
   const handleBack = () => {
@@ -1878,16 +1883,18 @@ export default function BookServicePage() {
               {/* Step Content */}
               <div className={`min-h-[250px] sm:min-h-[300px] flex flex-col justify-center ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} transition-all duration-300`}>
                 {/* Title & Subtitle */}
-                <div className="mb-4 sm:mb-5 md:mb-6">
-                  <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1.5 sm:mb-2">
-                    {currentStepData.title}
-                  </h2>
-                  {currentStepData.subtitle ? (
-                    <p className="text-sm sm:text-base text-gray-600">
-                      {currentStepData.subtitle}
-                    </p>
-                  ) : null}
-        </div>
+                {currentStep !== 2 && (
+                  <div className="mb-4 sm:mb-5 md:mb-6">
+                    <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1.5 sm:mb-2">
+                      {currentStepData.title}
+                    </h2>
+                    {currentStepData.subtitle ? (
+                      <p className="text-sm sm:text-base text-gray-600">
+                        {currentStepData.subtitle}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
 
                 {/* Step 1: Location + Car Model */}
                 {currentStep === 0 && (
@@ -2160,10 +2167,17 @@ export default function BookServicePage() {
                       </div>
                     ) : (
                       <>
-                        {/* "Choose your service" sub-heading (shown once, smaller font) */}
-                        <div className="mb-3">
-                          <div className="text-sm sm:text-base font-bold text-gray-700">Choose your service</div>
+                        <div className="mb-2 sm:mb-3">
+                          <div className="text-base sm:text-lg font-bold text-gray-800">Choose your service</div>
                         </div>
+                        {showReferencePlanUi && (
+                          <div className="mb-2 sm:mb-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                            <div className="text-sm sm:text-base font-extrabold text-gray-900">Choose your plan</div>
+                            <div className="mt-1 text-xs sm:text-sm text-gray-600">
+                              {`${formData.carModel?.make || ''} ${formData.carModel?.model_name || ''}`.trim() || 'Your car'} in {formData.city?.name || 'selected city'}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Category pills (horizontal) */}
                         {serviceCategories.length > 0 && (
@@ -2236,11 +2250,13 @@ export default function BookServicePage() {
                                   </div>
                                 </div>
                               )}
-                              <div className={`grid ${showReferencePlanUi ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 xl:grid-cols-4'} gap-3 sm:gap-5`}>
+                              <div className={`grid ${showReferencePlanUi ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 xl:grid-cols-4'} gap-3 sm:gap-5`}>
                                 {planServices.map((service: any, idx: number) => {
                                   const isSelected = formData.selectedServices.includes(service.id);
                                   const isLockedByOtherSelection =
-                                    !!selectedInActiveCategory && String(selectedInActiveCategory.id) !== String(service.id);
+                                    !showReferencePlanUi &&
+                                    !!selectedInActiveCategory &&
+                                    String(selectedInActiveCategory.id) !== String(service.id);
                                   const price = servicePricing[service.id] || 0;
                                   const checklist = showReferencePlanUi
                                     ? getPeriodicChecklistPreview(service, planServices, 6)
@@ -2293,12 +2309,6 @@ export default function BookServicePage() {
                                                 {pointsValue > 0 ? `${pointsValue} Activity Points` : 'Activity Points Included'}
                                               </div>
                                             </div>
-                                            {/* Price at top-right corner on mobile only */}
-                                            <div className="text-right flex-shrink-0 sm:hidden">
-                                              <div className="text-lg font-extrabold leading-none text-gray-900">
-                                                {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'NA'}
-                                              </div>
-                                            </div>
                                           </div>
                                         </>
                                       ) : (
@@ -2349,19 +2359,21 @@ export default function BookServicePage() {
                                             )}
                                           </div>
                                         )}
-                                        <div className={`${showReferencePlanUi ? 'space-y-2' : 'space-y-2'}`}>
+                                        <div className={`${showReferencePlanUi ? 'min-h-[164px] flex flex-col' : 'space-y-2'}`}>
                                   {visiblePointItems.length > 0 ? (
-                                    visiblePointItems.map((it: any, i: number) => (
-                                      <div key={`${it?.name || ''}-${i}`} className={`flex items-start gap-2 ${showReferencePlanUi ? 'text-[13px]' : 'text-sm'} text-gray-700`}>
-                                        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span className="break-words line-clamp-2">
-                                          {it?.name || String(it)}
-                                          {!showReferencePlanUi && it?.category ? (
-                                            <span className="ml-2 text-[10px] font-bold text-gray-400">{it.category}</span>
-                                          ) : null}
-                                        </span>
-                                      </div>
-                                    ))
+                                    <div className="space-y-2">
+                                      {visiblePointItems.map((it: any, i: number) => (
+                                        <div key={`${it?.name || ''}-${i}`} className={`flex items-start gap-2 ${showReferencePlanUi ? 'text-[13px]' : 'text-sm'} text-gray-700`}>
+                                          <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                                          <span className={`break-words ${showReferencePlanUi ? 'line-clamp-1' : 'line-clamp-2'}`}>
+                                            {it?.name || String(it)}
+                                            {!showReferencePlanUi && it?.category ? (
+                                              <span className="ml-2 text-[10px] font-bold text-gray-400">{it.category}</span>
+                                            ) : null}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
                                   ) : (
                                     <div className="text-sm text-gray-600">Standard maintenance & inspection included.</div>
                                             )}
@@ -2369,7 +2381,7 @@ export default function BookServicePage() {
                                             <button
                                               type="button"
                                               onClick={() => setDetailsService({ service, checklistTemplate: checklist, price })}
-                                              className="text-[13px] font-bold text-brand-primary hover:text-brand-secondary mt-1"
+                                              className="text-[13px] font-bold text-brand-primary hover:text-brand-secondary mt-auto pt-1"
                                             >
                                               View all points
                                             </button>
@@ -2377,7 +2389,7 @@ export default function BookServicePage() {
                                         </div>
                                 </div>
 
-                                <div className={`mt-auto pt-4 ${showReferencePlanUi ? 'flex flex-col items-start gap-2' : 'border-t border-gray-200 flex items-end justify-between gap-3'}`}>
+                                <div className={`mt-auto pt-4 ${showReferencePlanUi ? 'flex flex-col items-start gap-2.5' : 'border-t border-gray-200 flex items-end justify-between gap-3'}`}>
                                   {showReferencePlanUi ? (
                                     <div className="text-2xl font-extrabold text-gray-900">
                                       {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'NA'}
@@ -2395,8 +2407,18 @@ export default function BookServicePage() {
                                           onClick={() => {
                                             if (isLockedByOtherSelection) return;
                                             if (!isSelected) {
-                                              handleServiceToggle(service.id);
-                                              setTimeout(() => handleNext(), 150);
+                                              const targetService = serviceTypes.find((s: any) => String(s?.id) === String(service.id));
+                                              const nextSelectedServices = !targetService?.category
+                                                ? [...formData.selectedServices, service.id]
+                                                : [
+                                                    ...formData.selectedServices.filter((id) => {
+                                                      const selectedService = serviceTypes.find((it: any) => String(it?.id) === String(id));
+                                                      return String(selectedService?.category) !== String(targetService.category);
+                                                    }),
+                                                    service.id,
+                                                  ];
+                                              setFormData((prev) => ({ ...prev, selectedServices: nextSelectedServices }));
+                                              proceedToNext(nextSelectedServices);
                                               return;
                                             }
                                             handleNext();
@@ -3355,7 +3377,7 @@ export default function BookServicePage() {
 
             <div className="flex-1 overflow-y-auto">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
-              <div className="lg:col-span-8 p-4 sm:p-6">
+              <div className={`${showReferencePlanUi ? 'lg:col-span-12' : 'lg:col-span-8'} p-4 sm:p-6`}>
                 {(() => {
                   const raw = detailsService.checklistTemplate?.items || [];
                   const normalized = raw
@@ -3427,7 +3449,7 @@ export default function BookServicePage() {
                           <div className="mt-1 text-xs text-emerald-800">
                             Highlighted items are new in this plan.
                           </div>
-                          <div className="mt-3 flex items-center justify-between gap-3 lg:hidden bg-green-50 border border-green-200 rounded-xl p-3">
+                          <div className="mt-3 flex items-center justify-between gap-3 bg-white/70 border border-emerald-200 rounded-xl p-3">
                             <div className="text-xl font-extrabold text-gray-900">
                               {detailsService.price > 0 ? `₹${detailsService.price.toLocaleString('en-IN')}` : '—'}
                             </div>
@@ -3446,8 +3468,8 @@ export default function BookServicePage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="lg:hidden mb-2">
-                          <div className="flex items-center justify-between gap-3 bg-green-50 border border-green-200 rounded-xl p-3">
+                        <div className="mb-2">
+                          <div className="flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
                             <div className="text-xl font-extrabold text-gray-900">
                               {detailsService.price > 0 ? `₹${detailsService.price.toLocaleString('en-IN')}` : '—'}
                             </div>
@@ -3466,33 +3488,52 @@ export default function BookServicePage() {
                           </div>
                         </div>
                       )}
-                      {categories.map((cat) => (
-                        <div key={cat}>
-                          <div className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-2">
-                            {cat}
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                            {groups.get(cat)!.map((it, idx) => (
-                              (() => {
-                                const isNew = planDiff?.prevSet ? !planDiff.prevSet.has(it.name.toLowerCase()) : false;
-                                return (
+                      {showReferencePlanUi ? (
+                        <div className="grid grid-cols-2 gap-x-4">
+                          {normalized.map((it, idx) => {
+                            const isNew = planDiff?.prevSet ? !planDiff.prevSet.has(it.name.toLowerCase()) : false;
+                            return (
                               <div
-                                key={`${cat}-${idx}-${it.name}`}
-                                className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${
-                                  isNew
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                                    : 'border-gray-200 bg-gray-50 text-gray-800'
+                                key={`${it.category}-${idx}-${it.name}`}
+                                className={`flex items-start gap-2 py-2 text-sm border-b border-gray-100 ${
+                                  isNew ? 'text-emerald-900 font-semibold' : 'text-gray-700'
                                 }`}
                               >
                                 <CheckCircle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isNew ? 'text-emerald-600' : 'text-green-600'}`} />
-                                <span className="break-words flex-1">{it.name}</span>
+                                <span className="break-words flex-1 leading-snug">{it.name}</span>
                               </div>
-                                );
-                              })()
-                            ))}
-                          </div>
+                            );
+                          })}
                         </div>
-                      ))}
+                      ) : (
+                        categories.map((cat) => (
+                          <div key={cat}>
+                            <div className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-2">
+                              {cat}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                              {groups.get(cat)!.map((it, idx) => (
+                                (() => {
+                                  const isNew = planDiff?.prevSet ? !planDiff.prevSet.has(it.name.toLowerCase()) : false;
+                                  return (
+                                <div
+                                  key={`${cat}-${idx}-${it.name}`}
+                                  className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${
+                                    isNew
+                                      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                                      : 'border-gray-200 bg-gray-50 text-gray-800'
+                                  }`}
+                                >
+                                  <CheckCircle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isNew ? 'text-emerald-600' : 'text-green-600'}`} />
+                                  <span className="break-words flex-1">{it.name}</span>
+                                </div>
+                                  );
+                                })()
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      )}
                       {!normalized.length ? (
                         <div className="text-sm text-gray-600">No checklist available for this service.</div>
                       ) : null}
@@ -3501,7 +3542,8 @@ export default function BookServicePage() {
                 })()}
               </div>
 
-              <div className="lg:col-span-4 p-4 sm:p-6 border-t lg:border-t-0 lg:border-l border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+              {!showReferencePlanUi && (
+              <div className="hidden lg:block lg:col-span-4 p-4 sm:p-6 border-t lg:border-t-0 lg:border-l border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
                 <div className="text-xs text-green-700 font-semibold">Estimated Total</div>
                 <div className="mt-1 text-3xl font-extrabold text-gray-900">
                   {detailsService.price > 0 ? `₹${detailsService.price.toLocaleString('en-IN')}` : '—'}
@@ -3524,6 +3566,7 @@ export default function BookServicePage() {
                   You can change your package later before payment.
                 </div>
               </div>
+              )}
             </div>
             </div>
           </div>
