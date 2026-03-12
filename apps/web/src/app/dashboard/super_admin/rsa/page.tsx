@@ -611,6 +611,7 @@ export default function SuperAdminRSASettingsPage() {
   const [trendPoints, setTrendPoints] = useState<OverviewTrendPoint[]>([]);
   const [trendGranularity, setTrendGranularity] = useState<'day' | 'hour'>('day');
   const [activeStateId, setActiveStateId] = useState<string>('');
+  const [googleHeatmapUnavailable, setGoogleHeatmapUnavailable] = useState(false);
   const [mechCoverageOpen, setMechCoverageOpen] = useState(false);
   const [mechCoverageLoading, setMechCoverageLoading] = useState(false);
   const [mechCoverageError, setMechCoverageError] = useState('');
@@ -1753,6 +1754,10 @@ export default function SuperAdminRSASettingsPage() {
 
   const googleMapsKey =
     (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '').trim();
+
+  useEffect(() => {
+    setGoogleHeatmapUnavailable(false);
+  }, [googleMapsKey]);
 
   const allStatePoints = useMemo(() => {
     const pts: GoogleStateHeatmapPoint[] = [];
@@ -3624,13 +3629,14 @@ export default function SuperAdminRSASettingsPage() {
                     <div className="space-y-3">
                       <div className="rounded-lg border overflow-hidden">
                         <div className="relative h-72">
-                          {activeStateId === '__ALL__' && googleMapsKey ? (
+                          {activeStateId === '__ALL__' && googleMapsKey && !googleHeatmapUnavailable ? (
                             <GoogleStateHeatmapMap
                               className="w-full h-full"
                               apiKey={googleMapsKey}
                               points={allStatePoints}
                               activeId={null}
                               showProfit={showProfit}
+                              onApiLoadError={() => setGoogleHeatmapUnavailable(true)}
                               onSelect={(id) => {
                                 setActiveStateId(id);
                               }}

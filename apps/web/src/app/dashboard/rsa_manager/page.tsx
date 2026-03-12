@@ -318,7 +318,6 @@ export default function RSAManagerDashboard() {
 
   const openWhatsAppPreview = (phone: string | null | undefined, call?: SarvCallRow | null) => {
     const value = String(phone || '').trim();
-    if (!value) return;
     const summary = String(call?.summary || '').trim();
     const disposition = String(call?.disposition || call?.disposition_category || '').trim();
     const suggested =

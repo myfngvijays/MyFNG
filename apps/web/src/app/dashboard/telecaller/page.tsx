@@ -5,7 +5,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime } from '@/lib/utils';
 import {
   Phone, PhoneCall, PhoneMissed, Clock, CheckCircle, XCircle,
-  AlertCircle, TrendingUp, Calendar, Users 
+  AlertCircle, TrendingUp, Calendar, Users
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';

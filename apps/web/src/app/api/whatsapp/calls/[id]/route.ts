@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   callErrorResponse,
-  isInboundDirection,
-  isSuperAdminRole,
   requireOperationalUser,
 } from '@/app/api/whatsapp/calls/_shared';
 
@@ -13,7 +11,7 @@ export async function GET(
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db, roleCode } = gate;
+    const { db } = gate;
 
     const params = await Promise.resolve(context.params as any);
     const id = String(params?.id || '').trim();
@@ -26,9 +24,6 @@ export async function GET(
       .maybeSingle();
     if (callError) return callErrorResponse(callError.message || 'Failed to fetch call', 500);
     if (!callLog) return callErrorResponse('Call not found', 404);
-    if (isInboundDirection(callLog.direction) && !isSuperAdminRole(roleCode)) {
-      return callErrorResponse('Incoming calls are available only for Super Admin', 403);
-    }
 
     const { data: recordings } = await db
       .from('whatsapp_call_recordings')
@@ -86,7 +81,7 @@ export async function PATCH(
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db, roleCode } = gate;
+    const { db } = gate;
 
     const params = await Promise.resolve(context.params as any);
     const id = String(params?.id || '').trim();
@@ -99,9 +94,6 @@ export async function PATCH(
       .maybeSingle();
     if (existingError) return callErrorResponse(existingError.message || 'Failed to fetch call', 500);
     if (!existing) return callErrorResponse('Call not found', 404);
-    if (isInboundDirection(existing.direction) && !isSuperAdminRole(roleCode)) {
-      return callErrorResponse('Incoming calls are available only for Super Admin', 403);
-    }
 
     const body = await request.json().catch(() => ({}));
     const nextStatus = String(body?.call_status || '').trim().toUpperCase();

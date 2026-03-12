@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   callErrorResponse,
   fetchCallContext,
-  isSuperAdminRole,
   requireOperationalUser,
 } from '@/app/api/whatsapp/calls/_shared';
 
@@ -23,10 +22,7 @@ export async function POST(
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db, userProfile, roleCode } = gate;
-    if (!isSuperAdminRole(roleCode)) {
-      return callErrorResponse('Only Super Admin can upload call recordings', 403);
-    }
+    const { db, userProfile } = gate;
 
     const params = await Promise.resolve(context.params as any);
     const callId = String(params?.id || '').trim();

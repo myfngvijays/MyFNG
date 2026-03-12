@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CircleF, GoogleMap, InfoWindowF, useJsApiLoader } from '@react-google-maps/api';
 
 export type GoogleStateHeatmapPoint = {
@@ -21,6 +21,7 @@ type Props = {
   showProfit: boolean;
   onSelect: (id: string) => void;
   onOpenCustomers: (id: string) => void;
+  onApiLoadError?: () => void;
 };
 
 function clamp(n: number, a: number, b: number) {
@@ -51,6 +52,7 @@ export default function GoogleStateHeatmapMap({
   showProfit,
   onSelect,
   onOpenCustomers,
+  onApiLoadError,
 }: Props) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'myfng-google-maps',
@@ -70,6 +72,11 @@ export default function GoogleStateHeatmapMap({
   }, [points, activeId]);
 
   const infoPoint = useMemo(() => points.find((p) => p.id === infoId) || null, [points, infoId]);
+
+  useEffect(() => {
+    if (!loadError) return;
+    onApiLoadError?.();
+  }, [loadError, onApiLoadError]);
 
   if (!apiKey) {
     return <div className={className} />;

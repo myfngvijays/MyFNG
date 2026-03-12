@@ -69,13 +69,13 @@ function mapCallStatus(status: string | undefined, event: string | undefined): s
 
   if (['terminate', 'terminated', 'hangup', 'ended', 'end', 'cancel', 'cancelled', 'canceled'].includes(normalizedEvent)) return 'ENDED';
   if (['ringing', 'ring', 'incoming'].includes(normalizedEvent)) return 'RINGING';
-  if (['accept', 'accepted', 'answer', 'connected', 'connect'].includes(normalizedEvent)) return 'ACCEPTED';
+  if (['accept', 'accepted', 'answer', 'answered', 'connected', 'connect', 'pick', 'picked'].includes(normalizedEvent)) return 'ACCEPTED';
   if (['reject', 'rejected', 'declined', 'busy', 'busy_here'].includes(normalizedEvent)) return 'REJECTED';
   if (['missed', 'no_answer', 'not_answered', 'timeout', 'unanswered'].includes(normalizedEvent)) return 'MISSED';
 
   if (['initiated', 'dialing', 'calling'].includes(normalized)) return 'INITIATED';
   if (['ringing', 'ring'].includes(normalized)) return 'RINGING';
-  if (['accepted', 'connected', 'in_progress', 'ongoing'].includes(normalized)) return 'ACCEPTED';
+  if (['accepted', 'answered', 'connected', 'in_progress', 'ongoing', 'active'].includes(normalized)) return 'ACCEPTED';
   if (['ended', 'completed', 'hangup', 'terminated', 'cancel', 'cancelled', 'canceled'].includes(normalized)) return 'ENDED';
   if (['missed', 'no_answer', 'not_answered', 'timeout', 'unanswered'].includes(normalized)) return 'MISSED';
   if (['rejected', 'declined', 'busy', 'busy_here'].includes(normalized)) return 'REJECTED';
@@ -524,16 +524,45 @@ export async function POST(request: NextRequest) {
             callLogId = upserted?.id || null;
           }
         } else {
-          const { data: inserted, error: insertError } = await db
+          // Provider sometimes omits call_id for status updates.
+          // In that case, patch the most recent non-terminal call for this customer.
+          const { data: latestByPhone } = await db
             .from('whatsapp_call_logs')
-            .insert(callPayload)
-            .select('id')
+            .select('id, call_status, updated_at')
+            .eq('customer_phone', customerPhone)
+            .order('updated_at', { ascending: false })
+            .limit(1)
             .maybeSingle();
-          if (insertError) {
-            failedCount += 1;
-            continue;
+
+          const latestStatus = String(latestByPhone?.call_status || '').trim().toUpperCase();
+          const canPatchLatest =
+            Boolean(latestByPhone?.id) &&
+            !['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(latestStatus);
+
+          if (canPatchLatest) {
+            const { data: updated, error: updateError } = await db
+              .from('whatsapp_call_logs')
+              .update(callPayload)
+              .eq('id', latestByPhone.id)
+              .select('id')
+              .maybeSingle();
+            if (updateError) {
+              failedCount += 1;
+              continue;
+            }
+            callLogId = updated?.id || null;
+          } else {
+            const { data: inserted, error: insertError } = await db
+              .from('whatsapp_call_logs')
+              .insert(callPayload)
+              .select('id')
+              .maybeSingle();
+            if (insertError) {
+              failedCount += 1;
+              continue;
+            }
+            callLogId = inserted?.id || null;
           }
-          callLogId = inserted?.id || null;
         }
         callUpdatedCount += 1;
 

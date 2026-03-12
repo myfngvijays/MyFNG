@@ -12,7 +12,8 @@ import {
   MapPin,
   MessageCircle,
   Mic,
-  PauseCircle,
+  Minus,
+  MoreHorizontal,
   Paperclip,
   Phone,
   PhoneOff,
@@ -20,9 +21,9 @@ import {
   PhoneOutgoing,
   PlayCircle,
   Send,
-  Video,
   Volume2,
-  VolumeX,
+  Video,
+  UserPlus,
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -64,6 +65,7 @@ type CallLog = {
   started_at?: string | null;
   ended_at?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
   duration_seconds?: number | null;
   error_message?: string | null;
   recordings?: CallRecording[];
@@ -76,6 +78,25 @@ type CallLog = {
   }>;
 };
 
+type ChatAssigneeOption = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  role_code: string;
+};
+
+type ChatAssignment = {
+  phone: string;
+  assigned_to_ids: string[];
+  assigned_to_names: string[];
+  assigned_by: string | null;
+  assigned_by_name: string | null;
+  assigned_note: string | null;
+  assigned_at: string | null;
+  updated_at: string | null;
+};
+
 type BrowserCallOffer = {
   sdp: string;
   sdp_type: 'offer';
@@ -85,6 +106,17 @@ function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
   return digits.startsWith('91') ? digits : `91${digits}`;
+}
+
+function formatPhone(phone: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return `+${digits.slice(0, 2)} ${digits.slice(2, 7)} ${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+  }
+  return phone || '—';
 }
 
 function formatMessageTime(value: string | null | undefined): string {
@@ -131,6 +163,13 @@ function formatDuration(seconds?: number | null): string {
   return `${s}s`;
 }
 
+function normalizeSdpForBrowser(sdp: string): string {
+  const normalized = String(sdp || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalized.split('\n').map((line) => line.trimEnd());
+  const compact = lines.filter((line) => line.length > 0).join('\r\n');
+  return compact ? `${compact}\r\n` : '';
+}
+
 function resolveCallingPermissionTemplateName(rows: TemplateOption[]): string | null {
   const exact = rows.find((row) => {
     const name = String(row.template_name || '').trim().toLowerCase();
@@ -142,40 +181,6 @@ function resolveCallingPermissionTemplateName(rows: TemplateOption[]): string | 
     return name.includes('calling_permission') || name.includes('call_permission');
   });
   return fuzzy ? String(fuzzy.template_name || '').trim() || null : null;
-}
-
-async function buildBrowserCallOffer(): Promise<BrowserCallOffer> {
-  if (typeof window === 'undefined' || typeof RTCPeerConnection === 'undefined') {
-    throw new Error('Browser does not support WebRTC call offer generation');
-  }
-  const peer = new RTCPeerConnection();
-  try {
-    peer.addTransceiver('audio', { direction: 'sendrecv' });
-    const offer = await peer.createOffer({ offerToReceiveAudio: true });
-    await peer.setLocalDescription(offer);
-    await new Promise<void>((resolve) => {
-      if (peer.iceGatheringState === 'complete') {
-        resolve();
-        return;
-      }
-      const timeout = window.setTimeout(() => resolve(), 1500);
-      const onStateChange = () => {
-        if (peer.iceGatheringState === 'complete') {
-          window.clearTimeout(timeout);
-          peer.removeEventListener('icegatheringstatechange', onStateChange);
-          resolve();
-        }
-      };
-      peer.addEventListener('icegatheringstatechange', onStateChange);
-    });
-    const local = peer.localDescription;
-    if (!local?.sdp) {
-      throw new Error('Unable to build SDP offer for call initiation');
-    }
-    return { sdp: local.sdp, sdp_type: 'offer' };
-  } finally {
-    peer.close();
-  }
 }
 
 function sortMessagesAsc(rows: any[]): any[] {
@@ -487,6 +492,14 @@ export default function WhatsAppMobilePreviewModal({
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [assigneeOptions, setAssigneeOptions] = useState<ChatAssigneeOption[]>([]);
+  const [selectedAssignee1Id, setSelectedAssignee1Id] = useState('');
+  const [selectedAssignee2Id, setSelectedAssignee2Id] = useState('');
+  const [assignmentNote, setAssignmentNote] = useState('');
+  const [chatAssignment, setChatAssignment] = useState<ChatAssignment | null>(null);
+  const [assignmentPanelOpen, setAssignmentPanelOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -509,6 +522,12 @@ export default function WhatsAppMobilePreviewModal({
   const [callControlLoading, setCallControlLoading] = useState<string | null>(null);
   const [callInfoOpen, setCallInfoOpen] = useState<CallLog | null>(null);
   const [activeCallElapsed, setActiveCallElapsed] = useState(0);
+  const [isRtcConnected, setIsRtcConnected] = useState(false);
+  // Stores the call ID that was explicitly "answered" in the preview (agent clicked Accept).
+  // Using an ID instead of a boolean ensures that a new call always shows Accept/Decline
+  // regardless of component state — a new call ID will never match an old one.
+  const [answeredPreviewCallId, setAnsweredPreviewCallId] = useState<string | null>(null);
+  const [callOverlayMinimized, setCallOverlayMinimized] = useState(false);
   const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
   const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -519,6 +538,13 @@ export default function WhatsAppMobilePreviewModal({
   const pendingPrependHeightRef = useRef<number | null>(null);
   const previousLastMessageKeyRef = useRef<string>('');
   const previousTemplateOnlyModeRef = useRef<boolean>(true);
+  const activePeerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const activeAudioStreamRef = useRef<MediaStream | null>(null);
+  const activeRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const activeCallRef = useRef<string | null>(null);
+  const connectedAtRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
 
   const composerMessage = useMemo(
     () =>
@@ -568,6 +594,9 @@ export default function WhatsAppMobilePreviewModal({
     return Date.now() - lastInboundMs > 24 * 60 * 60 * 1000;
   }, [messages]);
   const activeCall = useMemo(() => {
+    const now = Date.now();
+    const STALE_PRE_CONNECT_MS = 2 * 60 * 1000; // 2 min
+    const STALE_CONNECTED_MS = 4 * 60 * 60 * 1000; // 4 hours
     const sorted = [...callLogs].sort((a, b) => {
       const ta = new Date(a.started_at || a.created_at || 0).getTime();
       const tb = new Date(b.started_at || b.created_at || 0).getTime();
@@ -576,33 +605,301 @@ export default function WhatsAppMobilePreviewModal({
     return (
       sorted.find((row) => {
         const status = normalizeCallStatus(row.call_status);
-        return !['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(status);
-      }) || sorted[0] || null
+        if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(status)) return false;
+        const updatedAt = new Date(row.updated_at || row.created_at || 0).getTime();
+        const age = now - updatedAt;
+        if (['INITIATED', 'RINGING', 'NEGOTIATING'].includes(status) && age > STALE_PRE_CONNECT_MS) return false;
+        if (['CONNECTED'].includes(status) && age > STALE_CONNECTED_MS) return false;
+        return true;
+      }) || null
     );
   }, [callLogs]);
   const activeCallState = useMemo(() => {
     if (!activeCall) return 'IDLE';
+    const callStatus = normalizeCallStatus(activeCall.call_status);
+    if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(callStatus)) return callStatus;
     const sessionState = String(activeCall?.sessions?.[0]?.session_state || '').trim().toUpperCase();
     if (sessionState) return sessionState;
-    return normalizeCallStatus(activeCall.call_status) || 'IDLE';
+    return callStatus || 'IDLE';
   }, [activeCall]);
-  const isIncomingActiveCall = useMemo(() => {
+  const isIncomingCall = useMemo(() => {
     if (!activeCall) return false;
-    if (!isInboundCallDirection(activeCall.direction)) return false;
+    return isInboundCallDirection(activeCall.direction);
+  }, [activeCall]);
+  const isOutboundActiveCall = useMemo(() => {
+    if (!activeCall) return false;
+    if (isInboundCallDirection(activeCall.direction)) return false;
     const state = String(activeCallState || '').trim().toUpperCase();
     return !['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state);
   }, [activeCall, activeCallState]);
-  const canAnswerIncomingCall = useMemo(() => {
-    if (!isIncomingActiveCall) return false;
+  const isIncomingRingingCall = useMemo(() => {
+    if (!isIncomingCall) return false;
     const state = String(activeCallState || '').trim().toUpperCase();
     return ['RINGING', 'INITIATED', 'NEGOTIATING'].includes(state);
-  }, [activeCallState, isIncomingActiveCall]);
+  }, [isIncomingCall, activeCallState]);
+  const outboundAnsweredInPreview = answeredPreviewCallId != null && activeCall?.id === answeredPreviewCallId;
   const hasLiveConnectedCall = useMemo(() => {
     if (!activeCall) return false;
     const state = String(activeCallState || '').trim().toUpperCase();
+    if (!isInboundCallDirection(activeCall.direction)) {
+      if (['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state)) return false;
+      // Outbound should auto-switch to connected UI once backend marks accepted/connected.
+      return outboundAnsweredInPreview || isRtcConnected || ['ANSWERED', 'ACCEPTED', 'CONNECTED'].includes(state);
+    }
     if (['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state)) return false;
-    return ['ACCEPTED', 'CONNECTED'].includes(state);
-  }, [activeCall, activeCallState]);
+    return ['ANSWERED', 'ACCEPTED', 'CONNECTED'].includes(state);
+  }, [activeCall, activeCallState, answeredPreviewCallId, isRtcConnected]);
+  const hasOngoingCall = useMemo(() => {
+    const state = String(activeCallState || '').trim().toUpperCase();
+    return !['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state);
+  }, [activeCallState]);
+  const callScreenStatus = useMemo(() => {
+    if (hasLiveConnectedCall) return 'Connected';
+    if (isIncomingRingingCall) return 'Incoming call...';
+    const state = String(activeCallState || '').toUpperCase();
+    // Outbound: always show Ringing until the agent clicks Answer in the preview
+    if (isOutboundActiveCall && !outboundAnsweredInPreview) return 'Ringing...';
+    if (state === 'RINGING') return 'Ringing...';
+    return 'Calling...';
+  }, [hasLiveConnectedCall, activeCallState, isIncomingRingingCall, isOutboundActiveCall, answeredPreviewCallId, activeCall?.id]);
+
+  useEffect(() => {
+    if (hasOngoingCall) return;
+    connectedAtRef.current = null;
+    recordingStartedAtRef.current = null;
+    setIsRtcConnected(false);
+    setAnsweredPreviewCallId(null);
+  }, [hasOngoingCall]);
+
+  useEffect(() => {
+    if (!activeCall) return;
+    if (isInboundCallDirection(activeCall.direction)) return;
+    const state = String(activeCallState || '').trim().toUpperCase();
+    if (!['ANSWERED', 'ACCEPTED', 'CONNECTED'].includes(state)) return;
+    if (connectedAtRef.current == null) connectedAtRef.current = Date.now();
+    if (answeredPreviewCallId !== activeCall.id) setAnsweredPreviewCallId(activeCall.id);
+  }, [activeCall, activeCallState, answeredPreviewCallId]);
+
+  useEffect(() => {
+    activeCallRef.current = activeCall?.id || null;
+  }, [activeCall?.id]);
+
+  const saveCallRecording = useCallback(async (callId: string, chunks: Blob[], durationSeconds: number) => {
+    if (chunks.length === 0) return;
+    try {
+      const blob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
+      if (blob.size < 100) return;
+      const form = new FormData();
+      form.append('file', blob, `call-recording-${callId}.webm`);
+      form.append('call_id', callId);
+      form.append('duration_seconds', String(Math.max(1, Math.floor(durationSeconds || 0))));
+      await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/recording`, {
+        method: 'POST',
+        body: form,
+      }).catch(() => {});
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const cleanupCallMedia = useCallback(() => {
+    if (activeRecorderRef.current && activeRecorderRef.current.state !== 'inactive') {
+      activeRecorderRef.current.stop();
+    }
+    activeRecorderRef.current = null;
+    recordedChunksRef.current = [];
+    recordingStartedAtRef.current = null;
+    connectedAtRef.current = null;
+    setIsRtcConnected(false);
+    setAnsweredPreviewCallId(null);
+    if (activePeerConnectionRef.current) {
+      activePeerConnectionRef.current.close();
+      activePeerConnectionRef.current = null;
+    }
+    if (activeAudioStreamRef.current) {
+      activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+      activeAudioStreamRef.current = null;
+    }
+    document.getElementById('wa-mobile-call-audio')?.remove();
+  }, []);
+
+  const loadCallsRef = useRef<() => Promise<void>>(() => Promise.resolve());
+
+  const patchCallStatusLocal = useCallback(
+    async (
+      callId: string,
+      status: 'ACCEPTED' | 'CONNECTED' | 'ENDED',
+      extra?: { duration_seconds?: number; ended_at?: string }
+    ) => {
+      if (!callId) return;
+      try {
+        await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            call_status: status,
+            ...(extra || {}),
+          }),
+        });
+      } catch {
+        // best-effort patch; live UI should continue even if this fails
+      }
+    },
+    []
+  );
+
+  const buildLiveCallOffer = useCallback(async (): Promise<BrowserCallOffer> => {
+    if (typeof window === 'undefined' || typeof RTCPeerConnection === 'undefined') {
+      throw new Error('Browser does not support WebRTC call offer generation');
+    }
+
+    cleanupCallMedia();
+
+    let audioStream: MediaStream | null = null;
+    try {
+      audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      activeAudioStreamRef.current = audioStream;
+    } catch {
+      audioStream = null;
+    }
+
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ],
+      iceTransportPolicy: 'all',
+    });
+    activePeerConnectionRef.current = pc;
+
+    if (audioStream) {
+      audioStream.getAudioTracks().forEach((track) => pc.addTrack(track, audioStream!));
+    } else {
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+    }
+
+    let finalized = false;
+    const finalizeOngoingCall = () => {
+      if (finalized) return;
+      finalized = true;
+      const cid = activeCallRef.current;
+      const endedAtIso = new Date().toISOString();
+      const elapsedSeconds =
+        connectedAtRef.current != null ? Math.max(1, Math.floor((Date.now() - connectedAtRef.current) / 1000)) : undefined;
+      if (cid) {
+        void patchCallStatusLocal(cid, 'ENDED', {
+          ended_at: endedAtIso,
+          ...(elapsedSeconds ? { duration_seconds: elapsedSeconds } : {}),
+        });
+      }
+      if (cid) {
+        fetch(`/api/whatsapp/calls/${encodeURIComponent(cid)}/control`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'hangup' }),
+        }).catch(() => {});
+      }
+      cleanupCallMedia();
+      setActiveCallElapsed(0);
+      void loadCallsRef.current();
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') {
+        const cid = activeCallRef.current;
+        if (!connectedAtRef.current) connectedAtRef.current = Date.now();
+        setIsRtcConnected(true);
+        if (cid) {
+          setAnsweredPreviewCallId(cid);
+          void patchCallStatusLocal(cid, 'CONNECTED');
+        }
+      }
+      if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+        finalizeOngoingCall();
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (['disconnected', 'failed', 'closed'].includes(pc.iceConnectionState)) {
+        finalizeOngoingCall();
+      }
+    };
+
+    pc.ontrack = (ev) => {
+      const cid = activeCallRef.current;
+      if (!connectedAtRef.current) connectedAtRef.current = Date.now();
+      setIsRtcConnected(true);
+      if (cid) {
+        setAnsweredPreviewCallId(cid);
+        void patchCallStatusLocal(cid, 'CONNECTED');
+      }
+      ev.track.onended = () => finalizeOngoingCall();
+
+      const remoteStream = ev.streams[0] || new MediaStream([ev.track]);
+      const existing = document.getElementById('wa-mobile-call-audio') as HTMLAudioElement | null;
+      if (existing) {
+        existing.srcObject = remoteStream;
+        existing.play().catch(() => {});
+      } else {
+        const remoteAudio = document.createElement('audio');
+        remoteAudio.id = 'wa-mobile-call-audio';
+        remoteAudio.autoplay = true;
+        remoteAudio.playsInline = true;
+        remoteAudio.srcObject = remoteStream;
+        document.body.appendChild(remoteAudio);
+        remoteAudio.play().catch(() => {});
+      }
+
+      try {
+        const ctx = new AudioContext();
+        const dest = ctx.createMediaStreamDestination();
+        if (audioStream) {
+          const localSrc = ctx.createMediaStreamSource(audioStream);
+          localSrc.connect(dest);
+        }
+        const remoteSrc = ctx.createMediaStreamSource(remoteStream);
+        remoteSrc.connect(dest);
+        const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm;codecs=opus' });
+        recordedChunksRef.current = [];
+        const startedAtMs = Date.now();
+        recordingStartedAtRef.current = startedAtMs;
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+        };
+        recorder.onstop = () => {
+          const currentCallId = activeCallRef.current;
+          const elapsedSec = Math.max(1, Math.floor((Date.now() - startedAtMs) / 1000));
+          recordingStartedAtRef.current = null;
+          if (currentCallId) void saveCallRecording(currentCallId, recordedChunksRef.current, elapsedSec);
+        };
+        recorder.start(1000);
+        activeRecorderRef.current = recorder;
+      } catch {
+        // Recording not available
+      }
+    };
+
+    const offer = await pc.createOffer({ offerToReceiveAudio: true });
+    await pc.setLocalDescription(offer);
+    if (pc.iceGatheringState !== 'complete') {
+      await new Promise<void>((resolve) => {
+        const timeout = window.setTimeout(resolve, 4000);
+        const onStateChange = () => {
+          if (pc.iceGatheringState === 'complete') {
+            window.clearTimeout(timeout);
+            pc.removeEventListener('icegatheringstatechange', onStateChange);
+            resolve();
+          }
+        };
+        pc.addEventListener('icegatheringstatechange', onStateChange);
+      });
+    }
+    const localSdp = pc.localDescription?.sdp || offer.sdp || '';
+    if (!localSdp) {
+      throw new Error('Unable to build SDP offer for call initiation');
+    }
+    return { sdp: localSdp, sdp_type: 'offer' };
+  }, [cleanupCallMedia, saveCallRecording, patchCallStatusLocal]);
   const callPermissionTemplateName = useMemo(
     () => resolveCallingPermissionTemplateName(templateOptions),
     [templateOptions]
@@ -611,6 +908,13 @@ export default function WhatsAppMobilePreviewModal({
     0,
     Math.ceil((callPermissionCooldownUntil - callPermissionTick) / 1000)
   );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!hasOngoingCall) {
+      setCallOverlayMinimized(false);
+    }
+  }, [hasOngoingCall, isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -654,6 +958,86 @@ export default function WhatsAppMobilePreviewModal({
       setActiveType('text');
     }
   }, [isTemplateOnlyMode, activeType]);
+
+  const loadChatAssignment = useCallback(async () => {
+    if (!waPhone) {
+      setAssigneeOptions([]);
+      setSelectedAssignee1Id('');
+      setSelectedAssignee2Id('');
+      setChatAssignment(null);
+      setAssignmentNote('');
+      return;
+    }
+    setAssignmentLoading(true);
+    try {
+      const params = new URLSearchParams({ phone: waPhone });
+      const res = await fetch(`/api/whatsapp/chats/assignment?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to load assignment');
+      }
+      const options = Array.isArray(data?.employees) ? data.employees : [];
+      const assignment = data?.assignment || null;
+      const assignedToIds = Array.isArray(assignment?.assigned_to_ids)
+        ? assignment.assigned_to_ids.map((value: any) => String(value || '').trim()).filter(Boolean)
+        : [];
+      setAssigneeOptions(options);
+      setChatAssignment(assignment);
+      setSelectedAssignee1Id(String(assignedToIds[0] || '').trim());
+      setSelectedAssignee2Id(String(assignedToIds[1] || '').trim());
+      setAssignmentNote(String(assignment?.assigned_note || '').trim());
+    } catch (error: any) {
+      setAssigneeOptions([]);
+      setChatAssignment(null);
+      setSelectedAssignee1Id('');
+      setSelectedAssignee2Id('');
+      setAssignmentNote('');
+      toast.error(error?.message || 'Failed to load chat assignment');
+    } finally {
+      setAssignmentLoading(false);
+    }
+  }, [waPhone]);
+
+  const handleSaveAssignment = useCallback(async () => {
+    if (!waPhone) {
+      toast.error('Customer phone not available');
+      return;
+    }
+    const assignedToIds = Array.from(
+      new Set([selectedAssignee1Id, selectedAssignee2Id].map((value) => String(value || '').trim()).filter(Boolean))
+    );
+    if (assignedToIds.length > 2) {
+      toast.error('You can assign this chat to at most 2 employees');
+      return;
+    }
+    setAssignmentSaving(true);
+    try {
+      const res = await fetch('/api/whatsapp/chats/assignment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: waPhone,
+          assigned_to_ids: assignedToIds,
+          assigned_note: assignmentNote || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to save assignment');
+      }
+      toast.success(assignedToIds.length > 0 ? 'Chat assigned successfully' : 'Chat assignment cleared');
+      await loadChatAssignment();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save assignment');
+    } finally {
+      setAssignmentSaving(false);
+    }
+  }, [waPhone, selectedAssignee1Id, selectedAssignee2Id, assignmentNote, loadChatAssignment]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void loadChatAssignment();
+  }, [isOpen, loadChatAssignment]);
 
   const fetchConversationPage = useCallback(
     async (beforeCreatedAt?: string | null) => {
@@ -709,6 +1093,7 @@ export default function WhatsAppMobilePreviewModal({
       setCallLoading(false);
     }
   }, [waPhone]);
+  loadCallsRef.current = loadCalls;
 
   const handleCallAction = useCallback(
     async (action: 'initiate' | 'callback_request') => {
@@ -719,8 +1104,12 @@ export default function WhatsAppMobilePreviewModal({
           'Confirm customer opt-in for WhatsApp call before placing the call.'
         );
         if (!proceed) return;
+        setCallOverlayMinimized(false);
+        connectedAtRef.current = null;
+        setIsRtcConnected(false);
+        setAnsweredPreviewCallId(null);
         try {
-          sessionPayload = await buildBrowserCallOffer();
+          sessionPayload = await buildLiveCallOffer();
         } catch (error: any) {
           toast.error(error?.message || 'Failed to prepare call session');
           return;
@@ -782,6 +1171,20 @@ export default function WhatsAppMobilePreviewModal({
           toast.error(uiMessage || 'Call action failed');
           return;
         }
+        const initAnswerSdp = String(data?.answer_sdp || '').trim();
+        if (initAnswerSdp) {
+          const pc = activePeerConnectionRef.current;
+          if (pc && pc.signalingState !== 'closed' && !pc.remoteDescription) {
+            try {
+              const normalized = normalizeSdpForBrowser(initAnswerSdp);
+              await pc.setRemoteDescription(
+                new RTCSessionDescription({ type: 'answer', sdp: normalized })
+              );
+            } catch {
+              // retried by polling
+            }
+          }
+        }
         toast.success(action === 'initiate' ? 'Call request submitted' : 'Callback request submitted');
         await loadCalls();
       } catch {
@@ -790,7 +1193,7 @@ export default function WhatsAppMobilePreviewModal({
         setCallActionLoading(null);
       }
     },
-    [callActionLoading, loadCalls, waPhone]
+    [buildLiveCallOffer, callActionLoading, loadCalls, waPhone]
   );
 
   const handleSendFreshPermissionRequest = useCallback(async () => {
@@ -838,6 +1241,187 @@ export default function WhatsAppMobilePreviewModal({
     waPhone,
   ]);
 
+  const handleAcceptIncomingCall = useCallback(async () => {
+    const callId = activeCall?.id;
+    if (!callId || callControlLoading) return;
+    setCallControlLoading('resume');
+
+    // Clean up any previous session
+    if (activePeerConnectionRef.current) {
+      activePeerConnectionRef.current.close();
+      activePeerConnectionRef.current = null;
+    }
+    if (activeAudioStreamRef.current) {
+      activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+      activeAudioStreamRef.current = null;
+    }
+
+    try {
+      // Get microphone
+      let audioStream: MediaStream | null = null;
+      try {
+        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        activeAudioStreamRef.current = audioStream;
+      } catch {
+        // receive-only mode
+      }
+
+      // Fetch SDP offer from session
+      let metaOfferSdp: string | null = null;
+      try {
+        const sessRes = await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/session`, { cache: 'no-store' });
+        const sessData = await sessRes.json().catch(() => ({}));
+        const sessions = Array.isArray(sessData?.sessions) ? sessData.sessions : [];
+        const offerRow = sessions.find((r: any) => String(r?.offer_sdp || '').trim());
+        metaOfferSdp = offerRow?.offer_sdp ? String(offerRow.offer_sdp).trim() : null;
+      } catch { /* no saved offer */ }
+
+      if (!metaOfferSdp || typeof RTCPeerConnection === 'undefined') {
+        toast.error('Cannot accept: no SDP offer received yet.');
+        return;
+      }
+
+      // Normalize Meta's SDP for browser
+      const sanitizedOffer = metaOfferSdp
+        .replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+        .split('\n').map((l) => l.trim()).filter(Boolean).join('\r\n') + '\r\n';
+
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
+        iceTransportPolicy: 'all',
+      });
+      activePeerConnectionRef.current = pc;
+
+      if (audioStream) {
+        audioStream.getAudioTracks().forEach((track) => pc.addTrack(track, audioStream!));
+      } else {
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+      }
+
+      // Play remote audio + start recording on track
+      pc.ontrack = (ev) => {
+        void patchCallStatusLocal(callId, 'CONNECTED');
+        const remoteStream = ev.streams[0] || new MediaStream([ev.track]);
+        const existing = document.getElementById('wa-mobile-call-audio') as HTMLAudioElement | null;
+        if (existing) { existing.srcObject = remoteStream; existing.play().catch(() => {}); }
+        else {
+          const remoteAudio = document.createElement('audio');
+          remoteAudio.id = 'wa-mobile-call-audio';
+          remoteAudio.autoplay = true;
+          remoteAudio.playsInline = true;
+          remoteAudio.srcObject = remoteStream;
+          document.body.appendChild(remoteAudio);
+          remoteAudio.play().catch(() => {});
+        }
+        try {
+          const ctx = new AudioContext();
+          const dest = ctx.createMediaStreamDestination();
+          if (audioStream) ctx.createMediaStreamSource(audioStream).connect(dest);
+          ctx.createMediaStreamSource(remoteStream).connect(dest);
+          const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm;codecs=opus' });
+          recordedChunksRef.current = [];
+          const startedAtMs = Date.now();
+          recordingStartedAtRef.current = startedAtMs;
+          recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data); };
+          recorder.onstop = () => {
+            const elapsedSec = Math.max(1, Math.floor((Date.now() - startedAtMs) / 1000));
+            recordingStartedAtRef.current = null;
+            if (callId) void saveCallRecording(callId, recordedChunksRef.current, elapsedSec);
+          };
+          recorder.start(1000);
+          activeRecorderRef.current = recorder;
+        } catch { /* recording unavailable */ }
+      };
+
+      // Disconnect handlers
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'connected') {
+          void patchCallStatusLocal(callId, 'CONNECTED');
+        }
+        if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+          const endedAtIso = new Date().toISOString();
+          const elapsedSeconds =
+            connectedAtRef.current != null ? Math.max(1, Math.floor((Date.now() - connectedAtRef.current) / 1000)) : undefined;
+          void patchCallStatusLocal(callId, 'ENDED', {
+            ended_at: endedAtIso,
+            ...(elapsedSeconds ? { duration_seconds: elapsedSeconds } : {}),
+          });
+          cleanupCallMedia();
+          setActiveCallElapsed(0);
+          void loadCallsRef.current();
+        }
+      };
+      pc.oniceconnectionstatechange = () => {
+        if (['disconnected', 'failed', 'closed'].includes(pc.iceConnectionState)) {
+          const endedAtIso = new Date().toISOString();
+          const elapsedSeconds =
+            connectedAtRef.current != null ? Math.max(1, Math.floor((Date.now() - connectedAtRef.current) / 1000)) : undefined;
+          void patchCallStatusLocal(callId, 'ENDED', {
+            ended_at: endedAtIso,
+            ...(elapsedSeconds ? { duration_seconds: elapsedSeconds } : {}),
+          });
+          cleanupCallMedia();
+          setActiveCallElapsed(0);
+          void loadCallsRef.current();
+        }
+      };
+
+      // Set remote offer and create answer
+      await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: sanitizedOffer }));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      // Wait for ICE gathering (max 5s)
+      if (pc.iceGatheringState !== 'complete') {
+        await new Promise<void>((resolve) => {
+          const t = window.setTimeout(resolve, 5000);
+          pc.addEventListener('icegatheringstatechange', function onState() {
+            if (pc.iceGatheringState === 'complete') { window.clearTimeout(t); pc.removeEventListener('icegatheringstatechange', onState); resolve(); }
+          });
+        });
+      }
+
+      const answerSdp = pc.localDescription?.sdp || answer.sdp || null;
+      if (!answerSdp) { toast.error('Failed to generate SDP answer'); return; }
+
+      const sendToBackend = async (metaAction: string, sdp: string) => {
+        const r = await fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'answer', phone: waPhone || undefined, sdp, sdp_type: 'answer', provider_session_id: null, meta_action: metaAction }),
+        });
+        return { r, d: await r.json().catch(() => ({})) };
+      };
+
+      const { r: preR, d: preD } = await sendToBackend('pre_accept', answerSdp);
+      if (!preR.ok || !preD?.success) { toast.error(preD?.error || 'pre_accept failed'); return; }
+
+      // Wait for WebRTC connected (max 10s)
+      await new Promise<void>((resolve) => {
+        if (pc.connectionState === 'connected') { resolve(); return; }
+        const t = window.setTimeout(resolve, 10000);
+        pc.onconnectionstatechange = () => {
+          if (pc.connectionState === 'connected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+            window.clearTimeout(t); resolve();
+          }
+        };
+      });
+
+      if (!connectedAtRef.current) connectedAtRef.current = Date.now();
+      setIsRtcConnected(true);
+      void patchCallStatusLocal(callId, 'ACCEPTED');
+
+      const { r: accR, d: accD } = await sendToBackend('accept', answerSdp);
+      if (!accR.ok || !accD?.success) toast.error(accD?.error || 'Call accept failed');
+
+      await loadCallsRef.current();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to accept call');
+    } finally {
+      setCallControlLoading(null);
+    }
+  }, [activeCall?.id, callControlLoading, cleanupCallMedia, saveCallRecording, waPhone, patchCallStatusLocal]);
+
   const handleCallControl = useCallback(
     async (action: 'hangup' | 'hold' | 'resume' | 'mute' | 'unmute') => {
       if (!activeCall?.id || callControlLoading) return;
@@ -857,11 +1441,111 @@ export default function WhatsAppMobilePreviewModal({
       } catch {
         toast.error('Call control failed');
       } finally {
+        if (action === 'hangup') {
+          cleanupCallMedia();
+          setActiveCallElapsed(0);
+        }
         setCallControlLoading(null);
       }
     },
-    [activeCall?.id, callControlLoading, loadCalls]
+    [activeCall?.id, callControlLoading, cleanupCallMedia, loadCalls]
   );
+
+  useEffect(() => {
+    if (!isOutboundActiveCall || !activeCall?.id) return;
+    const pc = activePeerConnectionRef.current;
+    if (!pc || pc.signalingState === 'closed') return;
+    const alreadyConnected = pc.connectionState === 'connected' && !!pc.remoteDescription;
+
+    let cancelled = false;
+    const appliedCandidateKeys = new Set<string>();
+
+    const poll = async () => {
+      if (cancelled) return;
+      const currentPc = activePeerConnectionRef.current;
+      if (!currentPc || currentPc.signalingState === 'closed') return;
+
+      try {
+        const res = await fetch(
+          `/api/whatsapp/calls/${encodeURIComponent(activeCall.id)}/session`,
+          { cache: 'no-store' }
+        );
+        const json = await res.json().catch(() => ({}));
+        const sessions = Array.isArray(json?.sessions) ? json.sessions : [];
+        const candidates = Array.isArray(json?.ice_candidates) ? json.ice_candidates : [];
+        const callStatus = String(json?.call_status || '').trim().toUpperCase();
+
+        if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(callStatus) && !cancelled) {
+          cleanupCallMedia();
+          setActiveCallElapsed(0);
+          void loadCalls();
+          return;
+        }
+
+        if (!currentPc.remoteDescription && !cancelled) {
+          let remoteSdp: string | null = null;
+          const answerRow = sessions.find((row: any) => String(row?.answer_sdp || '').trim());
+          if (answerRow) remoteSdp = String(answerRow.answer_sdp).trim();
+
+          if (!remoteSdp) {
+            const webhookRow = sessions.find((row: any) => {
+              const sdp = String(row?.offer_sdp || '').trim();
+              const source = String((row?.meta as any)?.source || '').trim();
+              return sdp && source === 'webhook';
+            });
+            if (webhookRow) remoteSdp = String(webhookRow.offer_sdp).trim();
+          }
+
+          if (remoteSdp && !cancelled && currentPc.signalingState !== 'closed') {
+            try {
+              const normalizedSdp = normalizeSdpForBrowser(remoteSdp);
+              await currentPc.setRemoteDescription(
+                new RTCSessionDescription({ type: 'answer', sdp: normalizedSdp })
+              );
+            } catch {
+              // retry by polling
+            }
+          }
+        }
+
+        if (currentPc.remoteDescription && candidates.length > 0) {
+          for (const cand of candidates) {
+            const candStr = String(cand?.candidate || '').trim();
+            if (!candStr) continue;
+            const key = `${candStr}:${cand?.sdp_mid || ''}:${cand?.sdp_mline_index ?? ''}`;
+            if (appliedCandidateKeys.has(key)) continue;
+            try {
+              await currentPc.addIceCandidate(
+                new RTCIceCandidate({
+                  candidate: candStr,
+                  sdpMid: cand?.sdp_mid || undefined,
+                  sdpMLineIndex: cand?.sdp_mline_index ?? undefined,
+                })
+              );
+              appliedCandidateKeys.add(key);
+            } catch {
+              // skip invalid candidate
+            }
+          }
+        }
+      } catch {
+        // retry
+      }
+
+      if (!cancelled) {
+        const currentPc2 = activePeerConnectionRef.current;
+        if (!currentPc2 || currentPc2.signalingState === 'closed') return;
+        const isConnected = currentPc2.connectionState === 'connected' && !!currentPc2.remoteDescription;
+        window.setTimeout(poll, isConnected ? 1500 : 2500);
+      }
+    };
+
+    const timer = window.setTimeout(poll, alreadyConnected ? 1500 : 1200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isOutboundActiveCall, activeCall?.id, activeCallState, cleanupCallMedia, loadCalls]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!hasMoreHistory || loadingOlder) return;
@@ -942,6 +1626,13 @@ export default function WhatsAppMobilePreviewModal({
           void loadCalls();
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'whatsapp_call_recordings' },
+        () => {
+          void loadCalls();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -953,6 +1644,13 @@ export default function WhatsAppMobilePreviewModal({
       channel.unsubscribe();
     };
   }, [isOpen, waPhone, fetchConversationPage, loadCalls, refreshConversation]);
+
+  useEffect(() => {
+    if (isOpen) return;
+    cleanupCallMedia();
+    setActiveCallElapsed(0);
+    setAssignmentPanelOpen(false);
+  }, [isOpen, cleanupCallMedia]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1005,11 +1703,17 @@ export default function WhatsAppMobilePreviewModal({
       setActiveCallElapsed(0);
       return;
     }
-    const sourceTs = String(
-      activeCall.started_at || activeCall.updated_at || activeCall.created_at || ''
-    ).trim();
-    const parsed = sourceTs ? new Date(sourceTs).getTime() : Number.NaN;
-    const startMs = Number.isFinite(parsed) && parsed > 0 ? parsed : Date.now();
+    let startMs: number = Date.now();
+    if (connectedAtRef.current) {
+      // Use actual RTC/accept timestamp for both inbound and outbound
+      startMs = connectedAtRef.current;
+    } else {
+      const sourceTs = String(
+        activeCall.started_at || activeCall.updated_at || activeCall.created_at || ''
+      ).trim();
+      const parsed = sourceTs ? new Date(sourceTs).getTime() : Number.NaN;
+      startMs = Number.isFinite(parsed) && parsed > 0 ? parsed : Date.now();
+    }
     setActiveCallElapsed(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
     const id = window.setInterval(() => {
       setActiveCallElapsed(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
@@ -1147,7 +1851,7 @@ export default function WhatsAppMobilePreviewModal({
   return (
     <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/50 p-4">
       <div className="w-[372px] max-w-[95vw] h-[720px] max-h-[94vh] rounded-[2.6rem] bg-[#0f1f2e] p-2.5 shadow-[0_28px_70px_rgba(0,0,0,0.55)]">
-        <div className="h-full rounded-[2.1rem] bg-[#efeae2] overflow-hidden border border-black/25 flex flex-col">
+        <div className="relative h-full rounded-[2.1rem] bg-[#efeae2] overflow-hidden border border-black/25 flex flex-col">
           <div className="h-6 bg-[#0f1f2e] flex items-center justify-center">
             <div className="h-1.5 w-24 rounded-full bg-[#2f3b43]" />
           </div>
@@ -1159,20 +1863,6 @@ export default function WhatsAppMobilePreviewModal({
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold truncate">{title || 'WhatsApp Chat'}</p>
                 <p className="text-[11px] text-white/85 truncate">{phoneNumber || '—'}</p>
-                <p className="mt-0.5 text-[10px] uppercase tracking-wide text-white/80">
-                  Call state: {activeCallState}
-                </p>
-                {isIncomingActiveCall ? (
-                  <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#ffdd57]">
-                    Incoming call
-                  </p>
-                ) : null}
-                {hasLiveConnectedCall ? (
-                  <p className="mt-0.5 font-mono text-[10px] font-semibold tracking-wide text-[#a7f3d0]">
-                    {String(Math.floor(activeCallElapsed / 60)).padStart(2, '0')}:
-                    {String(activeCallElapsed % 60).padStart(2, '0')}
-                  </p>
-                ) : null}
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -1190,129 +1880,230 @@ export default function WhatsAppMobilePreviewModal({
                   <Phone className="h-3.5 w-3.5" />
                 )}
               </button>
-              <button
-                type="button"
-                className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
-                aria-label="Request callback"
-                disabled={callActionLoading !== null}
-                onClick={() => void handleCallAction('callback_request')}
-                title="Request callback"
-              >
-                {callActionLoading === 'callback' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Video className="h-3.5 w-3.5" />
-                )}
-              </button>
-              <button
-                type="button"
-                className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
-                aria-label="Send fresh call permission request"
-                disabled={callActionLoading !== null || callPermissionCooldownLeft > 0}
-                onClick={() => void handleSendFreshPermissionRequest()}
-                title={
-                  callPermissionCooldownLeft > 0
-                    ? `Retry permission request in ${callPermissionCooldownLeft}s`
-                    : 'Send fresh call permission request'
-                }
-              >
-                {callActionLoading === 'permission' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <MessageCircle className="h-3.5 w-3.5" />
-                )}
-              </button>
-              <button
-                type="button"
-                className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
-                aria-label="Hangup call"
-                disabled={!activeCall || callControlLoading !== null}
-                onClick={() => void handleCallControl('hangup')}
-                title="Hangup"
-              >
-                {callControlLoading === 'hangup' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <PhoneOff className="h-3.5 w-3.5" />
-                )}
-              </button>
-              {isIncomingActiveCall ? (
-                <button
-                  type="button"
-                  className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
-                  aria-label="Accept incoming call"
-                  disabled={!canAnswerIncomingCall || callControlLoading !== null}
-                  onClick={() => void handleCallControl('resume')}
-                  title="Accept incoming call"
-                >
-                  {callControlLoading === 'resume' ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <PhoneIncoming className="h-3.5 w-3.5" />
-                  )}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
-                aria-label="Hold call"
-                disabled={!activeCall || callControlLoading !== null}
-                onClick={() => void handleCallControl('hold')}
-                title="Hold"
-              >
-                {callControlLoading === 'hold' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <PauseCircle className="h-3.5 w-3.5" />
-                )}
-              </button>
-              <button
-                type="button"
-                className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
-                aria-label="Resume call"
-                disabled={!activeCall || callControlLoading !== null}
-                onClick={() => void handleCallControl('resume')}
-                title="Resume"
-              >
-                {callControlLoading === 'resume' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <PlayCircle className="h-3.5 w-3.5" />
-                )}
-              </button>
-              <button
-                type="button"
-                className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
-                aria-label="Mute call"
-                disabled={!activeCall || callControlLoading !== null}
-                onClick={() => void handleCallControl('mute')}
-                title="Mute"
-              >
-                {callControlLoading === 'mute' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <VolumeX className="h-3.5 w-3.5" />
-                )}
-              </button>
-              <button
-                type="button"
-                className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"
-                aria-label="Unmute call"
-                disabled={!activeCall || callControlLoading !== null}
-                onClick={() => void handleCallControl('unmute')}
-                title="Unmute"
-              >
-                {callControlLoading === 'unmute' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Volume2 className="h-3.5 w-3.5" />
-                )}
-              </button>
               <button type="button" className="rounded-md p-1 hover:bg-white/10" onClick={onClose} aria-label="Close WhatsApp preview">
                 <X className="h-4 w-4" />
               </button>
             </div>
           </div>
+
+          <div className="border-b border-black/10 bg-[#f7f8fa] px-2.5 py-1.5">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-lg border border-[#d5dbe1] bg-white px-2.5 py-1.5"
+              onClick={() => setAssignmentPanelOpen((prev) => !prev)}
+            >
+              <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
+                <UserPlus className="h-3.5 w-3.5" />
+                Assign Chat
+              </div>
+              <div className="flex items-center gap-2">
+                {Array.isArray(chatAssignment?.assigned_to_names) && chatAssignment.assigned_to_names.length > 0 ? (
+                  <span className="max-w-[140px] truncate text-[10px] font-medium text-[#128c7e]">
+                    {chatAssignment.assigned_to_names.join(', ')}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-[#667781]">Unassigned</span>
+                )}
+                <span className="text-[10px] font-semibold text-[#128c7e]">{assignmentPanelOpen ? 'Hide' : 'Open'}</span>
+              </div>
+            </button>
+            {assignmentPanelOpen ? (
+              <div className="mt-1.5 rounded-lg border border-[#d5dbe1] bg-white p-1.5">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <select
+                    className="rounded-md border border-[#d9dee3] bg-[#f8fafb] px-2 py-1 text-[10px] text-[#111b21] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    value={selectedAssignee1Id}
+                    disabled={assignmentLoading || assignmentSaving}
+                    onChange={(e) => setSelectedAssignee1Id(e.target.value)}
+                  >
+                    <option value="">Assignee 1</option>
+                    {assigneeOptions.map((row) => (
+                      <option key={row.id} value={row.id} disabled={selectedAssignee2Id === row.id}>
+                        {(row.full_name || row.email || row.phone || row.id) + ` (${row.role_code})`}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded-md border border-[#d9dee3] bg-[#f8fafb] px-2 py-1 text-[10px] text-[#111b21] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    value={selectedAssignee2Id}
+                    disabled={assignmentLoading || assignmentSaving}
+                    onChange={(e) => setSelectedAssignee2Id(e.target.value)}
+                  >
+                    <option value="">Assignee 2</option>
+                    {assigneeOptions.map((row) => (
+                      <option key={row.id} value={row.id} disabled={selectedAssignee1Id === row.id}>
+                        {(row.full_name || row.email || row.phone || row.id) + ` (${row.role_code})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <input
+                    className="w-full rounded-md border border-[#d9dee3] bg-[#f8fafb] px-2 py-1 text-[10px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    value={assignmentNote}
+                    disabled={assignmentLoading || assignmentSaving}
+                    onChange={(e) => setAssignmentNote(e.target.value)}
+                    placeholder="Note (optional)"
+                  />
+                  <button
+                    type="button"
+                    className="rounded-md bg-[#25D366] px-2.5 py-1 text-[10px] font-semibold text-white disabled:opacity-60"
+                    disabled={assignmentLoading || assignmentSaving}
+                    onClick={() => void handleSaveAssignment()}
+                  >
+                    {assignmentSaving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {hasOngoingCall && activeCall ? (
+            callOverlayMinimized ? (
+              <button
+                type="button"
+                onClick={() => setCallOverlayMinimized(false)}
+                className="mx-2 mt-2 inline-flex items-center gap-2 self-start rounded-full bg-[#1f2937] px-3 py-1.5 text-[11px] text-white shadow-lg"
+              >
+                <PhoneOutgoing className="h-3.5 w-3.5 text-green-400" />
+                <span className="font-medium">
+                  {hasLiveConnectedCall
+                    ? `${String(Math.floor(activeCallElapsed / 60)).padStart(2, '0')}:${String(activeCallElapsed % 60).padStart(2, '0')}`
+                    : callScreenStatus}
+                </span>
+              </button>
+            ) : (
+              <div
+                className={`absolute inset-x-0 bottom-0 z-30 overflow-hidden text-white ${
+                  assignmentPanelOpen ? 'top-[168px]' : 'top-[98px]'
+                }`}
+              >
+                {hasLiveConnectedCall ? (
+                  /* ── CONNECTED — matches image 1 ─────────────────── */
+                  <div className="flex h-full flex-col items-center justify-between bg-[#0f1113] px-6 py-6">
+                    <div className="w-full">
+                      <button
+                        type="button"
+                        onClick={() => setCallOverlayMinimized(true)}
+                        className="rounded-full bg-white/10 p-2 text-white/90 hover:bg-white/20"
+                        aria-label="Minimize"
+                      >
+                        <Minus className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col items-center gap-1">
+                      <p className="text-[26px] font-semibold leading-none tracking-tight">
+                        {formatPhone(activeCall.customer_phone || waPhone)}
+                      </p>
+                      <p className="text-[15px] text-white/70">Connected</p>
+                      <p className="font-mono text-[22px] font-bold text-green-400">
+                        {String(Math.floor(activeCallElapsed / 60)).padStart(2, '0')}:
+                        {String(activeCallElapsed % 60).padStart(2, '0')}
+                      </p>
+                    </div>
+
+                    <div className="flex h-44 w-44 items-center justify-center rounded-full bg-white shadow-2xl">
+                      <div className="text-center">
+                        <p className="text-xl font-black text-[#1d4ed8]">MY FNG</p>
+                        <p className="text-[9px] tracking-widest text-[#0f766e]">YOUR FRIENDLY<br />NEIGHBORHOOD GARAGE</p>
+                      </div>
+                    </div>
+
+                    <div className="mb-2 flex flex-col items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void handleCallControl('hangup')}
+                        disabled={!activeCall || callControlLoading !== null}
+                        className="rounded-full bg-red-600 p-5 text-white hover:bg-red-700 disabled:opacity-60 shadow-xl"
+                        title="End call"
+                      >
+                        {callControlLoading === 'hangup' ? (
+                          <Loader2 className="h-7 w-7 animate-spin" />
+                        ) : (
+                          <PhoneOff className="h-7 w-7" />
+                        )}
+                      </button>
+                      <span className="text-[12px] text-white/50">End</span>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── RINGING — matches image 2 exactly ───────────── */
+                  <div
+                    className="flex h-full flex-col"
+                    style={{
+                      background: 'linear-gradient(160deg,#3a3228 0%,#4a3c30 30%,#5a4636 55%,#3e3428 80%,#2a2620 100%)',
+                    }}
+                  >
+                    {/* Top caller info */}
+                    <div className="flex flex-col items-center px-6 pt-10">
+                      <div className="mb-2 flex items-center gap-1.5">
+                        {/* WhatsApp icon */}
+                        <svg viewBox="0 0 24 24" className="h-4 w-4 fill-[#25d366]">
+                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                        </svg>
+                        <span className="text-[13px] text-white/80">WhatsApp Audio...</span>
+                      </div>
+                      <p className="text-[28px] font-semibold tracking-tight text-white">
+                        {formatPhone(activeCall.customer_phone || waPhone)}
+                      </p>
+                    </div>
+
+                    {/* Spacer */}
+                    <div className="flex-1" />
+
+                    {/* Bottom actions */}
+                    <div className="px-6 pb-8">
+                      <div className="flex items-end justify-around">
+                        {/* Decline */}
+                        <div className="flex flex-col items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleCallControl('hangup')}
+                            disabled={!activeCall || callControlLoading !== null}
+                            className="flex h-[70px] w-[70px] items-center justify-center rounded-full bg-red-500 text-white shadow-xl hover:bg-red-600 disabled:opacity-60 active:scale-95 transition-transform"
+                            title="Decline"
+                          >
+                            {callControlLoading === 'hangup' ? (
+                              <Loader2 className="h-8 w-8 animate-spin" />
+                            ) : (
+                              <X className="h-8 w-8" />
+                            )}
+                          </button>
+                          <span className="text-[13px] text-white/80">Decline</span>
+                        </div>
+
+                        {/* Accept */}
+                        <div className="flex flex-col items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isOutboundActiveCall && !isIncomingRingingCall && activeCall?.id) {
+                                connectedAtRef.current = Date.now();
+                                setAnsweredPreviewCallId(activeCall.id);
+                              } else {
+                                void handleAcceptIncomingCall();
+                              }
+                            }}
+                            disabled={!activeCall || callControlLoading !== null}
+                            className="flex h-[70px] w-[70px] items-center justify-center rounded-full bg-[#3478f6] text-white shadow-xl hover:bg-[#2567e5] disabled:opacity-60 active:scale-95 transition-transform"
+                            title="Accept"
+                          >
+                            {callControlLoading === 'resume' ? (
+                              <Loader2 className="h-8 w-8 animate-spin" />
+                            ) : (
+                              <Check className="h-8 w-8 stroke-[3]" />
+                            )}
+                          </button>
+                          <span className="text-[13px] text-white/80">Accept</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          ) : null}
 
           <div
             ref={messagesContainerRef}
@@ -1340,25 +2131,37 @@ export default function WhatsAppMobilePreviewModal({
               .map((call) => {
                 const inbound = String(call.direction || '').toUpperCase() === 'INBOUND';
                 const isCallback = String(call.direction || '').toUpperCase().includes('CALLBACK');
+                const status = normalizeCallStatus(call.call_status);
+                const isAccepted = ['ANSWERED', 'ACCEPTED', 'CONNECTED', 'ENDED'].includes(status);
+                const hasRecording = Array.isArray(call.recordings) && call.recordings.length > 0;
+                const recordingUrl = hasRecording
+                  ? `/api/whatsapp/calls/recordings/${call.recordings![0].id}`
+                  : null;
                 return (
-                  <button
-                    key={`call-${call.id}`}
-                    type="button"
-                    onClick={() => setCallInfoOpen(call)}
-                    className="mx-auto mb-1 block rounded-full border border-[#d8dee3] bg-white/90 px-2.5 py-1 text-[10px] text-[#54656f] hover:bg-white"
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      {inbound ? (
-                        <PhoneIncoming className="h-3 w-3 text-[#1d4ed8]" />
-                      ) : (
-                        <PhoneOutgoing className="h-3 w-3 text-[#0f766e]" />
-                      )}
-                      <span>
-                        {isCallback ? 'Callback' : 'Call'} {normalizeCallStatus(call.call_status)} ·{' '}
-                        {formatMessageTime(call.started_at || call.created_at || null)}
+                  <div key={`call-${call.id}`} className="mx-auto mb-1 w-full max-w-[92%]">
+                    <button
+                      type="button"
+                      onClick={() => setCallInfoOpen(call)}
+                      className="block w-full rounded-full border border-[#d8dee3] bg-white/90 px-2.5 py-1 text-[10px] text-[#54656f] hover:bg-white"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {inbound ? (
+                          <PhoneIncoming className="h-3 w-3 text-[#1d4ed8]" />
+                        ) : (
+                          <PhoneOutgoing className="h-3 w-3 text-[#0f766e]" />
+                        )}
+                        <span>
+                          {isCallback ? 'Callback' : 'Call'} {status} ·{' '}
+                          {formatMessageTime(call.started_at || call.created_at || null)}
+                        </span>
                       </span>
-                    </span>
-                  </button>
+                    </button>
+                    {isAccepted && recordingUrl ? (
+                      <div className="mt-1 rounded-lg bg-[#f0f2f5] p-1.5">
+                        <audio controls preload="none" src={recordingUrl} className="h-8 w-full" />
+                      </div>
+                    ) : null}
+                  </div>
                 );
               })}
             {messages.map((msg) => {
@@ -1689,7 +2492,7 @@ export default function WhatsAppMobilePreviewModal({
             </div>
           ) : null}
 
-          <div className="bg-[#f0f2f5] border-t border-black/10 px-2.5 py-2 space-y-2">
+          <div className="bg-[#f0f2f5] border-t border-black/10 px-2.5 py-2 space-y-2 max-h-[42%] overflow-y-auto">
             {isTemplateOnlyMode ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
                 Normal chat window closed. Only template messages can be sent.
@@ -1825,14 +2628,25 @@ export default function WhatsAppMobilePreviewModal({
             ) : null}
 
             {activeType === 'template' ? (
-              <div className="space-y-1.5">
-                <input
-                  className="w-full rounded-md border bg-white px-2 py-1 text-[11px]"
-                  value={templateSearch}
-                  onChange={(e) => setTemplateSearch(e.target.value)}
-                  placeholder="Search template..."
-                />
-                <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-md border border-black/10 bg-white p-1.5">
+              <div className="space-y-2">
+                <div className="rounded-xl border border-[#d5dbe1] bg-white p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">Template library</p>
+                      <p className="text-[10px] text-[#667781]">Approved WhatsApp templates only</p>
+                    </div>
+                    <span className="rounded-full bg-[#e7f7ef] px-2 py-0.5 text-[10px] font-semibold text-[#128c7e]">
+                      {filteredTemplateOptions.length}/{templateOptions.length}
+                    </span>
+                  </div>
+                  <input
+                    className="mt-2 w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    value={templateSearch}
+                    onChange={(e) => setTemplateSearch(e.target.value)}
+                    placeholder="Search by name or content..."
+                  />
+                </div>
+                <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-[#d5dbe1] bg-white p-1.5">
                   {templatesLoading ? (
                     <div className="px-2 py-3 text-[11px] text-[#667781]">Loading templates...</div>
                   ) : null}
@@ -1849,8 +2663,10 @@ export default function WhatsAppMobilePreviewModal({
                         key={row.id}
                         type="button"
                         onClick={() => setTemplateName(row.template_name)}
-                        className={`w-full overflow-hidden rounded-xl border text-left ${
-                          isSelected ? 'border-[#25D366] ring-1 ring-[#25D366]/40' : 'border-black/10'
+                        className={`w-full overflow-hidden rounded-xl border text-left transition ${
+                          isSelected
+                            ? 'border-[#25D366] bg-[#f2fcf6] ring-1 ring-[#25D366]/40'
+                            : 'border-black/10 bg-white hover:border-[#b6c2cd] hover:bg-[#f7f9fb]'
                         }`}
                       >
                         {previewImage ? (
@@ -1860,7 +2676,7 @@ export default function WhatsAppMobilePreviewModal({
                             className="w-full h-auto max-h-28 object-cover"
                           />
                         ) : null}
-                        <div className="p-2">
+                        <div className="p-2.5">
                           <p className="text-[11px] font-semibold text-[#111b21]">
                             {row.display_name || row.template_name}
                           </p>
@@ -1871,7 +2687,11 @@ export default function WhatsAppMobilePreviewModal({
                             <span>
                               {row.language_code.toUpperCase()} • {String(row.category || 'TEMPLATE').toUpperCase()}
                             </span>
-                            {isSelected ? <span className="font-semibold text-[#128c7e]">Selected</span> : null}
+                            {isSelected ? (
+                              <span className="rounded-full bg-[#dcf8e8] px-1.5 py-0.5 font-semibold text-[#128c7e]">
+                                Selected
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </button>
@@ -1879,19 +2699,33 @@ export default function WhatsAppMobilePreviewModal({
                   })}
                 </div>
                 {templateName.trim() ? (
-                  <div className="rounded-md bg-[#eafaf1] px-2 py-1 text-[10px] text-[#128c7e]">
-                    Selected template: {selectedTemplate?.display_name || templateName}
+                  <div className="rounded-xl border border-[#bdebd2] bg-[#eafaf1] px-2.5 py-2 text-[10px] text-[#128c7e]">
+                    <p className="font-semibold">Selected: {selectedTemplate?.display_name || templateName}</p>
+                    <p className="mt-1 text-[#1b6f5f]">
+                      {selectedTemplate?.language_code?.toUpperCase() || 'EN'} •{' '}
+                      {String(selectedTemplate?.category || 'TEMPLATE').toUpperCase()}
+                      {selectedTemplate?.variable_keys?.length
+                        ? ` • ${selectedTemplate.variable_keys.length} param${
+                            selectedTemplate.variable_keys.length > 1 ? 's' : ''
+                          }`
+                        : ''}
+                    </p>
                   </div>
                 ) : null}
-                <input
-                  className="w-full rounded-md border bg-white px-2 py-1 text-[11px]"
-                  value={templateParams}
-                  onChange={(e) => setTemplateParams(e.target.value)}
-                  placeholder="Params comma separated"
-                />
-                <p className="text-[10px] text-gray-500">
-                  Delivery depends on approved template and WhatsApp policy checks.
-                </p>
+                <div className="rounded-xl border border-[#d5dbe1] bg-white p-2">
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
+                    Template params
+                  </label>
+                  <input
+                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    value={templateParams}
+                    onChange={(e) => setTemplateParams(e.target.value)}
+                    placeholder="Comma separated values (e.g. Rahul, 20 min)"
+                  />
+                  <p className="mt-1 text-[10px] text-[#667781]">
+                    Delivery depends on approved template and WhatsApp policy checks.
+                  </p>
+                </div>
               </div>
             ) : null}
 
@@ -1919,7 +2753,7 @@ export default function WhatsAppMobilePreviewModal({
               }}
             />
 
-            <div className="flex items-center justify-end gap-2">
+            <div className="sticky bottom-0 -mx-2.5 flex items-center justify-end gap-2 border-t border-black/5 bg-[#f0f2f5] px-2.5 pb-1 pt-1.5">
               <button
                 type="button"
                 onClick={handleSend}

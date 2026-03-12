@@ -27,6 +27,12 @@ const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook
 const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
 const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';
 
+function normalizePhone(phone: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('91') ? digits : `91${digits}`;
+}
+
 async function resolveUserProfile(supabase: any, user: any) {
   const email = (user.email || '').trim();
   const phone = (user.phone || '').trim();
@@ -366,6 +372,42 @@ export async function POST(request: NextRequest) {
         },
         { status: 502 }
       );
+    }
+
+    // Auto-map chat to message initiator.
+    // Keep this best-effort so message send success is never blocked by assignment issues.
+    try {
+      const normalizedPhone = normalizePhone(recipientPhone);
+      if (normalizedPhone) {
+        const { data: existingRow } = await db
+          .from('whatsapp_chat_assignments')
+          .select('assigned_to_ids, assigned_note')
+          .eq('phone', normalizedPhone)
+          .maybeSingle();
+
+        const existingIds = Array.isArray(existingRow?.assigned_to_ids)
+          ? existingRow.assigned_to_ids.map((id: any) => String(id || '').trim()).filter(Boolean)
+          : [];
+
+        // Ensure initiator is always present; cap at 2 assignees.
+        const mergedIds = Array.from(new Set([...existingIds.filter((id: string) => id !== userProfile.id), userProfile.id]));
+        const nextAssignedToIds = mergedIds.slice(-2);
+        const nowIso = new Date().toISOString();
+
+        await db.from('whatsapp_chat_assignments').upsert(
+          {
+            phone: normalizedPhone,
+            assigned_to_ids: nextAssignedToIds,
+            assigned_by: userProfile.id,
+            assigned_note: existingRow?.assigned_note || null,
+            assigned_at: nowIso,
+            updated_at: nowIso,
+          },
+          { onConflict: 'phone' }
+        );
+      }
+    } catch (assignmentError) {
+      console.warn('WhatsApp chat auto-assignment failed:', assignmentError);
     }
 
     return NextResponse.json({

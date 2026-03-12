@@ -8,8 +8,6 @@ import {
 import {
   callErrorResponse,
   fetchCallContext,
-  isInboundDirection,
-  isSuperAdminRole,
   normalizePhone,
   requireOperationalUser,
 } from '@/app/api/whatsapp/calls/_shared';
@@ -72,7 +70,7 @@ export async function GET(request: NextRequest) {
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db, roleCode } = gate;
+    const { db } = gate;
 
     const phoneRaw = String(request.nextUrl.searchParams.get('phone') || '').trim();
     const normalizedPhone = normalizePhone(phoneRaw);
@@ -86,7 +84,6 @@ export async function GET(request: NextRequest) {
       .limit(limit);
 
     if (normalizedPhone) query = query.eq('customer_phone', normalizedPhone);
-    if (!isSuperAdminRole(roleCode)) query = query.neq('direction', 'INBOUND');
 
     const { data: logs, error } = await query;
     if (error) return callErrorResponse(error.message || 'Failed to fetch call logs', 500);
@@ -123,13 +120,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      calls: (logs || [])
-        .filter((row: any) => isSuperAdminRole(roleCode) || !isInboundDirection(row?.direction))
-        .map((row: any) => ({
-          ...row,
-          recordings: recordingsByCall[String(row.id || '')] || [],
-          sessions: sessionsByCall[String(row.id || '')] || [],
-        })),
+      calls: (logs || []).map((row: any) => ({
+        ...row,
+        recordings: recordingsByCall[String(row.id || '')] || [],
+        sessions: sessionsByCall[String(row.id || '')] || [],
+      })),
     });
   } catch (error: any) {
     return callErrorResponse(error?.message || 'Internal server error', 500);

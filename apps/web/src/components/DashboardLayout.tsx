@@ -33,11 +33,14 @@ import {
   BarChart3,
   ClipboardCheck,
   Globe,
-  MessageSquare
+  MessageSquare,
+  MessageCircle
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
 import NotificationBell from '@/components/NotificationBell';
+import WhatsAppChatListModal from '@/components/shared/WhatsAppChatListModal';
+import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
 const AANSH_OPTIONAL_SKIP_KEY = 'myfng:aansh_optional_skip';
@@ -124,6 +127,11 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   const [aanshModalOpen, setAanshModalOpen] = useState(false);
   const [aanshLoading, setAanshLoading] = useState(false);
   const [aanshClaiming, setAanshClaiming] = useState(false);
+  const whatsappFabEnabled = role && ['TELECALLER', 'RSA_MANAGER'].includes(role.toUpperCase());
+  const [waListOpen, setWaListOpen] = useState(false);
+  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const [waPreviewPhone, setWaPreviewPhone] = useState('');
+  const [waPreviewMessage, setWaPreviewMessage] = useState('');
 
   useEffect(() => {
     checkAuth();
@@ -830,6 +838,39 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           </div>
         </div>
       )}
+
+      {whatsappFabEnabled ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setWaListOpen(true)}
+            title="Open WhatsApp chats"
+            className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-xl transition hover:scale-[1.03] hover:bg-[#1ebe5c]"
+          >
+            <MessageCircle className="h-6 w-6" />
+          </button>
+          <WhatsAppChatListModal
+            isOpen={waListOpen}
+            title="Assigned WhatsApp Chats"
+            onClose={() => setWaListOpen(false)}
+            onOpenChat={(phone, preview) => {
+              setWaListOpen(false);
+              setWaPreviewPhone(phone);
+              setWaPreviewMessage(
+                String(preview || '').trim() || 'Namaste! Hum aapki RSA request me assist karne ke liye available hain.'
+              );
+              setWaPreviewOpen(true);
+            }}
+          />
+          <WhatsAppMobilePreviewModal
+            isOpen={waPreviewOpen}
+            phoneNumber={waPreviewPhone}
+            title="WhatsApp Chat"
+            previewMessage={waPreviewMessage}
+            onClose={() => setWaPreviewOpen(false)}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

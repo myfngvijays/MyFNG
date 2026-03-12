@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-const ALLOWED_ADMIN_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
+const ALLOWED_ROLE_CODES = ['SUPER_ADMIN', 'SUB_ADMIN', 'RSA_MANAGER', 'TELECALLER'];
 
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -71,8 +71,32 @@ export async function GET(request: NextRequest) {
     const userProfile = await resolveUserProfile(db, user);
     if (!userProfile) return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     const roleCode = String(userProfile?.roles?.role_code || '').toUpperCase();
-    if (!ALLOWED_ADMIN_ROLES.includes(roleCode)) {
+    if (!ALLOWED_ROLE_CODES.includes(roleCode)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    let assignedPhoneSet: Set<string> | null = null;
+    if (roleCode === 'RSA_MANAGER' || roleCode === 'TELECALLER') {
+      const { data: assignedRows, error: assignedError } = await db
+        .from('whatsapp_chat_assignments')
+        .select('phone')
+        .contains('assigned_to_ids', [userProfile.id]);
+      if (assignedError) {
+        return NextResponse.json({ error: assignedError.message || 'Failed to load assigned chats' }, { status: 500 });
+      }
+      assignedPhoneSet = new Set(
+        (assignedRows || [])
+          .map((row: any) => normalizePhone(String(row?.phone || '')))
+          .filter(Boolean)
+      );
+      if (assignedPhoneSet.size === 0) {
+        return NextResponse.json({
+          success: true,
+          chats: [],
+          count: 0,
+          scanned_messages: 0,
+        });
+      }
     }
 
     const limitRaw = Number(request.nextUrl.searchParams.get('limit') || 2000);
@@ -113,6 +137,7 @@ export async function GET(request: NextRequest) {
       for (const row of rows) {
         const phone = getChatPhone(row);
         if (!phone) continue;
+        if (assignedPhoneSet && !assignedPhoneSet.has(phone)) continue;
         if (searchDigits && !phone.includes(searchDigits)) continue;
         if (byPhone.has(phone)) continue;
 

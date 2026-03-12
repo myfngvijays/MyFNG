@@ -3,7 +3,6 @@ import {
   callErrorResponse,
   fetchCallContext,
   isInboundDirection,
-  isSuperAdminRole,
   normalizePhone,
   requireOperationalUser,
 } from '@/app/api/whatsapp/calls/_shared';
@@ -31,7 +30,7 @@ export async function GET(
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db, roleCode } = gate;
+    const { db } = gate;
 
     const params = await Promise.resolve(context.params as any);
     const callId = String(params?.id || '').trim();
@@ -39,9 +38,6 @@ export async function GET(
 
     const { error: callContextError, callLog } = await fetchCallContext(db, callId);
     if (callContextError || !callLog) return callErrorResponse(callContextError || 'Call not found', 404);
-    if (isInboundDirection(callLog.direction) && !isSuperAdminRole(roleCode)) {
-      return callErrorResponse('Incoming calls are available only for Super Admin', 403);
-    }
 
     const { data: sessions, error } = await db
       .from('whatsapp_call_sessions')
@@ -138,6 +134,7 @@ export async function GET(
             const statusPriority: Record<string, number> = {
               INITIATED: 0,
               RINGING: 1,
+              ANSWERED: 2,
               ACCEPTED: 2,
               CONNECTED: 3,
               MISSED: 4,
@@ -208,6 +205,7 @@ export async function GET(
       if (webhookCallStatus) {
         const statusMap: Record<string, string> = {
           RINGING: 'RINGING',
+          ANSWERED: 'ACCEPTED',
           ACCEPTED: 'ACCEPTED',
           CONNECTED: 'CONNECTED',
           MISSED: 'MISSED',
@@ -217,7 +215,7 @@ export async function GET(
         };
         const mappedStatus = statusMap[webhookCallStatus];
         if (mappedStatus) {
-          const statusPriority: Record<string, number> = { INITIATED: 0, RINGING: 1, ACCEPTED: 2, CONNECTED: 3, MISSED: 4, REJECTED: 4, ENDED: 4, FAILED: 4 };
+          const statusPriority: Record<string, number> = { INITIATED: 0, RINGING: 1, ANSWERED: 2, ACCEPTED: 2, CONNECTED: 3, MISSED: 4, REJECTED: 4, ENDED: 4, FAILED: 4 };
           if ((statusPriority[mappedStatus] ?? -1) > (statusPriority[currentCallStatus] ?? -1)) {
             const updatePayload: Record<string, unknown> = { call_status: mappedStatus, updated_at: new Date().toISOString() };
             if (mappedStatus === 'ENDED' || mappedStatus === 'FAILED' || mappedStatus === 'MISSED' || mappedStatus === 'REJECTED') {
@@ -246,7 +244,7 @@ export async function POST(
   try {
     const gate = await requireOperationalUser();
     if (!gate.ok) return gate.response;
-    const { db, userProfile, roleCode } = gate;
+    const { db, userProfile } = gate;
 
     const params = await Promise.resolve(context.params as any);
     const callId = String(params?.id || '').trim();
@@ -257,9 +255,6 @@ export async function POST(
 
     const { error: callContextError, callLog } = await fetchCallContext(db, callId);
     if (callContextError || !callLog) return callErrorResponse(callContextError || 'Call not found', 404);
-    if (isInboundDirection(callLog.direction) && !isSuperAdminRole(roleCode)) {
-      return callErrorResponse('Incoming calls are available only for Super Admin', 403);
-    }
 
     if (action === 'candidate') {
       const providerSessionId = String(body?.provider_session_id || '').trim();
