@@ -2734,7 +2734,8 @@ export default function WhatsAppMobilePreviewModal({
             </div>
           ) : null}
 
-          <div className="border-t border-gray-200 bg-white p-3 space-y-2">
+          <div className="border-t border-gray-200 bg-white flex flex-col max-h-[50%]">
+            <div className="overflow-y-auto min-h-0 flex-1 px-3 pt-3 space-y-2">
             {isTemplateOnlyMode ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
                 Normal chat window closed. Only template messages can be sent.
@@ -2771,7 +2772,7 @@ export default function WhatsAppMobilePreviewModal({
                     placeholder="Search by name or content..."
                   />
                 </div>
-                <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-[#d5dbe1] bg-white p-1.5">
+                <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-xl border border-[#d5dbe1] bg-white p-1.5">
                   {templatesLoading ? (
                     <div className="px-2 py-3 text-[11px] text-[#667781]">Loading templates...</div>
                   ) : null}
@@ -2805,7 +2806,7 @@ export default function WhatsAppMobilePreviewModal({
                           <p className="text-[11px] font-semibold text-[#111b21]">
                             {row.display_name || row.template_name}
                           </p>
-                          <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[11px] leading-4 text-[#111b21]">
+                          <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[11px] leading-4 text-[#111b21]">
                             {previewBody}
                           </p>
                           <div className="mt-2 flex items-center justify-between text-[10px] text-[#667781]">
@@ -2887,7 +2888,8 @@ export default function WhatsAppMobilePreviewModal({
                 />
               </div>
             ) : null}
-            <div className="flex items-center gap-2">
+            </div>
+            <div className="shrink-0 px-3 pb-3 pt-2 flex items-center gap-2">
               <div className="relative">
                 <button
                   ref={attachButtonRef}
@@ -2993,32 +2995,30 @@ export default function WhatsAppMobilePreviewModal({
               >
                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
+              <input
+                ref={mediaFileInputRef}
+                type="file"
+                className="hidden"
+                accept={
+                  mediaType === 'image'
+                    ? 'image/*,video/*'
+                    : mediaType === 'audio'
+                    ? 'audio/*'
+                    : mediaType === 'video'
+                    ? 'video/*'
+                    : '.pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx,application/*'
+                }
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (!file) return;
+                  const inferred = inferMediaTypeFromFile(file);
+                  setSelectedMediaFile(file);
+                  setMediaType(inferred);
+                  setActiveType('media');
+                  e.currentTarget.value = '';
+                }}
+              />
             </div>
-
-            <input
-              ref={mediaFileInputRef}
-              type="file"
-              className="hidden"
-              accept={
-                mediaType === 'image'
-                  ? 'image/*,video/*'
-                  : mediaType === 'audio'
-                  ? 'audio/*'
-                  : mediaType === 'video'
-                  ? 'video/*'
-                  : '.pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx,application/*'
-              }
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                if (!file) return;
-                const inferred = inferMediaTypeFromFile(file);
-                setSelectedMediaFile(file);
-                setMediaType(inferred);
-                setActiveType('media');
-                e.currentTarget.value = '';
-              }}
-            />
-
           </div>
         </div>
       </div>
