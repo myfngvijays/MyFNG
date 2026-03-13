@@ -475,6 +475,20 @@ async function compressImageIfNeeded(file: File): Promise<File> {
   }
 }
 
+function renderLinkedText(text: string) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) =>
+    urlRegex.test(part) ? (
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">
+        {part}
+      </a>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
+
 export default function WhatsAppMobilePreviewModal({
   isOpen,
   phoneNumber,
@@ -2687,12 +2701,12 @@ export default function WhatsAppMobilePreviewModal({
                             {isCallRelated || callPermissionState ? (
                               <div className="flex items-center gap-2 text-gray-600">
                                 <Phone className="h-4 w-4 flex-shrink-0" />
-                                <span className="whitespace-pre-wrap break-words">{bubbleText}</span>
+                                <span className="whitespace-pre-wrap break-words">{typeof bubbleText === 'string' ? renderLinkedText(bubbleText) : bubbleText}</span>
                               </div>
                             ) : !hasLocation && messageType !== 'AUDIO' && !mediaMime.startsWith('audio/') && !(mediaUrl && (messageType === 'IMAGE' || messageType === 'STICKER') && !String(msg.media_caption || msg.text_body || '').trim()) ? (
-                              <div className="whitespace-pre-wrap break-words">{bubbleText}</div>
+                              <div className="whitespace-pre-wrap break-words">{typeof bubbleText === 'string' ? renderLinkedText(bubbleText) : bubbleText}</div>
                             ) : String(msg.media_caption || '').trim() ? (
-                              <div className="whitespace-pre-wrap break-words">{String(msg.media_caption || '').trim()}</div>
+                              <div className="whitespace-pre-wrap break-words">{renderLinkedText(String(msg.media_caption || '').trim())}</div>
                             ) : null}
                           </>
                         );
