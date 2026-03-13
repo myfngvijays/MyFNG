@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -132,6 +132,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   const [waPreviewOpen, setWaPreviewOpen] = useState(false);
   const [waPreviewPhone, setWaPreviewPhone] = useState('');
   const [waPreviewMessage, setWaPreviewMessage] = useState('');
+  const [waUnreadCount, setWaUnreadCount] = useState(0);
+  const waAssignedPhonesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     checkAuth();
@@ -243,6 +245,70 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       window.removeEventListener('focus', onFocus);
     };
   }, [aanshSession?.session_token]);
+
+  // Real-time WhatsApp unread badge for assigned chats
+  useEffect(() => {
+    if (!whatsappFabEnabled || loading || !user?.id) return;
+    const supabase = createClient();
+    let cancelled = false;
+
+    const normalizePhone = (p: string) => p.replace(/\D/g, '').replace(/^0+/, '');
+
+    // Fetch assigned phones and initial unread count
+    const init = async () => {
+      try {
+        const { data: assignments } = await supabase
+          .from('whatsapp_chat_assignments')
+          .select('phone')
+          .contains('assigned_to_ids', [user.id]);
+        if (cancelled) return;
+        const phones = new Set((assignments || []).map((a: any) => normalizePhone(a.phone)));
+        waAssignedPhonesRef.current = phones;
+        if (phones.size === 0) { setWaUnreadCount(0); return; }
+
+        // Count inbound messages in last 8 hours as "unread" proxy
+        const since = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
+        const phoneArr = Array.from(phones);
+        const { count } = await supabase
+          .from('whatsapp_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('direction', 'inbound')
+          .in('sender_phone', phoneArr)
+          .gte('created_at', since);
+        if (!cancelled) setWaUnreadCount(count || 0);
+      } catch {
+        // ignore
+      }
+    };
+    void init();
+
+    // Listen for new inbound messages in real-time
+    const channel = supabase
+      .channel('wa-unread-badge')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
+        (payload) => {
+          const row: any = payload.new || {};
+          if (row.direction !== 'inbound') return;
+          const sender = normalizePhone(String(row.sender_phone || ''));
+          if (waAssignedPhonesRef.current.has(sender)) {
+            setWaUnreadCount((prev) => prev + 1);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [whatsappFabEnabled, loading, user?.id]);
+
+  const handleOpenWaList = useCallback(() => {
+    setWaUnreadCount(0);
+    setWaListOpen(true);
+  }, []);
 
   // Note: do NOT auto-release on beforeunload.
   // Refresh/navigation also triggers beforeunload, which would incorrectly free Aansh.
@@ -843,11 +909,16 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         <>
           <button
             type="button"
-            onClick={() => setWaListOpen(true)}
+            onClick={handleOpenWaList}
             title="Open WhatsApp chats"
             className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-xl transition hover:scale-[1.03] hover:bg-[#1ebe5c]"
           >
             <MessageCircle className="h-6 w-6" />
+            {waUnreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white shadow-lg ring-2 ring-white animate-bounce">
+                {waUnreadCount > 99 ? '99+' : waUnreadCount}
+              </span>
+            )}
           </button>
           <WhatsAppChatListModal
             isOpen={waListOpen}
@@ -855,6 +926,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             onClose={() => setWaListOpen(false)}
             onOpenChat={(phone, preview) => {
               setWaListOpen(false);
+              setWaUnreadCount(0);
               setWaPreviewPhone(phone);
               setWaPreviewMessage(
                 String(preview || '').trim() || 'Namaste! Hum aapki RSA request me assist karne ke liye available hain.'
