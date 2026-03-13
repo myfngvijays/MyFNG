@@ -23,6 +23,7 @@ import {
   Send,
   Volume2,
   Video,
+  Share2,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -568,6 +569,14 @@ export default function WhatsAppMobilePreviewModal({
   const activeCallRef = useRef<string | null>(null);
   const connectedAtRef = useRef<number | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
+
+  // Multi-select forward state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
+  const [forwardPickerOpen, setForwardPickerOpen] = useState(false);
+  const [forwardPhone, setForwardPhone] = useState('');
+  const [forwardSending, setForwardSending] = useState(false);
+  const [forwardRecentChats, setForwardRecentChats] = useState<{ phone: string; preview: string; last_message_at: string }[]>([]);
 
   const composerMessage = useMemo(
     () =>
@@ -2038,6 +2047,110 @@ export default function WhatsAppMobilePreviewModal({
     }
   };
 
+  const toggleMsgSelect = useCallback((msgId: string) => {
+    setSelectedMsgIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msgId)) next.delete(msgId);
+      else next.add(msgId);
+      return next;
+    });
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedMsgIds(new Set());
+  }, []);
+
+  useEffect(() => {
+    if (!forwardPickerOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/whatsapp/chats?limit=30&scan=5000', { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !data?.success) return;
+        const chats = (Array.isArray(data.chats) ? data.chats : []).map((c: any) => ({
+          phone: String(c.phone || ''),
+          preview: String(c.last_message_preview || '').slice(0, 60),
+          last_message_at: String(c.last_message_at || ''),
+        }));
+        setForwardRecentChats(chats);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [forwardPickerOpen]);
+
+  const buildForwardPayload = (msg: any, targetPhone: string): Record<string, unknown> | null => {
+    const msgType = String(msg.message_type || '').toUpperCase();
+    const textBody = String(msg.text_body || '').trim();
+    const mediaCaption = String(msg.media_caption || '').trim();
+    const mediaUrl = msg.media_url || msg.payload?.image?.link || msg.payload?.video?.link || msg.payload?.audio?.link || msg.payload?.document?.link || null;
+    const loc = msg.payload?.location || msg.payload?.messages?.[0]?.location || null;
+    const hasLoc = loc && (loc.latitude || loc.longitude);
+
+    if (hasLoc) {
+      return { recipient_phone: targetPhone, message_type: 'text', text: `📍 Location: https://www.google.com/maps?q=${loc.latitude},${loc.longitude}` };
+    }
+    if (mediaUrl && ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].includes(msgType)) {
+      const mediaTypeMap: Record<string, string> = { IMAGE: 'image', VIDEO: 'video', AUDIO: 'audio', DOCUMENT: 'document' };
+      return {
+        recipient_phone: targetPhone,
+        message_type: 'media',
+        media_type: mediaTypeMap[msgType] || 'document',
+        media_url: mediaUrl.startsWith('/') ? `${window.location.origin}${mediaUrl}` : mediaUrl,
+        caption: mediaCaption || undefined,
+        filename: msg.payload?.document?.filename || undefined,
+      };
+    }
+    const fwdText = textBody || mediaCaption;
+    if (!fwdText) return null;
+    return { recipient_phone: targetPhone, message_type: 'text', text: fwdText };
+  };
+
+  const handleForwardSelected = async () => {
+    const targetPhone = normalizePhone(forwardPhone.trim());
+    if (!targetPhone || targetPhone.length < 10) {
+      toast.error('Valid phone number daalo');
+      return;
+    }
+    const selectedMsgs = messages
+      .filter((m) => selectedMsgIds.has(String(m.id || m.provider_message_id || '')))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    if (selectedMsgs.length === 0) {
+      toast.error('Koi message select karo pehle');
+      return;
+    }
+
+    setForwardSending(true);
+    let successCount = 0;
+    try {
+      for (const msg of selectedMsgs) {
+        const payload = buildForwardPayload(msg, targetPhone);
+        if (!payload) continue;
+        const res = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.success) successCount++;
+      }
+      if (successCount > 0) {
+        toast.success(`${successCount} message${successCount > 1 ? 's' : ''} forwarded to ${targetPhone}`);
+      } else {
+        toast.error('Forward failed');
+      }
+      setForwardPickerOpen(false);
+      setForwardPhone('');
+      exitSelectMode();
+    } catch {
+      toast.error('Forward failed');
+    } finally {
+      setForwardSending(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -2618,8 +2731,33 @@ export default function WhatsAppMobilePreviewModal({
                 const locAddr = String(loc?.address || '').trim();
                 const locUrl = hasLocation ? loc?.url || `https://www.google.com/maps?q=${locLat},${locLng}` : null;
 
+                const msgId = String(msg.id || msg.provider_message_id || '');
+                const isSelected = selectMode && selectedMsgIds.has(msgId);
+
                 return (
-                  <div key={msg.id} className={`flex ${isStatus ? 'justify-center' : outbound ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    key={msg.id}
+                    className={`flex items-center gap-1.5 ${isStatus ? 'justify-center' : outbound ? 'justify-end' : 'justify-start'} ${isSelected ? 'bg-[#25D366]/10 -mx-2 px-2 rounded-lg' : ''}`}
+                    onContextMenu={(e) => {
+                      if (isStatus) return;
+                      e.preventDefault();
+                      if (!selectMode) {
+                        setSelectMode(true);
+                        setSelectedMsgIds(new Set([msgId]));
+                      }
+                    }}
+                  >
+                    {selectMode && !isStatus ? (
+                      <button
+                        type="button"
+                        className="flex-shrink-0"
+                        onClick={() => toggleMsgSelect(msgId)}
+                      >
+                        <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-[#25D366] border-[#25D366]' : 'border-gray-400 bg-white'}`}>
+                          {isSelected ? <Check className="h-3 w-3 text-white" /> : null}
+                        </div>
+                      </button>
+                    ) : null}
                     <div
                       className={`max-w-[85%] rounded-xl px-3 py-2 text-sm shadow-sm ${
                         isStatus
@@ -2627,7 +2765,8 @@ export default function WhatsAppMobilePreviewModal({
                           : outbound
                           ? 'bg-[#d9fdd3] text-gray-900'
                           : 'bg-white text-gray-900'
-                      }`}
+                      } ${selectMode && !isStatus ? 'cursor-pointer' : ''}`}
+                      onClick={selectMode && !isStatus ? () => toggleMsgSelect(msgId) : undefined}
                     >
                       {outbound && actorName ? (
                         <div className="mb-1 text-[11px] font-semibold text-[#0f4c3a]">Sent by: {actorName}</div>
@@ -2738,6 +2877,17 @@ export default function WhatsAppMobilePreviewModal({
                         {outbound && deliveryStatus === 'FAILED' ? (
                           <span className="font-semibold text-[#d93025]">!</span>
                         ) : null}
+                        {!isStatus && !selectMode ? (
+                          <button
+                            type="button"
+                            className="ml-1 inline-flex items-center text-[#667781] hover:text-[#25D366]"
+                            onClick={() => { setSelectMode(true); setSelectedMsgIds(new Set([msgId])); }}
+                            aria-label="Forward message"
+                            title="Forward"
+                          >
+                            <Share2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
                         {outbound ? (
                           <button
                             type="button"
@@ -2776,7 +2926,98 @@ export default function WhatsAppMobilePreviewModal({
             </div>
           ) : null}
 
-          <div className="border-t border-gray-200 bg-white flex flex-col max-h-[50%]">
+          {selectMode ? (
+            <div className="border-t border-gray-200 bg-white px-3 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={exitSelectMode}
+                  className="rounded-full p-1.5 hover:bg-gray-100"
+                >
+                  <X className="h-5 w-5 text-gray-600" />
+                </button>
+                <span className="text-sm font-semibold text-gray-800">
+                  {selectedMsgIds.size} selected
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={selectedMsgIds.size === 0}
+                onClick={() => setForwardPickerOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#1ebe5c] disabled:opacity-40"
+              >
+                <Share2 className="h-4 w-4" />
+                Forward
+              </button>
+            </div>
+          ) : null}
+
+          {forwardPickerOpen ? (
+            <div className="absolute inset-0 z-50 flex flex-col bg-white rounded-[2.1rem] overflow-hidden">
+              <div className="bg-[#005c4b] text-white px-4 py-3 flex items-center gap-3">
+                <button type="button" onClick={() => setForwardPickerOpen(false)}>
+                  <X className="h-5 w-5" />
+                </button>
+                <span className="text-sm font-semibold">Forward to...</span>
+              </div>
+              <div className="px-3 pt-3 pb-2">
+                <div className="flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2">
+                  <input
+                    type="tel"
+                    placeholder="Search or type phone number"
+                    value={forwardPhone}
+                    onChange={(e) => setForwardPhone(e.target.value)}
+                    className="flex-1 bg-transparent text-sm outline-none"
+                    autoFocus
+                  />
+                  {forwardPhone.trim() ? (
+                    <button
+                      type="button"
+                      disabled={forwardSending}
+                      onClick={handleForwardSelected}
+                      className="flex-shrink-0 rounded-full bg-[#25D366] p-1.5 text-white hover:bg-[#1ebe5c] disabled:opacity-50"
+                    >
+                      {forwardSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto px-1">
+                <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Recent chats</p>
+                {forwardRecentChats
+                  .filter((c) => {
+                    if (!forwardPhone.trim()) return true;
+                    const q = forwardPhone.replace(/\D/g, '');
+                    return q ? c.phone.includes(q) : true;
+                  })
+                  .map((chat) => {
+                    const display = chat.phone.length > 10
+                      ? `+${chat.phone.slice(0, 2)} ${chat.phone.slice(2, 7)} ${chat.phone.slice(7)}`
+                      : chat.phone;
+                    return (
+                      <button
+                        key={chat.phone}
+                        type="button"
+                        disabled={forwardSending}
+                        onClick={() => { setForwardPhone(chat.phone); }}
+                        onDoubleClick={() => { setForwardPhone(chat.phone); setTimeout(() => handleForwardSelected(), 50); }}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366]/10 text-[#25D366]">
+                          <MessageCircle className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-gray-900">{display}</p>
+                          <p className="truncate text-xs text-gray-500">{chat.preview}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
+
+          <div className={`border-t border-gray-200 bg-white flex flex-col max-h-[50%] ${selectMode ? 'hidden' : ''}`}>
             <div className="overflow-y-auto min-h-0 flex-1 px-3 pt-3 space-y-2">
             {isTemplateOnlyMode ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">

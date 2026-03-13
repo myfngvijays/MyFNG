@@ -246,6 +246,85 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     };
   }, [aanshSession?.session_token]);
 
+  // Notification sounds via Web Audio API
+  const playMessageSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const t = ctx.currentTime;
+      // WhatsApp-style double pop notification
+      const notes = [
+        { freq: 1318, start: 0, dur: 0.08 },     // E6
+        { freq: 1568, start: 0.1, dur: 0.08 },    // G6
+        { freq: 2093, start: 0.2, dur: 0.12 },    // C7
+      ];
+      for (const n of notes) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'triangle';
+        osc.frequency.value = n.freq;
+        gain.gain.setValueAtTime(0.45, t + n.start);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + n.start + n.dur);
+        osc.start(t + n.start);
+        osc.stop(t + n.start + n.dur);
+      }
+    } catch { /* audio not available */ }
+  }, []);
+
+  const callRingRef = useRef<{ ctx: AudioContext; stop: () => void } | null>(null);
+
+  const startCallRing = useCallback(() => {
+    if (callRingRef.current) return;
+    try {
+      const ctx = new AudioContext();
+      let stopped = false;
+
+      const ringLoop = () => {
+        if (stopped) return;
+        const t = ctx.currentTime;
+        // Classic phone ring: two-tone burst
+        for (const burst of [0, 0.5]) {
+          const osc1 = ctx.createOscillator();
+          const osc2 = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc1.connect(gain);
+          osc2.connect(gain);
+          gain.connect(ctx.destination);
+          osc1.type = 'sine';
+          osc2.type = 'sine';
+          osc1.frequency.value = 440;
+          osc2.frequency.value = 480;
+          gain.gain.setValueAtTime(0.35, t + burst);
+          gain.gain.setValueAtTime(0.35, t + burst + 0.35);
+          gain.gain.exponentialRampToValueAtTime(0.01, t + burst + 0.4);
+          osc1.start(t + burst);
+          osc1.stop(t + burst + 0.4);
+          osc2.start(t + burst);
+          osc2.stop(t + burst + 0.4);
+        }
+        if (!stopped) setTimeout(ringLoop, 2000);
+      };
+      ringLoop();
+
+      callRingRef.current = {
+        ctx,
+        stop: () => {
+          stopped = true;
+          ctx.close().catch(() => {});
+          callRingRef.current = null;
+        },
+      };
+    } catch { /* audio not available */ }
+  }, []);
+
+  const stopCallRing = useCallback(() => {
+    callRingRef.current?.stop();
+  }, []);
+
+  // Track seen call IDs to avoid duplicate notifications on updates
+  const seenCallIdsRef = useRef<Set<string>>(new Set());
+
   // Real-time WhatsApp unread badge for assigned chats
   useEffect(() => {
     const profileId = userProfile?.id;
@@ -275,6 +354,26 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     };
     void init();
 
+    const handleInboundCall = (payload: any) => {
+      const row: any = payload.new || {};
+      const dir = String(row.direction || '').toUpperCase();
+      if (dir !== 'INBOUND') return;
+      const status = String(row.call_status || '').toUpperCase();
+      const caller = normPhone(String(row.customer_phone || ''));
+      if (!waAssignedPhonesRef.current.has(caller)) return;
+
+      if (['ENDED', 'MISSED', 'REJECTED', 'FAILED'].includes(status)) {
+        stopCallRing();
+        return;
+      }
+      if (!['INITIATED', 'RINGING', 'ACCEPTED'].includes(status)) return;
+      const callId = String(row.id || row.provider_call_id || '');
+      if (seenCallIdsRef.current.has(callId)) return;
+      seenCallIdsRef.current.add(callId);
+      setWaUnreadCount((prev) => prev + 1);
+      startCallRing();
+    };
+
     const channel = supabase
       .channel('wa-unread-badge')
       .on(
@@ -287,21 +386,34 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           const sender = normPhone(String(row.sender_phone || ''));
           if (waAssignedPhonesRef.current.has(sender)) {
             setWaUnreadCount((prev) => prev + 1);
+            playMessageSound();
           }
         }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'whatsapp_call_logs' },
+        handleInboundCall
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'whatsapp_call_logs' },
+        handleInboundCall
       )
       .subscribe();
 
     return () => {
       cancelled = true;
+      stopCallRing();
       supabase.removeChannel(channel);
     };
-  }, [whatsappFabEnabled, loading, userProfile?.id]);
+  }, [whatsappFabEnabled, loading, userProfile?.id, playMessageSound, startCallRing, stopCallRing]);
 
   const handleOpenWaList = useCallback(() => {
     setWaUnreadCount(0);
+    stopCallRing();
     setWaListOpen(true);
-  }, []);
+  }, [stopCallRing]);
 
   // Note: do NOT auto-release on beforeunload.
   // Refresh/navigation also triggers beforeunload, which would incorrectly free Aansh.
