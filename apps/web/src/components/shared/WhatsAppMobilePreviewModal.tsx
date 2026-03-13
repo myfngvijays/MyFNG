@@ -2734,7 +2734,7 @@ export default function WhatsAppMobilePreviewModal({
             </div>
           ) : null}
 
-          <div className="border-t border-gray-200 bg-white p-3 max-h-[42%] overflow-y-auto space-y-2">
+          <div className="border-t border-gray-200 bg-white p-3 space-y-2">
             {isTemplateOnlyMode ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
                 Normal chat window closed. Only template messages can be sent.
