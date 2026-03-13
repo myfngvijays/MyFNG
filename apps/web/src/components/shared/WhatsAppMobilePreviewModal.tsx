@@ -2353,7 +2353,7 @@ export default function WhatsAppMobilePreviewModal({
                   const isAccepted = ['ACCEPTED', 'CONNECTED', 'ENDED'].includes(status);
                   const hasRecording = Array.isArray(call.recordings) && call.recordings.length > 0;
                   const recordingUrl = hasRecording
-                    ? call.recordings![0].recording_proxy_path || call.recordings![0].recording_url || `/api/whatsapp/calls/recordings/${call.recordings![0].id}`
+                    ? `/api/whatsapp/calls/recordings/${call.recordings![0].id}`
                     : null;
                   let callDuration = call.duration_seconds;
                   if ((callDuration == null || callDuration <= 0) && isAccepted) {
