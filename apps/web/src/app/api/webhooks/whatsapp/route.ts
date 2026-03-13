@@ -56,11 +56,11 @@ function mapStatus(status: string | undefined): 'SENT' | 'DELIVERED' | 'VIEWED' 
   return 'SENT';
 }
 
-function mapCallDirection(direction: string | undefined): 'INBOUND' | 'OUTBOUND' {
+function mapCallDirection(direction: string | undefined): 'INBOUND' | 'OUTBOUND' | null {
   const normalized = String(direction || '').trim().toUpperCase();
   if (['INBOUND', 'USER_INITIATED', 'CUSTOMER_INITIATED'].includes(normalized)) return 'INBOUND';
   if (['OUTBOUND', 'BUSINESS_INITIATED', 'AGENT_INITIATED'].includes(normalized)) return 'OUTBOUND';
-  return 'INBOUND';
+  return null;
 }
 
 function mapCallStatus(status: string | undefined, event: string | undefined): string {
@@ -226,6 +226,23 @@ export async function POST(request: NextRequest) {
   }
 
   const entries = Array.isArray(body?.entry) ? body.entry : [];
+
+  // Diagnostic: log all incoming webhook fields for debugging call events
+  const allFields: string[] = [];
+  for (const entry of entries) {
+    const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+    for (const ch of changes) {
+      allFields.push(String(ch?.field || 'unknown'));
+    }
+  }
+  console.log('[webhook] Incoming webhook:', JSON.stringify({
+    webhookId: webhookEvent?.id || null,
+    entryCount: entries.length,
+    fields: allFields,
+    hasCallsField: allFields.includes('calls'),
+    payload_snippet: JSON.stringify(body).slice(0, 1500),
+  }));
+
   let updatedCount = 0;
   let invoiceUpdatedCount = 0;
   let skippedCount = 0;
@@ -451,6 +468,21 @@ export async function POST(request: NextRequest) {
       }
 
       const callEvents = extractCallEvents(change?.value);
+      if (callEvents.length > 0) {
+        console.log('[webhook] Call events received:', JSON.stringify({
+          count: callEvents.length,
+          field: changeField,
+          events: callEvents.map((c: any) => ({
+            call_id: c?.call_id || c?.id,
+            status: c?.status,
+            event: c?.event,
+            direction: c?.direction,
+            has_session: !!c?.session,
+            session_sdp_type: c?.session?.sdp_type,
+            session_sdp_len: c?.session?.sdp?.length || 0,
+          })),
+        }));
+      }
       for (const callItem of callEvents) {
         const providerCallId = String(callItem?.call_id || callItem?.id || '').trim();
         const mappedCallStatus = mapCallStatus(callItem?.status, callItem?.event);
@@ -479,10 +511,11 @@ export async function POST(request: NextRequest) {
           callItem?.error?.details || callItem?.error?.message || ''
         ).trim() || null;
 
+        const webhookDirection = mapCallDirection(callItem?.direction);
         const callPayload = {
           provider_call_id: providerCallId || null,
           provider_conversation_id: String(callItem?.conversation_id || '').trim() || null,
-          direction: mapCallDirection(callItem?.direction),
+          ...(webhookDirection ? { direction: webhookDirection } : {}),
           call_status: mappedCallStatus,
           customer_phone: customerPhone,
           started_at: startedAt,
@@ -504,31 +537,60 @@ export async function POST(request: NextRequest) {
 
         let callLogId: string | null = null;
         if (providerCallId) {
-          const { data: upserted, error: upsertError } = await db
+          const { data: existingByProvider } = await db
             .from('whatsapp_call_logs')
-            .upsert(callPayload, { onConflict: 'provider_call_id' })
-            .select('id')
+            .select('id, direction')
+            .eq('provider_call_id', providerCallId)
             .maybeSingle();
-          if (upsertError) {
-            const { data: inserted, error: insertError } = await db
-              .from('whatsapp_call_logs')
-              .insert(callPayload)
-              .select('id')
-              .maybeSingle();
-            if (insertError) {
-              failedCount += 1;
-              continue;
+
+          if (existingByProvider) {
+            const updatePayload = { ...callPayload };
+            if (existingByProvider.direction === 'OUTBOUND' && !webhookDirection) {
+              delete (updatePayload as any).direction;
             }
-            callLogId = inserted?.id || null;
+            await db.from('whatsapp_call_logs').update(updatePayload).eq('id', existingByProvider.id);
+            callLogId = existingByProvider.id;
           } else {
-            callLogId = upserted?.id || null;
+            // No row with this provider_call_id. Check for a recent outbound call
+            // for this phone that has no provider_call_id yet (initiated from our UI).
+            const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+            const { data: recentOutbound } = await db
+              .from('whatsapp_call_logs')
+              .select('id, direction')
+              .eq('customer_phone', customerPhone)
+              .is('provider_call_id', null)
+              .gte('created_at', twoMinAgo)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (recentOutbound) {
+              const linkPayload = { ...callPayload, provider_call_id: providerCallId };
+              if (recentOutbound.direction === 'OUTBOUND' && !webhookDirection) {
+                delete (linkPayload as any).direction;
+              }
+              await db.from('whatsapp_call_logs').update(linkPayload).eq('id', recentOutbound.id);
+              callLogId = recentOutbound.id;
+            } else {
+              const insertPayload = { ...callPayload, direction: webhookDirection || 'INBOUND' };
+              const { data: inserted, error: insertError } = await db
+                .from('whatsapp_call_logs')
+                .insert(insertPayload)
+                .select('id')
+                .maybeSingle();
+              if (insertError) {
+                failedCount += 1;
+                continue;
+              }
+              callLogId = inserted?.id || null;
+            }
           }
         } else {
           // Provider sometimes omits call_id for status updates.
           // In that case, patch the most recent non-terminal call for this customer.
           const { data: latestByPhone } = await db
             .from('whatsapp_call_logs')
-            .select('id, call_status, updated_at')
+            .select('id, call_status, direction, updated_at')
             .eq('customer_phone', customerPhone)
             .order('updated_at', { ascending: false })
             .limit(1)
@@ -540,9 +602,13 @@ export async function POST(request: NextRequest) {
             !['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(latestStatus);
 
           if (canPatchLatest) {
+            const patchPayload = { ...callPayload };
+            if (latestByPhone.direction === 'OUTBOUND' && !webhookDirection) {
+              delete (patchPayload as any).direction;
+            }
             const { data: updated, error: updateError } = await db
               .from('whatsapp_call_logs')
-              .update(callPayload)
+              .update(patchPayload)
               .eq('id', latestByPhone.id)
               .select('id')
               .maybeSingle();
@@ -552,9 +618,10 @@ export async function POST(request: NextRequest) {
             }
             callLogId = updated?.id || null;
           } else {
+            const insertPayload = { ...callPayload, direction: webhookDirection || 'INBOUND' };
             const { data: inserted, error: insertError } = await db
               .from('whatsapp_call_logs')
-              .insert(callPayload)
+              .insert(insertPayload)
               .select('id')
               .maybeSingle();
             if (insertError) {
@@ -594,7 +661,7 @@ export async function POST(request: NextRequest) {
             updated_at: now,
           };
           if (sessionSdp) {
-            const isOutbound = callPayload.direction === 'OUTBOUND';
+            const isOutbound = webhookDirection === 'OUTBOUND';
             if (sessionSdpType === 'answer' || sessionSdpType === 'pranswer' || isOutbound) {
               sessionPayload.answer_sdp = sessionSdp;
               sessionPayload.answer_sdp_type = sessionSdpType || 'answer';

@@ -73,6 +73,8 @@ type CallLog = {
     id: string;
     provider_session_id?: string | null;
     session_state?: string | null;
+    offer_sdp?: string | null;
+    meta?: Record<string, unknown> | null;
     created_at?: string | null;
     updated_at?: string | null;
   }>;
@@ -527,6 +529,10 @@ export default function WhatsAppMobilePreviewModal({
   // Using an ID instead of a boolean ensures that a new call always shows Accept/Decline
   // regardless of component state — a new call ID will never match an old one.
   const [answeredPreviewCallId, setAnsweredPreviewCallId] = useState<string | null>(null);
+  // Tracks the call ID that was locally ended (cleanup ran) but call log may not have updated yet.
+  const [locallyEndedCallId, setLocallyEndedCallId] = useState<string | null>(null);
+  // True when the user clicked Call from this preview — any active call should be treated as outbound.
+  const [locallyInitiatedOutbound, setLocallyInitiatedOutbound] = useState(false);
   const [callOverlayMinimized, setCallOverlayMinimized] = useState(false);
   const [callPermissionCooldownUntil, setCallPermissionCooldownUntil] = useState(0);
   const [callPermissionTick, setCallPermissionTick] = useState(Date.now());
@@ -618,50 +624,75 @@ export default function WhatsAppMobilePreviewModal({
     if (!activeCall) return 'IDLE';
     const callStatus = normalizeCallStatus(activeCall.call_status);
     if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(callStatus)) return callStatus;
+    // For the shared modal, always prefer call_status from the DB log over session_state.
+    // session_state can become 'CONNECTED' from backend SDP exchange even before THIS client
+    // has accepted the call, which causes the UI to skip Accept/Decline.
+    if (callStatus && callStatus !== 'IDLE') return callStatus;
     const sessionState = String(activeCall?.sessions?.[0]?.session_state || '').trim().toUpperCase();
     if (sessionState) return sessionState;
-    return callStatus || 'IDLE';
+    return 'IDLE';
   }, [activeCall]);
+  const hasInboundOfferOnActiveCall = useMemo(() => {
+    if (!activeCall || !Array.isArray(activeCall.sessions)) return false;
+    return activeCall.sessions.some((row: any) => {
+      const offer = String(row?.offer_sdp || '').trim();
+      if (!offer) return false;
+      const source = String((row?.meta as any)?.source || '').trim().toLowerCase();
+      return !source || source.includes('webhook') || source.includes('incoming');
+    });
+  }, [activeCall]);
+  const isInboundLikeCall = useMemo(() => {
+    if (!activeCall) return false;
+    if (locallyInitiatedOutbound) return false;
+    if (isInboundCallDirection(activeCall.direction)) return true;
+    if (hasInboundOfferOnActiveCall) return true;
+    const dir = String(activeCall.direction || '').trim().toUpperCase();
+    if (dir === 'OUTBOUND') return false;
+    if (!dir || dir === 'UNKNOWN') return true;
+    return false;
+  }, [activeCall, hasInboundOfferOnActiveCall, locallyInitiatedOutbound]);
   const isIncomingCall = useMemo(() => {
     if (!activeCall) return false;
-    return isInboundCallDirection(activeCall.direction);
-  }, [activeCall]);
+    return isInboundLikeCall;
+  }, [activeCall, isInboundLikeCall]);
   const isOutboundActiveCall = useMemo(() => {
     if (!activeCall) return false;
-    if (isInboundCallDirection(activeCall.direction)) return false;
+    if (isInboundLikeCall) return false;
     const state = String(activeCallState || '').trim().toUpperCase();
     return !['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state);
-  }, [activeCall, activeCallState]);
+  }, [activeCall, activeCallState, isInboundLikeCall]);
   const isIncomingRingingCall = useMemo(() => {
     if (!isIncomingCall) return false;
+    if (isRtcConnected) return false;
     const state = String(activeCallState || '').trim().toUpperCase();
-    return ['RINGING', 'INITIATED', 'NEGOTIATING'].includes(state);
-  }, [isIncomingCall, activeCallState]);
+    if (['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state)) return false;
+    // Any inbound-like active call that hasn't been locally accepted shows as ringing.
+    return true;
+  }, [isIncomingCall, activeCallState, isRtcConnected]);
   const outboundAnsweredInPreview = answeredPreviewCallId != null && activeCall?.id === answeredPreviewCallId;
   const hasLiveConnectedCall = useMemo(() => {
     if (!activeCall) return false;
+    if (locallyEndedCallId === activeCall.id) return false;
     const state = String(activeCallState || '').trim().toUpperCase();
-    if (!isInboundCallDirection(activeCall.direction)) {
-      if (['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state)) return false;
-      // Outbound should auto-switch to connected UI once backend marks accepted/connected.
+    if (['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state)) return false;
+    if (!isInboundLikeCall) {
       return outboundAnsweredInPreview || isRtcConnected || ['ANSWERED', 'ACCEPTED', 'CONNECTED'].includes(state);
     }
-    if (['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state)) return false;
-    return ['ANSWERED', 'ACCEPTED', 'CONNECTED'].includes(state);
-  }, [activeCall, activeCallState, answeredPreviewCallId, isRtcConnected]);
+    return isRtcConnected;
+  }, [activeCall, activeCallState, outboundAnsweredInPreview, isRtcConnected, isInboundLikeCall, locallyEndedCallId]);
   const hasOngoingCall = useMemo(() => {
+    if (locallyEndedCallId && activeCall?.id && locallyEndedCallId === activeCall.id) return false;
     const state = String(activeCallState || '').trim().toUpperCase();
     return !['ENDED', 'FAILED', 'MISSED', 'REJECTED', 'IDLE'].includes(state);
-  }, [activeCallState]);
+  }, [activeCallState, locallyEndedCallId, activeCall?.id]);
   const callScreenStatus = useMemo(() => {
     if (hasLiveConnectedCall) return 'Connected';
     if (isIncomingRingingCall) return 'Incoming call...';
-    const state = String(activeCallState || '').toUpperCase();
-    // Outbound: always show Ringing until the agent clicks Answer in the preview
     if (isOutboundActiveCall && !outboundAnsweredInPreview) return 'Ringing...';
-    if (state === 'RINGING') return 'Ringing...';
+    const state = String(activeCallState || '').toUpperCase();
+    if (state === 'RINGING' || state === 'INITIATED') return 'Ringing...';
     return 'Calling...';
-  }, [hasLiveConnectedCall, activeCallState, isIncomingRingingCall, isOutboundActiveCall, answeredPreviewCallId, activeCall?.id]);
+  }, [hasLiveConnectedCall, activeCallState, isIncomingRingingCall, isOutboundActiveCall, outboundAnsweredInPreview]);
 
   useEffect(() => {
     if (hasOngoingCall) return;
@@ -669,20 +700,24 @@ export default function WhatsAppMobilePreviewModal({
     recordingStartedAtRef.current = null;
     setIsRtcConnected(false);
     setAnsweredPreviewCallId(null);
+    setLocallyInitiatedOutbound(false);
   }, [hasOngoingCall]);
 
   useEffect(() => {
     if (!activeCall) return;
-    if (isInboundCallDirection(activeCall.direction)) return;
+    if (isInboundLikeCall) return;
     const state = String(activeCallState || '').trim().toUpperCase();
     if (!['ANSWERED', 'ACCEPTED', 'CONNECTED'].includes(state)) return;
     if (connectedAtRef.current == null) connectedAtRef.current = Date.now();
     if (answeredPreviewCallId !== activeCall.id) setAnsweredPreviewCallId(activeCall.id);
-  }, [activeCall, activeCallState, answeredPreviewCallId]);
+  }, [activeCall, activeCallState, answeredPreviewCallId, isInboundLikeCall]);
 
   useEffect(() => {
     activeCallRef.current = activeCall?.id || null;
-  }, [activeCall?.id]);
+    if (activeCall?.id && locallyEndedCallId && activeCall.id !== locallyEndedCallId) {
+      setLocallyEndedCallId(null);
+    }
+  }, [activeCall?.id, locallyEndedCallId]);
 
   const saveCallRecording = useCallback(async (callId: string, chunks: Blob[], durationSeconds: number) => {
     if (chunks.length === 0) return;
@@ -703,6 +738,8 @@ export default function WhatsAppMobilePreviewModal({
   }, []);
 
   const cleanupCallMedia = useCallback(() => {
+    const endingCallId = activeCallRef.current;
+    if (endingCallId) setLocallyEndedCallId(endingCallId);
     if (activeRecorderRef.current && activeRecorderRef.current.state !== 'inactive') {
       activeRecorderRef.current.stop();
     }
@@ -815,12 +852,37 @@ export default function WhatsAppMobilePreviewModal({
         }
       }
       if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+        if (!pc.remoteDescription) {
+          // Outbound call: Meta never sent SDP answer so ICE timed out.
+          // Release local resources but keep the call alive — status polling
+          // will detect the real state from Meta's side.
+          if (activePeerConnectionRef.current === pc) {
+            pc.close();
+            activePeerConnectionRef.current = null;
+          }
+          if (activeAudioStreamRef.current) {
+            activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+            activeAudioStreamRef.current = null;
+          }
+          return;
+        }
         finalizeOngoingCall();
       }
     };
 
     pc.oniceconnectionstatechange = () => {
       if (['disconnected', 'failed', 'closed'].includes(pc.iceConnectionState)) {
+        if (!pc.remoteDescription) {
+          if (activePeerConnectionRef.current === pc) {
+            pc.close();
+            activePeerConnectionRef.current = null;
+          }
+          if (activeAudioStreamRef.current) {
+            activeAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+            activeAudioStreamRef.current = null;
+          }
+          return;
+        }
         finalizeOngoingCall();
       }
     };
@@ -844,7 +906,7 @@ export default function WhatsAppMobilePreviewModal({
         const remoteAudio = document.createElement('audio');
         remoteAudio.id = 'wa-mobile-call-audio';
         remoteAudio.autoplay = true;
-        remoteAudio.playsInline = true;
+        remoteAudio.setAttribute('playsinline', 'true');
         remoteAudio.srcObject = remoteStream;
         document.body.appendChild(remoteAudio);
         remoteAudio.play().catch(() => {});
@@ -1108,6 +1170,7 @@ export default function WhatsAppMobilePreviewModal({
         connectedAtRef.current = null;
         setIsRtcConnected(false);
         setAnsweredPreviewCallId(null);
+        setLocallyInitiatedOutbound(true);
         try {
           sessionPayload = await buildLiveCallOffer();
         } catch (error: any) {
@@ -1308,7 +1371,7 @@ export default function WhatsAppMobilePreviewModal({
           const remoteAudio = document.createElement('audio');
           remoteAudio.id = 'wa-mobile-call-audio';
           remoteAudio.autoplay = true;
-          remoteAudio.playsInline = true;
+          remoteAudio.setAttribute('playsinline', 'true');
           remoteAudio.srcObject = remoteStream;
           document.body.appendChild(remoteAudio);
           remoteAudio.play().catch(() => {});
@@ -1396,15 +1459,18 @@ export default function WhatsAppMobilePreviewModal({
       const { r: preR, d: preD } = await sendToBackend('pre_accept', answerSdp);
       if (!preR.ok || !preD?.success) { toast.error(preD?.error || 'pre_accept failed'); return; }
 
-      // Wait for WebRTC connected (max 10s)
+      // Wait for WebRTC connected (max 10s) — use addEventListener to NOT overwrite the disconnect handler above.
       await new Promise<void>((resolve) => {
         if (pc.connectionState === 'connected') { resolve(); return; }
         const t = window.setTimeout(resolve, 10000);
-        pc.onconnectionstatechange = () => {
+        const onStateChange = () => {
           if (pc.connectionState === 'connected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-            window.clearTimeout(t); resolve();
+            window.clearTimeout(t);
+            pc.removeEventListener('connectionstatechange', onStateChange);
+            resolve();
           }
         };
+        pc.addEventListener('connectionstatechange', onStateChange);
       });
 
       if (!connectedAtRef.current) connectedAtRef.current = Date.now();
@@ -1451,101 +1517,168 @@ export default function WhatsAppMobilePreviewModal({
     [activeCall?.id, callControlLoading, cleanupCallMedia, loadCalls]
   );
 
+  // Super-admin parity: if outbound call stays pre-connect for too long, auto-hangup stale session.
   useEffect(() => {
     if (!isOutboundActiveCall || !activeCall?.id) return;
-    const pc = activePeerConnectionRef.current;
-    if (!pc || pc.signalingState === 'closed') return;
-    const alreadyConnected = pc.connectionState === 'connected' && !!pc.remoteDescription;
+    const state = String(activeCallState || '').trim().toUpperCase();
+    if (!['INITIATED', 'RINGING', 'NEGOTIATING'].includes(state)) return;
+
+    const timeout = window.setTimeout(() => {
+      const callId = activeCall.id;
+      fetch(`/api/whatsapp/calls/${encodeURIComponent(callId)}/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'hangup' }),
+      }).catch(() => {});
+      cleanupCallMedia();
+      setActiveCallElapsed(0);
+      void loadCalls();
+    }, 60_000);
+
+    return () => window.clearTimeout(timeout);
+  }, [isOutboundActiveCall, activeCall?.id, activeCallState, cleanupCallMedia, loadCalls]);
+
+  // Outbound call status + SDP polling. Continues even when PeerConnection is null
+  // (Meta may close local ICE before sending answer SDP).
+  useEffect(() => {
+    if (!isOutboundActiveCall || !activeCall?.id) return;
 
     let cancelled = false;
     const appliedCandidateKeys = new Set<string>();
 
     const poll = async () => {
       if (cancelled) return;
-      const currentPc = activePeerConnectionRef.current;
-      if (!currentPc || currentPc.signalingState === 'closed') return;
 
       try {
-        const res = await fetch(
-          `/api/whatsapp/calls/${encodeURIComponent(activeCall.id)}/session`,
-          { cache: 'no-store' }
-        );
+        const res = await fetch(`/api/whatsapp/calls/${encodeURIComponent(activeCall.id)}/session`, {
+          cache: 'no-store',
+        });
         const json = await res.json().catch(() => ({}));
-        const sessions = Array.isArray(json?.sessions) ? json.sessions : [];
-        const candidates = Array.isArray(json?.ice_candidates) ? json.ice_candidates : [];
         const callStatus = String(json?.call_status || '').trim().toUpperCase();
 
-        if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(callStatus) && !cancelled) {
+        if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(callStatus)) {
           cleanupCallMedia();
           setActiveCallElapsed(0);
-          void loadCalls();
+          await loadCalls();
           return;
         }
 
-        if (!currentPc.remoteDescription && !cancelled) {
-          let remoteSdp: string | null = null;
-          const answerRow = sessions.find((row: any) => String(row?.answer_sdp || '').trim());
-          if (answerRow) remoteSdp = String(answerRow.answer_sdp).trim();
-
-          if (!remoteSdp) {
-            const webhookRow = sessions.find((row: any) => {
-              const sdp = String(row?.offer_sdp || '').trim();
-              const source = String((row?.meta as any)?.source || '').trim();
-              return sdp && source === 'webhook';
-            });
-            if (webhookRow) remoteSdp = String(webhookRow.offer_sdp).trim();
-          }
-
-          if (remoteSdp && !cancelled && currentPc.signalingState !== 'closed') {
-            try {
-              const normalizedSdp = normalizeSdpForBrowser(remoteSdp);
-              await currentPc.setRemoteDescription(
-                new RTCSessionDescription({ type: 'answer', sdp: normalizedSdp })
-              );
-            } catch {
-              // retry by polling
-            }
-          }
+        if (['ANSWERED', 'ACCEPTED', 'CONNECTED'].includes(callStatus)) {
+          if (!connectedAtRef.current) connectedAtRef.current = Date.now();
+          if (activeCall?.id) setAnsweredPreviewCallId(activeCall.id);
         }
 
-        if (currentPc.remoteDescription && candidates.length > 0) {
-          for (const cand of candidates) {
-            const candStr = String(cand?.candidate || '').trim();
-            if (!candStr) continue;
-            const key = `${candStr}:${cand?.sdp_mid || ''}:${cand?.sdp_mline_index ?? ''}`;
-            if (appliedCandidateKeys.has(key)) continue;
-            try {
-              await currentPc.addIceCandidate(
-                new RTCIceCandidate({
-                  candidate: candStr,
-                  sdpMid: cand?.sdp_mid || undefined,
+        const sessions = Array.isArray(json?.sessions) ? json.sessions : [];
+        const candidates = Array.isArray(json?.ice_candidates) ? json.ice_candidates : [];
+
+        const currentPc = activePeerConnectionRef.current;
+        if (currentPc && (currentPc.signalingState as string) !== 'closed') {
+          if (!currentPc.remoteDescription) {
+            let remoteSdp: string | null = null;
+            const answerRow = sessions.find((row: any) => String(row?.answer_sdp || '').trim());
+            if (answerRow) remoteSdp = String(answerRow.answer_sdp).trim();
+
+            if (!remoteSdp) {
+              const webhookRow = sessions.find((row: any) => {
+                const sdp = String(row?.offer_sdp || '').trim();
+                const source = String((row?.meta as any)?.source || '').trim().toLowerCase();
+                return sdp && source.includes('webhook');
+              });
+              if (webhookRow) remoteSdp = String(webhookRow.offer_sdp).trim();
+            }
+
+            if (remoteSdp && (currentPc.signalingState as string) !== 'closed') {
+              try {
+                const normalized = normalizeSdpForBrowser(remoteSdp);
+                await currentPc.setRemoteDescription(
+                  new RTCSessionDescription({ type: 'answer', sdp: normalized })
+                );
+              } catch {
+                // retry next poll
+              }
+            }
+          }
+
+          if (currentPc.remoteDescription && candidates.length > 0) {
+            for (const cand of candidates) {
+              const candidateStr = String(cand?.candidate || '').trim();
+              if (!candidateStr) continue;
+              const key = `${candidateStr}:${cand?.sdp_mid || ''}:${cand?.sdp_mline_index ?? ''}`;
+              if (appliedCandidateKeys.has(key)) continue;
+              try {
+                await currentPc.addIceCandidate(new RTCIceCandidate({
+                  candidate: candidateStr,
+                  sdpMid: cand?.sdp_mid ?? undefined,
                   sdpMLineIndex: cand?.sdp_mline_index ?? undefined,
-                })
-              );
-              appliedCandidateKeys.add(key);
-            } catch {
-              // skip invalid candidate
+                }));
+                appliedCandidateKeys.add(key);
+              } catch {
+                // ignore invalid/duplicate candidate
+              }
             }
           }
         }
+
+        await loadCalls();
       } catch {
         // retry
       }
-
       if (!cancelled) {
         const currentPc2 = activePeerConnectionRef.current;
-        if (!currentPc2 || currentPc2.signalingState === 'closed') return;
-        const isConnected = currentPc2.connectionState === 'connected' && !!currentPc2.remoteDescription;
-        window.setTimeout(poll, isConnected ? 1500 : 2500);
+        const isConnected = currentPc2?.connectionState === 'connected' && !!currentPc2?.remoteDescription;
+        window.setTimeout(poll, isConnected ? 3000 : 2500);
       }
     };
 
-    const timer = window.setTimeout(poll, alreadyConnected ? 1500 : 1200);
+    const timer = window.setTimeout(poll, 1200);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
   }, [isOutboundActiveCall, activeCall?.id, activeCallState, cleanupCallMedia, loadCalls]);
+
+  // Safety-net: poll call status while RTC is connected to detect remote hangup.
+  // Also check WebRTC peer connection state directly in case events were missed.
+  useEffect(() => {
+    if (!isRtcConnected || !activeCall?.id) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+
+      const pc = activePeerConnectionRef.current;
+      if (pc && ['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+        cleanupCallMedia();
+        setActiveCallElapsed(0);
+        void loadCalls();
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/whatsapp/calls/${encodeURIComponent(activeCall.id)}/session`, {
+          cache: 'no-store',
+        });
+        const json = await res.json().catch(() => ({}));
+        const callStatus = String(json?.call_status || '').trim().toUpperCase();
+
+        if (['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(callStatus)) {
+          cleanupCallMedia();
+          setActiveCallElapsed(0);
+          await loadCalls();
+          return;
+        }
+      } catch {
+        // retry
+      }
+      if (!cancelled) window.setTimeout(poll, 2000);
+    };
+
+    const timer = window.setTimeout(poll, 2000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isRtcConnected, activeCall?.id, cleanupCallMedia, loadCalls]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!hasMoreHistory || loadingOlder) return;
@@ -2028,21 +2161,24 @@ export default function WhatsAppMobilePreviewModal({
                     </div>
                   </div>
                 ) : (
-                  /* ── RINGING — matches image 2 exactly ───────────── */
+                  /* ── RINGING / CALLING ───────────────────────────── */
                   <div
                     className="flex h-full flex-col"
                     style={{
-                      background: 'linear-gradient(160deg,#3a3228 0%,#4a3c30 30%,#5a4636 55%,#3e3428 80%,#2a2620 100%)',
+                      background: isIncomingRingingCall
+                        ? 'linear-gradient(160deg,#3a3228 0%,#4a3c30 30%,#5a4636 55%,#3e3428 80%,#2a2620 100%)'
+                        : 'linear-gradient(160deg,#1a2a1a 0%,#1e3420 30%,#1a3a28 55%,#162a1e 80%,#102018 100%)',
                     }}
                   >
                     {/* Top caller info */}
                     <div className="flex flex-col items-center px-6 pt-10">
                       <div className="mb-2 flex items-center gap-1.5">
-                        {/* WhatsApp icon */}
                         <svg viewBox="0 0 24 24" className="h-4 w-4 fill-[#25d366]">
                           <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                         </svg>
-                        <span className="text-[13px] text-white/80">WhatsApp Audio...</span>
+                        <span className="text-[13px] text-white/80">
+                          {isIncomingRingingCall ? 'WhatsApp Audio...' : callScreenStatus}
+                        </span>
                       </div>
                       <p className="text-[28px] font-semibold tracking-tight text-white">
                         {formatPhone(activeCall.customer_phone || waPhone)}
@@ -2054,6 +2190,7 @@ export default function WhatsAppMobilePreviewModal({
 
                     {/* Bottom actions */}
                     <div className="px-6 pb-8">
+                      {isIncomingRingingCall ? (
                       <div className="flex items-end justify-around">
                         {/* Decline */}
                         <div className="flex flex-col items-center gap-2">
@@ -2078,12 +2215,7 @@ export default function WhatsAppMobilePreviewModal({
                           <button
                             type="button"
                             onClick={() => {
-                              if (isOutboundActiveCall && !isIncomingRingingCall && activeCall?.id) {
-                                connectedAtRef.current = Date.now();
-                                setAnsweredPreviewCallId(activeCall.id);
-                              } else {
-                                void handleAcceptIncomingCall();
-                              }
+                              void handleAcceptIncomingCall();
                             }}
                             disabled={!activeCall || callControlLoading !== null}
                             className="flex h-[70px] w-[70px] items-center justify-center rounded-full bg-[#3478f6] text-white shadow-xl hover:bg-[#2567e5] disabled:opacity-60 active:scale-95 transition-transform"
@@ -2098,6 +2230,47 @@ export default function WhatsAppMobilePreviewModal({
                           <span className="text-[13px] text-white/80">Accept</span>
                         </div>
                       </div>
+                      ) : (
+                      <div className="flex items-end justify-around">
+                        {/* Cancel */}
+                        <div className="flex flex-col items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              cleanupCallMedia();
+                              setActiveCallElapsed(0);
+                              void loadCalls();
+                            }}
+                            disabled={!activeCall || callControlLoading !== null}
+                            className="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-red-500 text-white shadow-xl hover:bg-red-600 disabled:opacity-60 active:scale-95 transition-transform"
+                            title="Cancel"
+                          >
+                            <PhoneOff className="h-6 w-6" />
+                          </button>
+                          <span className="text-[12px] text-white/70">Cancel</span>
+                        </div>
+
+                        {/* Mark Connected — manual fallback when Meta doesn't send status */}
+                        <div className="flex flex-col items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!activeCall?.id) return;
+                              connectedAtRef.current = Date.now();
+                              setAnsweredPreviewCallId(activeCall.id);
+                              setIsRtcConnected(true);
+                              void patchCallStatusLocal(activeCall.id, 'CONNECTED');
+                            }}
+                            disabled={!activeCall}
+                            className="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-green-500 text-white shadow-xl hover:bg-green-600 disabled:opacity-60 active:scale-95 transition-transform"
+                            title="Customer answered — mark connected"
+                          >
+                            <Check className="h-7 w-7 stroke-[3]" />
+                          </button>
+                          <span className="text-[12px] text-white/70">Connected</span>
+                        </div>
+                      </div>
+                      )}
                     </div>
                   </div>
                 )}

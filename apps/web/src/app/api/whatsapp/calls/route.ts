@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false });
       const { data: sessions } = await db
         .from('whatsapp_call_sessions')
-        .select('id, call_log_id, provider_session_id, session_state, created_at, updated_at')
+        .select('id, call_log_id, provider_session_id, session_state, offer_sdp, meta, created_at, updated_at')
         .in('call_log_id', callIds)
         .order('created_at', { ascending: false });
       recordingsByCall = (recs || []).reduce((acc: Record<string, any[]>, rec: any) => {
@@ -320,6 +320,16 @@ export async function POST(request: NextRequest) {
         );
       }
       const rawData = result.raw as any;
+
+      console.log('[initiateBusinessCall] Meta response:', JSON.stringify({
+        success: result.success,
+        callId: result.callId || null,
+        sessionId: result.sessionId || null,
+        status: result.status || null,
+        statusCode: result.statusCode || null,
+        raw_keys: rawData ? Object.keys(rawData) : [],
+        raw_snippet: JSON.stringify(rawData).slice(0, 500),
+      }));
 
       const firstCall = Array.isArray(rawData?.calls) ? rawData.calls[0] : null;
       const answerSdp = String(

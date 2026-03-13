@@ -23,6 +23,48 @@ function normalizeSdpType(value: unknown): 'offer' | 'answer' | 'pranswer' | '' 
   return '';
 }
 
+function collectStringValuesByKeys(
+  input: unknown,
+  keys: string[],
+  out: Set<string>,
+  depth = 0
+) {
+  if (input == null || depth > 8) return;
+  if (Array.isArray(input)) {
+    for (const item of input) collectStringValuesByKeys(item, keys, out, depth + 1);
+    return;
+  }
+  if (typeof input !== 'object') return;
+  const obj = input as Record<string, unknown>;
+  for (const [k, v] of Object.entries(obj)) {
+    if (keys.includes(k) && v != null) {
+      const s = String(v).trim();
+      if (s) out.add(s);
+    }
+    if (typeof v === 'object' && v != null) {
+      collectStringValuesByKeys(v, keys, out, depth + 1);
+    }
+  }
+}
+
+function resolveProviderControlCallId(callLog: any, fallbackCallId: string): string {
+  const explicitProviderCallId = String(callLog?.provider_call_id || '').trim();
+  if (explicitProviderCallId) return explicitProviderCallId;
+
+  const idHints = new Set<string>();
+  collectStringValuesByKeys(
+    callLog?.payload || {},
+    ['call_id', 'callId', 'request_id', 'requestId', 'fbtrace_id', 'trace_id', 'traceId'],
+    idHints
+  );
+
+  // Prefer non-UUID-ish provider IDs over local DB UUID call ids.
+  const localId = String(fallbackCallId || '').trim().toLowerCase();
+  const candidates = Array.from(idHints).map((v) => String(v || '').trim()).filter(Boolean);
+  const preferred = candidates.find((id) => id.toLowerCase() !== localId);
+  return preferred || explicitProviderCallId || fallbackCallId;
+}
+
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> | { id: string } }
@@ -101,16 +143,60 @@ export async function GET(
 
     const currentCallStatus = String(callLog.call_status || '').trim().toUpperCase();
     const isCallTerminated = ['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(currentCallStatus);
+    const customerPhone = normalizePhone(String(callLog?.customer_phone || ''));
+    const isOutboundCall = String(callLog?.direction || '').trim().toUpperCase() === 'OUTBOUND';
+    let resolvedProviderCallId = providerCallId;
 
-    if (providerCallId && (!hasAnswerInSessions || !isCallTerminated)) {
-      const { data: webhookRows } = await db
+    if (!hasAnswerInSessions || !isCallTerminated) {
+      const webhookQuery = db
         .from('whatsapp_webhook_events')
         .select('id, payload, received_at, process_status')
         .order('received_at', { ascending: false })
-        .limit(10);
+        .limit(providerCallId ? 10 : 50);
+      const { data: webhookRows } = providerCallId
+        ? await webhookQuery
+        : await webhookQuery.gte('received_at', new Date(Date.now() - 5 * 60 * 1000).toISOString());
       const matchingRows = (webhookRows || []).filter((row: any) => {
-        const raw = JSON.stringify(row?.payload || {});
-        return raw.includes(providerCallId);
+        if (providerCallId) {
+          const raw = JSON.stringify(row?.payload || {});
+          return raw.includes(providerCallId);
+        }
+        if (!isOutboundCall || !customerPhone) return false;
+        const entries = Array.isArray(row?.payload?.entry) ? row.payload.entry : [];
+        for (const entry of entries) {
+          const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+          for (const change of changes) {
+            const calls = Array.isArray(change?.value?.calls) ? change.value.calls : [];
+            for (const callItem of calls) {
+              const phone = normalizePhone(
+                String(
+                  callItem?.to ||
+                    callItem?.from ||
+                    callItem?.phone ||
+                    callItem?.recipient_phone ||
+                    callItem?.customer_phone ||
+                    ''
+                )
+              );
+              if (phone && phone === customerPhone) return true;
+            }
+            const statuses = Array.isArray(change?.value?.statuses) ? change.value.statuses : [];
+            for (const statusItem of statuses) {
+              const phone = normalizePhone(
+                String(
+                  statusItem?.recipient_id ||
+                    statusItem?.to ||
+                    statusItem?.from ||
+                    statusItem?.phone ||
+                    statusItem?.customer_phone ||
+                    ''
+                )
+              );
+              if (phone && phone === customerPhone) return true;
+            }
+          }
+        }
+        return false;
       });
 
       for (const row of matchingRows) {
@@ -121,7 +207,20 @@ export async function GET(
             const calls = Array.isArray(change?.value?.calls) ? change.value.calls : [];
             for (const callItem of calls) {
               const itemId = String(callItem?.call_id || callItem?.id || '').trim();
-              if (itemId !== providerCallId) continue;
+              const itemPhone = normalizePhone(
+                String(
+                  callItem?.to ||
+                    callItem?.from ||
+                    callItem?.phone ||
+                    callItem?.recipient_phone ||
+                    callItem?.customer_phone ||
+                    ''
+                )
+              );
+              const idMatched = providerCallId ? itemId === providerCallId : false;
+              const phoneMatched = !providerCallId && isOutboundCall && customerPhone && itemPhone === customerPhone;
+              if (!idMatched && !phoneMatched) continue;
+              if (!resolvedProviderCallId && itemId) resolvedProviderCallId = itemId;
               const sdp = String(callItem?.session?.sdp || '').trim();
               const sdpType = String(callItem?.session?.sdp_type || '').trim().toLowerCase();
               if (sdp && !webhookAnswerSdp) {
@@ -143,8 +242,23 @@ export async function GET(
               FAILED: 4,
             };
             for (const statusItem of statuses) {
-              const itemId = String(statusItem?.id || '').trim();
-              if (itemId !== providerCallId) continue;
+              const itemId = String(
+                statusItem?.id || statusItem?.call_id || statusItem?.provider_call_id || ''
+              ).trim();
+              const itemPhone = normalizePhone(
+                String(
+                  statusItem?.recipient_id ||
+                    statusItem?.to ||
+                    statusItem?.from ||
+                    statusItem?.phone ||
+                    statusItem?.customer_phone ||
+                    ''
+                )
+              );
+              const idMatched = providerCallId ? itemId === providerCallId : false;
+              const phoneMatched = !providerCallId && isOutboundCall && customerPhone && itemPhone === customerPhone;
+              if (!idMatched && !phoneMatched) continue;
+              if (!resolvedProviderCallId && itemId) resolvedProviderCallId = itemId;
               const status = String(statusItem?.status || '').trim().toUpperCase();
               if (
                 status &&
@@ -156,7 +270,20 @@ export async function GET(
 
             for (const callItem of calls) {
               const itemId = String(callItem?.call_id || callItem?.id || '').trim();
-              if (itemId !== providerCallId) continue;
+              const itemPhone = normalizePhone(
+                String(
+                  callItem?.to ||
+                    callItem?.from ||
+                    callItem?.phone ||
+                    callItem?.recipient_phone ||
+                    callItem?.customer_phone ||
+                    ''
+                )
+              );
+              const idMatched = providerCallId ? itemId === providerCallId : false;
+              const phoneMatched = !providerCallId && isOutboundCall && customerPhone && itemPhone === customerPhone;
+              if (!idMatched && !phoneMatched) continue;
+              if (!resolvedProviderCallId && itemId) resolvedProviderCallId = itemId;
               const event = String(callItem?.event || '').trim().toLowerCase();
               const callStatus = String(callItem?.status || '').trim().toUpperCase();
               const isTerminalEvent = ['terminate', 'terminated', 'hangup', 'end', 'ended', 'cancel', 'cancelled', 'canceled', 'reject', 'rejected', 'declined', 'busy', 'no_answer', 'not_answered', 'timeout'].includes(event);
@@ -187,7 +314,7 @@ export async function GET(
         } else {
           await db.from('whatsapp_call_sessions').insert({
             call_log_id: callId,
-            provider_call_id: providerCallId,
+            provider_call_id: resolvedProviderCallId || null,
             answer_sdp: webhookAnswerSdp,
             answer_sdp_type: webhookAnswerSdpType || 'answer',
             session_state: 'CONNECTED',
@@ -228,9 +355,93 @@ export async function GET(
           }
         }
       }
+
+      if (!providerCallId && resolvedProviderCallId) {
+        const linkUpdatedAt = new Date().toISOString();
+        await db
+          .from('whatsapp_call_logs')
+          .update({ provider_call_id: resolvedProviderCallId, updated_at: linkUpdatedAt })
+          .eq('id', callId)
+          .is('provider_call_id', null);
+        await db
+          .from('whatsapp_call_sessions')
+          .update({ provider_call_id: resolvedProviderCallId, updated_at: linkUpdatedAt })
+          .eq('call_log_id', callId)
+          .is('provider_call_id', null);
+      }
     }
 
-    const latestCallStatus = webhookCallStatus || currentCallStatus || null;
+    // Diagnostic: count all recent webhook events and check if any contain call data
+    let recentWebhookCount = 0;
+    let recentCallWebhookCount = 0;
+    try {
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: recentWebhooks } = await db
+        .from('whatsapp_webhook_events')
+        .select('id, payload, received_at')
+        .gte('received_at', fiveMinAgo)
+        .order('received_at', { ascending: false })
+        .limit(20);
+      recentWebhookCount = recentWebhooks?.length || 0;
+      for (const rw of (recentWebhooks || [])) {
+        const raw = JSON.stringify(rw?.payload || {});
+        if (raw.includes('"calls"') || raw.includes('"call_id"') || raw.includes('wacid.')) {
+          recentCallWebhookCount++;
+        }
+      }
+    } catch { /* ignore */ }
+
+    console.log('[session/GET] Webhook extraction result:', JSON.stringify({
+      callId,
+      isOutboundCall,
+      webhookCallStatus,
+      webhookAnswerSdp: webhookAnswerSdp ? `${webhookAnswerSdp.length} chars` : null,
+      hasAnswerInSessions,
+      currentCallStatus,
+      recentWebhookCount,
+      recentCallWebhookCount,
+    }));
+
+    // Re-read the call log to pick up any webhook-driven updates since page load.
+    let latestDbStatus: string | null = null;
+    if (!['ENDED', 'FAILED', 'MISSED', 'REJECTED'].includes(String(webhookCallStatus || currentCallStatus || '').toUpperCase())) {
+      try {
+        const { data: refreshed } = await db
+          .from('whatsapp_call_logs')
+          .select('call_status')
+          .eq('id', callId)
+          .maybeSingle();
+        const dbStatus = String(refreshed?.call_status || '').trim().toUpperCase();
+        if (dbStatus && dbStatus !== currentCallStatus) {
+          latestDbStatus = dbStatus;
+        }
+
+        // Also check if a webhook wrote a session with answer SDP while we were polling.
+        if (!hasAnswerInSessions && isOutboundCall) {
+          const { data: freshSessions } = await db
+            .from('whatsapp_call_sessions')
+            .select('id, answer_sdp, answer_sdp_type, session_state, provider_session_id, meta')
+            .eq('call_log_id', callId)
+            .not('answer_sdp', 'is', null)
+            .limit(1);
+          if (freshSessions?.length) {
+            const fs = freshSessions[0];
+            const existingSession = uniqueSessions[0];
+            if (existingSession) {
+              existingSession.answer_sdp = fs.answer_sdp;
+              existingSession.answer_sdp_type = fs.answer_sdp_type || 'answer';
+              existingSession.session_state = fs.session_state || 'CONNECTED';
+            } else {
+              uniqueSessions.push(fs);
+            }
+          }
+        }
+      } catch {
+        // keep response flow alive
+      }
+    }
+
+    const latestCallStatus = latestDbStatus || webhookCallStatus || currentCallStatus || null;
     return NextResponse.json({ success: true, sessions: uniqueSessions, ice_candidates: iceCandidates, call_status: latestCallStatus });
   } catch (error: any) {
     return callErrorResponse(error?.message || 'Internal server error', 500);
@@ -329,13 +540,23 @@ export async function POST(
     if (bridgeResult?.success && bridgeResult.bridgeSessionId) {
       providerSessionId = String(bridgeResult.bridgeSessionId);
     } else {
-      const isInbound = isInboundDirection(callLog.direction);
+      const requestedMetaAction = String(body?.meta_action || '').trim().toLowerCase();
+      const hasInboundMetaAction = ['pre_accept', 'accept'].includes(requestedMetaAction);
+      const existingSessions = Array.isArray(callLog?.sessions) ? callLog.sessions : [];
+      const hasStoredInboundOffer = existingSessions.some((row: any) => {
+        const offer = String(row?.offer_sdp || '').trim();
+        if (!offer) return false;
+        const source = String((row?.meta as any)?.source || '').trim().toLowerCase();
+        return source === 'webhook' || source === 'provider_webhook' || source === 'incoming_webhook';
+      });
+      const isInbound = isInboundDirection(callLog.direction) || hasInboundMetaAction || hasStoredInboundOffer;
+      const providerControlCallId = resolveProviderControlCallId(callLog, callId);
       if (isInbound) {
-        const metaAction = String(body?.meta_action || 'accept').trim().toLowerCase();
+        const metaAction = requestedMetaAction || 'accept';
 
         if (metaAction === 'pre_accept') {
           const preResult = await preAcceptInboundCall({
-            callId: String(callLog.provider_call_id || callId),
+            callId: providerControlCallId,
             sdp,
           });
           providerRaw = preResult.raw || null;
@@ -355,7 +576,7 @@ export async function POST(
           }
         } else {
           const acceptResult = await acceptInboundCall({
-            callId: String(callLog.provider_call_id || callId),
+            callId: providerControlCallId,
             sdp,
           });
           providerRaw = acceptResult.raw || null;

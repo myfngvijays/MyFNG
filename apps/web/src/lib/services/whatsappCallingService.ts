@@ -9,7 +9,7 @@ const WHATSAPP_CALLING_ACCESS_TOKEN =
 const WHATSAPP_CALLING_START_PATH = process.env.WHATSAPP_CALLING_START_PATH || '/calls';
 const WHATSAPP_CALLING_CALLBACK_PATH =
   process.env.WHATSAPP_CALLING_CALLBACK_PATH || '';
-const WHATSAPP_CALLING_LOGS_PATH = process.env.WHATSAPP_CALLING_LOGS_PATH || '/calls/logs';
+const WHATSAPP_CALLING_LOGS_PATH = process.env.WHATSAPP_CALLING_LOGS_PATH || '/calls';
 const WHATSAPP_CALLING_SESSION_PATH_TEMPLATE =
   process.env.WHATSAPP_CALLING_SESSION_PATH_TEMPLATE || '/calls/{call_id}/session';
 const WHATSAPP_CALLING_CONTROL_PATH_TEMPLATE =
@@ -501,6 +501,23 @@ export async function fetchProviderCallLogs(params?: {
   return providerRequest(`${WHATSAPP_CALLING_LOGS_PATH}${suffix}`, {
     method: 'GET',
   });
+}
+
+export async function fetchCallById(callId: string): Promise<WhatsAppCallingResult> {
+  if (!callId) return { success: false, error: 'callId is required' };
+
+  const paths = [
+    `/calls/${encodeURIComponent(callId)}`,
+    `/calls/${encodeURIComponent(callId)}/session`,
+  ];
+
+  for (const path of paths) {
+    const result = await providerRequest(path, { method: 'GET' });
+    if (result.success) return result;
+    if (result.statusCode && result.statusCode < 500 && result.statusCode !== 404) return result;
+  }
+
+  return providerRequest(`/calls?call_id=${encodeURIComponent(callId)}`, { method: 'GET' });
 }
 
 export async function fetchCallPermissionState(phoneNumber: string): Promise<CallPermissionStateResult> {
