@@ -2713,144 +2713,27 @@ export default function WhatsAppMobilePreviewModal({
             </div>
           ) : null}
 
-          <div className="bg-[#f0f2f5] border-t border-black/10 px-2.5 py-2 space-y-2 max-h-[42%] overflow-y-auto">
+          <div className="border-t border-gray-200 bg-white p-3 max-h-[42%] overflow-y-auto space-y-2">
             {isTemplateOnlyMode ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
                 Normal chat window closed. Only template messages can be sent.
               </div>
             ) : null}
-            {activeType !== 'text' ? (
-              <div className="flex items-center justify-between rounded-md bg-white px-2 py-1 text-[10px] text-[#54656f]">
-                <span>
-                  Compose mode: <span className="font-semibold uppercase">{activeType}</span>
-                </span>
-                {!isTemplateOnlyMode ? (
+            {activeType === 'template' ? (
+              <div className="mb-2 rounded-lg border border-[#d8dee3] bg-[#f8fafc] px-3 py-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[#475467]">
+                    Template mode
+                  </span>
                   <button
                     type="button"
-                    className="text-[#128c7e] font-semibold"
-                    onClick={() => {
-                      setActiveType('text');
-                      setShowAttachMenu(false);
-                    }}
+                    onClick={() => { setActiveType('text'); setShowAttachMenu(false); }}
+                    className="text-[11px] font-semibold text-[#128c7e]"
                   >
                     Back to text
                   </button>
-                ) : null}
-              </div>
-            ) : null}
-
-            {activeType === 'text' && !isTemplateOnlyMode ? (
-              <div className="relative flex items-center gap-1.5">
-                <button
-                  ref={attachButtonRef}
-                  type="button"
-                  className="text-[#54656f]"
-                  onClick={() => setShowAttachMenu((prev) => !prev)}
-                >
-                  <Paperclip className="h-4 w-4" />
-                </button>
-                {showAttachMenu ? (
-                  <div
-                    ref={attachMenuRef}
-                    className="absolute bottom-12 left-0 z-20 w-[260px] rounded-xl border border-black/10 bg-white p-2 shadow-xl"
-                  >
-                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-2 text-left hover:bg-gray-100"
-                        onClick={() => {
-                          setActiveType('media');
-                          setMediaType('image');
-                          setShowAttachMenu(false);
-                          requestAnimationFrame(() => mediaFileInputRef.current?.click());
-                        }}
-                      >
-                        Image/Video
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-2 text-left hover:bg-gray-100"
-                        onClick={() => {
-                          setActiveType('media');
-                          setMediaType('document');
-                          setShowAttachMenu(false);
-                          requestAnimationFrame(() => mediaFileInputRef.current?.click());
-                        }}
-                      >
-                        PDF
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-2 text-left hover:bg-gray-100"
-                        onClick={() => {
-                          setActiveType('template');
-                          setShowAttachMenu(false);
-                        }}
-                      >
-                        Template
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-2 text-left hover:bg-gray-100"
-                        onClick={() => {
-                          setActiveType('media');
-                          setMediaType('document');
-                          setShowAttachMenu(false);
-                          requestAnimationFrame(() => mediaFileInputRef.current?.click());
-                        }}
-                      >
-                        Document
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                <input
-                  className="flex-1 rounded-full border border-transparent bg-white px-4 py-2 text-[12px] shadow-[inset_0_0_0_1px_rgba(17,27,33,0.06)] focus:outline-none focus:ring-2 focus:ring-[#25D366]/30"
-                  value={textMessage}
-                  onChange={(e) => setTextMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      if (!sending) void handleSend();
-                    }
-                  }}
-                  placeholder="Type a message..."
-                />
-                <button type="button" className="text-[#54656f] hover:text-[#2a3942]">
-                  <Camera className="h-4 w-4" />
-                </button>
-                <button type="button" className="text-[#54656f] hover:text-[#2a3942]">
-                  <Mic className="h-4 w-4" />
-                </button>
-              </div>
-            ) : null}
-
-            {activeType === 'media' ? (
-              <div className="space-y-1.5">
-                <button
-                  type="button"
-                  className="w-full rounded-md border bg-white px-2 py-2 text-left text-[11px] text-[#54656f]"
-                  onClick={() => mediaFileInputRef.current?.click()}
-                >
-                  {selectedMediaFile
-                    ? `${selectedMediaFile.name} (${(selectedMediaFile.size / 1024 / 1024).toFixed(2)} MB)`
-                    : 'Choose media from device'}
-                </button>
-                <input
-                  className="w-full rounded-md border bg-white px-2 py-1 text-[11px]"
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Caption (optional)"
-                />
-                <p className="text-[10px] text-gray-500">
-                  Image files are auto-compressed before upload for faster delivery.
-                </p>
-              </div>
-            ) : null}
-
-            {activeType === 'template' ? (
-              <div className="space-y-2">
-                <div className="rounded-xl border border-[#d5dbe1] bg-white p-2">
+                </div>
+                <div className="rounded-xl border border-[#d5dbe1] bg-white p-2 mb-2">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">Template library</p>
@@ -2920,7 +2803,7 @@ export default function WhatsAppMobilePreviewModal({
                   })}
                 </div>
                 {templateName.trim() ? (
-                  <div className="rounded-xl border border-[#bdebd2] bg-[#eafaf1] px-2.5 py-2 text-[10px] text-[#128c7e]">
+                  <div className="mt-2 rounded-xl border border-[#bdebd2] bg-[#eafaf1] px-2.5 py-2 text-[10px] text-[#128c7e]">
                     <p className="font-semibold">Selected: {selectedTemplate?.display_name || templateName}</p>
                     <p className="mt-1 text-[#1b6f5f]">
                       {selectedTemplate?.language_code?.toUpperCase() || 'EN'} •{' '}
@@ -2933,7 +2816,7 @@ export default function WhatsAppMobilePreviewModal({
                     </p>
                   </div>
                 ) : null}
-                <div className="rounded-xl border border-[#d5dbe1] bg-white p-2">
+                <div className="mt-2 rounded-xl border border-[#d5dbe1] bg-white p-2">
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
                     Template params
                   </label>
@@ -2949,6 +2832,147 @@ export default function WhatsAppMobilePreviewModal({
                 </div>
               </div>
             ) : null}
+            {selectedMediaFile ? (
+              <div className="mb-2 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                <p className="truncate text-xs text-gray-700">{selectedMediaFile.name}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMediaFile(null);
+                    setActiveType('text');
+                    if (mediaFileInputRef.current) mediaFileInputRef.current.value = '';
+                  }}
+                  className="ml-2 rounded-full p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                  title="Remove attachment"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : null}
+            {activeType === 'media' && !selectedMediaFile ? (
+              <div className="mb-2 space-y-1.5">
+                <button
+                  type="button"
+                  className="w-full rounded-md border bg-gray-50 px-2 py-2 text-left text-[11px] text-[#54656f] hover:bg-gray-100"
+                  onClick={() => mediaFileInputRef.current?.click()}
+                >
+                  Choose media from device
+                </button>
+                <input
+                  className="w-full rounded-md border bg-white px-2 py-1 text-[11px]"
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  placeholder="Caption (optional)"
+                />
+              </div>
+            ) : null}
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <button
+                  ref={attachButtonRef}
+                  type="button"
+                  onClick={() => setShowAttachMenu((prev) => !prev)}
+                  disabled={sending}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Attach file"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+                {showAttachMenu ? (
+                  <div
+                    ref={attachMenuRef}
+                    className="absolute bottom-12 left-0 z-20 min-w-[170px] rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveType('media');
+                        setMediaType('image');
+                        setShowAttachMenu(false);
+                        requestAnimationFrame(() => mediaFileInputRef.current?.click());
+                      }}
+                      className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      Image
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveType('media');
+                        setMediaType('image');
+                        setShowAttachMenu(false);
+                        requestAnimationFrame(() => mediaFileInputRef.current?.click());
+                      }}
+                      className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      Video
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveType('media');
+                        setMediaType('image');
+                        setShowAttachMenu(false);
+                        requestAnimationFrame(() => mediaFileInputRef.current?.click());
+                      }}
+                      className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      Audio
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveType('media');
+                        setMediaType('document');
+                        setShowAttachMenu(false);
+                        requestAnimationFrame(() => mediaFileInputRef.current?.click());
+                      }}
+                      className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      Document
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveType('template');
+                        setShowAttachMenu(false);
+                      }}
+                      className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      Template
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              <input
+                value={activeType === 'template' ? '' : textMessage}
+                onChange={(e) => setTextMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!sending) void handleSend();
+                  }
+                }}
+                disabled={sending || activeType === 'template'}
+                placeholder={
+                  activeType === 'template'
+                    ? 'Template mode enabled'
+                    : isTemplateOnlyMode
+                    ? 'Only templates can be sent'
+                    : 'Type a message'
+                }
+                className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm outline-none ring-green-200 focus:border-green-500 focus:ring disabled:cursor-not-allowed disabled:bg-gray-100"
+              />
+              <button
+                type="button"
+                onClick={() => void handleSend()}
+                disabled={sending}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-600 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                title="Send message"
+              >
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </button>
+            </div>
 
             <input
               ref={mediaFileInputRef}
@@ -2973,17 +2997,6 @@ export default function WhatsAppMobilePreviewModal({
                 e.currentTarget.value = '';
               }}
             />
-
-            <div className="sticky bottom-0 -mx-2.5 flex items-center justify-end gap-2 border-t border-black/5 bg-[#f0f2f5] px-2.5 pb-1 pt-1.5">
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={sending}
-                className="h-10 w-10 rounded-full inline-flex items-center justify-center text-white bg-[#25D366] hover:bg-[#1ebe5c] shadow-md disabled:opacity-60"
-              >
-                <Send className="h-3.5 w-3.5" />
-              </button>
-            </div>
 
           </div>
         </div>
