@@ -1989,6 +1989,34 @@ export default function WhatsAppMobilePreviewModal({
       setShowAttachMenu(false);
       setActiveType('text');
       await refreshConversation();
+
+      try {
+        const supabase = createClient();
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser?.id && waPhone) {
+          const currentIds = Array.isArray(chatAssignment?.assigned_to_ids) ? chatAssignment.assigned_to_ids : [];
+          const alreadyAssigned = currentIds.some((id) => id === authUser.id);
+          if (!alreadyAssigned) {
+            const newIds = currentIds.length === 0
+              ? [authUser.id]
+              : currentIds.length === 1
+              ? [currentIds[0], authUser.id]
+              : currentIds;
+            if (!alreadyAssigned && newIds !== currentIds) {
+              await fetch('/api/whatsapp/chats/assignment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  phone: waPhone,
+                  assigned_to_ids: newIds,
+                  assigned_note: chatAssignment?.assigned_note || '',
+                }),
+              });
+              loadChatAssignment();
+            }
+          }
+        }
+      } catch { /* auto-assign is best-effort */ }
     } catch {
       toast.error('Send failed');
     } finally {
