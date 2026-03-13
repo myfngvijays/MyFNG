@@ -1825,6 +1825,20 @@ export default function WhatsAppMobilePreviewModal({
     previousLastMessageKeyRef.current = lastKey;
   }, [messages, isOpen]);
 
+  const callLoadScrolledRef = useRef(false);
+  useEffect(() => { callLoadScrolledRef.current = false; }, [waPhone]);
+  useEffect(() => {
+    if (!isOpen || callLoading || callLoadScrolledRef.current) return;
+    callLoadScrolledRef.current = true;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
+      });
+    });
+  }, [isOpen, callLoading]);
+
   useEffect(() => {
     if (callPermissionCooldownUntil <= Date.now()) return;
     const interval = window.setInterval(() => {
@@ -2401,10 +2415,17 @@ export default function WhatsAppMobilePreviewModal({
                             </span>
                           </span>
                         </button>
-                        {isAccepted && hasRecording && recordingUrl ? (
-                          <div className="mt-2 rounded-lg bg-[#f0f2f5] p-1.5">
-                            <audio controls preload="none" src={recordingUrl} className="h-8 w-full" />
-                          </div>
+                        {isAccepted ? (
+                          hasRecording && recordingUrl ? (
+                            <div className="mt-2 rounded-lg bg-[#f0f2f5] p-1.5">
+                              <audio controls preload="none" src={recordingUrl} className="h-8 w-full" />
+                            </div>
+                          ) : (
+                            <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-gray-400">
+                              <Volume2 className="h-3 w-3" />
+                              <span>Recording not available</span>
+                            </div>
+                          )
                         ) : null}
                       </div>
                     </div>
@@ -2881,7 +2902,7 @@ export default function WhatsAppMobilePreviewModal({
                 {showAttachMenu ? (
                   <div
                     ref={attachMenuRef}
-                    className="absolute bottom-12 left-0 z-20 min-w-[170px] rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl"
+                    className="absolute bottom-12 left-0 z-[100] min-w-[170px] rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl"
                   >
                     <button
                       type="button"
