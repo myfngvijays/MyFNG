@@ -55,6 +55,8 @@ type CallRecording = {
   id: string;
   provider_recording_id?: string | null;
   duration_seconds?: number | null;
+  recording_url?: string | null;
+  recording_proxy_path?: string | null;
 };
 
 type CallLog = {
@@ -68,6 +70,7 @@ type CallLog = {
   updated_at?: string | null;
   duration_seconds?: number | null;
   error_message?: string | null;
+  meta?: Record<string, unknown> | null;
   recordings?: CallRecording[];
   sessions?: Array<{
     id: string;
@@ -2281,7 +2284,7 @@ export default function WhatsAppMobilePreviewModal({
           <div
             ref={messagesContainerRef}
             onScroll={handleConversationScroll}
-            className="flex-1 min-h-0 px-2 py-3 space-y-1.5 overflow-y-auto bg-[url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%2264%22 viewBox=%220 0 64 64%22%3E%3Cg fill=%22%23111b21%22 fill-opacity=%220.035%22%3E%3Ccircle cx=%2210%22 cy=%2210%22 r=%221.5%22/%3E%3Ccircle cx=%2238%22 cy=%2226%22 r=%221.5%22/%3E%3Ccircle cx=%2218%22 cy=%2248%22 r=%221.5%22/%3E%3C/g%3E%3C/svg%3E')]"
+            className="flex-1 min-h-0 px-3 py-4 space-y-2 overflow-y-auto bg-[#efeae2]"
           >
             {loadingOlder ? (
               <div className="mx-auto w-fit rounded-full bg-[#d9dfe3] px-2.5 py-1 text-[10px] text-[#54656f]">
@@ -2294,363 +2297,408 @@ export default function WhatsAppMobilePreviewModal({
                 Loading call logs...
               </div>
             ) : null}
-            {callLogs
-              .slice()
-              .sort((a, b) => {
-                const ta = new Date(a.started_at || a.created_at || 0).getTime();
-                const tb = new Date(b.started_at || b.created_at || 0).getTime();
-                return ta - tb;
-              })
-              .map((call) => {
-                const inbound = String(call.direction || '').toUpperCase() === 'INBOUND';
-                const isCallback = String(call.direction || '').toUpperCase().includes('CALLBACK');
-                const status = normalizeCallStatus(call.call_status);
-                const isAccepted = ['ANSWERED', 'ACCEPTED', 'CONNECTED', 'ENDED'].includes(status);
-                const hasRecording = Array.isArray(call.recordings) && call.recordings.length > 0;
-                const recordingUrl = hasRecording
-                  ? `/api/whatsapp/calls/recordings/${call.recordings![0].id}`
-                  : null;
+            {(() => {
+              const callItems = callLogs.map((call) => ({
+                type: 'call' as const,
+                ts: new Date(call.started_at || call.created_at || 0).getTime(),
+                call,
+              }));
+              const msgItems = messages
+                .filter((msg) => {
+                  const mt = String(msg.message_type || '').trim().toUpperCase();
+                  if (mt !== 'INTERACTIVE') return true;
+                  const payloadStr = JSON.stringify(msg?.payload || '').toLowerCase();
+                  if (payloadStr.includes('call_permission') || payloadStr.includes('calling_permission') || payloadStr.includes('calling')) return false;
+                  const tpl = String(msg?.template_name || '').toLowerCase();
+                  if (tpl.includes('call') || tpl.includes('calling')) return false;
+                  return true;
+                })
+                .map((msg) => ({
+                  type: 'message' as const,
+                  ts: new Date(msg.status_at || msg.created_at || 0).getTime(),
+                  msg,
+                }));
+              const timeline = [...callItems, ...msgItems].sort((a, b) => a.ts - b.ts);
+
+              if (!historyLoading && timeline.length === 0) {
                 return (
-                  <div key={`call-${call.id}`} className="mx-auto mb-1 w-full max-w-[92%]">
-                    <button
-                      type="button"
-                      onClick={() => setCallInfoOpen(call)}
-                      className="block w-full rounded-full border border-[#d8dee3] bg-white/90 px-2.5 py-1 text-[10px] text-[#54656f] hover:bg-white"
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        {inbound ? (
-                          <PhoneIncoming className="h-3 w-3 text-[#1d4ed8]" />
-                        ) : (
-                          <PhoneOutgoing className="h-3 w-3 text-[#0f766e]" />
-                        )}
-                        <span>
-                          {isCallback ? 'Callback' : 'Call'} {status} ·{' '}
-                          {formatMessageTime(call.started_at || call.created_at || null)}
-                        </span>
-                      </span>
-                    </button>
-                    {isAccepted && recordingUrl ? (
-                      <div className="mt-1 rounded-lg bg-[#f0f2f5] p-1.5">
-                        <audio controls preload="none" src={recordingUrl} className="h-8 w-full" />
-                      </div>
-                    ) : null}
+                  <div className="flex h-full items-center justify-center text-sm text-gray-500">
+                    No messages yet
                   </div>
                 );
-              })}
-            {messages.map((msg) => {
-              const direction = String(msg?.direction || '').toUpperCase();
-              const isOutbound = direction === 'OUTBOUND';
-              const isStatus = direction === 'STATUS';
-              const deliveryStatus = normalizeDeliveryStatus(msg?.status);
-              const isTemplateMessage = Boolean(msg?.template_name);
-              const messageType = String(msg?.message_type || '').trim().toUpperCase();
-              const parsedInbound = parseInboundStructuredText(msg?.text_body);
-              const inboundText = normalizeInboundText(msg?.text_body);
-              const isInboundStructuredReply = !isOutbound && !isStatus && parsedInbound.isStructuredReply;
-              const mediaUrl = String(msg?.media_url || '').trim();
-              const mediaMime = String(msg?.media_mime_type || '').trim().toLowerCase();
-              const payloadObj = msg?.payload && typeof msg.payload === 'object' ? msg.payload : null;
-              const payloadMediaId = getMediaIdFromPayload(payloadObj, messageType);
-              const resolvedMediaUrl =
-                mediaUrl || (payloadMediaId ? `/api/whatsapp/media/${encodeURIComponent(payloadMediaId)}` : '');
-              const payloadLocation = getLocationDetailsFromPayload(payloadObj);
-              const firstUrlFromText = extractFirstHttpUrl(inboundText);
-              const locationLinkFromText =
-                firstUrlFromText && isLikelyMapLink(firstUrlFromText) ? firstUrlFromText : null;
-              const locationLink =
-                payloadLocation?.latitude && payloadLocation?.longitude
-                  ? `https://www.google.com/maps?q=${payloadLocation.latitude},${payloadLocation.longitude}`
-                  : locationLinkFromText;
-              const isLocationMessage = messageType === 'LOCATION' || Boolean(payloadLocation) || Boolean(locationLink);
-              const isImageMessage =
-                messageType === 'IMAGE' ||
-                mediaMime.startsWith('image/') ||
-                (resolvedMediaUrl ? isImageUrl(resolvedMediaUrl) : false);
-              const isAudioMessage =
-                messageType === 'AUDIO' ||
-                mediaMime.startsWith('audio/') ||
-                (resolvedMediaUrl ? isAudioUrl(resolvedMediaUrl) : false);
-              const isVideoMessage =
-                messageType === 'VIDEO' ||
-                mediaMime.startsWith('video/') ||
-                (resolvedMediaUrl ? isVideoUrl(resolvedMediaUrl) : false);
-              const isDocumentMessage =
-                messageType === 'DOCUMENT' ||
-                messageType === 'MEDIA' ||
-                mediaMime.includes('pdf') ||
-                mediaMime.startsWith('application/') ||
-                (Boolean(resolvedMediaUrl) && !isImageMessage && !isAudioMessage && !isVideoMessage);
-              const messageKey = String(msg?.id || msg?.provider_message_id || '');
-              const currentTemplate = msg?.template_name
-                ? templateMap.get(String(msg.template_name || '').trim().toLowerCase()) || null
-                : null;
-              const templateText = currentTemplate
-                ? fillTemplateBodyFromArray(currentTemplate, msg?.payload?.request?.template_params)
-                : '';
-              const templateButtons = isTemplateMessage ? extractTemplateButtons(currentTemplate) : [];
-              const templateDisplayName =
-                currentTemplate?.display_name || currentTemplate?.template_name || msg?.template_name || '';
-              const actorName = String(msg?.meta?.actor_name || '').trim();
-              const statusTimestamps =
-                msg?.meta?.status_timestamps && typeof msg.meta.status_timestamps === 'object'
-                  ? msg.meta.status_timestamps
-                  : {};
-              const sentAtRaw = String(
-                statusTimestamps?.sent_at || msg?.created_at || msg?.status_at || ''
-              ).trim();
-              const deliveredAtRaw = String(
-                statusTimestamps?.delivered_at ||
-                  ((deliveryStatus === 'DELIVERED' || deliveryStatus === 'VIEWED') ? msg?.status_at : '') ||
-                  ''
-              ).trim();
-              const viewedAtRaw = String(
-                statusTimestamps?.viewed_at || (deliveryStatus === 'VIEWED' ? msg?.status_at : '') || ''
-              ).trim();
-              const failedReason =
-                deliveryStatus === 'FAILED'
-                  ? String(
-                      msg?.error_message ||
-                        msg?.payload?.response?.error?.error_user_msg ||
-                        msg?.payload?.response?.error?.message ||
-                        ''
-                    ).trim()
-                  : '';
-              const extractInteractiveText = (): string => {
-                // payload is raw webhook inbound object: { type, interactive, ... }
-                const interactive =
-                  msg?.payload?.interactive ||
-                  msg?.payload?.request?.interactive ||
-                  msg?.payload?.messages?.[0]?.interactive;
-                if (!interactive) return '';
-                const itype = String(interactive.type || '').trim().toLowerCase();
-                if (itype === 'button_reply') {
-                  return String(interactive.button_reply?.title || interactive.button_reply?.id || '').trim();
-                }
-                if (itype === 'list_reply') {
-                  const title = String(interactive.list_reply?.title || '').trim();
-                  const desc = String(interactive.list_reply?.description || '').trim();
-                  return desc ? `${title}\n${desc}` : title;
-                }
-                if (itype === 'nfm_reply') {
-                  return String(
-                    interactive.nfm_reply?.body || interactive.nfm_reply?.name || 'Form reply'
-                  ).trim();
-                }
-                const headerText = String(interactive?.header?.text || '').trim();
-                const bodyText = String(interactive?.body?.text || '').trim();
-                const footerText = String(interactive?.footer?.text || '').trim();
-                return [headerText, bodyText, footerText].filter(Boolean).join('\n') || '';
-              };
+              }
 
-              const interactiveText = messageType === 'INTERACTIVE' ? extractInteractiveText() : '';
+              return timeline.map((item) => {
+                if (item.type === 'call') {
+                  const call = item.call;
+                  const status = normalizeCallStatus(call.call_status);
+                  const inbound = isInboundCallDirection(call.direction);
+                  const isCallback = String(call.direction || '').toUpperCase().includes('CALLBACK');
+                  const isMissed = ['MISSED', 'REJECTED', 'FAILED'].includes(status);
+                  const isRinging = ['RINGING', 'INITIATED', 'NEGOTIATING'].includes(status);
+                  const isAccepted = ['ACCEPTED', 'CONNECTED', 'ENDED'].includes(status);
+                  const hasRecording = Array.isArray(call.recordings) && call.recordings.length > 0;
+                  const recordingUrl = hasRecording
+                    ? call.recordings![0].recording_proxy_path || call.recordings![0].recording_url || `/api/whatsapp/calls/recordings/${call.recordings![0].id}`
+                    : null;
+                  let callDuration = call.duration_seconds;
+                  if ((callDuration == null || callDuration <= 0) && isAccepted) {
+                    const answeredAt = (call.meta as any)?.answered_at;
+                    const connectTime = answeredAt || call.started_at;
+                    if (connectTime) {
+                      const startMs = new Date(connectTime).getTime();
+                      const endRef = call.ended_at || call.updated_at || call.created_at;
+                      if (endRef) {
+                        const endMs = new Date(endRef).getTime();
+                        if (endMs > startMs) callDuration = Math.floor((endMs - startMs) / 1000);
+                      }
+                    }
+                  }
+                  const iconColor = isMissed ? 'text-red-500' : isAccepted ? 'text-green-600' : isRinging ? 'text-orange-500' : inbound ? 'text-blue-600' : 'text-[#0f766e]';
+                  const bgColor = isMissed ? 'bg-red-50 border-red-200' : isRinging ? 'bg-orange-50 border-orange-200' : 'bg-white border-[#d8dee3]';
+                  const label = isCallback
+                    ? 'Callback request'
+                    : isMissed
+                    ? `${inbound ? 'Missed call' : 'Not answered'}`
+                    : isRinging
+                    ? `${inbound ? 'Incoming' : 'Outgoing'} call · Ringing`
+                    : isAccepted
+                    ? `${inbound ? 'Incoming' : 'Outgoing'} call`
+                    : `${inbound ? 'Incoming' : 'Outgoing'} call · ${status}`;
 
-              const text =
-                inboundText ||
-                interactiveText ||
-                (msg?.template_name
-                  ? templateText || `Template sent: ${msg.template_name}`
-                  : '') ||
-                (msg?.media_url ? `${msg?.media_caption || 'Media'}\n${msg.media_url}` : '') ||
-                msg?.status ||
-                (messageType && messageType !== 'TEXT' ? messageType : '—');
-              const callPermissionState = detectCallPermissionState({
-                templateName: msg?.template_name,
-                isOutbound,
-                text,
-              });
-              const callPermissionBadge = callPermissionBadgeMeta(callPermissionState);
-              const timeLabel = formatMessageTime(msg?.status_at || msg?.updated_at || msg?.created_at);
-              return (
-                <div
-                  key={msg.id}
-                  className={`relative max-w-[84%] rounded-[10px] px-2.5 py-2 text-[13px] leading-[1.3] shadow-[0_1px_1px_rgba(0,0,0,0.08)] whitespace-pre-wrap ${
-                    isStatus
-                      ? 'mx-auto bg-[#d9dfe3] text-[#54656f] text-center'
-                      : isOutbound
-                      ? 'ml-auto bg-[#d9fdd3] text-[#111b21]'
-                      : 'bg-white text-[#111b21]'
-                  }`}
-                >
-                  {!isStatus ? (
-                    <span
-                      aria-hidden
-                      className={`absolute top-0 h-0 w-0 border-[6px] border-transparent ${
-                        isOutbound
-                          ? 'right-[-6px] border-l-[#d9fdd3] border-t-[#d9fdd3]'
-                          : 'left-[-6px] border-r-white border-t-white'
-                      }`}
-                    />
-                  ) : null}
-                  {isTemplateMessage && !isStatus ? (
-                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]">
-                      Template: {templateDisplayName}
-                    </p>
-                  ) : null}
-                  {isOutbound && actorName ? (
-                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#667781]">
-                      Sent by: {actorName}
-                    </p>
-                  ) : null}
-                  {callPermissionBadge && !isStatus ? (
-                    <div
-                      className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${callPermissionBadge.className}`}
-                    >
-                      {callPermissionBadge.label}
-                    </div>
-                  ) : null}
-                  {isLocationMessage ? (
-                    <div className="space-y-1.5">
-                      <div className="rounded-md border border-[#d8dee3] bg-[#f8fbff] px-2.5 py-2 text-[12px] text-[#1f2937]">
-                        <p className="flex items-center gap-1 font-semibold">
-                          <MapPin className="h-3.5 w-3.5 text-[#128c7e]" />
-                          Location
-                        </p>
-                        {payloadLocation?.name ? <p>{payloadLocation.name}</p> : null}
-                        {payloadLocation?.address ? (
-                          <p className="text-[11px] text-[#4b5563]">{payloadLocation.address}</p>
-                        ) : null}
-                      </div>
-                      {locationLink ? (
-                        <a
-                          href={locationLink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex rounded-full border border-[#c7d0d8] bg-white px-2.5 py-1 text-[11px] font-medium text-[#128c7e]"
-                        >
-                          Open in Maps
-                        </a>
-                      ) : null}
-                    </div>
-                  ) : isImageMessage ? (
-                    <div className="space-y-1.5">
-                      {resolvedMediaUrl ? (
-                        <img
-                          src={resolvedMediaUrl}
-                          alt="Shared media"
-                          className="max-h-48 w-full cursor-zoom-in rounded-md object-cover"
-                          onClick={() => setImagePreviewUrl(resolvedMediaUrl)}
-                        />
-                      ) : (
-                        <div className="inline-flex items-center gap-1 rounded-full border border-[#d7dde3] bg-[#f7fafc] px-2.5 py-1 text-[11px] font-medium text-[#1f2937]">
-                          <ImageIcon className="h-3.5 w-3.5 text-[#128c7e]" />
-                          Photo
-                        </div>
-                      )}
-                      {inboundText ? <p>{inboundText}</p> : null}
-                    </div>
-                  ) : isVideoMessage ? (
-                    <div className="space-y-1.5">
-                      {resolvedMediaUrl ? (
-                        <video
-                          controls
-                          preload="metadata"
-                          className="max-h-52 w-full rounded-md bg-black object-contain"
-                        >
-                          <source src={resolvedMediaUrl} type={mediaMime || 'video/mp4'} />
-                        </video>
-                      ) : (
-                        <div className="inline-flex items-center gap-1 rounded-full border border-[#d7dde3] bg-[#f7fafc] px-2.5 py-1 text-[11px] font-medium text-[#1f2937]">
-                          <PlayCircle className="h-3.5 w-3.5 text-[#128c7e]" />
-                          Video
-                        </div>
-                      )}
-                      {inboundText ? <p>{inboundText}</p> : null}
-                    </div>
-                  ) : isAudioMessage ? (
-                    <div className="space-y-1.5">
-                      {resolvedMediaUrl ? (
-                        <audio controls preload="metadata" className="w-full h-9">
-                          <source src={resolvedMediaUrl} type={mediaMime || 'audio/mpeg'} />
-                        </audio>
-                      ) : (
-                        <div className="inline-flex items-center gap-1 rounded-full border border-[#d7dde3] bg-[#f7fafc] px-2.5 py-1 text-[11px] font-medium text-[#1f2937]">
-                          <Mic className="h-3.5 w-3.5 text-[#128c7e]" />
-                          Audio
-                        </div>
-                      )}
-                      {inboundText ? <p>{inboundText}</p> : null}
-                    </div>
-                  ) : isDocumentMessage ? (
-                    <div className="space-y-1.5">
-                      <div className="inline-flex items-center gap-1 rounded-full border border-[#d7dde3] bg-[#f7fafc] px-2.5 py-1 text-[11px] font-medium text-[#1f2937]">
-                        <FileText className="h-3.5 w-3.5 text-[#128c7e]" />
-                        Document
-                      </div>
-                      {resolvedMediaUrl ? (
-                        <a
-                          href={resolvedMediaUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex rounded-full border border-[#c7d0d8] bg-white px-2.5 py-1 text-[11px] font-medium text-[#128c7e]"
-                        >
-                          Open attachment
-                        </a>
-                      ) : null}
-                      {inboundText ? <p>{inboundText}</p> : null}
-                    </div>
-                  ) : isInboundStructuredReply ? (
-                    <div className="inline-flex max-w-full items-center rounded-full border border-[#d5dce2] bg-[#f8fafc] px-3 py-1 text-[12px] font-medium text-[#1f2937]">
-                      {parsedInbound.text}
-                    </div>
-                  ) : (
-                    <p>{text}</p>
-                  )}
-                  {isTemplateMessage && templateButtons.length > 0 ? (
-                    <div className="mt-2 space-y-1">
-                      {templateButtons.map((button, index) => (
-                        <div
-                          key={`${button.type}-${button.text}-${index}`}
-                          className="rounded-md border border-black/15 bg-white/60 px-2 py-1 text-[10px] font-medium text-[#111b21]"
-                        >
-                          {button.text}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {isOutbound && failedReason ? (
-                    <div className="mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700">
-                      Failed reason: {failedReason}
-                    </div>
-                  ) : null}
-                  {!isStatus ? (
-                    <div className="mt-1 flex items-center justify-end gap-1 text-[11px] leading-none text-[#667781]">
-                      <span>{timeLabel}</span>
-                      {isOutbound && deliveryStatus === 'SENT' ? <Check className="h-3 w-3" /> : null}
-                      {isOutbound && deliveryStatus === 'DELIVERED' ? <CheckCheck className="h-3 w-3" /> : null}
-                      {isOutbound && deliveryStatus === 'VIEWED' ? (
-                        <CheckCheck className="h-3 w-3 text-[#53bdeb]" />
-                      ) : null}
-                      {isOutbound && deliveryStatus === 'FAILED' ? (
-                        <span className="font-semibold text-[#d93025]">!</span>
-                      ) : null}
-                      {isOutbound ? (
+                  return (
+                    <div key={`call-${call.id}`} className="flex justify-center">
+                      <div className={`flex w-[280px] flex-col rounded-xl border ${bgColor} px-4 py-2.5 text-[12px] shadow-sm`}>
                         <button
                           type="button"
-                          className="ml-1 inline-flex items-center text-[#667781] hover:text-[#2a3942]"
-                          onClick={() =>
-                            setMessageInfoOpen({
-                              id: messageKey,
-                              sentAt: sentAtRaw || null,
-                              deliveredAt: deliveredAtRaw || null,
-                              viewedAt: viewedAtRaw || null,
-                              failedReason: failedReason || null,
-                            })
-                          }
-                          aria-label="Open message info"
+                          onClick={() => setCallInfoOpen(call)}
+                          className="flex w-full items-center gap-2.5 hover:opacity-80"
                         >
-                          <Info className="h-3.5 w-3.5" />
+                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isMissed ? 'bg-red-100' : isRinging ? 'bg-orange-100' : 'bg-green-100'}`}>
+                            {isMissed ? (
+                              <PhoneOff className={`h-4 w-4 ${iconColor}`} />
+                            ) : inbound ? (
+                              <PhoneIncoming className={`h-4 w-4 ${iconColor}`} />
+                            ) : (
+                              <PhoneOutgoing className={`h-4 w-4 ${iconColor}`} />
+                            )}
+                          </span>
+                          <span className="flex min-w-0 flex-1 flex-col items-start leading-tight">
+                            <span className={`text-[13px] font-semibold ${isMissed ? 'text-red-700' : 'text-[#334155]'}`}>{label}</span>
+                            <span className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                              <span>{formatMessageTime(call.started_at || call.created_at || null)}</span>
+                              {isAccepted && callDuration != null && callDuration > 0 ? (
+                                <>
+                                  <span className="text-gray-400">·</span>
+                                  <span className="font-semibold text-green-700">{formatDuration(callDuration)}</span>
+                                </>
+                              ) : isAccepted ? (
+                                <>
+                                  <span className="text-gray-400">·</span>
+                                  <span className="font-medium text-gray-500">Connected</span>
+                                </>
+                              ) : null}
+                            </span>
+                          </span>
                         </button>
-                      ) : null}
+                        {isAccepted && hasRecording && recordingUrl ? (
+                          <div className="mt-2 rounded-lg bg-[#f0f2f5] p-1.5">
+                            <audio controls preload="none" src={recordingUrl} className="h-8 w-full" />
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                  ) : null}
-                </div>
-              );
-            })}
-            {!historyLoading && messages.length === 0 ? (
-              <div className="mx-auto mt-3 w-fit rounded-md bg-white/70 px-2 py-1 text-[10px] text-[#54656f]">
-                No messages yet
-              </div>
-            ) : null}
+                  );
+                }
+
+                const msg = item.msg;
+                const outbound = String(msg.direction || '').toUpperCase() === 'OUTBOUND';
+                const isStatus = String(msg.direction || '').toUpperCase() === 'STATUS';
+                const actorName = String(msg?.meta?.actor_name || '').trim();
+                const deliveryStatus = normalizeDeliveryStatus(msg?.status);
+                const statusTimestamps =
+                  msg?.meta?.status_timestamps && typeof msg.meta.status_timestamps === 'object'
+                    ? msg.meta.status_timestamps
+                    : {};
+                const sentAtRaw = String(statusTimestamps?.sent_at || msg?.created_at || msg?.status_at || '').trim();
+                const deliveredAtRaw = String(
+                  statusTimestamps?.delivered_at ||
+                    ((deliveryStatus === 'DELIVERED' || deliveryStatus === 'VIEWED') ? msg?.status_at : '') ||
+                    ''
+                ).trim();
+                const viewedAtRaw = String(
+                  statusTimestamps?.viewed_at || (deliveryStatus === 'VIEWED' ? msg?.status_at : '') || ''
+                ).trim();
+                const failedReason =
+                  deliveryStatus === 'FAILED'
+                    ? String(
+                        msg?.error_message ||
+                          msg?.payload?.response?.error?.error_user_msg ||
+                          msg?.payload?.response?.error?.message ||
+                          ''
+                      ).trim()
+                    : '';
+                const isTemplateMessage = Boolean(msg?.template_name);
+                const currentTemplate = msg?.template_name
+                  ? templateMap.get(String(msg.template_name || '').trim().toLowerCase()) || null
+                  : null;
+                const templateText = currentTemplate
+                  ? fillTemplateBodyFromArray(currentTemplate, msg?.payload?.request?.template_params)
+                  : '';
+                const templateButtons = isTemplateMessage ? extractTemplateButtons(currentTemplate) : [];
+                const templateDisplayName =
+                  currentTemplate?.display_name || currentTemplate?.template_name || msg?.template_name || '';
+                const messageType = String(msg.message_type || '').trim().toUpperCase();
+
+                const extractInteractiveText = (): string => {
+                  const p = msg?.payload || {};
+                  const interactive = p?.interactive || p?.request?.interactive || p?.messages?.[0]?.interactive;
+                  if (interactive) {
+                    const itype = String(interactive.type || '').trim().toLowerCase();
+                    if (itype === 'button_reply') return String(interactive.button_reply?.title || interactive.button_reply?.id || '').trim();
+                    if (itype === 'list_reply') {
+                      const title = String(interactive.list_reply?.title || '').trim();
+                      const desc = String(interactive.list_reply?.description || '').trim();
+                      return desc ? `${title}\n${desc}` : title;
+                    }
+                    if (itype === 'nfm_reply') {
+                      const body = String(interactive.nfm_reply?.body || interactive.nfm_reply?.name || '').trim();
+                      const responseJson = interactive.nfm_reply?.response_json;
+                      if (responseJson) {
+                        try {
+                          const parsed = typeof responseJson === 'string' ? JSON.parse(responseJson) : responseJson;
+                          if (parsed?.flow_token?.includes('call_permission') || parsed?.screen === 'calling_permission') {
+                            return parsed?.submitted === true || parsed?.status === 'approved'
+                              ? 'Call permission approved'
+                              : 'Call permission response received';
+                          }
+                        } catch { /* ignore */ }
+                      }
+                      return body || 'Form reply';
+                    }
+                    if (itype === 'call_permission_request' || itype === 'calling_permission') return 'Call permission request';
+                    const headerText = String(interactive?.header?.text || '').trim();
+                    const bodyText = String(interactive?.body?.text || '').trim();
+                    const footerText = String(interactive?.footer?.text || '').trim();
+                    const combined = [headerText, bodyText, footerText].filter(Boolean).join('\n');
+                    if (combined) return combined;
+                  }
+                  const deepText =
+                    String(p?.text?.body || p?.body?.text || p?.text || '').trim() ||
+                    String(p?.request?.text?.body || p?.request?.body || '').trim() ||
+                    String(p?.messages?.[0]?.text?.body || p?.messages?.[0]?.body || '').trim();
+                  if (deepText && deepText !== '[object Object]') return deepText;
+                  if (p?.calls || p?.call_id || p?.request?.call_id) return 'Voice call event';
+                  return '';
+                };
+
+                const interactiveText = messageType === 'INTERACTIVE' ? extractInteractiveText() : '';
+                const isCallRelated =
+                  messageType === 'INTERACTIVE' &&
+                  !interactiveText &&
+                  (String(msg?.template_name || '').toLowerCase().includes('call') ||
+                    String(JSON.stringify(msg?.payload || '')).toLowerCase().includes('call_permission') ||
+                    String(JSON.stringify(msg?.payload || '')).toLowerCase().includes('calling'));
+                const callEventText = isCallRelated ? 'Call permission' : '';
+
+                const mediaLabel =
+                  messageType === 'IMAGE' ? '📷 Photo'
+                  : messageType === 'VIDEO' ? '🎥 Video'
+                  : messageType === 'AUDIO' ? '🎤 Audio'
+                  : messageType === 'DOCUMENT' ? '📄 Document'
+                  : messageType === 'LOCATION' ? '📍 Location'
+                  : messageType === 'STICKER' ? '🗂️ Sticker'
+                  : '';
+
+                const bubbleText =
+                  String(msg.text_body || '').trim() ||
+                  (isTemplateMessage ? templateText || `Template: ${msg.template_name}` : '') ||
+                  interactiveText ||
+                  callEventText ||
+                  String(msg.media_caption || '').trim() ||
+                  mediaLabel ||
+                  (messageType && messageType !== 'TEXT' && messageType !== 'INTERACTIVE' ? messageType : '—');
+                const callPermissionState = detectCallPermissionState({
+                  templateName: msg?.template_name,
+                  isOutbound: outbound,
+                  text: bubbleText,
+                });
+                const callPermissionBadge = callPermissionBadgeMeta(callPermissionState);
+                const timeLabel = formatMessageTime(msg?.status_at || msg?.updated_at || msg?.created_at);
+                const messageKey = String(msg?.id || msg?.provider_message_id || '');
+
+                const rawAudioId = msg.payload?.audio?.id || msg.payload?.messages?.[0]?.audio?.id || null;
+                const rawImageId = msg.payload?.messages?.[0]?.image?.id || msg.payload?.image?.id || null;
+                const rawVideoId = msg.payload?.messages?.[0]?.video?.id || msg.payload?.video?.id || null;
+                const rawDocId = msg.payload?.messages?.[0]?.document?.id || msg.payload?.document?.id || null;
+                const mediaUrl =
+                  msg.media_url ||
+                  msg.payload?.media_url ||
+                  msg.payload?.request?.media_url ||
+                  msg.payload?.image?.link ||
+                  msg.payload?.video?.link ||
+                  msg.payload?.audio?.link ||
+                  msg.payload?.document?.link ||
+                  msg.payload?.sticker?.link ||
+                  (rawAudioId ? `/api/whatsapp/media/${encodeURIComponent(rawAudioId)}` : null) ||
+                  (rawImageId ? `/api/whatsapp/media/${encodeURIComponent(rawImageId)}` : null) ||
+                  (rawVideoId ? `/api/whatsapp/media/${encodeURIComponent(rawVideoId)}` : null) ||
+                  (rawDocId ? `/api/whatsapp/media/${encodeURIComponent(rawDocId)}` : null) ||
+                  null;
+                const mediaMime = String(msg.media_mime_type || msg.payload?.media_mime_type || '').toLowerCase();
+
+                const loc = msg.payload?.location || msg.payload?.messages?.[0]?.location || msg.payload?.request?.location || null;
+                const hasLocation = loc && (loc.latitude || loc.longitude);
+                const locLat = Number(loc?.latitude || 0);
+                const locLng = Number(loc?.longitude || 0);
+                const locName = String(loc?.name || '').trim();
+                const locAddr = String(loc?.address || '').trim();
+                const locUrl = hasLocation ? loc?.url || `https://www.google.com/maps?q=${locLat},${locLng}` : null;
+
+                return (
+                  <div key={msg.id} className={`flex ${isStatus ? 'justify-center' : outbound ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[85%] rounded-xl px-3 py-2 text-sm shadow-sm ${
+                        isStatus
+                          ? 'bg-[#d9dfe3] text-[#54656f] text-center'
+                          : outbound
+                          ? 'bg-[#d9fdd3] text-gray-900'
+                          : 'bg-white text-gray-900'
+                      }`}
+                    >
+                      {outbound && actorName ? (
+                        <div className="mb-1 text-[11px] font-semibold text-[#0f4c3a]">Sent by: {actorName}</div>
+                      ) : null}
+                      {isTemplateMessage ? (
+                        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]">
+                          Template: {templateDisplayName}
+                        </div>
+                      ) : null}
+                      {callPermissionBadge ? (
+                        <div className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${callPermissionBadge.className}`}>
+                          {callPermissionBadge.label}
+                        </div>
+                      ) : null}
+                      {(() => {
+                        return (
+                          <>
+                            {hasLocation ? (
+                              <a href={locUrl!} target="_blank" rel="noopener noreferrer" className="mb-1 block overflow-hidden rounded-lg">
+                                <img
+                                  src={`https://maps.googleapis.com/maps/api/staticmap?center=${locLat},${locLng}&zoom=15&size=280x150&markers=color:red%7C${locLat},${locLng}&key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8`}
+                                  alt="Location"
+                                  className="h-[120px] w-full rounded-lg object-cover"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
+                                <div className="mt-1 text-[12px]">
+                                  {locName ? <div className="font-semibold text-[#111b21]">{locName}</div> : null}
+                                  {locAddr ? <div className="text-gray-500">{locAddr}</div> : (
+                                    <div className="text-gray-500">{locLat.toFixed(5)}, {locLng.toFixed(5)}</div>
+                                  )}
+                                </div>
+                              </a>
+                            ) : null}
+
+                            {mediaUrl && (messageType === 'IMAGE' || mediaMime.startsWith('image/')) ? (
+                              <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className="mb-1 block">
+                                <img src={mediaUrl} alt="Photo" className="max-h-[240px] w-full rounded-lg object-cover" loading="lazy" />
+                              </a>
+                            ) : null}
+
+                            {mediaUrl && (messageType === 'VIDEO' || mediaMime.startsWith('video/')) ? (
+                              <div className="mb-1">
+                                <video controls preload="metadata" src={mediaUrl} className="max-h-[240px] w-full rounded-lg" />
+                              </div>
+                            ) : null}
+
+                            {(messageType === 'AUDIO' || mediaMime.startsWith('audio/')) ? (
+                              <div className="mb-1 flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: outbound ? 'rgba(0,0,0,0.06)' : '#f0f2f5' }}>
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884]">
+                                  <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" /></svg>
+                                </span>
+                                {mediaUrl ? (
+                                  <audio controls preload="none" src={mediaUrl} className="h-8 min-w-0 flex-1" style={{ maxWidth: '220px' }} />
+                                ) : (
+                                  <span className="text-xs text-gray-500">Audio not available</span>
+                                )}
+                              </div>
+                            ) : null}
+
+                            {mediaUrl && (messageType === 'DOCUMENT' || mediaMime.startsWith('application/')) && !mediaMime.startsWith('audio/') && !mediaMime.startsWith('image/') && !mediaMime.startsWith('video/') ? (
+                              <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className="mb-1 flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-[12px] text-blue-600 hover:underline">
+                                <span className="text-lg">📄</span>
+                                <span className="truncate">{msg.payload?.document?.filename || msg.payload?.request?.filename || 'Document'}</span>
+                              </a>
+                            ) : null}
+
+                            {mediaUrl && messageType === 'STICKER' ? (
+                              <img src={mediaUrl} alt="Sticker" className="mb-1 h-[120px] w-[120px] object-contain" loading="lazy" />
+                            ) : null}
+
+                            {isCallRelated || callPermissionState ? (
+                              <div className="flex items-center gap-2 text-gray-600">
+                                <Phone className="h-4 w-4 flex-shrink-0" />
+                                <span className="whitespace-pre-wrap break-words">{bubbleText}</span>
+                              </div>
+                            ) : !hasLocation && messageType !== 'AUDIO' && !mediaMime.startsWith('audio/') && !(mediaUrl && (messageType === 'IMAGE' || messageType === 'STICKER') && !String(msg.media_caption || msg.text_body || '').trim()) ? (
+                              <div className="whitespace-pre-wrap break-words">{bubbleText}</div>
+                            ) : String(msg.media_caption || '').trim() ? (
+                              <div className="whitespace-pre-wrap break-words">{String(msg.media_caption || '').trim()}</div>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                      {isTemplateMessage && templateButtons.length > 0 ? (
+                        <div className="mt-2 space-y-1">
+                          {templateButtons.map((button, index) => (
+                            <div
+                              key={`${button.type}-${button.text}-${index}`}
+                              className="rounded-md border border-black/15 bg-white/60 px-2 py-1 text-[10px] font-medium text-[#111b21]"
+                            >
+                              {button.text}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {outbound && failedReason ? (
+                        <div className="mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700">
+                          Failed reason: {failedReason}
+                        </div>
+                      ) : null}
+                      <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-gray-500">
+                        <span>{timeLabel || msg.created_at}</span>
+                        {outbound && deliveryStatus === 'SENT' ? <Check className="h-3.5 w-3.5" /> : null}
+                        {outbound && deliveryStatus === 'DELIVERED' ? <CheckCheck className="h-3.5 w-3.5" /> : null}
+                        {outbound && deliveryStatus === 'VIEWED' ? (
+                          <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
+                        ) : null}
+                        {outbound && deliveryStatus === 'FAILED' ? (
+                          <span className="font-semibold text-[#d93025]">!</span>
+                        ) : null}
+                        {outbound ? (
+                          <button
+                            type="button"
+                            className="ml-1 inline-flex items-center text-[#667781] hover:text-[#2a3942]"
+                            onClick={() =>
+                              setMessageInfoOpen({
+                                id: messageKey,
+                                sentAt: sentAtRaw || null,
+                                deliveredAt: deliveredAtRaw || null,
+                                viewedAt: viewedAtRaw || null,
+                                failedReason: failedReason || null,
+                              })
+                            }
+                            aria-label="Open message info"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
           </div>
 
           {unreadCount > 0 ? (
