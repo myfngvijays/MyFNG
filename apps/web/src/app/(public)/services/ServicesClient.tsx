@@ -253,7 +253,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                       </div>
 
                       {/* Micro Highlights */}
-                      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6 sm:mb-8 p-3 sm:p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-100">
+                      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6 sm:mb-8 p-3 sm:p-3 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-100">
                         <div className="text-center">
                           <div className="flex justify-center mb-2">
                             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
