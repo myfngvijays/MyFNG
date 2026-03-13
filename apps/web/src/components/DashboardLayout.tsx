@@ -248,41 +248,33 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
   // Real-time WhatsApp unread badge for assigned chats
   useEffect(() => {
-    if (!whatsappFabEnabled || loading || !user?.id) return;
+    const profileId = userProfile?.id;
+    if (!whatsappFabEnabled || loading || !profileId) return;
     const supabase = createClient();
     let cancelled = false;
 
-    const normalizePhone = (p: string) => p.replace(/\D/g, '').replace(/^0+/, '');
+    const normPhone = (p: string) => {
+      const d = String(p || '').replace(/\D/g, '');
+      if (!d) return '';
+      return d.startsWith('91') ? d : `91${d}`;
+    };
 
-    // Fetch assigned phones and initial unread count
     const init = async () => {
       try {
         const { data: assignments } = await supabase
           .from('whatsapp_chat_assignments')
           .select('phone')
-          .contains('assigned_to_ids', [user.id]);
+          .contains('assigned_to_ids', [profileId]);
         if (cancelled) return;
-        const phones = new Set((assignments || []).map((a: any) => normalizePhone(a.phone)));
+        const phones = new Set((assignments || []).map((a: any) => normPhone(a.phone)));
         waAssignedPhonesRef.current = phones;
         if (phones.size === 0) { setWaUnreadCount(0); return; }
-
-        // Count inbound messages in last 8 hours as "unread" proxy
-        const since = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
-        const phoneArr = Array.from(phones);
-        const { count } = await supabase
-          .from('whatsapp_messages')
-          .select('id', { count: 'exact', head: true })
-          .eq('direction', 'inbound')
-          .in('sender_phone', phoneArr)
-          .gte('created_at', since);
-        if (!cancelled) setWaUnreadCount(count || 0);
       } catch {
         // ignore
       }
     };
     void init();
 
-    // Listen for new inbound messages in real-time
     const channel = supabase
       .channel('wa-unread-badge')
       .on(
@@ -290,8 +282,9 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
         (payload) => {
           const row: any = payload.new || {};
-          if (row.direction !== 'inbound') return;
-          const sender = normalizePhone(String(row.sender_phone || ''));
+          const dir = String(row.direction || '').toUpperCase();
+          if (dir !== 'INBOUND') return;
+          const sender = normPhone(String(row.sender_phone || ''));
           if (waAssignedPhonesRef.current.has(sender)) {
             setWaUnreadCount((prev) => prev + 1);
           }
@@ -303,7 +296,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [whatsappFabEnabled, loading, user?.id]);
+  }, [whatsappFabEnabled, loading, userProfile?.id]);
 
   const handleOpenWaList = useCallback(() => {
     setWaUnreadCount(0);
