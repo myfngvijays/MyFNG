@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Package, Search, ChevronRight, Loader2 } from 'lucide-react';
+import { Plus, Package, Search, ChevronRight, Loader2, ListChecks } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function PackageListPage() {
@@ -195,13 +195,26 @@ export default function PackageListPage() {
                   {pkg.description || 'No description provided.'}
                 </p>
 
-                <div className="flex justify-between items-end border-t border-gray-50 pt-4">
+                <div className="flex justify-between items-end border-t border-gray-50 pt-4 gap-3">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">HSN Code</p>
                     <p className="text-sm font-medium text-gray-900">{pkg.hsn_sac_code || '-'}</p>
                   </div>
-                  <div className="flex items-center text-brand-primary text-sm font-medium">
-                    Manage Items <ChevronRight className="w-4 h-4 ml-1" />
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/dashboard/super_admin/inventory/packages/${pkg.id}/checklist`);
+                      }}
+                      className="flex items-center text-blue-600 text-sm font-medium hover:text-blue-700"
+                    >
+                      <ListChecks className="w-4 h-4 mr-1" />
+                      Checklist
+                    </button>
+                    <div className="flex items-center text-brand-primary text-sm font-medium">
+                      Manage Items <ChevronRight className="w-4 h-4 ml-1" />
+                    </div>
                   </div>
                 </div>
               </div>

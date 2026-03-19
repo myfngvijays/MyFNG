@@ -3017,7 +3017,7 @@ export default function WhatsAppMobilePreviewModal({
             </div>
           ) : null}
 
-          <div className={`border-t border-gray-200 bg-white flex flex-col max-h-[50%] ${selectMode ? 'hidden' : ''}`}>
+          <div className={`border-t border-gray-200 bg-white flex flex-col max-h-[62%] ${selectMode ? 'hidden' : ''}`}>
             <div className="overflow-y-auto min-h-0 flex-1 px-3 pt-3 space-y-2">
             {isTemplateOnlyMode ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
@@ -3025,11 +3025,12 @@ export default function WhatsAppMobilePreviewModal({
               </div>
             ) : null}
             {activeType === 'template' ? (
-              <div className="mb-2 rounded-lg border border-[#d8dee3] bg-[#f8fafc] px-3 py-2">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[#475467]">
-                    Template mode
-                  </span>
+              <div className="mb-2 rounded-xl border border-[#d8dee3] bg-[#f8fafc] p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#475467]">Template mode</p>
+                    <p className="text-[10px] text-[#667781]">Select approved template and add params</p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => { setActiveType('text'); setShowAttachMenu(false); }}
@@ -3038,89 +3039,62 @@ export default function WhatsAppMobilePreviewModal({
                     Back to text
                   </button>
                 </div>
-                <div className="rounded-xl border border-[#d5dbe1] bg-white p-2 mb-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">Template library</p>
-                      <p className="text-[10px] text-[#667781]">Approved WhatsApp templates only</p>
-                    </div>
+
+                <div className="rounded-xl border border-[#d5dbe1] bg-white p-2">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">Template library</p>
                     <span className="rounded-full bg-[#e7f7ef] px-2 py-0.5 text-[10px] font-semibold text-[#128c7e]">
                       {filteredTemplateOptions.length}/{templateOptions.length}
                     </span>
                   </div>
                   <input
-                    className="mt-2 w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
                     value={templateSearch}
                     onChange={(e) => setTemplateSearch(e.target.value)}
-                    placeholder="Search by name or content..."
+                    placeholder="Search by template name..."
                   />
-                </div>
-                <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-xl border border-[#d5dbe1] bg-white p-1.5">
-                  {templatesLoading ? (
-                    <div className="px-2 py-3 text-[11px] text-[#667781]">Loading templates...</div>
-                  ) : null}
-                  {!templatesLoading && filteredTemplateOptions.length === 0 ? (
-                    <div className="px-2 py-3 text-[11px] text-[#667781]">No templates found</div>
-                  ) : null}
-                  {filteredTemplateOptions.map((row) => {
-                    const isSelected =
-                      row.template_name.trim().toLowerCase() === templateName.trim().toLowerCase();
-                    const previewBody = fillTemplateBody(row, templateParams);
-                    const previewImage = resolveTemplateImageUrl(row);
-                    return (
-                      <button
-                        key={row.id}
-                        type="button"
-                        onClick={() => setTemplateName(row.template_name)}
-                        className={`w-full overflow-hidden rounded-xl border text-left transition ${
-                          isSelected
-                            ? 'border-[#25D366] bg-[#f2fcf6] ring-1 ring-[#25D366]/40'
-                            : 'border-black/10 bg-white hover:border-[#b6c2cd] hover:bg-[#f7f9fb]'
-                        }`}
-                      >
-                        {previewImage ? (
-                          <img
-                            src={previewImage}
-                            alt={row.display_name || row.template_name}
-                            className="w-full h-auto max-h-28 object-cover"
-                          />
-                        ) : null}
-                        <div className="p-2.5">
+                  <div className="mt-2 max-h-44 space-y-1.5 overflow-y-auto rounded-lg border border-[#e5e9ee] bg-[#fbfcfd] p-1.5">
+                    {templatesLoading ? (
+                      <div className="px-2 py-3 text-[11px] text-[#667781]">Loading templates...</div>
+                    ) : null}
+                    {!templatesLoading && filteredTemplateOptions.length === 0 ? (
+                      <div className="px-2 py-3 text-[11px] text-[#667781]">No templates found</div>
+                    ) : null}
+                    {filteredTemplateOptions.map((row) => {
+                      const isSelected =
+                        row.template_name.trim().toLowerCase() === templateName.trim().toLowerCase();
+                      return (
+                        <button
+                          key={row.id}
+                          type="button"
+                          onClick={() => setTemplateName(row.template_name)}
+                          className={`w-full rounded-lg border px-2.5 py-2 text-left transition ${
+                            isSelected
+                              ? 'border-[#25D366] bg-[#f2fcf6] ring-1 ring-[#25D366]/40'
+                              : 'border-black/10 bg-white hover:border-[#b6c2cd] hover:bg-[#f7f9fb]'
+                          }`}
+                        >
                           <p className="text-[11px] font-semibold text-[#111b21]">
                             {row.display_name || row.template_name}
                           </p>
-                          <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[11px] leading-4 text-[#111b21]">
-                            {previewBody}
+                          <p className="mt-0.5 line-clamp-1 text-[10px] text-[#667781]">
+                            {row.language_code.toUpperCase()} • {String(row.category || 'TEMPLATE').toUpperCase()}
                           </p>
-                          <div className="mt-2 flex items-center justify-between text-[10px] text-[#667781]">
-                            <span>
-                              {row.language_code.toUpperCase()} • {String(row.category || 'TEMPLATE').toUpperCase()}
-                            </span>
-                            {isSelected ? (
-                              <span className="rounded-full bg-[#dcf8e8] px-1.5 py-0.5 font-semibold text-[#128c7e]">
-                                Selected
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+
                 {templateName.trim() ? (
                   <div className="mt-2 rounded-xl border border-[#bdebd2] bg-[#eafaf1] px-2.5 py-2 text-[10px] text-[#128c7e]">
                     <p className="font-semibold">Selected: {selectedTemplate?.display_name || templateName}</p>
-                    <p className="mt-1 text-[#1b6f5f]">
-                      {selectedTemplate?.language_code?.toUpperCase() || 'EN'} •{' '}
-                      {String(selectedTemplate?.category || 'TEMPLATE').toUpperCase()}
-                      {selectedTemplate?.variable_keys?.length
-                        ? ` • ${selectedTemplate.variable_keys.length} param${
-                            selectedTemplate.variable_keys.length > 1 ? 's' : ''
-                          }`
-                        : ''}
+                    <p className="mt-1 text-[#1b6f5f] line-clamp-2 whitespace-pre-wrap">
+                      {selectedTemplate ? fillTemplateBody(selectedTemplate, templateParams) : 'Template selected'}
                     </p>
                   </div>
                 ) : null}
+
                 <div className="mt-2 rounded-xl border border-[#d5dbe1] bg-white p-2">
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
                     Template params
@@ -3132,7 +3106,7 @@ export default function WhatsAppMobilePreviewModal({
                     placeholder="Comma separated values (e.g. Rahul, 20 min)"
                   />
                   <p className="mt-1 text-[10px] text-[#667781]">
-                    Delivery depends on approved template and WhatsApp policy checks.
+                    Tip: params order should match approved template variables.
                   </p>
                 </div>
               </div>

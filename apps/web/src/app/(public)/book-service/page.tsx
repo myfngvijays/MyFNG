@@ -6,7 +6,6 @@ import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { createClient } from '@/lib/supabase/client';
 import { loadRazorpayScript } from '@/lib/services/paymentService';
-import { getFallbackChecklistTemplate } from '@/lib/services/customerServiceChecklist';
 import { formatDateDMY, formatDateTime } from "@/lib/utils";
 import {
   MapPin, Car, User, Phone, Loader2, Search, CheckCircle, 
@@ -1833,12 +1832,11 @@ export default function BookServicePage() {
         items: db.items as any[],
       };
     }
-    const fallback = getFallbackChecklistTemplate(service?.name || '');
     return {
-      source: 'fallback' as const,
-      title: fallback?.title || 'Checklist',
-      points: typeof fallback?.points === 'number' ? fallback.points : undefined,
-      items: (fallback?.items || []) as any[],
+      source: 'missing' as const,
+      title: 'Checklist',
+      points: undefined,
+      items: [] as any[],
     };
   };
 
@@ -2566,10 +2564,10 @@ export default function BookServicePage() {
                                         {!showReferencePlanUi && (
                                           <div className="flex items-center justify-between mb-2">
                                             <div className="text-xs font-bold text-gray-700">What you get</div>
-                                            {checklist.source === 'fallback' ? (
-                                              <span className="text-[10px] font-bold text-gray-500">Standard</span>
-                                            ) : (
+                                            {checklist.source === 'db' ? (
                                               <span className="text-[10px] font-bold text-green-700">Official</span>
+                                            ) : (
+                                              <span className="text-[10px] font-bold text-orange-700">Template missing</span>
                                             )}
                                           </div>
                                         )}
@@ -2712,10 +2710,10 @@ export default function BookServicePage() {
                                         <div className="mt-4">
                                           <div className="flex items-center justify-between mb-2">
                                             <div className="text-xs font-bold text-gray-700">What you get</div>
-                                            {checklist.source === 'fallback' ? (
-                                              <span className="text-[10px] font-bold text-gray-500">Standard</span>
-                                            ) : (
+                                            {checklist.source === 'db' ? (
                                               <span className="text-[10px] font-bold text-green-700">Official</span>
+                                            ) : (
+                                              <span className="text-[10px] font-bold text-orange-700">Template missing</span>
                                             )}
                                           </div>
                                           <div className="space-y-2">
