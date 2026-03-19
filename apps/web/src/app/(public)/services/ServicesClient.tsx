@@ -238,7 +238,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                     <div className="p-4 sm:p-8">
                       {/* Big Icon + Title */}
                       <div className="mb-4 sm:mb-6">
-                        <div className="flex items-center justify-center gap-3 sm:gap-6 text-center">
+                        <div className="flex items-center justify-left gap-3 sm:gap-6 text-center">
                           <div className="flex-shrink-0 w-14 h-14 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-xl">
                           {(() => {
                             const IconComponent = selectedService.icon;
@@ -253,7 +253,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                       </div>
 
                       {/* Micro Highlights */}
-                      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6 sm:mb-8 p-3 sm:p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-100">
+                      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6 sm:mb-8 p-3 sm:p-3 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-100">
                         <div className="text-center">
                           <div className="flex justify-center mb-2">
                             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
@@ -261,7 +261,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                             </div>
                           </div>
                           <p className="text-[10px] text-gray-600 uppercase tracking-wide mb-1">Starting From</p>
-                          <p className="text-base sm:text-xl font-bold text-gray-900 leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-0">{getServiceDisplayMeta(selectedService).priceFrom}</p>
+                          <p className="text-base sm:text-base font-bold text-gray-900 leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-0">{getServiceDisplayMeta(selectedService).priceFrom}</p>
                         </div>
 
                         <div className="text-center">
@@ -271,7 +271,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                             </div>
                           </div>
                           <p className="text-[10px] text-gray-600 uppercase tracking-wide mb-1">Avg. Time</p>
-                          <p className="text-base sm:text-xl font-bold text-gray-900 leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-0">{selectedService.duration}</p>
+                          <p className="text-base sm:text-base font-bold text-gray-900 leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-0">{selectedService.duration}</p>
                         </div>
 
                         <div className="text-center">
@@ -281,7 +281,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                             </div>
                           </div>
                           <p className="text-[10px] text-gray-600 uppercase tracking-wide mb-1">Warranty</p>
-                          <p className="text-base sm:text-xl font-bold text-gray-900 leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-0">{getServiceDisplayMeta(selectedService).warranty}</p>
+                          <p className="text-base sm:text-base font-bold text-gray-900 leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-0">{getServiceDisplayMeta(selectedService).warranty}</p>
                         </div>
                       </div>
 

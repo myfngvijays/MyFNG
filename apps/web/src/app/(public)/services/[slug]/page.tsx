@@ -140,25 +140,6 @@ export default function ServiceDetailPage({ params }: { params: { slug: string }
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-12 sm:py-16 md:py-20 bg-gradient-to-br from-brand-primary to-brand-secondary text-white">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6 text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-3 sm:mb-4">Ready to Book {service.title}?</h2>
-          <p className="text-base sm:text-lg md:text-xl text-blue-100 mb-6 sm:mb-7 md:mb-8 max-w-2xl mx-auto px-4">
-            Get transparent pricing, expert service, and AI-powered booking. Book now and experience the MyFNG difference.
-          </p>
-          <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-4">
-            <Link href="/book-service" className="btn btn-white text-sm sm:text-base md:text-lg px-6 sm:px-7 md:px-8 py-2.5 sm:py-3 md:py-4">
-              Book Service Now
-              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-1.5 sm:ml-2" />
-            </Link>
-            <Link href="/contact" className="btn btn-outline-white text-sm sm:text-base md:text-lg px-6 sm:px-7 md:px-8 py-2.5 sm:py-3 md:py-4">
-              Contact Us
-            </Link>
-          </div>
-        </div>
-      </section>
-
       <Footer />
     </div>
   );

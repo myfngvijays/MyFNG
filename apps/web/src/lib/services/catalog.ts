@@ -57,7 +57,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Engine Oil Replacement',
       'Oil Filter & Air Filter Replacement',
       'Brake, Coolant & Fluid Top-up',
-      '40-Point Comprehensive Inspection',
+      'Complete 60-Point Inspection',
       'Battery Health Check',
       'Tire Pressure & Condition Check',
       'Digital Health Report with AI Analysis',
@@ -220,7 +220,7 @@ export const DEFAULT_SERVICES: Service[] = [
     icon: Sparkles,
     description: 'Deep clean + protection for comfort, hygiene, and a showroom-like finish.',
     longDescription:
-      'A clean car isn’t just about looks—it’s about comfort, hygiene, and safety. MyFNG Car Detailing Service deep-cleans, restores, and protects your car’s interior and exterior, helping maintain visibility, air quality, and long-term value. We use professional-grade products and a standardised detailing process to give your car a fresh, showroom-like finish.',
+      'A clean car isn’t just about looks - it’s about comfort, hygiene, and safety. MyFNG Car Detailing Service deep-cleans, restores, and protects your car’s interior and exterior, helping maintain visibility, air quality, and long-term value. We use professional-grade products and a standardised detailing process to give your car a fresh, showroom-like finish.',
     features: [
       'Interior Deep Cleaning',
       'Exterior Polish & Waxing',
@@ -244,7 +244,7 @@ export const DEFAULT_SERVICES: Service[] = [
     icon: Paintbrush,
     description: 'Dent repair + paint matching to restore body strength and resale value.',
     longDescription:
-      'Dents and scratches don’t just spoil your car’s look—they can weaken body panels and lead to rust over time. MyFNG Car Denting & Painting service restores your car’s body strength, paint finish, and resale value using professional repair and paint-matching techniques. We ensure precise dent removal and a smooth, factory-like paint finish through a standardised repair process.',
+      'Dents and scratches don’t just spoil your car’s look - they can weaken body panels and lead to rust over time. MyFNG Car Denting & Painting service restores your car’s body strength, paint finish, and resale value using professional repair and paint-matching techniques. We ensure precise dent removal and a smooth, factory-like paint finish through a standardised repair process.',
     features: [
       'Dent Removal & Repair',
       'Color Matching Technology',

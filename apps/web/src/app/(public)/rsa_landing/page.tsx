@@ -213,7 +213,7 @@ export default function RsaLandingPage() {
     .rsa-landing .hero-actions{display:none}
     .rsa-landing .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
     .rsa-landing .stat{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);border-radius:14px;padding:12px}
-    .rsa-landing .stat strong{display:block;font-size:29px;color:#ffffff;line-height:1.2}
+    .rsa-landing .stat strong{display:block;font-size:22px;color:#ffffff;line-height:1.2}
     .rsa-landing .stat span{color:rgba(255,255,255,.68);font-size:12px}
     .rsa-landing .card{border:1px solid rgba(255,255,255,.11);background: linear-gradient(180deg,#11192f 0%,#0f1629 100%);border-radius: 20px;box-shadow: var(--shadow);padding:16px}
     .rsa-landing .card h3{margin:0 0 4px;font-size:24px;color:#ffffff}
@@ -391,7 +391,7 @@ export default function RsaLandingPage() {
                     <div className="stat"><strong>24×7</strong><span>Emergency Assistance</span></div>
                     <div className="stat"><strong>30 Min</strong><span>Avg Dispatch Time</span></div>
                     <div className="stat"><strong>Live GPS</strong><span>Track Technician</span></div>
-                    <div className="stat"><strong>30000+</strong><span>Rescues Done</span></div>
+                    <div className="stat"><strong>32000+</strong><span>Rescues Done</span></div>
                   </div>
                 </form>
               </aside>
