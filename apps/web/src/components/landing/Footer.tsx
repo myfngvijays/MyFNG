@@ -128,12 +128,13 @@ export default function Footer() {
               <ul className={listClass('quick-links')}>
                 {[
                   { href: '/about', label: 'About Us' },
-                  { href: '/blogs', label: 'Blog' },
+                  { href: '/blogs', label: 'Our Blogs' },
                   { href: '/contact', label: 'Contact Us' },
                   { href: '/privacy-policy', label: 'Privacy Policy' },
                   { href: '/terms-and-conditions', label: 'Terms & Conditions' },
                   { href: '/workshops', label: 'Workshop Locator' },
                   { href: '/services', label: 'Offers' },
+                  { href: '/faqs', label: 'FAQs' },
                   { href: '/roadside-assistance', label: 'Roadside Assistance' },
                 ].map((item) => (
                   <li key={item.href} className="mb-0">
