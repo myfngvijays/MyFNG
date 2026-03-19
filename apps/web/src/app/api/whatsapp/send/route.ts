@@ -86,30 +86,30 @@ async function parseIncomingBody(request: NextRequest): Promise<ParsedSendBody> 
   return json || {};
 }
 
-async function uploadMediaToWhatsApp(file: File): Promise<{ mediaId: string; mimeType: string }> {
-  if (!WHATSAPP_PHONE_NUMBER_ID) throw new Error('WHATSAPP_PHONE_NUMBER_ID is not configured');
-  if (!WHATSAPP_ACCESS_TOKEN) throw new Error('WHATSAPP_ACCESS_TOKEN is not configured');
+async function uploadMediaToSupabase(file: File): Promise<{ publicUrl: string; mimeType: string }> {
+  const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
 
-  const formData = new FormData();
-  formData.append('messaging_product', 'whatsapp');
-  formData.append('file', file, file.name || `upload-${Date.now()}`);
+  const mimeType = file.type || 'application/octet-stream';
+  const ext = (file.name || '').split('.').pop() || 'bin';
+  const filePath = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const bucket = 'whatsapp-media';
 
-  const response = await fetch(`${WHATSAPP_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/media`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-    },
-    body: formData,
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  const { error: uploadError } = await supabaseAdmin.storage.from(bucket).upload(filePath, buffer, {
+    contentType: mimeType,
+    upsert: false,
   });
+  if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const msg = String(payload?.error?.message || payload?.error?.error_user_msg || 'Media upload failed');
-    throw new Error(msg);
-  }
-  const mediaId = String(payload?.id || '').trim();
-  if (!mediaId) throw new Error('Media upload did not return a media ID');
-  return { mediaId, mimeType: file.type || 'application/octet-stream' };
+  const { data: publicUrlData } = supabaseAdmin.storage.from(bucket).getPublicUrl(filePath);
+  const publicUrl = publicUrlData?.publicUrl;
+  if (!publicUrl) throw new Error('Could not generate public URL for uploaded media');
+
+  console.log('[WA Media] Uploaded to storage:', { filePath, mimeType, size: file.size, publicUrl });
+  return { publicUrl, mimeType };
 }
 
 export async function POST(request: NextRequest) {
@@ -215,11 +215,13 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      if (!mediaId && uploadFile) {
-        const uploaded = await uploadMediaToWhatsApp(uploadFile);
-        mediaId = uploaded.mediaId;
+      let storagePublicUrl = '';
+      if (!mediaUrl && !mediaId && uploadFile) {
+        const uploaded = await uploadMediaToSupabase(uploadFile);
+        storagePublicUrl = uploaded.publicUrl;
         mediaMimeTypeForLog = uploaded.mimeType || null;
       }
+      const effectiveMediaUrl = mediaUrl || storagePublicUrl;
 
       if (!mediaMimeTypeForLog) {
         mediaMimeTypeForLog =
@@ -234,25 +236,43 @@ export async function POST(request: NextRequest) {
             : 'application/octet-stream');
       }
 
-      const mediaUrlForSend = mediaUrl || (mediaId ? `/api/whatsapp/media/${encodeURIComponent(mediaId)}` : '');
-      messageForLog = caption || `[${mediaType}] ${mediaUrlForSend || mediaId}`;
+      const mediaUrlForLog = effectiveMediaUrl || (mediaId ? `/api/whatsapp/media/${encodeURIComponent(mediaId)}` : '');
+      messageForLog = caption || `[${mediaType}] ${mediaUrlForLog || mediaId}`;
       requestPayload = {
         message_type: 'media',
         media_type: mediaType,
-        media_url: mediaUrl || null,
+        media_url: effectiveMediaUrl || null,
         media_id: mediaId || null,
         media_mime_type: mediaMimeTypeForLog,
         caption: caption || null,
         filename: filename || null,
       };
+      const sendUrl = effectiveMediaUrl || undefined;
+      const sendId = mediaId || undefined;
+      if (sendUrl && !sendUrl.startsWith('https://')) {
+        return NextResponse.json(
+          { error: 'Media URL must be a publicly accessible HTTPS URL, got: ' + sendUrl.slice(0, 60) },
+          { status: 400 }
+        );
+      }
+      if (!sendUrl && !sendId) {
+        return NextResponse.json(
+          { error: 'No media URL or media ID available. Storage upload may have failed.' },
+          { status: 500 }
+        );
+      }
+      console.log('[WA Media Send] Sending:', { mediaType, mediaUrl: sendUrl, mediaId: sendId });
       result = await sendMediaMessage({
         phoneNumber: recipientPhone,
         mediaType: mediaType as 'image' | 'document' | 'video' | 'audio',
-        mediaUrl: mediaUrl || undefined,
-        mediaId: mediaId || undefined,
+        mediaUrl: sendUrl,
+        mediaId: sendId,
         caption,
         filename,
       });
+      if (!result.success) {
+        console.error('[WA Media Send] Failed:', { error: result.error, raw: result.raw });
+      }
     } else {
       const templateName = String(body?.template_name || '').trim();
       const languageCode = String(body?.language || 'en').trim() || 'en';
@@ -284,9 +304,9 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString();
     const templateNameForLog = messageType === 'template' ? String(body?.template_name || '').trim() : null;
-    const mediaUrlForLog =
+    const mediaUrlForArchive =
       messageType === 'media'
-        ? String(body?.media_url || '').trim() ||
+        ? String(requestPayload?.media_url || '').trim() ||
           (String(requestPayload?.media_id || '').trim()
             ? `/api/whatsapp/media/${encodeURIComponent(String(requestPayload.media_id).trim())}`
             : null)
@@ -302,7 +322,7 @@ export async function POST(request: NextRequest) {
         provider_message_id: result.messageId || null,
         message_type: messageType.toUpperCase(),
         template_name: templateNameForLog,
-        media_url: mediaUrlForLog,
+        media_url: mediaUrlForArchive,
         shared_at: now,
         error_message: result.success ? null : result.error || 'Unknown WhatsApp error',
       });
@@ -328,7 +348,7 @@ export async function POST(request: NextRequest) {
       template_name: templateNameForLog,
       template_language: messageType === 'template' ? String(body?.language || 'en') : null,
       text_body: messageType === 'text' ? messageForLog : null,
-      media_url: mediaUrlForLog,
+      media_url: mediaUrlForArchive,
       media_mime_type: messageType === 'media' ? mediaMimeTypeForLog : null,
       media_caption: messageType === 'media' ? String(body?.caption || '') || null : null,
       status: result.success ? 'SENT' : 'FAILED',

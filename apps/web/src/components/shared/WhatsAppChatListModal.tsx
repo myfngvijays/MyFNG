@@ -8,6 +8,7 @@ type ChatRow = {
   last_message_preview: string;
   last_message_at: string | null;
   last_status: string | null;
+  last_direction: string | null;
 };
 
 type Props = {
@@ -41,12 +42,23 @@ function formatTime(value?: string | null): string {
   });
 }
 
+type FilterTab = 'all' | 'unread' | 'read';
+
 export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, title }: Props) {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<ChatRow[]>([]);
+  const [filter, setFilter] = useState<FilterTab>('all');
 
   const debouncedSearch = useMemo(() => search.trim(), [search]);
+
+  const filteredRows = useMemo(() => {
+    if (filter === 'all') return rows;
+    if (filter === 'unread') return rows.filter((r) => (r.last_direction || '').toUpperCase() === 'INBOUND');
+    return rows.filter((r) => (r.last_direction || '').toUpperCase() !== 'INBOUND');
+  }, [rows, filter]);
+
+  const unreadCount = useMemo(() => rows.filter((r) => (r.last_direction || '').toUpperCase() === 'INBOUND').length, [rows]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -91,7 +103,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
           </button>
         </div>
 
-        <div className="border-b border-black/10 p-3">
+        <div className="border-b border-black/10 p-3 space-y-2">
           <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2">
             <Search className="h-4 w-4 text-gray-500" />
             <input
@@ -100,6 +112,27 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
               placeholder="Search by phone..."
               className="w-full bg-transparent text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
             />
+          </div>
+          <div className="flex gap-1.5">
+            {([['all', 'All'], ['unread', 'Unread'], ['read', 'Read']] as const).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setFilter(key)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  filter === key
+                    ? 'bg-[#075e54] text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {label}
+                {key === 'unread' && unreadCount > 0 && (
+                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[#25D366] px-1 text-[10px] font-bold text-white">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -113,25 +146,35 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
             <div className="px-4 py-10 text-center text-sm text-gray-500">
               No assigned chats found for this employee.
             </div>
+          ) : filteredRows.length === 0 && filter !== 'all' ? (
+            <div className="px-4 py-10 text-center text-sm text-gray-500">
+              No {filter} chats.
+            </div>
           ) : (
             <>
-              {rows.map((chat) => (
-                <button
-                  key={chat.phone}
-                  type="button"
-                  className="w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50"
-                  onClick={() => onOpenChat(chat.phone, chat.last_message_preview)}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-gray-900">{formatPhone(chat.phone)}</p>
-                      <p className="mt-0.5 truncate text-xs text-gray-600">{chat.last_message_preview || 'No preview'}</p>
+              {filteredRows.map((chat) => {
+                const isUnread = (chat.last_direction || '').toUpperCase() === 'INBOUND';
+                return (
+                  <button
+                    key={chat.phone}
+                    type="button"
+                    className={`w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50 ${isUnread ? 'bg-[#25D366]/[0.04]' : ''}`}
+                    onClick={() => onOpenChat(chat.phone, chat.last_message_preview)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2 min-w-0">
+                        {isUnread && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#25D366]" />}
+                        <div className="min-w-0">
+                          <p className={`truncate text-sm ${isUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'}`}>{formatPhone(chat.phone)}</p>
+                          <p className={`mt-0.5 truncate text-xs ${isUnread ? 'font-medium text-gray-800' : 'text-gray-600'}`}>{chat.last_message_preview || 'No preview'}</p>
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-[10px] text-gray-500">{formatTime(chat.last_message_at)}</span>
                     </div>
-                    <span className="shrink-0 text-[10px] text-gray-500">{formatTime(chat.last_message_at)}</span>
-                  </div>
-                </button>
-              ))}
-              {debouncedSearch && debouncedSearch.replace(/\D/g, '').length >= 10 && !rows.some((r) => r.phone.includes(debouncedSearch.replace(/\D/g, ''))) ? (
+                  </button>
+                );
+              })}
+              {debouncedSearch && debouncedSearch.replace(/\D/g, '').length >= 10 && !filteredRows.some((r) => r.phone.includes(debouncedSearch.replace(/\D/g, ''))) ? (
                 <button
                   type="button"
                   className="w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-green-50"
@@ -156,7 +199,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                   </div>
                 </button>
               ) : null}
-              {rows.length === 0 && debouncedSearch && debouncedSearch.replace(/\D/g, '').length < 10 ? (
+              {filteredRows.length === 0 && debouncedSearch && debouncedSearch.replace(/\D/g, '').length < 10 ? (
                 <div className="px-4 py-10 text-center text-sm text-gray-500">
                   No chats found. Enter a full phone number to start a new chat.
                 </div>

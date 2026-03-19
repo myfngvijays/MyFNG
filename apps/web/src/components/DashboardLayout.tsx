@@ -1045,6 +1045,10 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             title="WhatsApp Chat"
             previewMessage={waPreviewMessage}
             onClose={() => setWaPreviewOpen(false)}
+            onBack={() => {
+              setWaPreviewOpen(false);
+              setWaListOpen(true);
+            }}
           />
         </>
       ) : null}

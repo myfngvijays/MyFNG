@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowLeft,
   Camera,
   Check,
   CheckCheck,
@@ -37,6 +38,7 @@ interface WhatsAppMobilePreviewModalProps {
   previewMessage?: string;
   leadId?: string | null;
   onClose: () => void;
+  onBack?: () => void;
 }
 
 type TemplateOption = {
@@ -497,6 +499,7 @@ export default function WhatsAppMobilePreviewModal({
   previewMessage,
   leadId,
   onClose,
+  onBack,
 }: WhatsAppMobilePreviewModalProps) {
   const waPhone = normalizePhone(phoneNumber);
 
@@ -2093,14 +2096,20 @@ export default function WhatsAppMobilePreviewModal({
     }
     if (mediaUrl && ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].includes(msgType)) {
       const mediaTypeMap: Record<string, string> = { IMAGE: 'image', VIDEO: 'video', AUDIO: 'audio', DOCUMENT: 'document' };
-      return {
+      const proxyMatch = typeof mediaUrl === 'string' && mediaUrl.match(/\/api\/whatsapp\/media\/([^/?#]+)/);
+      const mediaPayload: Record<string, unknown> = {
         recipient_phone: targetPhone,
         message_type: 'media',
         media_type: mediaTypeMap[msgType] || 'document',
-        media_url: mediaUrl.startsWith('/') ? `${window.location.origin}${mediaUrl}` : mediaUrl,
         caption: mediaCaption || undefined,
         filename: msg.payload?.document?.filename || undefined,
       };
+      if (proxyMatch) {
+        mediaPayload.media_id = proxyMatch[1];
+      } else {
+        mediaPayload.media_url = mediaUrl;
+      }
+      return mediaPayload;
     }
     const fwdText = textBody || mediaCaption;
     if (!fwdText) return null;
@@ -2162,6 +2171,16 @@ export default function WhatsAppMobilePreviewModal({
           </div>
           <div className="bg-[#005c4b] text-white px-3.5 py-3 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-2 min-w-0">
+              {onBack && (
+                <button
+                  type="button"
+                  className="rounded-md p-1 hover:bg-white/10 shrink-0 -ml-1"
+                  onClick={onBack}
+                  aria-label="Back to chat list"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              )}
               <div className="h-9 w-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                 <MessageCircle className="h-3.5 w-3.5" />
               </div>
@@ -3179,7 +3198,7 @@ export default function WhatsAppMobilePreviewModal({
                       type="button"
                       onClick={() => {
                         setActiveType('media');
-                        setMediaType('image');
+                        setMediaType('video');
                         setShowAttachMenu(false);
                         requestAnimationFrame(() => mediaFileInputRef.current?.click());
                       }}
@@ -3191,7 +3210,7 @@ export default function WhatsAppMobilePreviewModal({
                       type="button"
                       onClick={() => {
                         setActiveType('media');
-                        setMediaType('image');
+                        setMediaType('audio');
                         setShowAttachMenu(false);
                         requestAnimationFrame(() => mediaFileInputRef.current?.click());
                       }}
@@ -3258,11 +3277,11 @@ export default function WhatsAppMobilePreviewModal({
                 className="hidden"
                 accept={
                   mediaType === 'image'
-                    ? 'image/*,video/*'
-                    : mediaType === 'audio'
-                    ? 'audio/*'
+                    ? 'image/*'
                     : mediaType === 'video'
                     ? 'video/*'
+                    : mediaType === 'audio'
+                    ? 'audio/*'
                     : '.pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx,application/*'
                 }
                 onChange={(e) => {
