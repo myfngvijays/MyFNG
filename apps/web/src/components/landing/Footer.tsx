@@ -80,7 +80,7 @@ export default function Footer() {
       <section
         className="py-[10px] px-5 pb-[35px] text-center text-white relative overflow-hidden"
         style={{
-          background: 'linear-gradient(135deg, #000000 0%, #0a0f2c 40%, #0f1e5a 100%)',
+          background: '#023d95',
           backgroundSize: '400% 400%',
           animation: 'gradientMove 12s ease infinite',
         }}
@@ -114,7 +114,7 @@ export default function Footer() {
       </section>
 
       {/* FOOTER */}
-      <footer className="text-[#d6d6d6] pt-[10px]" style={{ background: '#023d95' }}>
+      <footer className="text-[#d6d6d6] pt-[10px]" style={{ background: '#0088e8' }}>
         <div className="w-[92%] max-w-[1500px] mx-auto">
 
           {/* TOP GRID */}
