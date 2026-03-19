@@ -726,7 +726,10 @@ export default function TelecallerRSAPage() {
       params.set('email', customerEmail);
     }
 
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    const envBaseUrl = String(process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/$/, '');
+    const baseUrl =
+      envBaseUrl ||
+      (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
     const link = `${baseUrl}/pay-now?${params.toString()}`;
     try {
       const res = await fetch('/api/telecaller/direct-pay-links', {

@@ -492,6 +492,13 @@ function renderLinkedText(text: string) {
   );
 }
 
+function createPaymentLinkRef() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `ref_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export default function WhatsAppMobilePreviewModal({
   isOpen,
   phoneNumber,
@@ -505,7 +512,7 @@ export default function WhatsAppMobilePreviewModal({
 
   const [historyLoading, setHistoryLoading] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
-  const [activeType, setActiveType] = useState<'text' | 'media' | 'template'>('text');
+  const [activeType, setActiveType] = useState<'text' | 'media' | 'template' | 'payment'>('text');
   const [textMessage, setTextMessage] = useState('');
   const [mediaType, setMediaType] = useState<'image' | 'video' | 'document' | 'audio'>('document');
   const [selectedMediaFile, setSelectedMediaFile] = useState<File | null>(null);
@@ -515,6 +522,9 @@ export default function WhatsAppMobilePreviewModal({
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentGenerating, setPaymentGenerating] = useState(false);
   const [assignmentLoading, setAssignmentLoading] = useState(false);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [assigneeOptions, setAssigneeOptions] = useState<ChatAssigneeOption[]>([]);
@@ -1936,7 +1946,7 @@ export default function WhatsAppMobilePreviewModal({
     let payload: Record<string, unknown> = {
       recipient_phone: waPhone,
       lead_id: leadId || undefined,
-      message_type: activeType,
+      message_type: activeType === 'payment' ? 'text' : activeType,
     };
 
     if (activeType === 'text') {
@@ -1958,7 +1968,7 @@ export default function WhatsAppMobilePreviewModal({
         filename: selectedMediaFile?.name || undefined,
         media_mime_type: selectedMediaFile?.type || undefined,
       };
-    } else {
+    } else if (activeType === 'template') {
       if (!templateName.trim()) {
         toast.error('Template name required');
         return;
@@ -1972,6 +1982,70 @@ export default function WhatsAppMobilePreviewModal({
           .map((v) => v.trim())
           .filter(Boolean),
       };
+    } else if (activeType === 'payment') {
+      const amount = Number(paymentAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        toast.error('Enter valid payment amount');
+        return;
+      }
+
+      const customerName = String(phoneNumber || waPhone || '').trim();
+      const customerPhone = String(waPhone || '').trim();
+      if (!customerName || !customerPhone) {
+        toast.error('Customer details missing for payment link');
+        return;
+      }
+
+      setPaymentGenerating(true);
+      try {
+        const params = new URLSearchParams();
+        params.set('amount', String(amount));
+        params.set('name', customerName);
+        params.set('phone', customerPhone);
+        const linkRef = createPaymentLinkRef();
+        params.set('ref', linkRef);
+
+        const envBaseUrl = String(process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/$/, '');
+        const baseUrl =
+          envBaseUrl ||
+          (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+        const link = `${baseUrl}/pay-now?${params.toString()}`;
+
+        const linkRes = await fetch('/api/telecaller/direct-pay-links', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ref: linkRef,
+            link,
+            amount,
+            customer_name: customerName,
+            customer_phone: customerPhone,
+            customer_email: '',
+          }),
+        });
+        const linkData = await linkRes.json().catch(() => ({}));
+        if (!linkRes.ok || !linkData?.success) {
+          toast.error(linkData?.error || 'Failed to generate payment link');
+          return;
+        }
+
+        const displayAmount = amount % 1 === 0 ? String(amount) : amount.toFixed(2);
+        const noteText = paymentNote.trim();
+        const text = noteText
+          ? `${noteText}\nPayment link for INR ${displayAmount}: ${link}`
+          : `Payment link for INR ${displayAmount}: ${link}`;
+
+        payload = {
+          ...payload,
+          message_type: 'text',
+          text,
+        };
+      } finally {
+        setPaymentGenerating(false);
+      }
+    } else {
+      toast.error('Unsupported message type');
+      return;
     }
 
     setSending(true);
@@ -2012,6 +2086,8 @@ export default function WhatsAppMobilePreviewModal({
       setTextMessage('');
       setCaption('');
       setSelectedMediaFile(null);
+      setPaymentAmount('');
+      setPaymentNote('');
       setShowAttachMenu(false);
       setActiveType('text');
       await refreshConversation();
@@ -3130,6 +3206,60 @@ export default function WhatsAppMobilePreviewModal({
                 </div>
               </div>
             ) : null}
+            {activeType === 'payment' ? (
+              <div className="mb-2 rounded-xl border border-[#d8dee3] bg-[#f8fafc] p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#475467]">Collect payment</p>
+                    <p className="text-[10px] text-[#667781]">Enter amount and send payment link in chat</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveType('text');
+                      setShowAttachMenu(false);
+                    }}
+                    className="text-[11px] font-semibold text-[#128c7e]"
+                  >
+                    Back to text
+                  </button>
+                </div>
+
+                <div className="rounded-xl border border-[#d5dbe1] bg-white p-2">
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
+                    Amount (INR)
+                  </label>
+                  <input
+                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    type="number"
+                    min="1"
+                    step="0.01"
+                  />
+
+                  <label className="mb-1 mt-2 block text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
+                    Note (optional)
+                  </label>
+                  <input
+                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    value={paymentNote}
+                    onChange={(e) => setPaymentNote(e.target.value)}
+                    placeholder="e.g. RSA advance fee"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => void handleSend()}
+                    disabled={sending || paymentGenerating}
+                    className="mt-2 w-full rounded-lg bg-[#128c7e] px-3 py-2 text-[11px] font-semibold text-white hover:bg-[#0f776b] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {sending || paymentGenerating ? 'Generating...' : 'Generate & Send'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {selectedMediaFile ? (
               <div className="mb-2 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                 <p className="truncate text-xs text-gray-700">{selectedMediaFile.name}</p>
@@ -3240,11 +3370,21 @@ export default function WhatsAppMobilePreviewModal({
                     >
                       Template
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveType('payment');
+                        setShowAttachMenu(false);
+                      }}
+                      className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      Collect Payment
+                    </button>
                   </div>
                 ) : null}
               </div>
               <input
-                value={activeType === 'template' ? '' : textMessage}
+                value={activeType === 'template' || activeType === 'payment' ? '' : textMessage}
                 onChange={(e) => setTextMessage(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -3252,10 +3392,12 @@ export default function WhatsAppMobilePreviewModal({
                     if (!sending) void handleSend();
                   }
                 }}
-                disabled={sending || activeType === 'template'}
+                disabled={sending || paymentGenerating || activeType === 'template' || activeType === 'payment'}
                 placeholder={
                   activeType === 'template'
                     ? 'Template mode enabled'
+                    : activeType === 'payment'
+                    ? 'Payment mode enabled'
                     : isTemplateOnlyMode
                     ? 'Only templates can be sent'
                     : 'Type a message'
@@ -3265,11 +3407,11 @@ export default function WhatsAppMobilePreviewModal({
               <button
                 type="button"
                 onClick={() => void handleSend()}
-                disabled={sending}
+                disabled={sending || paymentGenerating}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-600 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                 title="Send message"
               >
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {sending || paymentGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
               <input
                 ref={mediaFileInputRef}
