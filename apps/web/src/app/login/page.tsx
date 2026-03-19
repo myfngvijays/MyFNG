@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Wrench, Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
@@ -69,12 +69,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-6 sm:mb-7 md:mb-8">
-          <Link href="/" className="inline-flex items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
-            <Wrench className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-brand-fng flex-shrink-0" />
-            <span className="text-3xl sm:text-3.5xl md:text-4xl font-bold">
-              <span className="text-brand-my">My</span>
-              <span className="text-brand-fng">FNG</span>
-            </span>
+          <Link href="/" className="inline-block mb-3 sm:mb-4">
+            <img src="/logo.png" alt="MyFNG Logo" className="h-14 sm:h-16 md:h-20 w-auto mx-auto" />
           </Link>
           <p className="text-text-body text-sm sm:text-base">Login to your account</p>
         </div>
@@ -96,7 +92,9 @@ export default function LoginPage() {
                 <Mail className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                 <input
                   id="email"
+                  name="email"
                   type="email"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="input pl-9 sm:pl-11 text-xs sm:text-sm"
@@ -114,7 +112,9 @@ export default function LoginPage() {
                 <Lock className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                 <input
                   id="password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input pl-9 sm:pl-11 pr-9 sm:pr-11 text-xs sm:text-sm"

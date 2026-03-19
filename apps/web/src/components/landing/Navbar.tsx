@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowRight, MapPin, Loader2, ChevronDown, X, Search } from 'lucide-react';
+import { MapPin, Loader2, ChevronDown, Search } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function Navbar() {
@@ -185,12 +185,43 @@ export default function Navbar() {
     <header className="fixed top-0 w-full bg-white/95 backdrop-blur-sm shadow-sm z-50">
       <nav className="container mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4">
         <div className="flex items-center justify-between gap-2 sm:gap-4">
-          <Link href="/" className="flex items-center gap-1.5 sm:gap-2 md:gap-3 min-w-0 flex-shrink-0">
-            <img src="/logo.png" alt="MyFNG Logo" className="h-7 sm:h-8 md:h-10 w-auto flex-shrink-0" />
-            
-            {/* City Name Display */}
+          <Link href="/" className="flex items-center min-w-0 flex-shrink-0">
+            <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0" />
+          </Link>
+          
+          <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
+            <Link href="/" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Home</Link>
+            <div className="relative group">
+              <Link
+                href="/services"
+                className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap inline-flex items-center gap-1"
+              >
+                Services
+                <ChevronDown className="w-4 h-4 text-text-body group-hover:text-brand-primary transition" />
+              </Link>
+              <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                <div className="py-2">
+                  <Link href="/car-services/periodic-car-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Periodic Car Service</Link>
+                  <Link href="/car-services/car-engine-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Engine Service</Link>
+                  <Link href="/car-services/car-ac-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car AC Service</Link>
+                  <Link href="/car-services/car-battery" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Battery Service</Link>
+                  <Link href="/car-services/car-brake-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Brake Service</Link>
+                  <Link href="/car-services/car-clutch-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Clutch Service</Link>
+                  <Link href="/car-services/tyre-wheel-care" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Tyre &amp; Wheel Care</Link>
+                  <Link href="/car-services/car-detailing-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Detailing Service</Link>
+                  <Link href="/car-services/car-denting-painting" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Denting &amp; Painting</Link>
+                </div>
+              </div>
+            </div>
+            <Link href="/about" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
+            <Link href="/car-roadside-assitance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
+            <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
+            <Link href="/contact" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
             {isDetecting ? (
-              <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-500">
+              <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-blue-50 rounded-full border border-blue-200 text-xs sm:text-sm text-gray-500">
                 <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin flex-shrink-0" />
                 <span className="hidden sm:inline">Detecting...</span>
               </div>
@@ -205,13 +236,14 @@ export default function Navbar() {
                   <ChevronDown className={`w-3 h-3 sm:w-4 sm:h-4 text-blue-600 transition-transform flex-shrink-0 ${showCityDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* City Dropdown */}
                 {showCityDropdown && (
-                  <div className="absolute top-full left-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
+                  <div className="absolute top-full right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
                     <div className="p-3 sm:p-4 border-b border-gray-200">
                       <div className="relative">
                         <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
                         <input
+                          id="city-search"
+                          name="city-search"
                           type="text"
                           placeholder="Search city..."
                           value={searchQuery}
@@ -275,51 +307,6 @@ export default function Navbar() {
                 )}
               </div>
             ) : null}
-          </Link>
-          
-          <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
-            <Link href="/" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Home</Link>
-            <div className="relative group">
-              <Link
-                href="/services"
-                className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap inline-flex items-center gap-1"
-              >
-                Services
-                <ChevronDown className="w-4 h-4 text-text-body group-hover:text-brand-primary transition" />
-              </Link>
-              <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                <div className="py-2">
-                  <Link href="/car-services/periodic-car-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Periodic Car Service</Link>
-                  <Link href="/car-services/car-engine-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Engine Service</Link>
-                  <Link href="/car-services/car-ac-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car AC Service</Link>
-                  <Link href="/car-services/car-battery" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Battery Service</Link>
-                  <Link href="/car-services/car-brake-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Brake Service</Link>
-                  <Link href="/car-services/car-clutch-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Clutch Service</Link>
-                  <Link href="/car-services/tyre-wheel-care" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Tyre &amp; Wheel Care</Link>
-                  <Link href="/car-services/car-detailing-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Detailing Service</Link>
-                  <Link href="/car-services/car-denting-painting" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Denting &amp; Painting</Link>
-                </div>
-              </div>
-            </div>
-            <Link href="/about" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
-            <Link href="/car-roadside-assitance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
-            <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
-            <Link href="/contact" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
-            <Link
-              href="/login"
-              className="inline-flex items-center justify-center rounded-xl border border-brand-primary/25 bg-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm md:text-base text-brand-primary font-semibold hover:border-brand-primary/50 hover:bg-brand-primary/5 transition whitespace-nowrap"
-            >
-              <span className="hidden sm:inline">Partner Login</span>
-              <span className="sm:hidden">Partner</span>
-            </Link>
-            <Link href="/customer/login" className="hidden btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 whitespace-nowrap">
-              <span className="hidden sm:inline">Customer Login</span>
-              <span className="sm:hidden">Login</span>
-              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
-            </Link>
           </div>
         </div>
       </nav>

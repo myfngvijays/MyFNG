@@ -30,6 +30,7 @@ type TemplateMessageInput = {
   phoneNumber: string;
   templateName: string;
   templateParams?: string[];
+  buttonUrlParams?: string[];
   languageCode?: string;
 };
 
@@ -175,6 +176,27 @@ export async function sendTemplateMessage(input: TemplateMessageInput): Promise<
     .filter(Boolean)
     .map((text): TemplateBodyParam => ({ type: 'text', text }));
 
+  const buttonParams = (input.buttonUrlParams || [])
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .map((text): TemplateBodyParam => ({ type: 'text', text }));
+
+  const components: Array<Record<string, unknown>> = [];
+  if (bodyParams.length > 0) {
+    components.push({
+      type: 'body',
+      parameters: bodyParams,
+    });
+  }
+  if (buttonParams.length > 0) {
+    components.push({
+      type: 'button',
+      sub_type: 'url',
+      index: '0',
+      parameters: buttonParams,
+    });
+  }
+
   return sendMessagePayload({
     messaging_product: 'whatsapp',
     to,
@@ -182,15 +204,7 @@ export async function sendTemplateMessage(input: TemplateMessageInput): Promise<
     template: {
       name: input.templateName.trim(),
       language: { code: input.languageCode || 'en' },
-      components:
-        bodyParams.length > 0
-          ? [
-              {
-                type: 'body',
-                parameters: bodyParams,
-              },
-            ]
-          : undefined,
+      components: components.length > 0 ? components : undefined,
     },
   });
 }

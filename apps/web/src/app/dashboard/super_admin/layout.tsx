@@ -31,7 +31,8 @@ import {
   Bot,
   MessageSquare,
   Image as ImageIcon,
-  Ticket
+  Ticket,
+  ClipboardList,
 } from 'lucide-react';
 
 type NavItem = {
@@ -63,6 +64,12 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/workshops',
     icon: Building2,
     description: 'Workshop Management'
+  },
+  {
+    name: 'Bookings & Leads',
+    href: '/dashboard/super_admin/bookings',
+    icon: ClipboardList,
+    description: 'Service Leads & AI Bookings'
   },
   {
     name: 'Catalog & Pricing',

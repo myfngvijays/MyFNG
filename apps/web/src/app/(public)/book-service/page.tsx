@@ -106,6 +106,15 @@ export default function BookServicePage() {
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [loadingWorkshops, setLoadingWorkshops] = useState(false);
 
+  // Step 2 OTP State
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpTimer, setOtpTimer] = useState(0);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+
   const steps = [
     {
       id: 'step1',
@@ -168,6 +177,14 @@ export default function BookServicePage() {
       });
     }
   }, []);
+
+  useEffect(() => {
+    if (!otpSent || otpVerified || otpTimer <= 0) return;
+    const timer = setInterval(() => {
+      setOtpTimer((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpSent, otpVerified, otpTimer]);
 
   // Auto-detect location when step 1 is active (only once)
   useEffect(() => {
@@ -968,6 +985,127 @@ export default function BookServicePage() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const resetOtpState = () => {
+    setOtpSent(false);
+    setOtpCode('');
+    setOtpVerified(false);
+    setOtpTimer(0);
+    setOtpError(null);
+  };
+
+  const handlePhoneInputChange = (rawValue: string) => {
+    const phone = rawValue.replace(/\D/g, '').slice(0, 10);
+    if (phone !== formData.customerPhone) {
+      resetOtpState();
+    }
+    handleInputChange('customerPhone', phone);
+  };
+
+  const sendOtpToWhatsApp = async () => {
+    if (!isValidIndianMobile(formData.customerPhone)) {
+      toast.error('Please enter a valid Indian mobile number');
+      return;
+    }
+
+    setOtpLoading(true);
+    setOtpError(null);
+    try {
+      const res = await fetch('/api/booking/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: formData.customerPhone,
+          metadata: { source: 'book-service-step2' },
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || 'Failed to send OTP');
+      }
+
+      setOtpSent(true);
+      setOtpVerified(false);
+      setOtpCode('');
+      setOtpTimer(30);
+      toast.success('OTP sent on WhatsApp');
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 60);
+    } catch (error: any) {
+      const message = error?.message || 'Unable to send OTP';
+      setOtpError(message);
+      toast.error(message);
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const verifyOtpCode = async () => {
+    if (!/^\d{6}$/.test(otpCode)) {
+      setOtpError('Please enter a valid 6-digit OTP');
+      toast.error('Please enter a valid 6-digit OTP');
+      return;
+    }
+
+    setOtpLoading(true);
+    setOtpError(null);
+    try {
+      const res = await fetch('/api/booking/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: formData.customerPhone, otp: otpCode }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.verified) {
+        throw new Error(json?.error || 'Invalid or expired OTP');
+      }
+
+      setOtpVerified(true);
+      setOtpError(null);
+      toast.success('Mobile number verified');
+    } catch (error: any) {
+      setOtpVerified(false);
+      const message = error?.message || 'OTP verification failed';
+      setOtpError(message);
+      toast.error(message);
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleOtpDigitChange = (index: number, rawValue: string) => {
+    const digit = rawValue.replace(/\D/g, '').slice(-1);
+    const digits = Array.from({ length: 6 }, (_, i) => otpCode[i] || '');
+    digits[index] = digit;
+    setOtpCode(digits.join(''));
+    setOtpVerified(false);
+    setOtpError(null);
+    if (digit && index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otpCode[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!otpVerified && otpCode.length === 6) {
+        void verifyOtpCode();
+      }
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    setOtpCode(pasted);
+    setOtpVerified(false);
+    setOtpError(null);
+    const focusIndex = Math.min(5, pasted.length);
+    setTimeout(() => otpInputRefs.current[focusIndex >= 6 ? 5 : focusIndex]?.focus(), 0);
+  };
+
   const isValidIndianMobile = (rawPhone: string) => {
     const phone = String(rawPhone || '').replace(/\D/g, '');
     if (!/^[6-9]\d{9}$/.test(phone)) return false;
@@ -1003,6 +1141,10 @@ export default function BookServicePage() {
         toast.error('Please enter a valid Indian mobile number');
         return;
       }
+      if (!otpVerified) {
+        toast.error('Please verify your mobile number with WhatsApp OTP');
+        return;
+      }
     }
 
     // Step 3 validation: At least one service required
@@ -1024,6 +1166,10 @@ export default function BookServicePage() {
         }
         if (!formData.pickupTime) {
           toast.error('Please select a pickup time');
+          return;
+        }
+        if (!formData.vehicleNumber.trim()) {
+          toast.error('Please enter your car number');
           return;
         }
         if (!formData.pickupAddress.trim()) {
@@ -1155,8 +1301,8 @@ export default function BookServicePage() {
         address: formData.pickupRequired ? completeAddress : (formData.selectedWorkshop?.address || completeAddress),
         customer_address: formData.pickupRequired ? completeAddress : (formData.selectedWorkshop?.address || completeAddress),
         pickup_address: formData.pickupRequired ? completeAddress : null,
-        preferred_slot_start: formData.pickupRequired && formData.pickupDate && formData.pickupTime 
-          ? `${formData.pickupDate}T${formData.pickupTime}:00` 
+        preferred_slot_start: formData.pickupRequired && formData.pickupDate && formData.pickupTime
+          ? `${formData.pickupDate}T${formData.pickupTime}:00`
           : null,
         estimated_amount: totalPrice > 0 ? totalPrice : null,
         lead_priority: 'NORMAL',
@@ -1344,13 +1490,13 @@ export default function BookServicePage() {
     
     // Pickup/Workshop validation
     if (formData.pickupRequired) {
-      if (!formData.pickupDate || !formData.pickupTime || !formData.pickupAddress) {
+      if (!formData.pickupDate || !formData.pickupTime || !formData.vehicleNumber.trim() || !formData.pickupAddress) {
         toast.error('Please complete pickup details');
         return;
       }
     } else {
-      if (!formData.selectedWorkshop) {
-        toast.error('Please select a workshop');
+      if (!formData.selectedWorkshop || !formData.vehicleNumber.trim()) {
+        toast.error('Please select a workshop and enter car number');
         return;
       }
     }
@@ -1496,9 +1642,9 @@ export default function BookServicePage() {
     return formatISTWithWeekday(dateStr);
   };
   
-  // Generate time slots: 9 AM to 9 PM (hourly) - Display as "hh:mm am/pm - hh:mm am/pm"
-  const timeSlots = Array.from({ length: 13 }, (_, i) => {
-    const hour = 9 + i;
+  // Generate time slots: 10 AM to 9 PM (hourly) - Display as "hh:mm am/pm - hh:mm am/pm"
+  const timeSlots = Array.from({ length: 12 }, (_, i) => {
+    const hour = 10 + i;
     const time24 = `${hour.toString().padStart(2, '0')}:00`;
     const nextHour = hour + 1;
     
@@ -1520,13 +1666,13 @@ export default function BookServicePage() {
   const canProceed = currentStep === 0 
     ? formData.city !== null && formData.carModel !== null
     : currentStep === 1
-    ? isValidIndianMobile(formData.customerPhone)
+    ? isValidIndianMobile(formData.customerPhone) && otpVerified
     : currentStep === 2
     ? formData.selectedServices.length > 0
     : currentStep === 3
     ? formData.pickupRequired
-      ? formData.pickupDate !== '' && formData.pickupTime !== '' && formData.pickupAddress.trim() !== '' && formData.landmark.trim() !== ''
-      : formData.selectedWorkshop !== null
+      ? formData.pickupDate !== '' && formData.pickupTime !== '' && formData.vehicleNumber.trim() !== '' && formData.pickupAddress.trim() !== '' && formData.landmark.trim() !== ''
+      : formData.selectedWorkshop !== null && formData.vehicleNumber.trim() !== ''
     : formData.paymentStatus !== '';
 
   const totalPrice = formData.selectedServices.reduce((sum, serviceId) => {
@@ -2071,7 +2217,7 @@ export default function BookServicePage() {
                   </div>
                 )}
 
-                {/* Step 2: Phone, Vehicle Number */}
+                {/* Step 2: Phone + WhatsApp OTP */}
                 {currentStep === 1 && (
                   <div className="mb-8 sm:mb-10 md:mb-12 space-y-4 sm:space-y-6">
                     {/* Phone - Required */}
@@ -2081,9 +2227,11 @@ export default function BookServicePage() {
                         Mobile Number <span className="text-red-500">*</span>
                       </label>
                       <input
+                        id="booking-customer-phone"
+                        name="customerPhone"
                         type="tel"
                         value={formData.customerPhone}
-                        onChange={(e) => handleInputChange('customerPhone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        onChange={(e) => handlePhoneInputChange(e.target.value)}
                         placeholder="10-digit mobile number"
                         maxLength={10}
                         className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all ${
@@ -2093,7 +2241,17 @@ export default function BookServicePage() {
                         }`}
                         autoFocus
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter' && canProceed) {
+                          if (e.key !== 'Enter') return;
+                          e.preventDefault();
+                          if (!otpSent && isValidIndianMobile(formData.customerPhone)) {
+                            void sendOtpToWhatsApp();
+                            return;
+                          }
+                          if (otpSent && !otpVerified && otpCode.length === 6) {
+                            void verifyOtpCode();
+                            return;
+                          }
+                          if (canProceed) {
                             handleNext();
                           }
                         }}
@@ -2115,39 +2273,95 @@ export default function BookServicePage() {
                       )}
                     </div>
 
-                    {/* Vehicle Number - Optional */}
-                    <div className="relative">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                        <Car className="w-4 h-4 text-brand-primary" />
-                        Vehicle Number
-                        <span className="text-xs text-gray-500 font-normal">(Optional)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.vehicleNumber}
-                        onChange={(e) => handleInputChange('vehicleNumber', e.target.value.toUpperCase())}
-                        placeholder="e.g., MH12AB1234"
-                        className={`w-full px-3 sm:px-4 py-3 sm:py-4 md:py-5 text-base sm:text-lg md:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase ${
-                          formData.vehicleNumber
-                            ? 'border-brand-primary bg-brand-primary/5'
-                            : 'border-gray-200 focus:border-brand-primary focus:ring-brand-primary/20'
-                        }`}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && canProceed) {
-                            handleNext();
-                          }
-                        }}
-                      />
-                      {formData.vehicleNumber && (
-                        <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 mt-4 sm:mt-6">
-                          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
-                    </div>
-                      )}
-                      <p className="mt-2 text-xs text-gray-500 flex items-center gap-2">
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded">Optional</span>
-                        You can skip this field
-                    </p>
-                  </div>
+                    {!otpSent ? (
+                      <button
+                        type="button"
+                        onClick={() => void sendOtpToWhatsApp()}
+                        disabled={!isValidIndianMobile(formData.customerPhone) || otpLoading}
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {otpLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        Send OTP via WhatsApp
+                      </button>
+                    ) : (
+                      <div className="space-y-3 rounded-2xl border-2 border-green-200 bg-green-50/50 p-4 sm:p-5">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <p className="text-sm font-semibold text-green-800">
+                            OTP sent to +91 {formData.customerPhone}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetOtpState();
+                              setTimeout(() => {
+                                const phoneInput = document.getElementById('booking-customer-phone') as HTMLInputElement | null;
+                                phoneInput?.focus();
+                              }, 0);
+                            }}
+                            className="text-xs font-semibold text-brand-primary hover:underline"
+                          >
+                            Change Number
+                          </button>
+                        </div>
+
+                        <div className="flex gap-2 sm:gap-3">
+                          {Array.from({ length: 6 }).map((_, index) => (
+                            <input
+                              key={`otp-${index}`}
+                              id={`booking-otp-${index}`}
+                              name={`bookingOtp${index}`}
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={1}
+                              value={otpCode[index] || ''}
+                              onChange={(e) => handleOtpDigitChange(index, e.target.value)}
+                              onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                              onPaste={handleOtpPaste}
+                              ref={(el) => {
+                                otpInputRefs.current[index] = el;
+                              }}
+                              className={`w-10 h-11 sm:w-12 sm:h-12 text-center text-lg font-bold rounded-xl border-2 outline-none ${
+                                otpVerified
+                                  ? 'border-green-500 bg-green-100 text-green-700'
+                                  : 'border-gray-300 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20'
+                              }`}
+                            />
+                          ))}
+                        </div>
+
+                        {otpError && <p className="text-xs text-red-600">{otpError}</p>}
+                        {otpVerified && (
+                          <p className="text-sm font-semibold text-green-700 flex items-center gap-2">
+                            <CheckCircle className="w-4 h-4" />
+                            OTP verified successfully
+                          </p>
+                        )}
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {!otpVerified && (
+                            <button
+                              type="button"
+                              onClick={() => void verifyOtpCode()}
+                              disabled={otpCode.length !== 6 || otpLoading}
+                              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {otpLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                              Verify OTP
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void sendOtpToWhatsApp()}
+                            disabled={otpLoading || otpTimer > 0}
+                            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Resend OTP
+                            {otpTimer > 0 ? `(${otpTimer}s)` : ''}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                 </div>
               )}
 
@@ -2815,7 +3029,39 @@ export default function BookServicePage() {
                           </div>
                         </div>
 
-                        {/* Pickup Time - Hourly Slots (9 AM to 9 PM) */}
+                        {/* Car Number - Compulsory */}
+                        <div className="relative group">
+                          <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                            <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
+                              <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center shadow-md">
+                                <Car className="w-4 h-4 text-white" />
+                              </div>
+                              Car Number
+                              <span className="text-red-500 text-lg">*</span>
+                            </label>
+                            <input
+                              id="vehicle-number-step4"
+                              name="vehicleNumber"
+                              type="text"
+                              value={formData.vehicleNumber}
+                              onChange={(e) => handleInputChange('vehicleNumber', e.target.value.toUpperCase())}
+                              placeholder="e.g., MH12AB1234"
+                              className={`w-full px-4 py-4 sm:py-5 text-lg sm:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase font-semibold tracking-wider ${
+                                formData.vehicleNumber
+                                  ? 'border-orange-500 bg-orange-50/50 ring-2 ring-orange-200'
+                                  : 'border-gray-200 focus:border-orange-500 focus:ring-orange-200'
+                              }`}
+                            />
+                            {formData.vehicleNumber && (
+                              <p className="mt-3 text-sm font-semibold text-orange-600 flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4" />
+                                Vehicle: {formData.vehicleNumber}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Pickup Time - Hourly Slots (10 AM to 9 PM) */}
                         {formData.pickupDate ? (
                           <div className="relative group">
                             <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
@@ -2827,7 +3073,6 @@ export default function BookServicePage() {
                                 <span className="text-red-500 text-lg">*</span>
                               </label>
                               
-                              {/* Time Slot Grid */}
                               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
                                 {timeSlots.map((slot) => {
                                   const isSelected = formData.pickupTime === slot.value;
@@ -2994,6 +3239,38 @@ export default function BookServicePage() {
                     {/* Workshop Selection - Only show when self come is selected */}
                     {!formData.pickupRequired && (
                       <div className="space-y-5 sm:space-y-6">
+                        {/* Car Number - Compulsory */}
+                        <div className="relative group">
+                          <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                            <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
+                              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
+                                <Car className="w-4 h-4 text-white" />
+                              </div>
+                              Car Number
+                              <span className="text-red-500 text-lg">*</span>
+                            </label>
+                            <input
+                              id="vehicle-number-selfcome"
+                              name="vehicleNumber"
+                              type="text"
+                              value={formData.vehicleNumber}
+                              onChange={(e) => handleInputChange('vehicleNumber', e.target.value.toUpperCase())}
+                              placeholder="e.g., MH12AB1234"
+                              className={`w-full px-4 py-4 sm:py-5 text-lg sm:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase font-semibold tracking-wider ${
+                                formData.vehicleNumber
+                                  ? 'border-purple-500 bg-purple-50/50 ring-2 ring-purple-200'
+                                  : 'border-gray-200 focus:border-purple-500 focus:ring-purple-200'
+                              }`}
+                            />
+                            {formData.vehicleNumber && (
+                              <p className="mt-3 text-sm font-semibold text-purple-600 flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4" />
+                                Vehicle: {formData.vehicleNumber}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
                         <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm">
                           <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
                             <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
@@ -3105,11 +3382,17 @@ export default function BookServicePage() {
                           {totalPrice > 0 ? `₹${totalPrice.toLocaleString('en-IN')}` : '—'}
                         </span>
                       </div>
+                      {formData.vehicleNumber && (
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-gray-600 shrink-0">Car Number:</span>
+                          <span className="font-semibold text-right break-words">{formData.vehicleNumber}</span>
+                        </div>
+                      )}
                       {formData.pickupRequired && formData.pickupDate && (
                         <div className="flex items-start justify-between gap-3">
                           <span className="text-gray-600 shrink-0">Pickup:</span>
                           <span className="font-semibold text-right break-words">
-                            {formatDateDMY(formData.pickupDate)} at {formData.pickupTime}
+                            {formatDateDMY(formData.pickupDate)}{formData.pickupTime ? ` at ${timeSlots.find(s => s.value === formData.pickupTime)?.label || formData.pickupTime}` : ''}
                           </span>
                         </div>
                       )}

@@ -383,6 +383,8 @@ export default function BookingForm({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
                   <input
+                    id={`booking-${currentStepData.id}`}
+                    name={currentStepData.id}
                     type={currentStepData.type}
                     value={fieldValue}
                     onChange={(e) => {

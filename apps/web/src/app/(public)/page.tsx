@@ -734,6 +734,8 @@ export default function HomePage() {
                       Ask MY FNG AI
                     </div>
                     <input
+                      id="header-ai-query"
+                      name="header-ai-query"
                       value={headerAiQuery}
                       onChange={(e) => setHeaderAiQuery(e.target.value)}
                       placeholder="Describe your issue (e.g. AC not cooling, brake noise, battery weak...)"
@@ -2154,6 +2156,8 @@ export default function HomePage() {
           <div className="p-2.5 sm:p-3 border-t border-gray-100 bg-white">
             <div className="flex gap-1.5 sm:gap-2">
               <input
+                id="chat-draft"
+                name="chat-draft"
                 type="text"
                 value={chatDraft}
                 onChange={(e) => setChatDraft(e.target.value)}

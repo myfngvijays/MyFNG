@@ -72,6 +72,8 @@ export default function LandingChatWidget() {
           <div className="p-2.5 sm:p-3 border-t border-gray-100 bg-white">
             <div className="flex gap-1.5 sm:gap-2">
               <input
+                id="chat-message"
+                name="chat-message"
                 type="text"
                 placeholder="Type your message..."
                 className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm focus:outline-none focus:border-brand-primary"
