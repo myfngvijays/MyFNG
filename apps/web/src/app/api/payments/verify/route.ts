@@ -415,32 +415,52 @@ export async function POST(request: Request) {
         const normalized = normalizePhoneNumber(custPhone);
         if (normalized) {
           const amtStr = Number(amt) % 1 === 0 ? String(Number(amt)) : Number(amt).toFixed(2);
-          const result = await sendTemplateMessage({
-            phoneNumber: custPhone,
-            templateName: 'payment_success',
-            templateParams: [custName, amtStr, paymentId || orderId, 'MyFNG Service'],
-            languageCode: 'en',
-          });
-          console.log('[Verify] WhatsApp payment_success result:', {
-            success: result?.success,
-            messageId: result?.messageId,
-            error: result?.error,
-          });
-          const now = new Date().toISOString();
-          await dbNotif.from('whatsapp_messages').insert({
-            provider_message_id: result.messageId || null,
-            direction: 'OUTBOUND',
-            message_type: 'TEMPLATE',
-            recipient_phone: normalized,
-            template_name: 'payment_success',
-            template_language: 'en',
-            status: result.success ? 'SENT' : 'FAILED',
-            status_at: now,
-            error_message: result.success ? null : result.error || null,
-            payload: { request: { type: 'payment_success', customer: custName, amount: amt, phone: custPhone }, response: result.raw || null },
-            meta: { source: 'payment_verify_auto' },
-            updated_at: now,
-          });
+          const txnId = paymentId || orderId || 'N/A';
+          const serviceName = 'MyFNG Service';
+          const tplParams = [custName, amtStr, txnId, serviceName];
+
+          const { data: recentDup } = await dbNotif
+            .from('whatsapp_messages')
+            .select('id')
+            .eq('template_name', 'payment_success')
+            .eq('recipient_phone', normalized)
+            .eq('direction', 'OUTBOUND')
+            .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+            .limit(1)
+            .maybeSingle();
+
+          if (recentDup) {
+            console.log('[Verify] Skipping payment_success — already sent recently to', normalized);
+          } else {
+            const result = await sendTemplateMessage({
+              phoneNumber: custPhone,
+              templateName: 'payment_success',
+              templateParams: tplParams,
+              languageCode: 'en',
+            });
+            console.log('[Verify] WhatsApp payment_success result:', {
+              success: result?.success,
+              messageId: result?.messageId,
+              error: result?.error,
+            });
+            const filledBody = `Hi ${custName},\n\nYour payment of INR ${amtStr} has been received successfully! ✅\n\nTransaction ID: ${txnId}\nService: ${serviceName}\n\nThank you for choosing MyFNG!`;
+            const now = new Date().toISOString();
+            await dbNotif.from('whatsapp_messages').insert({
+              provider_message_id: result.messageId || null,
+              direction: 'OUTBOUND',
+              message_type: 'TEMPLATE',
+              recipient_phone: normalized,
+              template_name: 'payment_success',
+              template_language: 'en',
+              text_body: filledBody,
+              status: result.success ? 'SENT' : 'FAILED',
+              status_at: now,
+              error_message: result.success ? null : result.error || null,
+              payload: { request: { type: 'payment_success', customer: custName, amount: amtStr, phone: custPhone, params: tplParams }, response: result.raw || null },
+              meta: { source: 'payment_verify_auto' },
+              updated_at: now,
+            });
+          }
         } else {
           console.warn('[Verify] No valid phone for WhatsApp notification:', custPhone);
         }

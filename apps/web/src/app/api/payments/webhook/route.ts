@@ -700,22 +700,8 @@ async function handlePaymentSuccess(payload: any, supabase: any) {
     }
   }
 
-  // Auto-send payment_success WhatsApp template to customer
-  const { supabaseAdmin: adminForLookup } = getSupabaseAdmin();
-  const dbLookup = (adminForLookup ?? supabase) as any;
-  const directPayRow = await lookupDirectPayRow(dbLookup, orderId, paymentId);
-  const customerPhone = directPayRow?.customer_phone || payment?.contact || '';
-  if (customerPhone) {
-    const notes = directPayRow?.notes && typeof directPayRow.notes === 'object' ? directPayRow.notes : {};
-    await sendPaymentWhatsAppNotification({
-      type: 'success',
-      customerPhone,
-      customerName: directPayRow?.customer_name || payment?.notes?.customer_name || 'Customer',
-      amount,
-      paymentId: paymentId || orderId,
-      service: (notes as any)?.purpose === 'PAY_NOW' ? 'MyFNG Service' : 'Vehicle Service',
-    });
-  }
+  // WhatsApp notification is sent from /api/payments/verify (client-side callback)
+  // to avoid duplicate messages. Webhook only handles status updates.
 }
 
 async function handlePaymentFailed(payload: any, supabase: any) {
@@ -787,24 +773,7 @@ async function handlePaymentFailed(payload: any, supabase: any) {
     });
   }
 
-  // Auto-send payment_failed WhatsApp template with retry link
-  const { supabaseAdmin: adminForFailed } = getSupabaseAdmin();
-  const dbFailed = (adminForFailed ?? supabase) as any;
-  const failedRow = await lookupDirectPayRow(dbFailed, orderId, paymentId);
-  const failedPhone = failedRow?.customer_phone || payment?.contact || '';
-  if (failedPhone) {
-    const failedNotes = failedRow?.notes && typeof failedRow.notes === 'object' ? failedRow.notes : {};
-    const retryLink = String((failedNotes as any)?.link_url || '').trim();
-    const failedAmount = failedRow?.amount || (Number(payment?.amount || 0) / 100);
-    await sendPaymentWhatsAppNotification({
-      type: 'failed',
-      customerPhone: failedPhone,
-      customerName: failedRow?.customer_name || payment?.notes?.customer_name || 'Customer',
-      amount: failedAmount,
-      service: (failedNotes as any)?.purpose === 'PAY_NOW' ? 'MyFNG Service' : 'Vehicle Service',
-      paymentLink: retryLink,
-    });
-  }
+  // WhatsApp notification for failed payments is handled by client-side flow.
 }
 
 async function handleOrderPaid(payload: any, supabase: any) {

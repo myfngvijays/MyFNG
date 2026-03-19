@@ -3058,7 +3058,7 @@ export default function WhatsAppMobilePreviewModal({
                   ? templateMap.get(String(msg.template_name || '').trim().toLowerCase()) || null
                   : null;
                 const templateText = currentTemplate
-                  ? fillTemplateBodyFromArray(currentTemplate, msg?.payload?.request?.template_params)
+                  ? fillTemplateBodyFromArray(currentTemplate, msg?.payload?.request?.template_params || msg?.payload?.request?.params)
                   : '';
                 const templateButtons = isTemplateMessage ? extractTemplateButtons(currentTemplate) : [];
                 const templateDisplayName =
