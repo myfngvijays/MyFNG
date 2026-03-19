@@ -391,7 +391,7 @@ export default function RsaLandingPage() {
                     <div className="stat"><strong>24×7</strong><span>Emergency Assistance</span></div>
                     <div className="stat"><strong>30 Min</strong><span>Avg Dispatch Time</span></div>
                     <div className="stat"><strong>Live GPS</strong><span>Track Technician</span></div>
-                    <div className="stat"><strong>30000+</strong><span>Rescues Done</span></div>
+                    <div className="stat"><strong>32000+</strong><span>Rescues Done</span></div>
                   </div>
                 </form>
               </aside>
